@@ -1254,10 +1254,6 @@ c
       return
       end
 
-c     NOTE:   subroutine bias_weight_function has been moved to file dummy_fct.f
-c     The recommended way to edit this file is now via the user_hook functionality of the run_card
-c     (entry custom_fct of the run_card)  
-
       integer function get_n_tagged_photons()
       implicit none
       integer i
@@ -1289,6 +1285,5 @@ c     (entry custom_fct of the run_card)
 
       return
       end
-
 
 

@@ -339,6 +339,21 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             cp(pjoin(_file_path,cp_file),
                 pjoin(self.dir_path,'bin','internal',os.path.basename(cp_file)))
 
+        if self.opt.get('fks_template') == 'fNLO':
+            # Do not expose event-generation entry points or shower cards in a
+            # fixed-order-only process directory.  The shared Python modules
+            # remain available because the run interface imports them eagerly.
+            event_assets = [
+                pjoin('Cards', 'shower_card.dat'),
+                pjoin('Cards', 'shower_card_default.dat'),
+                pjoin('bin', 'generate_events'),
+                pjoin('bin', 'shower'),
+                pjoin('bin', 'internal', 'split_jobs.py')]
+            for asset in event_assets:
+                path = pjoin(self.dir_path, asset)
+                if os.path.exists(path):
+                    os.remove(path)
+
     def convert_model(self, model, wanted_lorentz = [], 
                                                          wanted_couplings = []):
 
@@ -771,9 +786,32 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'polfit.f']
 
         if self.opt.get('fks_template') == 'fNLO':
+            event_sources = {
+                'MCmasses_HERWIG6.inc',
+                'MCmasses_HERWIGPP.inc',
+                'MCmasses_PYTHIA6PT.inc',
+                'MCmasses_PYTHIA6Q.inc',
+                'MCmasses_PYTHIA8.inc',
+                'LHAFortran_aMCatNLO.h',
+                'add_write_info.f',
+                'analysis_lhe.f',
+                'dire_fortran.cc',
+                'fill_MC_mshell.f',
+                'handling_lhe_events.f',
+                'hep_event_streams.inc',
+                'madfks_mcatnlo.inc',
+                'pythia8_control.inc',
+                'pythia8_control_setup.inc',
+                'pythia8_fortran.cc',
+                'pythia8_fortran_dummy.cc',
+                'pythia8_wrapper.cc',
+                'reweight_xsec_events.f',
+                'reweight_xsec_events_pdf_dummy.f',
+                'write_event.f'}
             linkfiles = [filename for filename in linkfiles
                          if filename not in ('driver_mintMC.f',
-                                             'montecarlocounter.f')]
+                                             'montecarlocounter.f')
+                         and filename not in event_sources]
 
         if matrix_element.ewsudakov:
             linkfiles.append('ewsudakov_functions.f')
@@ -889,6 +927,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         self.proc_characteristic['grouped_matrix'] = False
         self.proc_characteristic['complex_mass_scheme'] = mg5options['complex_mass_scheme']
         self.proc_characteristic['nlo_mixed_expansion'] = mg5options['nlo_mixed_expansion']
+        self.proc_characteristic['fixed_order_only'] = \
+            self.opt.get('fks_template') == 'fNLO'
         # determine perturbation order
         perturbation_order = []
         firstprocess = history.get('generate')
@@ -905,7 +945,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         self.write_orderstag_base_file(writers.FortranWriter(filename))
 
         self.create_run_card(matrix_elements.get_processes(), history)
-        self.create_shower_card(matrix_elements.get_processes(), history)
+        if not self.proc_characteristic['fixed_order_only']:
+            self.create_shower_card(matrix_elements.get_processes(), history)
 #        modelname = self.model.get('name')
 #        if modelname == 'mssm' or modelname.startswith('mssm-'):
 #            param_card = os.path.join(self.dir_path, 'Cards','param_card.dat')
@@ -962,7 +1003,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             history.write(output_file)
 
         # Duplicate run_card and FO_analyse_card
-        for card in ['run_card', 'FO_analyse_card', 'shower_card']:
+        cards = ['run_card', 'FO_analyse_card']
+        if not self.proc_characteristic['fixed_order_only']:
+            cards.append('shower_card')
+        for card in cards:
             try:
                 shutil.copy(pjoin(self.dir_path, 'Cards',
                                          card + '.dat'),
@@ -5246,6 +5290,10 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
                      'timing_variables.inc',
                      'orderstag_base.inc',
                      'orderstags_glob.dat']
+
+        if self.opt.get('fks_template') == 'fNLO':
+            linkfiles = [filename for filename in linkfiles
+                         if filename != 'add_write_info.f']
 
         for file in linkfiles:
             ln('../' + file , '.')

@@ -1679,8 +1679,6 @@ c     plot_wgts(iwgt,icontr) : same as wgts(), but only non-zero for
 c        unique contributions and non-unique are added to the unique
 c        ones. 'Unique' here is defined that they would be identical in
 c        an analysis routine (i.e. same momenta and PDG codes)
-c     shower_scale(icontr) : The preferred shower starting scale for
-c        this contribution
 c     niproc(icontr) : number of combined subprocesses in parton_lum_*.f
 c     parton_iproc(iproc,icontr) : value of the PDF for the iproc
 c        contribution
@@ -1721,10 +1719,6 @@ c        contribution
      &                         fkssymmetryfactorDeg,ngluons,nquarks
       double precision       wgt_ME_born,wgt_ME_real
       common /c_wgt_ME_tree/ wgt_ME_born,wgt_ME_real
-      integer need_matching_S(nexternal),need_matching_H(nexternal)
-     $     ,need_matching_cuts(nexternal)
-      common /c_need_matching/ need_matching_S,need_matching_H
-     $     ,need_matching_cuts
       integer     fold,ifold_counter
       common /cfl/fold,ifold_counter
       integer ntagph
@@ -1823,9 +1817,7 @@ C for UPC processes set scale to Ellis-Sexton scale
       g_strong(icontr)=g
       nFKS(icontr)=nFKSprocess
       y_bst(icontr)=ybst_til_tolab
-      shower_scale(icontr)=-99d9
       ifold_cnt(icontr)=ifold_counter
-      icolour_con(1,1,icontr)=-1
       qcdpower(icontr)=QCD_power
       cpower(icontr)=wgtcpower
       orderstag(icontr)=orders_tag
@@ -1867,7 +1859,6 @@ c Real-emission contribution with n+1-body kinematics.
             enddo
          enddo
          H_event(icontr)=.true.
-         need_match(1:nexternal,icontr)=need_matching_H(1:nexternal)
       elseif(type.ge.2 .and. type.le.7 .or. type.eq.11
      $        .or. type.eq.14 .or. type.eq.15
      $        .or. (type.ge.20 .and. type.le.22)) then
@@ -1878,7 +1869,6 @@ c Born, counter term, soft-virtual, or n-body real contributions.
             enddo
          enddo
          H_event(icontr)=.false.
-         need_match(1:nexternal,icontr)=need_matching_S(1:nexternal)
       else
          write (*,*) 'ERROR: unknown type in add_wgt',type
          stop 1
@@ -1994,8 +1984,6 @@ c overwrite the relevant information.]
 c Special for the soft-virtual needed for the virt-tricks. The
 c *_wgt_mint variable should be directly passed to the mint-integrator
 c and not be part of the plots nor computation of the cross section.
-            if (flavour_bias(2).ne.1) 
-     $           call recompute_xlum_for_wgt_mint(i,xlum)
             virt_wgt_mint(0)=virt_wgt_mint(0)*xlum
      &           *rwgt_muR_dep_fac(sqrt(mu2_r),sqrt(mu2_r),cpower(i))
             born_wgt_mint(0)=born_wgt_mint(0)*xlum
@@ -2016,222 +2004,6 @@ c and not be part of the plots nor computation of the cross section.
       t_as=t_as+(tAfter-tBefore)
       return
       end
-
-      subroutine recompute_xlum_for_wgt_mint(i,xlum)
-      use weight_lines
-      implicit none
-      include 'nexternal.inc'
-      include 'run.inc'
-      include 'genps.inc'
-      double precision xlum,conv
-      parameter (conv=389379660d0) ! conversion to picobarns
-      integer i,j,iproc
-      DOUBLE PRECISION PD(0:MAXPROC)
-      COMMON /SUBPROC/ PD, IPROC
-      xlum=0d0
-      do j=1,iproc
-         if (any(abs(parton_pdg_uborn(1:nexternal-1,j
-     $        ,i)).eq.Flavour_Bias(1))) then
-            if (nincoming.eq.2) then
-               xlum=xlum+pd(j)*conv*dble(Flavour_Bias(2))
-            else
-               xlum=xlum+pd(j)*dble(Flavour_Bias(2))
-            endif
-         else
-            if (nincoming.eq.2) then
-               xlum=xlum+pd(j)*conv
-            else
-               xlum=xlum+pd(j)
-            endif
-         endif
-      enddo
-      end
-      
-      subroutine include_bias_wgt
-c Include the weight from the bias_wgt_function to all the contributions
-c in icontr. This only changes the weight of the central value (after
-c inclusion of alphaS and parton luminosity). Both for 'wgts(1,icontr)'
-c as well as the the 'parton_iproc(1:niproc(icontr),icontr)', since
-c these are the ones used in MINT as well as for unweighting. Also the
-c 'virt_wgt_mint' and 'born_wgt_mint' are updated. Furthermore, to
-c include the weight also in the 'wgt' array that contain the
-c coefficients for PDF and scale computations. 
-      use weight_lines
-      use mint_module
-      implicit none
-      include 'nexternal.inc'
-      include 'orders.inc'
-      include 'run.inc'
-      integer orders(nsplitorders)
-      integer i,j,iamp
-      logical virt_found
-      double precision bias
-      character*7 event_norm
-      common /event_normalisation/event_norm
-c Set the bias_wgt to 1 in case we do not have to do any biassing
-      if (event_norm(1:4).ne.'bias') then
-         do i=1,icontr
-            bias_wgt(i)=1d0
-         enddo
-         return
-      endif
-      virt_found=.false.
-c loop over all contributions
-      do i=1,icontr
-         if (itype(i).eq.1) then
-            ! use (n+1)-body momenta for the real emission. Pick the
-            ! first IPROC for parton PDGs.
-            call bias_weight_function(momenta_m(0,1,2,i),parton_pdg(1,1
-     $           ,i),bias)
-         else
-            ! use n-body momenta for all the other contributions. Pick
-            ! the first IPROC for parton PDGs.
-            call bias_weight_function(momenta_m(0,1,1,i),parton_pdg(1,1
-     $           ,i),bias)
-         endif
-         bias_wgt(i)=bias
-c Update the weights:
-         do j=1,niproc(i)
-            parton_iproc(j,i)=parton_iproc(j,i)*bias_wgt(i)
-            if (Flavour_bias(2).ne.1) then ! non-trivial flavour bias in the run_card.
-               if (H_event(i)) then
-                  if (any(abs(parton_pdg(1:nexternal,j
-     $                 ,i)).eq.Flavour_Bias(1))) parton_iproc(j,i)
-     $                 =parton_iproc(j,i)*dble(Flavour_Bias(2))
-               else
-                  if (any(abs(parton_pdg_uborn(1:nexternal-1,j
-     $                 ,i)).eq.Flavour_Bias(1))) parton_iproc(j,i)
-     $                 =parton_iproc(j,i)*dble(Flavour_Bias(2))
-               endif
-            endif
-         enddo
-         wgts(1,i)=sum(parton_iproc(1:niproc(i),i))
-         do j=1,3
-            wgt(j,i)=wgt(j,i)*bias_wgt(i)
-            ! Do not update the wgt() with the Flavour_Bias here; only
-            ! do it once the iproc_picked has been set (i.e., only for
-            ! the events that are written out). In practice, we can do
-            ! it in the include_inverse_bias_wgt() subroutine.
-         enddo
-         if (itype(i).eq.14 .and. .not.virt_found) then
-            virt_found=.true.
-            virt_wgt_mint(0)=virt_wgt_mint(0)*bias_wgt(i)
-            born_wgt_mint(0)=born_wgt_mint(0)*bias_wgt(i)
-            do iamp=1,amp_split_size
-               call amp_split_pos_to_orders(iamp, orders)
-               virt_wgt_mint(iamp)=virt_wgt_mint(iamp)*bias_wgt(i)
-               born_wgt_mint(iamp)=born_wgt_mint(iamp)*bias_wgt(i)
-            enddo
-         endif
-      enddo
-      return
-      end
-
-      subroutine include_inverse_bias_wgt(inv_bias)
-c Update the inverse of the bias in the event weight. All information in
-c the rwgt_lines is NOT updated.
-      use weight_lines
-      use extra_weights
-      implicit none
-      include 'nexternal.inc'
-      include 'genps.inc'
-      include 'nFKSconfigs.inc'
-      include 'run.inc'
-      integer i,ict,ipro,ii,flavour_bias_consistency
-      double precision wgt_num,wgt_denom,inv_bias
-      character*7 event_norm
-      common /event_normalisation/event_norm
-      integer iproc_save(fks_configs),eto(maxproc,fks_configs)
-     $     ,etoi(maxproc,fks_configs),maxproc_found
-      common/cproc_combination/iproc_save,eto,etoi,maxproc_found
-      logical         Hevents
-      common/SHevents/Hevents
-      if (event_norm(1:4).ne.'bias') then
-         inv_bias=1d0
-         return
-      endif
-      wgt_num=0d0
-      wgt_denom=0d0
-      flavour_bias_consistency=0
-      do i=1,icontr_sum(0,icontr_picked)
-         ict=icontr_sum(i,icontr_picked)
-         if (bias_wgt(ict).eq.0d0) then
-            write (*,*) "ERROR in include_inverse_bias_wgt: "/
-     $           /"bias_wgt is equal to zero",ict,bias_wgt
-            stop 1
-         endif
-c for all the rwgt_lines, remove the bias-wgt contribution from the
-c weights there. Note that the wgtref (also written in the event file)
-c keeps its contribution from the bias_wgt.
-         if (.not. Hevents) then
-            ipro=eto(etoi(iproc_picked,nFKS(ict)),nFKS(ict))
-            do ii=1,iproc_save(nFKS(ict))
-               if (eto(ii,nFKS(ict)).ne.ipro) cycle
-               wgt_denom=wgt_denom+parton_iproc(ii,ict)
-               wgt_num=wgt_num+parton_iproc(ii,ict)/bias_wgt(ict)
-               if (Flavour_Bias(2).ne.1) then ! non-trivial Flavour bias. Check consistency of flavour configuration
-                  if (any(abs(parton_pdg_uborn(1:nexternal-1,ii
-     $                 ,ict)).eq.Flavour_Bias(1))) then
-                     if (flavour_bias_consistency .ge. 0) then
-                        flavour_bias_consistency=1
-                     else
-                        write (*,*) 'Inconsistent Flavour Bias #1'
-                        stop 1
-                     endif
-                  else
-                     if (flavour_bias_consistency .le. 0) then
-                        flavour_bias_consistency=-1
-                     else
-                        write (*,*) 'Inconsistent Flavour Bias #2'
-                        stop 1
-                     endif
-                  endif
-               endif
-            enddo
-         else
-            ipro=iproc_picked
-            wgt_denom=wgt_denom+parton_iproc(ipro,ict)
-            wgt_num=wgt_num+parton_iproc(ipro,ict)/bias_wgt(ict)
-            if (Flavour_Bias(2).ne.1) then ! non-trivial Flavour bias. Check consistency of flavour configuration
-               if (any(abs(parton_pdg(1:nexternal,ipro,ict)) .eq.
-     $              Flavour_Bias(1))) then
-                  if (flavour_bias_consistency .ge. 0) then
-                     flavour_bias_consistency=1
-                  else
-                     write (*,*) 'Inconsistent Flavour Bias #3'
-                     stop 1
-                  endif
-               else
-                  if (flavour_bias_consistency .le. 0) then
-                     flavour_bias_consistency=-1
-                  else
-                     write (*,*) 'Inconsistent Flavour Bias #4'
-                     stop 1
-                  endif
-               endif
-            endif
-         endif
-      enddo
-      wgtref=unwgt(iproc_picked,icontr_picked)
-      if (abs((wgtref-wgt_denom)/(wgtref+wgt_denom)).gt.1d-10) then
-         write (*,*) "ERROR in include_inverse_bias_wgt: "/
-     $        /"reference weight not equal to recomputed weight",wgtref
-     $        ,wgt_denom
-         stop 1
-      endif
-c update the event weight to be written in the file
-      inv_bias=wgt_num/wgt_denom
-      if (flavour_bias_consistency.eq.1) then
-         inv_bias=inv_bias/dble(Flavour_Bias(2))
-         do i=1,icontr_sum(0,icontr_picked)
-            ict=icontr_sum(i,icontr_picked)
-            wgt(1:3,ict)=wgt(1:3,ict)*dble(Flavour_Bias(2))
-            bias_wgt(ict)=bias_wgt(ict)*dble(Flavour_Bias(2))
-         enddo
-      endif
-      return
-      end
-      
 
       subroutine separate_flavour_config(ict)
       use weight_lines
@@ -2688,7 +2460,7 @@ c must do MC over FKS directories.
 
          if (itype(i).eq.1) then
 c     real
-            appl_w0(1,pos)=appl_w0(1,pos)+wgt(1,i)/bias_wgt(i)*
+            appl_w0(1,pos)=appl_w0(1,pos)+wgt(1,i)*
      &                     final_state_rescaling
             appl_x1(1)=bjx(1,i)
             appl_x2(1)=bjx(2,i)
@@ -2698,7 +2470,7 @@ c     real
             appl_muF2(1)=scales2(3,i)
          elseif (itype(i).eq.2) then
 c     born
-            appl_wB(2,pos)=appl_wB(2,pos)+wgt(1,i)/bias_wgt(i)*
+            appl_wB(2,pos)=appl_wB(2,pos)+wgt(1,i)*
      &                     final_state_rescaling
             appl_x1(2)=bjx(1,i)
             appl_x2(2)=bjx(2,i)
@@ -2709,11 +2481,11 @@ c     born
          elseif (itype(i).eq.3 .or. itype(i).eq.4 .or. itype(i).eq.14
      &           .or. itype(i).eq.15)then
 c     virtual, soft-virtual or soft-counter
-            appl_w0(2,pos)=appl_w0(2,pos)+wgt(1,i)/bias_wgt(i)*
+            appl_w0(2,pos)=appl_w0(2,pos)+wgt(1,i)*
      &                     final_state_rescaling
-            appl_wR(2,pos)=appl_wR(2,pos)+wgt(2,i)/bias_wgt(i)*
+            appl_wR(2,pos)=appl_wR(2,pos)+wgt(2,i)*
      &                     final_state_rescaling
-            appl_wF(2,pos)=appl_wF(2,pos)+wgt(3,i)/bias_wgt(i)*
+            appl_wF(2,pos)=appl_wF(2,pos)+wgt(3,i)*
      &                     final_state_rescaling
             appl_x1(2)=bjx(1,i)
             appl_x2(2)=bjx(2,i)
@@ -2723,9 +2495,9 @@ c     virtual, soft-virtual or soft-counter
             appl_muF2(2)=scales2(3,i)
          elseif (itype(i).eq.5) then
 c     collinear counter            
-            appl_w0(3,pos)=appl_w0(3,pos)+wgt(1,i)/bias_wgt(i)*
+            appl_w0(3,pos)=appl_w0(3,pos)+wgt(1,i)*
      &                     final_state_rescaling
-            appl_wF(3,pos)=appl_wF(3,pos)+wgt(3,i)/bias_wgt(i)*
+            appl_wF(3,pos)=appl_wF(3,pos)+wgt(3,i)*
      &                     final_state_rescaling
             appl_x1(3)=bjx(1,i)
             appl_x2(3)=bjx(2,i)
@@ -2735,9 +2507,9 @@ c     collinear counter
             appl_muF2(3)=scales2(3,i)
          elseif (itype(i).eq.6) then
 c     soft-collinear counter            
-            appl_w0(4,pos)=appl_w0(4,pos)+wgt(1,i)/bias_wgt(i)*
+            appl_w0(4,pos)=appl_w0(4,pos)+wgt(1,i)*
      &                     final_state_rescaling
-            appl_wF(4,pos)=appl_wF(4,pos)+wgt(3,i)/bias_wgt(i)*
+            appl_wF(4,pos)=appl_wF(4,pos)+wgt(3,i)*
      &                     final_state_rescaling
             appl_x1(4)=bjx(1,i)
             appl_x2(4)=bjx(2,i)
@@ -2887,7 +2659,7 @@ c contribution makes sure that it is added as a new element.
                stop
             endif
             do j=1,iwgt
-               www(j)=plot_wgts(j,i)/bias_wgt(i)
+               www(j)=plot_wgts(j,i)
             enddo
 c call the analysis/histogramming routines
             orders_tag_plot=orderstag(i)

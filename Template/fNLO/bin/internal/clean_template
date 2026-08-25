@@ -25,10 +25,7 @@ fi
 #	Clear out any old information/directories
 
 cp -p HTML/info-default.html HTML/info.html
-rm -f bin/plot_events >& /dev/null
-rm -f bin/scale_events >& /dev/null
 rm -f bin/sum_html >& /dev/null
-rm -f bin/select_events >& /dev/null
 if [[ ! -d lib ]]; then
     echo "Error: lib directory not found"
     exit

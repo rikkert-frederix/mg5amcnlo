@@ -1,7 +1,6 @@
 include ../proc_characteristics
 include ../../Source/make_opts
 include ../analyse_opts
-include ../pythia8_opts
 
 LIBDIR = $(abspath ../../lib/)/
 ANADIR = ../../FixedOrderAnalysis/
@@ -53,7 +52,7 @@ FILES= $(patsubst %.f,%.o,$(wildcard parton_lum_*.f)) 			\
 	 reweight_xsec.o boostwdir2.o       				\
 	 cluster.o splitorders_stuff.o 			\
 	 get_color.o iproc_map.o sudakov.o				\
-	 MC_integer.o $(reweight_xsec_events_pdf_dummy)			\
+	 MC_integer.o						\
 	 $(pineappl_interface) weight_lines.o mint_module.o polfit.o
 
 FILESSUD= \
@@ -65,14 +64,13 @@ FILESSUD= \
 
 # Files needed for mintFO
 RUN= $(FO_ANALYSE) $(FILES) cuts.o dummy_fct.o pythia_unlops.o recluster.o 		\
-	fill_MC_mshell.o born_hel.o open_output_files.o			\
-	add_write_info.o madfks_plot.o
+	born_hel.o open_output_files.o madfks_plot.o
 
 # Files for mintFO
-MINTFO= $(RUN) driver_mintFO.o handling_lhe_events.o write_event.o BinothLHA.o pythia8_fortran_dummy.o
+MINTFO= $(RUN) driver_mintFO.o BinothLHA.o
 
 # Files for check_poles
-POLES= $(RUN) check_poles.o BinothLHA.o pythia8_fortran_dummy.o write_event.o handling_lhe_events.o
+POLES= $(RUN) check_poles.o BinothLHA.o
 
 # Files for check_sudakov
 EWSUD= $(RUN) check_sudakov.o BinothLHA.o
@@ -84,19 +82,10 @@ EWSUDLIB = $(FILESSUD)
 EWSUD2= $(RUN) check_sudakov_angle2.o BinothLHA.o
 
 # Files for the matrix-element soft/collinear limit test
-TEST= $(RUN) test_soft_col_limits.o BinothLHADummy.o pythia8_fortran_dummy.o write_event.o handling_lhe_events.o
+TEST= $(RUN) test_soft_col_limits.o BinothLHADummy.o
 
 # Files for gensym
-SYM= $(RUN) BinothLHADummy.o symmetry_fks_v3.o write_ajob.o pythia8_fortran_dummy.o write_event.o handling_lhe_events.o 
-
-# Files for event reweighting to get e.g. scale and PDF uncertainties
-RWGFILES=reweight_xsec_events.o handling_lhe_events.o recmom.o 		\
-	$(patsubst %.f,%.o,$(wildcard parton_lum_*.f)) setscales.o	\
-	cuts.o dummy_fct.o $(fastjetfortran_madfks) boostwdir2.o veto_xsec.o	\
-	$(reweight_xsec_events_pdf_dummy) fill_MC_mshell.o cluster.o	\
-	get_color.o iproc_map.o chooser_functions.o 		\
-	pythia_unlops.o recluster.o splitorders_stuff.o reweight_xsec.o \
-	weight_lines.o orderstags_glob.o
+SYM= $(RUN) BinothLHADummy.o symmetry_fks_v3.o write_ajob.o
 
 %.o: %.f
 	$(FC) $(FFLAGS) -c -I. -I$(LIBDIR) $<
@@ -113,7 +102,7 @@ RWGFILES=reweight_xsec_events.o handling_lhe_events.o recmom.o 		\
 %.o: $(ANADIR)/%.c
 	$(CXX) $(CFLAGS) -c -I. -I$(ANADIR) $(FO_INCLUDEPATHS) $^
 %.o: %.cc
-	$(CXX) $(CXXFLAGS) -c -I. $(PYTHIA8INCLUDE) $^ 
+	$(CXX) $(CXXFLAGS) -c -I. $^
 %.o: $(ANADIR)/%.cc
 	$(CXX) $(CXXFLAGS) -c -I. -I$(ANADIR) $(FO_INCLUDEPATHS) $^
 
@@ -158,13 +147,7 @@ check_poles: $(POLES) $(libmadloop)
 
 madevent_mintFO: $(MINTFO) $(libmadloop) makefile $(LIBS)
 	$(FC) -o madevent_mintFO $(MINTFO) $(NLOLIBS) $(APPLLIBS) $(LINKLIBS) $(FJLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(LDFLAGS)
-	rm handling_lhe_events.o
 	strip madevent_mintFO
-
-reweight_xsec_events: $(RWGFILES) makefile $(LIBS)
-	$(FC) -o reweight_xsec_events $(RWGFILES) $(LINKLIBS) $(FJLIBS) $(LDFLAGS)
-	rm handling_lhe_events.o
-	strip reweight_xsec_events
 
 libMadLoop.a:
 	for dir in `ls -d V*`; do cd $$dir; make; cd ../; done
@@ -172,10 +155,8 @@ libMadLoop.a:
 mint_module.o : FKSParams.o
 BinothLHA_OLP.o: FKSParams.o
 BinothLHA.o: FKSParams.o
-reweight_xsec_events.o: weight_lines.o
 fks_singular.o: weight_lines.o mint_module.o
 driver_mintFO.o: weight_lines.o mint_module.o FKSParams.o
-pythia8_wrapper.o: pythia8_fortran.o LHAFortran_aMCatNLO.h
 chooser_functions.o: weight_lines.o
 cluster.o: weight_lines.o
 setcuts.o: mint_module.o
@@ -183,9 +164,8 @@ genps_fks.o: mint_module.o FKSParams.o
 symmetry_fks_v3.o: mint_module.o
 test_soft_col_limits.o: mint_module.o
 madfks_plot.o: mint_module.o
-write_event.o: mint_module.o
 check_poles.o: mint_module.o
 clean:
-	@rm -f *.o write_ajob_basic reweight_xsec_events madevent_* check_poles\
+	@rm -f *.o write_ajob_basic madevent_* check_poles\
 	    test_M* gensym
 	for dir in `ls -d V*`; do cd $$dir; make clean; cd ../; done

@@ -139,7 +139,7 @@
 4
 ! Default :: 4
 !
-! This parameter sets for which fraction of the events the virtual
+! This parameter sets for which fraction of the phase-space points the virtual
 ! matrix elements should be included. When using MINT, during the
 ! grid-setup phase, this number will be updated automatically after
 ! each iteration depending on the relative MC uncertainties.
@@ -147,7 +147,7 @@
 1.0d0
 ! Default :: 1.0d0
 !
-! This parameter sets the minimal fraction of the events for which the
+! This parameter sets the minimal fraction of the phase-space points for which the
 ! virtual matrix elements should be included.
 #MinVirtualFraction
 0.005d0

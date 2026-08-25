@@ -9820,7 +9820,12 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         if self._export_format in ['madevent', 'standalone', 'standalone_cpp','madweight', 'matchbox']:
             logger.info('Output to directory ' + self._export_dir + ' done.')
 
-        if self._export_format in ['madevent', 'NLO', 'fNLO']:
+        if self._export_format == 'fNLO':
+            logger.info('Run \"./bin/calculate_xsect NLO\" in the output directory')
+            logger.info('to compute fixed-order cross sections and distributions, or see')
+            logger.info(self._export_dir + '/README')
+            logger.info('Run \"open index.html\" to see more information about this process.')
+        elif self._export_format in ['madevent', 'NLO']:
             logger.info('Type \"launch\" to generate events from this process, or see')
             logger.info(self._export_dir + '/README')
             logger.info('Run \"open index.html\" to see more information about this process.')

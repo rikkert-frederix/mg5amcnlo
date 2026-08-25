@@ -191,8 +191,6 @@ class CheckFKS(mg_interface.CheckValidForCmd):
                     args.append('NLO')
                 else:
                     args.append('auto')
-
-                return
             else:
                 self.help_launch()
                 raise self.InvalidCmd('No default location available, please specify location.')
@@ -228,15 +226,20 @@ class CheckFKS(mg_interface.CheckValidForCmd):
             raise self.InvalidCmd('%s is not a valid directory' % args[0])
         args[0] = path
 
-        # fNLO outputs intentionally do not contain the MCatNLO tree and can
-        # therefore only be launched in fixed-order mode.
-        if not os.path.isdir(pjoin(path, 'MCatNLO')):
+        fixed_order_only = run_interface.is_fixed_order_only(path)
+        if fixed_order_only:
             if mode == 'auto':
                 mode = 'NLO'
                 args[1] = mode
             elif mode not in ['LO', 'NLO']:
                 raise self.InvalidCmd(
                     'fNLO output only supports fixed-order LO or NLO runs')
+
+            event_options = run_interface.enabled_event_options(options)
+            if event_options:
+                raise self.InvalidCmd(
+                    '%s are not available for fNLO outputs' %
+                    ', '.join(event_options))
                 
         # inform where we are for future command
         self._done_export = [path, mode]
@@ -301,6 +304,19 @@ class CompleteFKS(mg_interface.CompleteForCmd):
         """ complete the launch command"""
         args = self.split_arg(line[0:begidx])
 
+        path = None
+        modes = ['aMC@NLO', 'NLO', 'aMC@LO', 'LO', 'auto']
+        if len(args) > 1 and args[1] not in modes:
+            candidates = [args[1], pjoin(MG5DIR, args[1])]
+            if MG4DIR:
+                candidates.append(pjoin(MG4DIR, args[1]))
+            path = next((candidate for candidate in candidates
+                         if os.path.isdir(candidate)), None)
+        elif self._done_export:
+            path = self._done_export[0]
+        fixed_order_only = bool(
+            path and run_interface.is_fixed_order_only(os.path.realpath(path)))
+
         # Directory continuation
         if args[-1].endswith(os.path.sep):
             return self.path_completion(text,
@@ -317,8 +333,9 @@ class CompleteFKS(mg_interface.CompleteForCmd):
                                      MG4DIR, only_dirs = True, relative=False)
 
         if len(args) == 2:
-            modes = ['aMC@NLO', 'NLO', 'aMC@LO', 'LO']
-            return self.list_completion(text, modes, line)
+            launch_modes = ['NLO', 'LO'] if fixed_order_only else \
+                ['aMC@NLO', 'NLO', 'aMC@LO', 'LO']
+            return self.list_completion(text, launch_modes, line)
             
         #option
         if len(args) >= 3:
@@ -332,6 +349,12 @@ class CompleteFKS(mg_interface.CompleteForCmd):
             opt = ['-f', '-c', '-m', '-i', '-x', '-r', '-p', '-o', '-n', 'a',
                     '--force', '--cluster', '--multicore', '--interactive',
                     '--nocompile', '--reweightonly', '--parton', '--only_generation', '--name', '--appl_start_grid']
+            if fixed_order_only:
+                event_options = {
+                    '-r', '-p', '-o', '--reweightonly', '--parton',
+                    '--only_generation'}
+                opt = [option for option in opt
+                       if option not in event_options]
             out['Options'] = self.list_completion(text, opt, line)
         
 
@@ -1109,4 +1132,3 @@ _launch_parser.add_option("-R", "--reweight", default=False, action='store_true'
                             help="Run the reweight module (reweighting by different model parameter")
 _launch_parser.add_option("-M", "--madspin", default=False, action='store_true',
                             help="Run the madspin package")
-

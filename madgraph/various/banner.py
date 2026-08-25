@@ -1769,6 +1769,7 @@ class ProcCharacteristic(ConfigFile):
         self.add_param('single_color', True)
         self.add_param('nlo_mixed_expansion', True)    
         self.add_param('gauge', 'U')
+        self.add_param('fixed_order_only', False)
     
     def read(self, finput):
         """Read the input file, this can be a path to a file, 

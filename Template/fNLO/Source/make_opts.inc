@@ -110,7 +110,6 @@ ifneq ($(lhapdf),)
     alfas_functions=alfas_functions_lhapdf
   endif
   llhapdf = $(shell $(lhapdf) --libs)
-  reweight_xsec_events_pdf_dummy=
 
 else ifneq ($(epdf),)
 # option eMELA/ePDF
@@ -123,7 +122,6 @@ llhapdf+= -lLHAPDF
 else
   alfas_functions=alfas_functions
   llhapdf=
-  reweight_xsec_events_pdf_dummy=reweight_xsec_events_pdf_dummy.o
 endif
 
 # Set CXX unless it's defined by an environment variable

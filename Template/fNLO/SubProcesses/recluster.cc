@@ -8,9 +8,6 @@
 #include <fstream>
 #include <sstream>
 
-// LHEF class to parse Les Houches events (as testing case).
-//#include "LHEF.h"
-
 using namespace std;
 
 // Functions for 4-vector manipulations.
@@ -820,4 +817,3 @@ extern "C" {
     delete originalState;
   }
 }
-

@@ -11,7 +11,7 @@ C
       double precision pi, zero
       parameter (pi=3.1415926535897932385d0)
       parameter (zero = 0d0)
-      integer npointsChecked
+      integer npoints,npointsChecked
       integer i, j, k, l
       integer return_code
       double precision tolerance, tolerance_default
@@ -1332,4 +1332,3 @@ c     Just a wrapper to ran2
       rand = ran2()
       return 
       end
-

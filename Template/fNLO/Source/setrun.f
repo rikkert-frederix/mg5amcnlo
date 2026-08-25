@@ -79,13 +79,22 @@ c check that the event normalization input is reasoble
       buff = event_norm 
       call case_trap2(buff) ! requires a string of length 20 at least
       event_norm=buff 
+      if (event_norm(1:4).eq.'bias') then
+         write (*,*) 'Biased event generation is not available in the '/
+     &        /'fixed-order-only template.'
+         stop 1
+      endif
+      if (flavour_bias(2).ne.1) then
+         write (*,*) 'Flavour-biased event generation is not available '/
+     &        /'in the fixed-order-only template.'
+         stop 1
+      endif
       if ( event_norm(1:7).ne.'average' .and.
      $     event_norm(1:3).ne.'sum' .and.
-     $     event_norm(1:5).ne.'unity'.and.
-     $     event_norm(1:4).ne.'bias')then
+     $     event_norm(1:5).ne.'unity')then
          write (*,*) 'Do not understand the event_norm parameter'/
      &        /' in the run_card.dat. Possible options are'/
-     &        /' "average", "sum", "unity" or "bias". '/
+     &        /' "average", "sum" or "unity". '/
      &        /'Current input is: ', event_norm
          stop 1
       endif

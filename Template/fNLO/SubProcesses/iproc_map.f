@@ -1,6 +1,6 @@
       subroutine find_iproc_map
 c Determines which IPROC's can be combined at NLO (i.e. give the same
-c flavor structure in the event file and can be summed before taking the
+c flavor structure and can be summed before taking the
 c absolute value).
       implicit none
       include 'nexternal.inc'
@@ -65,7 +65,7 @@ c     final state gluon emitted
 c     intial state g->qqbar splitting
                      id_current(i,j)=-idup(i_fks,j)
                   else
-                     write (*,*) 'Error #1 in unwgt_table',nFKSprocess
+                     write (*,*) 'Error #1 in iproc_map',nFKSprocess
      $                    ,idup(i_fks,j),idup(j_fks,j)
                      stop
                   endif

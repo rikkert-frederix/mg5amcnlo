@@ -103,6 +103,47 @@ class aMCatNLOError(Exception):
     pass
 
 
+def is_fixed_order_only(me_dir, proc_characteristics=None):
+    """Return whether *me_dir* was exported with the fNLO template.
+
+    The explicit process characteristic is authoritative for newly exported
+    directories.  The missing MCatNLO fallback keeps older fNLO outputs safe.
+    """
+
+    if proc_characteristics is None:
+        characteristic_path = pjoin(
+            me_dir, 'SubProcesses', 'proc_characteristics')
+        if os.path.isfile(characteristic_path):
+            try:
+                proc_characteristics = banner_mod.ProcCharacteristic(
+                    characteristic_path)
+            except Exception:
+                proc_characteristics = None
+
+    if proc_characteristics is not None:
+        marker = proc_characteristics['fixed_order_only'] \
+            if 'fixed_order_only' in proc_characteristics else False
+        if marker in [True, 'True', 'true', 'T', '.true.']:
+            return True
+
+    return not os.path.isdir(pjoin(me_dir, 'MCatNLO'))
+
+
+def enabled_event_options(options):
+    """Return enabled launch options which require an event workflow."""
+
+    event_options = {
+        'reweightonly': '--reweightonly',
+        'parton': '--parton',
+        'only_generation': '--only_generation',
+        'reweight': '--reweight',
+        'do_reweight': '--reweight',
+        'madspin': '--madspin',
+        'do_madspin': '--madspin'}
+    return sorted(set(label for key, label in event_options.items()
+                      if options.get(key, False)))
+
+
 def compile_dir(*arguments):
     """compile the direcory p_dir
     arguments is the tuple (me_dir, p_dir, mode, options, tests, exe, run_mode)
@@ -428,7 +469,8 @@ class CheckValidForCmd(object):
     def check_shower(self, args, options):
         """Check the validity of the line. args[0] is the run_directory"""
 
-        if not os.path.isdir(pjoin(self.me_dir, 'MCatNLO')):
+        if is_fixed_order_only(
+                self.me_dir, getattr(self, 'proc_characteristics', None)):
             raise self.InvalidCmd(
                 'This fNLO process only supports fixed-order computations')
         
@@ -619,7 +661,6 @@ class CheckValidForCmd(object):
         
         if not args:
             args.append('NLO')
-            return
         
         if len(args) > 1:
             self.help_calculate_xsect()
@@ -634,6 +675,11 @@ class CheckValidForCmd(object):
         if options['multicore'] and options['cluster']:
             raise self.InvalidCmd('options -m (--multicore) and -c (--cluster)' + \
                     ' are not compatible. Please choose one.')
+        if is_fixed_order_only(
+                self.me_dir, getattr(self, 'proc_characteristics', None)) \
+                and options.get('only_generation'):
+            raise self.InvalidCmd(
+                '--only_generation is not available for fNLO outputs')
 
 
     def check_generate_events(self, args, options):
@@ -644,7 +690,6 @@ class CheckValidForCmd(object):
         
         if not args:
             args.append('NLO')
-            return
         
         if len(args) > 1:
             self.help_generate_events()
@@ -659,6 +704,14 @@ class CheckValidForCmd(object):
         if options['multicore'] and options['cluster']:
             raise self.InvalidCmd('options -m (--multicore) and -c (--cluster)' + \
                     ' are not compatible. Please choose one.')
+
+        if is_fixed_order_only(
+                self.me_dir, getattr(self, 'proc_characteristics', None)):
+            event_options = enabled_event_options(options)
+            if event_options:
+                raise self.InvalidCmd(
+                    '%s are not available for fNLO outputs' %
+                    ', '.join(event_options))
 
     def check_banner_run(self, args):
         """check the validity of line"""
@@ -729,11 +782,11 @@ class CheckValidForCmd(object):
             self.force = True
         
         
-        fixed_order_only = not os.path.isdir(pjoin(self.me_dir, 'MCatNLO'))
+        fixed_order_only = is_fixed_order_only(
+            self.me_dir, getattr(self, 'proc_characteristics', None))
 
         if not args:
             args.append('NLO' if fixed_order_only else 'auto')
-            return
         
         if len(args) > 1:
             self.help_launch()
@@ -747,6 +800,13 @@ class CheckValidForCmd(object):
         if fixed_order_only and mode not in ['LO', 'NLO']:
             raise self.InvalidCmd(
                 'This fNLO process only supports fixed-order LO or NLO runs')
+
+        if fixed_order_only:
+            event_options = enabled_event_options(options)
+            if event_options:
+                raise self.InvalidCmd(
+                    '%s are not available for fNLO outputs' %
+                    ', '.join(event_options))
         
         # check for incompatible options/modes
         if options['multicore'] and options['cluster']:
@@ -765,9 +825,11 @@ class CheckValidForCmd(object):
         if options['force']:
             self.force = True
         
+        fixed_order_only = is_fixed_order_only(
+            self.me_dir, getattr(self, 'proc_characteristics', None))
+
         if not args:
-            args.append('MC')
-            return
+            args.append('FO' if fixed_order_only else 'MC')
         
         if len(args) > 1:
             self.help_compile()
@@ -777,6 +839,10 @@ class CheckValidForCmd(object):
             if not args[0] in ['MC', 'FO']:
                 raise self.InvalidCmd('%s is not a valid mode, please use "FO" or "MC"' % args[0])
         mode = args[0]
+
+        if fixed_order_only and mode != 'FO':
+            raise self.InvalidCmd(
+                'This fNLO process only supports fixed-order compilation')
         
         # check for incompatible options/modes
 
@@ -791,14 +857,22 @@ class CompleteForCmd(CheckValidForCmd):
         """auto-completion for launch command"""
         
         args = self.split_arg(line[0:begidx])
+        fixed_order_only = is_fixed_order_only(
+            self.me_dir, getattr(self, 'proc_characteristics', None))
         if len(args) == 1:
             #return mode
-            return self.list_completion(text,['LO','NLO','aMC@NLO','aMC@LO'],line)
+            modes = ['LO', 'NLO'] if fixed_order_only else \
+                ['LO', 'NLO', 'aMC@NLO', 'aMC@LO']
+            return self.list_completion(text, modes, line)
         elif len(args) == 2 and line[begidx-1] == '@':
             return self.list_completion(text,['LO','NLO'],line)
         else:
             opts = []
             for opt in _launch_parser.option_list:
+                if fixed_order_only and opt.dest in {
+                        'reweightonly', 'parton', 'only_generation',
+                        'do_reweight', 'do_madspin'}:
+                    continue
                 opts += opt._long_opts + opt._short_opts
             return self.list_completion(text, opts, line)
            
@@ -853,7 +927,10 @@ class CompleteForCmd(CheckValidForCmd):
         args = self.split_arg(line[0:begidx])
         if len(args) == 1:
             #return mode
-            return self.list_completion(text,['FO','MC'],line)
+            modes = ['FO'] if is_fixed_order_only(
+                self.me_dir, getattr(self, 'proc_characteristics', None)) \
+                else ['FO', 'MC']
+            return self.list_completion(text, modes, line)
         else:
             opts = []
             for opt in _compile_parser.option_list:
@@ -870,16 +947,27 @@ class CompleteForCmd(CheckValidForCmd):
         else:
             opts = []
             for opt in _calculate_xsect_parser.option_list:
+                if is_fixed_order_only(
+                        self.me_dir,
+                        getattr(self, 'proc_characteristics', None)) \
+                        and opt.dest == 'only_generation':
+                    continue
                 opts += opt._long_opts + opt._short_opts
             return self.list_completion(text, opts, line) 
 
     def complete_generate_events(self, text, line, begidx, endidx):
         """auto-completion for generate_events command
         call the compeltion for launch"""
-        self.complete_launch(text, line, begidx, endidx)
+        if is_fixed_order_only(
+                self.me_dir, getattr(self, 'proc_characteristics', None)):
+            return []
+        return self.complete_launch(text, line, begidx, endidx)
 
 
     def complete_shower(self, text, line, begidx, endidx):
+        if is_fixed_order_only(
+                self.me_dir, getattr(self, 'proc_characteristics', None)):
+            return []
         args = self.split_arg(line[0:begidx])
         if len(args) == 1:
             #return valid run_name
@@ -944,15 +1032,18 @@ class AskRunNLO(cmd.ControlSwitch):
                                                                   *args, **opt):
         
         self.me_dir = opt['mother_interface'].me_dir
-        self.check_available_module(opt['mother_interface'].options)
         self.last_mode = opt['mother_interface'].last_mode
         self.proc_characteristics = opt['mother_interface'].proc_characteristics
+        self.fixed_order_only = is_fixed_order_only(
+            self.me_dir, self.proc_characteristics)
+        self.check_available_module(opt['mother_interface'].options)
         with misc.TMP_variable(banner_mod.RunCard, 'allow_scan', True):
             self.run_card = banner_mod.RunCard(pjoin(self.me_dir,'Cards', 'run_card.dat'),
                                            consistency='warning')
 
         hide_line = []
-        if 'QED' in self.proc_characteristics['splitting_types']:
+        if self.fixed_order_only or \
+                'QED' in self.proc_characteristics['splitting_types']:
             hide_line = ['madspin', 'shower', 'reweight', 'madanalysis']        
         
         super(AskRunNLO,self).__init__(self.to_control, opt['mother_interface'],
@@ -979,6 +1070,8 @@ class AskRunNLO(cmd.ControlSwitch):
     def check_available_module(self, options):
         
         self.available_module = set()
+        if self.fixed_order_only:
+            return
         if options['madanalysis5_path']:
             self.available_module.add('MA5')
         if not aMCatNLO or ('mg5_path' in options and options['mg5_path']):
@@ -1016,6 +1109,9 @@ class AskRunNLO(cmd.ControlSwitch):
             logger.warning('Invalid command: nlo=%s' % value)
             
     def ans_amc__at__nlo(self, value):
+        if self.fixed_order_only:
+            logger.warning('Event generation is not available for fNLO outputs')
+            return
         if value is None:
             self.switch['order'] = 'NLO'
             self.switch['fixed_order'] = 'OFF'
@@ -1024,6 +1120,9 @@ class AskRunNLO(cmd.ControlSwitch):
             logger.warning('Invalid command: aMC@NLO=%s' % value)
             
     def ans_amc__at__lo(self, value):
+        if self.fixed_order_only:
+            logger.warning('Event generation is not available for fNLO outputs')
+            return
         if value is None:
             self.switch['order'] = 'LO'
             self.switch['fixed_order'] = 'OFF'
@@ -1032,6 +1131,9 @@ class AskRunNLO(cmd.ControlSwitch):
             logger.warning('Invalid command: aMC@LO=%s' % value)  
                   
     def ans_noshower(self, value):
+        if self.fixed_order_only:
+            logger.warning('Event generation is not available for fNLO outputs')
+            return
         if value is None:
             self.switch['order'] = 'NLO'
             self.switch['fixed_order'] = 'OFF'
@@ -1040,6 +1142,9 @@ class AskRunNLO(cmd.ControlSwitch):
             logger.warning('Invalid command: noshower=%s' % value)  
         
     def ans_onlyshower(self, value):
+        if self.fixed_order_only:
+            logger.warning('Showering is not available for fNLO outputs')
+            return
         if value is None:
             self.switch['mode'] = 'onlyshower'
             self.switch['madspin'] = 'OFF'
@@ -1048,6 +1153,9 @@ class AskRunNLO(cmd.ControlSwitch):
             logger.warning('Invalid command: onlyshower=%s' % value)     
               
     def ans_noshowerlo(self, value):
+        if self.fixed_order_only:
+            logger.warning('Event generation is not available for fNLO outputs')
+            return
         if value is None:
             self.switch['order'] = 'LO'
             self.switch['fixed_order'] = 'OFF'
@@ -1082,7 +1190,8 @@ class AskRunNLO(cmd.ControlSwitch):
     def get_allowed_fixed_order(self):
         """ """
         
-        if self.proc_characteristics['ninitial'] == 1 or \
+        if self.fixed_order_only or \
+           self.proc_characteristics['ninitial'] == 1 or \
            'QED' in self.proc_characteristics['splitting_types']:
             return ['ON']
         else:
@@ -1090,7 +1199,9 @@ class AskRunNLO(cmd.ControlSwitch):
         
     def set_default_fixed_order(self):
           
-        if self.last_mode in ['LO', 'NLO']:
+        if self.fixed_order_only:
+            self.switch['fixed_order'] = 'ON'
+        elif self.last_mode in ['LO', 'NLO']:
             self.switch['fixed_order'] = 'ON'
         elif self.proc_characteristics['ninitial'] == 1:
             self.switch['fixed_order'] = 'ON'
@@ -1108,7 +1219,9 @@ class AskRunNLO(cmd.ControlSwitch):
     
     def print_options_fixed_order(self):
         
-        if 'QED' in self.proc_characteristics['splitting_types']:
+        if self.fixed_order_only:
+            return "fNLO supports fixed-order computations only"
+        elif 'QED' in self.proc_characteristics['splitting_types']:
             return "No NLO+PS available for EW correction"
         else:
             return self.print_options('fixed_order', keep_default=True)
@@ -1203,6 +1316,10 @@ class AskRunNLO(cmd.ControlSwitch):
         
         if hasattr(self, 'allowed_shower'):
             return self.allowed_shower
+
+        if self.fixed_order_only:
+            self.allowed_shower = ['OFF']
+            return self.allowed_shower
         
         if 'QED' in self.proc_characteristics['splitting_types']:
             self.allowed_shower = ['OFF']
@@ -1253,7 +1370,10 @@ class AskRunNLO(cmd.ControlSwitch):
     
     def set_default_shower(self): 
         
-        if 'QED' in self.proc_characteristics['splitting_types']:
+        if self.fixed_order_only:
+            self.switch['shower'] = 'OFF'
+            return
+        elif 'QED' in self.proc_characteristics['splitting_types']:
             self.switch['shower'] = 'Not Avail'
         elif self.last_mode in ['LO', 'NLO', 'noshower', 'noshowerLO']:
             self.switch['shower'] = 'OFF'         
@@ -1534,6 +1654,51 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
         if not '[real=QCD]' in proc_card:
             check_compiler(self.options, block=True)
 
+        if is_fixed_order_only(
+                self.me_dir, getattr(self, 'proc_characteristics', None)):
+            self.next_possibility = {
+                'start': ['calculate_xsect [OPTIONS]', 'launch [OPTIONS]'],
+                'calculate_xsect': [
+                    'calculate_xsect [OPTIONS]', 'launch [OPTIONS]'],
+                'launch': [
+                    'calculate_xsect [OPTIONS]', 'launch [OPTIONS]']}
+
+    def ensure_event_workflow_available(self, action):
+        """Reject commands which read or write event samples for fNLO."""
+
+        if is_fixed_order_only(
+                self.me_dir, getattr(self, 'proc_characteristics', None)):
+            raise self.InvalidCmd(
+                '%s is not available for fNLO outputs' % action)
+
+    def ensure_fixed_order_analysis_available(self, analyse=None):
+        """Forbid the built-in fixed-order LHE writer in fNLO outputs."""
+
+        if analyse is None:
+            analyse = getattr(self, 'analyse_card', None)
+        if is_fixed_order_only(
+                self.me_dir, getattr(self, 'proc_characteristics', None)) \
+                and analyse is not None \
+                and analyse.get('fo_analysis_format', '').lower() == 'lhe':
+            raise self.InvalidCmd(
+                'FO_ANALYSIS_FORMAT=LHE is not available for fNLO outputs')
+
+    def do_reweight(self, line):
+        self.ensure_event_workflow_available('Event reweighting')
+        return super(aMCatNLOCmd, self).do_reweight(line)
+
+    def do_systematics(self, line):
+        self.ensure_event_workflow_available('Event systematics')
+        return super(aMCatNLOCmd, self).do_systematics(line)
+
+    def do_decay_events(self, line):
+        self.ensure_event_workflow_available('Event decays')
+        return super(aMCatNLOCmd, self).do_decay_events(line)
+
+    def do_add_time_of_flight(self, line):
+        self.ensure_event_workflow_available('Event time-of-flight writing')
+        return super(aMCatNLOCmd, self).do_add_time_of_flight(line)
+
         
     ############################################################################      
     def do_shower(self, line):
@@ -1715,6 +1880,11 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
     def do_generate_events(self, line):
         """Main commands: generate events  
         this function just wraps the do_launch one"""
+        if is_fixed_order_only(
+                self.me_dir, getattr(self, 'proc_characteristics', None)):
+            raise self.InvalidCmd(
+                'generate_events is not available for fNLO outputs; '
+                'use calculate_xsect instead')
         self.do_launch(line)
 
 
@@ -1728,7 +1898,10 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
         # this variable is system only in the run_card 
         # can not be done in EditCard since this parameter is not written in the 
         # run_card directly.
-        if mode in ['LO', 'NLO']: 
+        if mode in ['LO', 'NLO']:
+            self.ensure_fixed_order_analysis_available()
+        if mode in ['LO', 'NLO'] and not is_fixed_order_only(
+                self.me_dir, getattr(self, 'proc_characteristics', None)):
             name = 'fo_lhe_weight_ratio'
             FO_card = analyse_card.FOAnalyseCard(pjoin(self.me_dir,'Cards', 'FO_analyse_card.dat'))
             if name in FO_card:
@@ -1936,6 +2109,19 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
     def run(self, mode, options):
         """runs aMC@NLO. Returns the name of the event file created"""
         logger.info('Starting run')
+
+        fixed_order_only = is_fixed_order_only(
+            self.me_dir, getattr(self, 'proc_characteristics', None))
+        if fixed_order_only and mode not in ['LO', 'NLO']:
+            raise aMCatNLOError(
+                'This fNLO process only supports fixed-order LO or NLO runs')
+        if fixed_order_only:
+            event_options = [option for option in enabled_event_options(options)
+                             if option != '--parton']
+            if event_options:
+                raise aMCatNLOError(
+                    '%s are not available for fNLO outputs' %
+                    ', '.join(event_options))
 
         if not 'only_generation' in list(options.keys()):
             options['only_generation'] = False
@@ -2945,6 +3131,7 @@ RESTART = %(mint_mode)s
 
     def combine_plots_FO(self,folder_name,jobs):
         """combines the plots and puts then in the Events/run* directory"""
+        self.ensure_fixed_order_analysis_available()
         devnull = open(os.devnull, 'w') 
         
         if self.analyse_card['fo_analysis_format'].lower() == 'topdrawer':
@@ -3879,6 +4066,10 @@ RESTART = %(mint_mode)s
         """this function calls the reweighting routines and creates the event file in the 
         Event dir. Return the name of the event file created
         """
+        if is_fixed_order_only(
+                self.me_dir, getattr(self, 'proc_characteristics', None)):
+            raise aMCatNLOError(
+                'Event collection is not available for fNLO outputs')
         if any(self.run_card['reweight_scale']) or any(self.run_card['reweight_PDF']) or \
            len(self.run_card['dynamical_scale_choice']) > 1 or len(self.run_card['lhaid']) > 1\
            or self.run_card['store_rwgt_info']:
@@ -3924,6 +4115,10 @@ RESTART = %(mint_mode)s
     def run_mcatnlo(self, evt_file, options):
         """runs mcatnlo on the generated event file, to produce showered-events
         """
+        if is_fixed_order_only(
+                self.me_dir, getattr(self, 'proc_characteristics', None)):
+            raise aMCatNLOError(
+                'Showering is not available for fNLO outputs')
         logger.info('Preparing MCatNLO run')
         try:     
             misc.gunzip(evt_file)
@@ -5417,10 +5612,13 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
         """compiles aMC@NLO to compute either NLO or NLO matched to shower, as
         specified in mode"""
 
-        if not os.path.isdir(pjoin(self.me_dir, 'MCatNLO')) and \
-                mode not in ['LO', 'NLO']:
+        fixed_order_only = is_fixed_order_only(
+            self.me_dir, getattr(self, 'proc_characteristics', None))
+        if fixed_order_only and mode not in ['LO', 'NLO']:
             raise aMCatNLOError(
                 'This fNLO process only supports fixed-order LO or NLO runs')
+        if fixed_order_only:
+            self.ensure_fixed_order_analysis_available()
 
         os.mkdir(pjoin(self.me_dir, 'Events', self.run_name))
 
@@ -5455,6 +5653,7 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
         if mode in ['NLO', 'LO']:
             exe = 'madevent_mintFO'
             tests = ['test_ME']
+            self.ensure_fixed_order_analysis_available()
             self.analyse_card.write_card(pjoin(self.me_dir, 'SubProcesses', 'analyse_opts'))
             self.analyse_card.update_FO_extrapaths_ajob(pjoin(self.me_dir, 'SubProcesses', 'ajob_template'))
         elif mode in ['aMC@NLO', 'aMC@LO','noshower','noshowerLO']:
@@ -5467,7 +5666,8 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
         # Overwrite the files 'pythia8_control_setup.inc' and 'pythia8_opts' 
         # according to the interface options. If pythia_path is not specified, pythia8 will be considered
         # as unavaialable and dummy entries will be filled in. Otherwise, these files will be set accordingly. 
-        self.activate_Pythia8_compilation(mode, options)
+        if not fixed_order_only:
+            self.activate_Pythia8_compilation(mode, options)
 
         #directory where to compile exe
         p_dirs = [d for d in \
@@ -5585,8 +5785,9 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
         
         # make StdHep (only necessary with MG option output_dependencies='internal')
         MCatNLO_libdir = pjoin(self.me_dir, 'MCatNLO', 'lib')
-        if not os.path.exists(os.path.realpath(pjoin(MCatNLO_libdir, 'libstdhep.a'))) or \
-            not os.path.exists(os.path.realpath(pjoin(MCatNLO_libdir, 'libFmcfio.a'))):  
+        if not fixed_order_only and ( \
+           not os.path.exists(os.path.realpath(pjoin(MCatNLO_libdir, 'libstdhep.a'))) or \
+           not os.path.exists(os.path.realpath(pjoin(MCatNLO_libdir, 'libFmcfio.a')))):
             if  os.path.exists(pjoin(sourcedir,'StdHEP')):
                 logger.info('Compiling StdHEP (can take a couple of minutes) ...')
                 try:
@@ -5850,6 +6051,12 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
                     mode =  'noshower'  
         logger.info('will run in mode: %s' % mode)                
 
+        if is_fixed_order_only(
+                self.me_dir, getattr(self, 'proc_characteristics', None)) \
+                and mode not in ['LO', 'NLO']:
+            raise self.InvalidCmd(
+                'This fNLO process only supports fixed-order LO or NLO runs')
+
         if mode == 'noshower':
             if switch['shower'] == 'OFF':
                 logger.warning("""You have chosen not to run a parton shower. NLO events without showering are NOT physical. Please, shower the LesHouches events before using them for physics analyses. You have to choose NOW which parton-shower you WILL use and specify it in the run_card.""")   
@@ -5938,6 +6145,7 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
         elif mode in ['LO', 'NLO']:
             analyse_card_path = pjoin(self.me_dir, 'Cards','FO_analyse_card.dat')
             self.analyse_card = self.banner.charge_card('FO_analyse_card')
+            self.ensure_fixed_order_analysis_available(self.analyse_card)
 
         return mode
 

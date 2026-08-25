@@ -47,13 +47,6 @@ c     Vegas stuff
       integer n_mp, n_disc
       integer ixi_i,iphi_i,iy_ij,vn
       logical putonshell
-      logical unwgt
-      double precision evtsgn
-      common /c_unwgt/evtsgn,unwgt
-
-      logical SHsep
-      logical Hevents
-      common/SHevents/Hevents
       character*10 dum
 c statistics for MadLoop      
       integer ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1(0:9)
@@ -190,7 +183,6 @@ c     Prepare the MINT folding
 c      
       i_momcmp_count=0
       xratmax=0.d0
-      unwgt=.false.
       call addfil(dum)
       if (imode.eq.-1.or.imode.eq.0) then
          if(imode.eq.0)then
@@ -199,7 +191,7 @@ c Don't safe the reweight information when just setting up the grids.
             do_rwgt_scale=.false.
             do_rwgt_pdf=.false.
          else
-            doreweight=do_rwgt_scale.or.do_rwgt_pdf.or.store_rwgt_info
+            doreweight=do_rwgt_scale.or.do_rwgt_pdf
          endif
 c
          write (*,*) 'imode is ',imode
@@ -265,8 +257,8 @@ c
       call cpu_time(tAfter)
       tTot = tAfter-tBefore
       tOther = tTot - (tBorn+tGenPS+tReal+tCount+tIS+tFxFx+tf_nb+tf_all
-     &     +t_as+tr_s+tr_pdf+t_plot+t_cuts+t_MC_subt+t_isum+t_p_unw
-     $     +t_write+t_ewsud+t_coupl)
+     &     +t_as+tr_s+tr_pdf+t_plot+t_cuts+t_MC_subt+t_isum+t_ewsud
+     $     +t_coupl)
       write(*,*) 'Time spent in Born : ',tBorn
       write(*,*) 'Time spent in PS_Generation : ',tGenPS
       write(*,*) 'Time spent in Reals_evaluation: ',tReal
@@ -283,8 +275,6 @@ c
       write(*,*) 'Time spent in Filling_plots : ',t_plot
       write(*,*) 'Time spent in Applying_cuts : ',t_cuts
       write(*,*) 'Time spent in Sum_ident_contr : ',t_isum
-      write(*,*) 'Time spent in Pick_unwgt : ',t_p_unw
-      write(*,*) 'Time spent in Write_events : ',t_write
       write(*,*) 'Time spent in EW_sudakov : ',t_ewsud
       write(*,*) 'Time spent in AlphaS_dependencies : ',t_coupl
       write(*,*) 'Time spent in Other_tasks : ',tOther
@@ -326,8 +316,6 @@ c timing statistics
       data t_cuts/0.0/
       data t_MC_subt/0.0/
       data t_isum/0.0/
-      data t_p_unw/0.0/
-      data t_write/0.0/
       data t_coupl/0.0/
       end
 
@@ -472,7 +460,7 @@ c The n+1-body contributions (including counter terms)
          calculatedBorn=.false. 
          ! MZ this is a temporary fix for processes without
          ! soft singularities associated to the initial state
-         ! DO NOT extend this fix to event generation
+         ! Keep this fix local to the fixed-order calculation
          wgt_me_born=0d0
          wgt_me_real=0d0
          jac=MC_int_wgt
@@ -516,9 +504,6 @@ c The n+1-body contributions (including counter terms)
 c Include PDFs and alpha_S and reweight to include the uncertainties
       if (ickkw.eq.-1) call include_veto_multiplier
       call include_PDF_and_alphas
-
-c Include the bias weight specified in the bias_weight_function
-      call include_bias_wgt
 
       if (doreweight) then
          if (do_rwgt_scale .and. ickkw.ne.-1) call reweight_scale
@@ -768,9 +753,6 @@ c
       character * 70 idstring
       logical savegrid
 
-      logical unwgt
-      double precision evtsgn
-      common /c_unwgt/evtsgn,unwgt
       logical fillh
       integer mc_hel,ihel
       double precision volh
@@ -782,7 +764,6 @@ c
 c-----
 c  Begin Code
 c-----
-      unwgt=.false.
       open (unit=83,file='input_app.txt',status='old')
       done=.false.
       nchans=0

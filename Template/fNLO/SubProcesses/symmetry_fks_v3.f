@@ -66,18 +66,6 @@ c-----
 
       if (run_mode(1:3).eq.'NLO' .or. run_mode(1:2).eq.'LO') then
          force_one_job=.false.
-      elseif (run_mode(1:7 ).eq.'aMC@NLO' .or.
-     $        run_mode(1:6 ).eq.'aMC@LO' .or.
-     $        run_mode(1:8 ).eq.'noshower' .or.
-     $        run_mode(1:10).eq.'noshowerLO') then
-c when doing event generation, cannot split the integration channels
-c according to initial and final-state FKS configurations, respectively:
-c since for such running the Born is split in two (contributing half to
-c initial state FKS configurations and half to final state FKS
-c configurations), the relative contributions with j_fks <= nincoming
-c and j_fks > nincoming are not correct, resulting --probably among
-c other things-- in a wrong shower starting scale.
-         force_one_job=.true.
       else
          write (*,*) 'unknown run_mode is gensym'
          stop 1

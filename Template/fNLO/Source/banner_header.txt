@@ -14,7 +14,7 @@
 #....................................................................*
 #                                                                    *
 # This file contains all the information necessary to reproduce      *
-# the events generated                                               *
+# the fixed-order calculation                                        *
 #                                                                    *
 # 1. software version                                                *
 # 2. proc_card.dat      : code generation info including model       *
