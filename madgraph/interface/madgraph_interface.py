@@ -1900,7 +1900,12 @@ This will take effect only in a NEW terminal
                         return
 
 
-        if self._export_format in ['NLO', 'ewsudsa']:
+        if self._export_format == 'fNLO':
+            name_dir = lambda i: 'PROC_fNLO_%s_%s' % \
+                                    (self._curr_model['name'], i)
+            auto_path = lambda i: pjoin(self.writing_dir,
+                                               name_dir(i))
+        elif self._export_format in ['NLO', 'ewsudsa']:
             name_dir = lambda i: 'PROCNLO_%s_%s' % \
                                     (self._curr_model['name'], i)
             auto_path = lambda i: pjoin(self.writing_dir,
@@ -9783,7 +9788,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
 
             
 
-        if self._export_format in ['NLO', 'ewsudsa']:
+        if self._export_format in ['NLO', 'fNLO', 'ewsudsa']:
             ## write fj_lhapdf_opts file            
             # Create configuration file [path to executable] for amcatnlo
             filename = os.path.join(self._export_dir, 'Cards', 'amcatnlo_configuration.txt')
@@ -9815,7 +9820,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         if self._export_format in ['madevent', 'standalone', 'standalone_cpp','madweight', 'matchbox']:
             logger.info('Output to directory ' + self._export_dir + ' done.')
 
-        if self._export_format in ['madevent', 'NLO']:
+        if self._export_format in ['madevent', 'NLO', 'fNLO']:
             logger.info('Type \"launch\" to generate events from this process, or see')
             logger.info(self._export_dir + '/README')
             logger.info('Run \"open index.html\" to see more information about this process.')

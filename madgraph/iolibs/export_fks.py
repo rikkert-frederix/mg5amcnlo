@@ -92,6 +92,12 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
     """Class to take care of exporting a set of matrix elements to
     Fortran (v4) format."""
 
+    def get_fks_template_dir(self):
+        """Return the NLO template selected by the output format."""
+
+        return pjoin(self.mgme_dir, 'Template',
+                     self.opt.get('fks_template', 'NLO'))
+
 #===============================================================================
 # copy the Template in a new directory.
 #===============================================================================
@@ -111,7 +117,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 raise MadGraph5Error("No valid MG_ME path given for MG4 run directory creation.")
             logger.info('initialize a new directory: %s' % \
                         os.path.basename(dir_path))
-            misc.copytree(os.path.join(mgme_dir, 'Template', 'NLO'), dir_path, True)
+            misc.copytree(self.get_fks_template_dir(), dir_path, True)
             # misc.copytree since dir_path already exists
             misc.copytree(pjoin(self.mgme_dir, 'Template', 'Common'),dir_path)
             # Copy plot_card
@@ -258,8 +264,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
     def write_makefile_TIR(self, writer, link_tir_libs,tir_libs,tir_include=[]):
         """ Create the file makefile_loop which links to the TIR libraries."""
             
-        file = open(os.path.join(self.mgme_dir,'Template','NLO',
-                                 'SubProcesses','makefile_loop.inc')).read()  
+        file = open(pjoin(self.get_fks_template_dir(), 'SubProcesses',
+                          'makefile_loop.inc')).read()
         replace_dict={}
         replace_dict['link_tir_libs']=' '.join(link_tir_libs)
         replace_dict['tir_libs']=' '.join(tir_libs)
@@ -275,8 +281,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
     # I put it here not in optimized one, because I want to use the same make_opts.inc
     def write_make_opts(self, writer, link_tir_libs,tir_libs):
         """ Create the file make_opts which links to the TIR libraries."""
-        file = open(os.path.join(self.mgme_dir,'Template','NLO',
-                                 'Source','make_opts.inc')).read()  
+        file = open(pjoin(self.get_fks_template_dir(), 'Source',
+                          'make_opts.inc')).read()
         replace_dict={}
         replace_dict['link_tir_libs']=' '.join(link_tir_libs)
         if 'collier' in replace_dict['link_tir_libs']:
@@ -764,6 +770,11 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'orderstags_glob.dat',
                      'polfit.f']
 
+        if self.opt.get('fks_template') == 'fNLO':
+            linkfiles = [filename for filename in linkfiles
+                         if filename not in ('driver_mintMC.f',
+                                             'montecarlocounter.f')]
+
         if matrix_element.ewsudakov:
             linkfiles.append('ewsudakov_functions.f')
         else:
@@ -808,8 +819,11 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                                             history,
                                             processes)
         
-        run_card.write(pjoin(self.dir_path, 'Cards', 'run_card_default.dat'))
-        run_card.write(pjoin(self.dir_path, 'Cards', 'run_card.dat'))
+        template = pjoin(self.get_fks_template_dir(), 'Cards', 'run_card.dat')
+        run_card.write(pjoin(self.dir_path, 'Cards', 'run_card_default.dat'),
+                       template=template, python_template=True)
+        run_card.write(pjoin(self.dir_path, 'Cards', 'run_card.dat'),
+                       template=template, python_template=True)
 
     #===========================================================================
     #  create the run_card 
@@ -822,10 +836,11 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                                             history,
                                             processes)
         
+        template = pjoin(self.get_fks_template_dir(), 'Cards', 'shower_card.dat')
         shower_card.write(pjoin(self.dir_path, 'Cards', 'shower_card_default.dat'),
-                          template=pjoin(MG5DIR, 'Template', 'NLO', 'Cards', 'shower_card.dat'))
+                          template=template)
         shower_card.write(pjoin(self.dir_path, 'Cards', 'shower_card.dat'),
-                          template=pjoin(MG5DIR, 'Template', 'NLO', 'Cards', 'shower_card.dat'))
+                          template=template)
 
 
     def pass_information_from_cmd(self, cmd):
@@ -978,7 +993,11 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         base_compiler= ['FC=g77','FC=gfortran']
         
         StdHep_path = pjoin(MG5DIR, 'vendor', 'StdHEP')
-        if output_dependencies == 'external':
+        if self.opt.get('fks_template') == 'fNLO':
+            # The fixed-order template deliberately has no MCatNLO tree and
+            # therefore needs none of the shower-only StdHEP setup below.
+            pass
+        elif output_dependencies == 'external':
             # check if stdhep has to be compiled (only the first time)
             if (not os.path.exists(pjoin(MG5DIR, 'vendor', 'StdHEP', 'lib', 'libstdhep.a')) or \
                 not os.path.exists(pjoin(MG5DIR, 'vendor', 'StdHEP', 'lib', 'libFmcfio.a'))) and \
@@ -4719,7 +4738,7 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
                 raise MadGraph5Error("No valid MG_ME path given for MG4 run directory creation.")
             logger.info('initialize a new directory: %s' % \
                         os.path.basename(dir_path))
-            misc.copytree(os.path.join(mgme_dir, 'Template', 'NLO'), dir_path, True)
+            misc.copytree(self.get_fks_template_dir(), dir_path, True)
             # misc.copytree since dir_path already exists
             misc.copytree(pjoin(self.mgme_dir, 'Template', 'Common'),
                                dir_path)

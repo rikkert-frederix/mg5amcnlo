@@ -427,6 +427,10 @@ class CheckValidForCmd(object):
 
     def check_shower(self, args, options):
         """Check the validity of the line. args[0] is the run_directory"""
+
+        if not os.path.isdir(pjoin(self.me_dir, 'MCatNLO')):
+            raise self.InvalidCmd(
+                'This fNLO process only supports fixed-order computations')
         
         if options['force']:
             self.force = True
@@ -725,8 +729,10 @@ class CheckValidForCmd(object):
             self.force = True
         
         
+        fixed_order_only = not os.path.isdir(pjoin(self.me_dir, 'MCatNLO'))
+
         if not args:
-            args.append('auto')
+            args.append('NLO' if fixed_order_only else 'auto')
             return
         
         if len(args) > 1:
@@ -737,6 +743,10 @@ class CheckValidForCmd(object):
             if not args[0] in ['LO', 'NLO', 'aMC@NLO', 'aMC@LO','auto']:
                 raise self.InvalidCmd('%s is not a valid mode, please use "LO", "NLO", "aMC@NLO" or "aMC@LO"' % args[0])
         mode = args[0]
+
+        if fixed_order_only and mode not in ['LO', 'NLO']:
+            raise self.InvalidCmd(
+                'This fNLO process only supports fixed-order LO or NLO runs')
         
         # check for incompatible options/modes
         if options['multicore'] and options['cluster']:
@@ -5406,6 +5416,12 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
     def compile(self, mode, options):
         """compiles aMC@NLO to compute either NLO or NLO matched to shower, as
         specified in mode"""
+
+        if not os.path.isdir(pjoin(self.me_dir, 'MCatNLO')) and \
+                mode not in ['LO', 'NLO']:
+            raise aMCatNLOError(
+                'This fNLO process only supports fixed-order LO or NLO runs')
+
         os.mkdir(pjoin(self.me_dir, 'Events', self.run_name))
 
         self.banner.write(pjoin(self.me_dir, 'Events', self.run_name, 
@@ -6135,4 +6151,3 @@ if '__main__' == __name__:
     except KeyboardInterrupt:
         print('quit on KeyboardInterrupt')
         pass
-

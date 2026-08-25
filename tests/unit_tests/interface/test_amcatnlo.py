@@ -23,8 +23,10 @@ import madgraph.interface.master_interface as master_cmd
 import madgraph.interface.madgraph_interface  as mg_cmd
 import madgraph.interface.extended_cmd as ext_cmd
 import madgraph.interface.amcatnlo_interface as mecmd
+import madgraph.iolibs.export_v4 as export_v4
 import madgraph.various.misc as misc
 import os
+import tempfile
 from io import StringIO
 import logging
 
@@ -37,7 +39,79 @@ class MGerror(Exception): pass
 
 class TestMadEventCmd(unittest.TestCase):
     """ check if the ValidCmd works correctly """
-    
+
+    def test_fnlo_output_format(self):
+        """The fNLO token selects its template instead of becoming a path."""
+
+        interface = object.__new__(mecmd.aMCatNLOInterface)
+        interface._fks_multi_proc = object()
+        interface._curr_model = {'name': 'sm'}
+
+        with tempfile.TemporaryDirectory() as output_root:
+            interface.writing_dir = output_root
+            args = ['fNLO']
+            interface.check_output(args)
+
+            self.assertEqual(interface._export_format, 'fNLO')
+            self.assertEqual(args, [])
+            self.assertEqual(interface._export_dir,
+                             os.path.realpath(pjoin(
+                                 output_root, 'PROC_fNLO_sm_0')))
+
+            custom_path = pjoin(output_root, 'custom')
+            args = ['fNLO', custom_path]
+            interface.check_output(args)
+            self.assertEqual(interface._export_dir,
+                             os.path.realpath(custom_path))
+            self.assertEqual(args, [])
+
+    def test_fnlo_exporter_and_template(self):
+        """The fNLO factory route uses the fixed-order-only template."""
+
+        class EmptyFKSMultiProcess(object):
+
+            def get(self, name):
+                return []
+
+            def get_virt_amplitudes(self):
+                return []
+
+        interface = master_cmd.MasterCmd()
+        interface._curr_amps = []
+        interface._fks_multi_proc = EmptyFKSMultiProcess()
+        interface._curr_model = {'running_elements': []}
+        interface._export_dir = pjoin(root_path, 'unused_fnlo_output')
+        interface.options['loop_optimized_output'] = False
+
+        exporter = export_v4.ExportV4Factory(
+            interface, False, output_type='fnlo', group_subprocesses=False)
+
+        template_dir = pjoin(madgraph.MG5DIR, 'Template', 'fNLO')
+        self.assertEqual(exporter.get_fks_template_dir(), template_dir)
+        self.assertFalse(os.path.exists(pjoin(template_dir, 'Utilities')))
+        self.assertFalse(os.path.exists(pjoin(template_dir, 'MCatNLO')))
+        subprocess_dir = pjoin(template_dir, 'SubProcesses')
+        self.assertTrue(os.path.exists(pjoin(
+            subprocess_dir, 'driver_mintFO.f')))
+        self.assertFalse(os.path.exists(pjoin(
+            subprocess_dir, 'driver_mintMC.f')))
+        self.assertFalse(os.path.exists(pjoin(
+            subprocess_dir, 'montecarlocounter.f')))
+        self.assertFalse(os.path.exists(pjoin(
+            subprocess_dir, 'montecarlocounter_alt.f')))
+
+        with open(pjoin(subprocess_dir, 'fks_singular.f')) as stream:
+            fks_singular = stream.read()
+        self.assertNotIn('compute_MC_subt_term', fks_singular)
+        self.assertNotIn('replace_MC_subt', fks_singular)
+        self.assertNotIn('factor_n1body_NLOPS', fks_singular)
+
+        with open(pjoin(subprocess_dir,
+                        'test_soft_col_limits.f')) as stream:
+            limit_test = stream.read()
+        self.assertNotIn('xmcsubt', limit_test)
+        self.assertNotIn('amp_split_mc', limit_test)
+
         
     def test_v31_syntax_crash(self):
         """Check that process with ambiguous syntax correctly crashes if the flag is not set correctly

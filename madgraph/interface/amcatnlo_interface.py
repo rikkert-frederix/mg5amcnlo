@@ -138,8 +138,10 @@ class CheckFKS(mg_interface.CheckValidForCmd):
 
     def check_output(self, args):
         """ check the validity of the line"""
-                  
-        if args and args[0] == 'ewsudakovsa':
+
+        if args and args[0] == 'fNLO':
+            self._export_format = args.pop(0)
+        elif args and args[0] == 'ewsudakovsa':
             self._export_format = 'ewsudsa'
             args.pop(0)
         else:
@@ -185,7 +187,10 @@ class CheckFKS(mg_interface.CheckValidForCmd):
         if not args:
             if self._done_export:
                 args.append(self._done_export[0])
-                args.append('auto')
+                if self._done_export[1] == 'fNLO':
+                    args.append('NLO')
+                else:
+                    args.append('auto')
 
                 return
             else:
@@ -222,6 +227,16 @@ class CheckFKS(mg_interface.CheckValidForCmd):
         else:    
             raise self.InvalidCmd('%s is not a valid directory' % args[0])
         args[0] = path
+
+        # fNLO outputs intentionally do not contain the MCatNLO tree and can
+        # therefore only be launched in fixed-order mode.
+        if not os.path.isdir(pjoin(path, 'MCatNLO')):
+            if mode == 'auto':
+                mode = 'NLO'
+                args[1] = mode
+            elif mode not in ['LO', 'NLO']:
+                raise self.InvalidCmd(
+                    'fNLO output only supports fixed-order LO or NLO runs')
                 
         # inform where we are for future command
         self._done_export = [path, mode]
@@ -277,6 +292,8 @@ class CompleteFKS(mg_interface.CompleteForCmd):
             # directory names
             content = [name for name in self.path_completion(text, '.', only_dirs = True) \
                        if name not in forbidden_names]
+            if len(args) == 1:
+                content.append('fNLO')
             return self.list_completion(text, content)
 
 
@@ -360,7 +377,7 @@ class aMCatNLOInterface(CheckFKS, CompleteFKS, HelpFKS, Loop_interface.CommonLoo
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
         self._v4_export_formats = []
         self._nlo_modes_for_completion = ['all','real']
-        self._export_formats = [ 'madevent', 'aloha' ]
+        self._export_formats = [ 'fNLO', 'madevent', 'aloha' ]
         # Do not force NLO model as the user might have asked for reals only.
         # It will anyway be forced later if he attempts virt= or all=.
         self.validate_model(loop_type='real_init', stop=False)
@@ -756,8 +773,9 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         # For NLO, the group_subprocesses is automatically set to false
         group_processes = False
         # initialize the writer
-        if self._export_format in ['NLO','ewsudsa']:
-            output_type_dict = {'NLO': 'amcatnlo', 'ewsudsa': 'ewsudsa'}
+        if self._export_format in ['NLO', 'fNLO', 'ewsudsa']:
+            output_type_dict = {'NLO': 'amcatnlo', 'fNLO': 'fnlo',
+                                'ewsudsa': 'ewsudsa'}
             self._curr_exporter = export_v4.ExportV4Factory(self, noclean, 
                       output_type=output_type_dict[self._export_format],
                       group_subprocesses=group_processes)
@@ -766,7 +784,7 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
 
         # check if a dir with the same name already exists
         if not force and not noclean and os.path.isdir(self._export_dir)\
-               and self._export_format in ['NLO', 'ewsudsa']:
+               and self._export_format in ['NLO', 'fNLO', 'ewsudsa']:
             # Don't ask if user already specified force or noclean
             logger.info('INFO: directory %s already exists.' % self._export_dir)
             logger.info('If you continue this directory will be deleted and replaced.')
@@ -781,7 +799,7 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
             shutil.rmtree(self._export_dir)
 
         # Make a Template Copy
-        if self._export_format in ['NLO', 'ewsudsa']:
+        if self._export_format in ['NLO', 'fNLO', 'ewsudsa']:
             self._curr_exporter.copy_fkstemplate(self._curr_model)
 
         # Reset _done_export, since we have new directory
@@ -888,7 +906,7 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
 
         path = self._export_dir
 
-        if self._export_format in ['NLO', 'ewsudsa']:
+        if self._export_format in ['NLO', 'fNLO', 'ewsudsa']:
             path = os.path.join(path, 'SubProcesses')
 
             #_curr_matrix_element is a FKSHelasMultiProcess Object 
@@ -1091,6 +1109,4 @@ _launch_parser.add_option("-R", "--reweight", default=False, action='store_true'
                             help="Run the reweight module (reweighting by different model parameter")
 _launch_parser.add_option("-M", "--madspin", default=False, action='store_true',
                             help="Run the madspin package")
-
-
 

@@ -9870,7 +9870,8 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
         interface containing all potential usefull information.
         The output_type argument specifies from which context the output
         is called. It is 'madloop' for MadLoop5, 'amcatnlo' for FKS5 output
-        and 'default' for tree-level outputs."""
+        using Template/NLO, 'fnlo' for FKS5 output using Template/fNLO and
+        'default' for tree-level outputs."""
 
     opt = dict(cmd.options)
     opt['output_options'] = cmd_options
@@ -9946,19 +9947,27 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
                                  ' in %s'%str(cmd._mgme_dir))
 
     # Then treat the aMC@NLO output     
-    elif output_type=='amcatnlo':
+    elif output_type in ['amcatnlo', 'fnlo']:
         import madgraph.iolibs.export_fks as export_fks
         ExporterClass=None
         amcatnlo_options = dict(opt)
         amcatnlo_options.update(MadLoop_SA_options)
+        amcatnlo_options['fks_template'] = \
+            'fNLO' if output_type == 'fnlo' else 'NLO'
         amcatnlo_options['running'] = cmd._curr_model.get('running_elements')
         amcatnlo_options['mp'] = len(cmd._fks_multi_proc.get_virt_amplitudes()) > 0
         if not cmd.options['loop_optimized_output']:
-            logger.info("Writing out the aMC@NLO code")
+            if output_type == 'fnlo':
+                logger.info("Writing out the fixed-order NLO code")
+            else:
+                logger.info("Writing out the aMC@NLO code")
             ExporterClass = export_fks.ProcessExporterFortranFKS
             amcatnlo_options['export_format']='FKS5_default'
         else:
-            logger.info("Writing out the aMC@NLO code, using optimized Loops")
+            if output_type == 'fnlo':
+                logger.info("Writing out the fixed-order NLO code, using optimized Loops")
+            else:
+                logger.info("Writing out the aMC@NLO code, using optimized Loops")
             ExporterClass = export_fks.ProcessOptimizedExporterFortranFKS
             amcatnlo_options['export_format']='FKS5_optimized'
         return ExporterClass(cmd._export_dir, amcatnlo_options)
