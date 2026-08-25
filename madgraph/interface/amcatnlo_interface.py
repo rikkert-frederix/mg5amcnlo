@@ -158,6 +158,32 @@ class CheckFKS(mg_interface.CheckValidForCmd):
             text = 'No model found. Please import a model first and then retry.'
             raise self.InvalidCmd(text)
 
+        if self._export_format == 'fNLO' and \
+                hasattr(self._fks_multi_proc, 'get'):
+            if self._fks_multi_proc.get('ewsudakov'):
+                raise self.InvalidCmd(
+                    'EW Sudakov corrections are not available for fNLO '
+                    'outputs')
+
+            process_lines = []
+            for command in getattr(self, 'history', []):
+                if command.startswith('generate '):
+                    process_lines.append(command[len('generate '):])
+                elif command.startswith('add process '):
+                    process_lines.append(command[len('add process '):])
+            if not process_lines and getattr(self, '_generate_info', None):
+                process_lines.append(self._generate_info)
+
+            perturbations = set()
+            for process_line in process_lines:
+                perturbations.update(
+                    export_fks.get_nlo_correction_orders(process_line))
+            unsupported = sorted(perturbations.difference(['QCD']))
+            if unsupported:
+                raise self.InvalidCmd(
+                    'fNLO output supports QCD corrections only; found %s' %
+                    ', '.join(unsupported))
+
         if args and args[0][0] != '-':
             if args[0] in forbidden_formats:
                 text = 'You generated a NLO process, which cannot be exported in %s mode.\n' % args[0]

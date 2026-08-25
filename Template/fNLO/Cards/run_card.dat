@@ -93,14 +93,6 @@
 #***********************************************************************
  %(custom_fcts)s = custom_fcts ! List of files containing user hook function
 #***********************************************************************
-# Fixed-order merging option:                                         *
-#   0: Standard fixed-order computation                               *
-#   3: FxFx clustering and reweighting                                *
-#***********************************************************************
- %(ickkw)s        = ickkw
-#***********************************************************************
-#
-#***********************************************************************
 # BW cutoff (M+/-bwcutoff*Gamma) used to identify resonant regions     *
 #***********************************************************************
  %(bwcutoff)s  = bwcutoff
@@ -127,14 +119,6 @@
   %(drll_sf)s  = drll_sf ! Min distance between opp. sign same-flavor lepton pairs
   %(mll)s  = mll     ! Min inv. mass of all opposite sign lepton pairs
   %(mll_sf)s  = mll_sf  ! Min inv. mass of all opp. sign same-flavor lepton pairs
-#***********************************************************************
-# Fermion-photon recombination parameters                              *
-# If Rphreco=0, no recombination is performed                          *
-#***********************************************************************
- %(rphreco)s  = Rphreco  ! Minimum fermion-photon distance for recombination
- %(etaphreco)s  = etaphreco  ! Maximum abs(pseudo-rap) for photons to be recombined (a value .lt.0 means no cut)
- %(lepphreco)s  = lepphreco  ! Recombine photons and leptons together
- %(quarkphreco)s  = quarkphreco  ! Recombine photons and quarks together
 #***********************************************************************
 # Photon-isolation cuts, according to hep-ph/9801442                   *
 # Not applied if gamma_is_j                                            *

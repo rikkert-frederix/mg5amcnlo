@@ -1,37 +1,26 @@
 module cuts_module
   use process_dimensions, only: nexternal, nincoming, maxproc, &
-       nsplitorders, qed_pos, validate_process_dimensions
-  use run_state, only: rphreco, etaphreco, lepphreco, quarkphreco, &
-       gamma_is_j, ickkw, maxjetflavor, ptgmin, etagamma, isoem, &
+       validate_process_dimensions
+  use run_state, only: gamma_is_j, maxjetflavor, ptgmin, etagamma, isoem, &
        r0gamma, xn, epsgamma, ptl, etal, drll, drll_sf, mll, mll_sf, &
        ptj, jetalgo, jetradius, etaj
-  use momentum_recombination, only: recombine_momenta
   use boostwdir2_module, only: boostwdir2
   use kin_functions_module, only: pt => pt_impl, eta => eta_impl, &
        delta_phi => delta_phi_impl, theta => theta_impl, dot => dot_impl
   use timing_state, only: t_cuts
-  use kinematic_runtime_state, only: is_a_j_state => is_a_j, &
-       is_a_lp_state => is_a_lp, is_a_lm_state => is_a_lm, &
-       is_a_ph_state => is_a_ph, fxfx_ren_scales, nfxfx_ren_scales, &
-       init_kinematic_state, sync_kinematic_state
+  use kinematic_runtime_state, only: sync_kinematic_state
   implicit none
   private
 
   public :: initialize_cuts_runtime_state, initialize_cuts_event_state
-  public :: sync_cuts_particle_tags, finalize_cuts_module
+  public :: finalize_cuts_module
   public :: passcuts_user, identify_part_partons, passcuts_photons
-  public :: identify_qcd_partons, passcuts_fxfx, passcuts_jets
+  public :: identify_qcd_partons, passcuts_jets
   public :: passcuts_leptons, passcuts_pdgs, passcuts
   public :: chi_gamma_iso, sortzv, sorttf, sortti, sorttc, icmpch
   public :: iso_getdrv40, iso_getdr, iso_getpseudorap, iso_getdelphi
   public :: r2_04, pt_04, eta_04, invm2_04
   public :: get_id_h_impl, get_id_s_impl
-  public :: get_n_tagged_photons, get_n_tagged_photons_initial
-
-  logical, allocatable :: split_type_used(:)
-  integer, allocatable :: need_matching_s(:), need_matching_h(:)
-  integer, allocatable :: need_matching_cuts(:)
-  logical, allocatable :: particle_tag(:)
   double precision, allocatable :: etmin(:), etmax(:), mxxmin(:,:)
   double precision, allocatable :: event_masses(:)
   integer, allocatable :: event_idup(:,:)
@@ -53,36 +42,21 @@ module cuts_module
 
 contains
 
-  subroutine initialize_cuts_runtime_state(split_type_used_in, &
-  & need_matching_s_in, need_matching_h_in, need_matching_cuts_in, &
-  & particle_tag_in, etmin_in, etmax_in, mxxmin_in, is_a_j_in, &
-  & is_a_lp_in, is_a_lm_in, is_a_ph_in, fxfx_ren_scales_in, &
-  & nfxfx_ren_scales_in, fxfx_fac_scale_in)
+  subroutine initialize_cuts_runtime_state(etmin_in, etmax_in, &
+  & mxxmin_in, is_a_j_in, is_a_lp_in, is_a_lm_in, is_a_ph_in)
     implicit none
-    logical, intent(in) :: split_type_used_in(:)
-    integer, intent(in) :: need_matching_s_in(:), need_matching_h_in(:)
-    integer, intent(in) :: need_matching_cuts_in(:)
-    logical, intent(in) :: particle_tag_in(:)
     double precision, intent(in) :: etmin_in(nincoming + 1:)
     double precision, intent(in) :: etmax_in(nincoming + 1:)
     double precision, intent(in) :: mxxmin_in(nincoming + 1:, &
     & nincoming + 1:)
     logical, intent(in) :: is_a_j_in(:), is_a_lp_in(:)
     logical, intent(in) :: is_a_lm_in(:), is_a_ph_in(:)
-    double precision, intent(in) :: fxfx_ren_scales_in(0:)
-    integer, intent(in) :: nfxfx_ren_scales_in
-    double precision, intent(in) :: fxfx_fac_scale_in(:)
 
     call validate_process_dimensions()
-    call validate_runtime_shapes(split_type_used_in, need_matching_s_in, &
-    & need_matching_h_in, need_matching_cuts_in, particle_tag_in, &
-    & etmin_in, etmax_in, mxxmin_in, is_a_j_in, is_a_lp_in, is_a_lm_in, &
-    & is_a_ph_in, fxfx_ren_scales_in, fxfx_fac_scale_in)
+    call validate_runtime_shapes(etmin_in, etmax_in, mxxmin_in, &
+    & is_a_j_in, is_a_lp_in, is_a_lm_in, is_a_ph_in)
 
     if (.not. cuts_runtime_initialized) then
-      allocate(split_type_used(nsplitorders))
-      allocate(need_matching_s(nexternal), need_matching_h(nexternal))
-      allocate(need_matching_cuts(nexternal), particle_tag(nexternal))
       allocate(etmin(nincoming + 1:nexternal - 1))
       allocate(etmax(nincoming + 1:nexternal - 1))
       allocate(mxxmin(nincoming + 1:nexternal - 1, &
@@ -90,26 +64,12 @@ contains
       cuts_runtime_initialized = .true.
     end if
 
-    split_type_used = split_type_used_in
-    need_matching_s = need_matching_s_in
-    need_matching_h = need_matching_h_in
-    need_matching_cuts = need_matching_cuts_in
-    particle_tag = particle_tag_in
     etmin = etmin_in
     etmax = etmax_in
     mxxmin = mxxmin_in
 
-    call init_kinematic_state()
-    if (ickkw == 3) then
-      call sync_kinematic_state(is_a_j_in, is_a_lp_in, is_a_lm_in, &
-      & is_a_ph_in, fxfx_ren_scales_in, nfxfx_ren_scales_in, &
-      & fxfx_fac_scale_in)
-    else
-      is_a_j_state = is_a_j_in
-      is_a_lp_state = is_a_lp_in
-      is_a_lm_state = is_a_lm_in
-      is_a_ph_state = is_a_ph_in
-    end if
+    call sync_kinematic_state(is_a_j_in, is_a_lp_in, is_a_lm_in, &
+    & is_a_ph_in)
   end subroutine initialize_cuts_runtime_state
 
 
@@ -138,47 +98,18 @@ contains
   end subroutine initialize_cuts_event_state
 
 
-  subroutine sync_cuts_particle_tags(particle_tag_in)
+  subroutine validate_runtime_shapes(etmin_in, etmax_in, mxxmin_in, &
+  & is_a_j_in, is_a_lp_in, is_a_lm_in, is_a_ph_in)
     implicit none
-    logical, intent(in) :: particle_tag_in(:)
-    call validate_process_dimensions()
-    if (size(particle_tag_in) /= nexternal) then
-      call fail_cuts('particle-tag array has the wrong shape')
-    end if
-    if (.not. allocated(particle_tag)) allocate(particle_tag(nexternal))
-    particle_tag = particle_tag_in
-  end subroutine sync_cuts_particle_tags
-
-
-  subroutine validate_runtime_shapes(split_type_used_in, &
-  & need_matching_s_in, need_matching_h_in, need_matching_cuts_in, &
-  & particle_tag_in, etmin_in, etmax_in, mxxmin_in, is_a_j_in, &
-  & is_a_lp_in, is_a_lm_in, is_a_ph_in, fxfx_ren_scales_in, &
-  & fxfx_fac_scale_in)
-    implicit none
-    logical, intent(in) :: split_type_used_in(:), particle_tag_in(:)
-    integer, intent(in) :: need_matching_s_in(:), need_matching_h_in(:)
-    integer, intent(in) :: need_matching_cuts_in(:)
     double precision, intent(in) :: etmin_in(nincoming + 1:)
     double precision, intent(in) :: etmax_in(nincoming + 1:)
     double precision, intent(in) :: mxxmin_in(nincoming + 1:, &
     & nincoming + 1:)
     logical, intent(in) :: is_a_j_in(:), is_a_lp_in(:)
     logical, intent(in) :: is_a_lm_in(:), is_a_ph_in(:)
-    double precision, intent(in) :: fxfx_ren_scales_in(0:)
-    double precision, intent(in) :: fxfx_fac_scale_in(:)
     integer :: final_slots
 
     final_slots = max(0, nexternal - nincoming - 1)
-    if (size(split_type_used_in) /= nsplitorders) then
-      call fail_cuts('split-order state has the wrong shape')
-    end if
-    if (size(need_matching_s_in) /= nexternal .or. &
-    & size(need_matching_h_in) /= nexternal .or. &
-    & size(need_matching_cuts_in) /= nexternal .or. &
-    & size(particle_tag_in) /= nexternal) then
-      call fail_cuts('particle state has the wrong shape')
-    end if
     if (size(etmin_in) /= final_slots .or. &
     & size(etmax_in) /= final_slots .or. &
     & size(mxxmin_in, 1) /= final_slots .or. &
@@ -190,10 +121,6 @@ contains
     & size(is_a_lm_in) /= nexternal .or. &
     & size(is_a_ph_in) /= nexternal) then
       call fail_cuts('particle-classification state has the wrong shape')
-    end if
-    if (ubound(fxfx_ren_scales_in, 1) /= nexternal .or. &
-    & size(fxfx_fac_scale_in) /= 2) then
-      call fail_cuts('FxFx scale state has the wrong shape')
     end if
   end subroutine validate_runtime_shapes
 
@@ -216,11 +143,6 @@ contains
 
   subroutine finalize_cuts_module()
     implicit none
-    if (allocated(split_type_used)) deallocate(split_type_used)
-    if (allocated(need_matching_s)) deallocate(need_matching_s)
-    if (allocated(need_matching_h)) deallocate(need_matching_h)
-    if (allocated(need_matching_cuts)) deallocate(need_matching_cuts)
-    if (allocated(particle_tag)) deallocate(particle_tag)
     if (allocated(etmin)) deallocate(etmin)
     if (allocated(etmax)) deallocate(etmax)
     if (allocated(mxxmin)) deallocate(mxxmin)
@@ -273,8 +195,7 @@ contains
 ! difficulty in using this.
   double precision p(0:4,nexternal)
 !
-!     recombination of photons
-  double precision p_reco(0:4,nexternal), R_reco
+  double precision p_reco(0:4,nexternal)
   integer iPDG_reco(nexternal),nphiso
 ! local integers
   integer i,j
@@ -290,8 +211,7 @@ contains
 ! logicals that define if particles are leptons, jets or photons. These
 ! are filled from the PDG codes (iPDG array) in this function.
   logical is_a_lp(nexternal),is_a_lm(nexternal),is_a_j(nexternal) &
-  & ,is_a_ph(nexternal),is_nph_iso(nexternal),is_nextph_iso(nexternal) &
-  & ,is_nextph_iso_reco(nexternal)
+  & ,is_a_ph(nexternal),is_nph_iso(nexternal),is_nextph_iso(nexternal)
   logical is_a_lp_reco(nexternal),is_a_lm_reco(nexternal)
   logical dummy_cuts
   external dummy_cuts
@@ -314,9 +234,8 @@ contains
   & pgamma,nph,is_nph_iso,is_nextph_iso)
   if (.not.passcuts_user) return
 
-  ! Recombine the photons and fermions
-  call recombine_momenta(rphreco, etaphreco, lepphreco, quarkphreco, &
-  & p, iPDG, is_nextph_iso,  p_reco, iPDG_reco, is_nextph_iso_reco)
+  p_reco = p
+  iPDG_reco = iPDG
 
   ! Apply the reco lepton cuts
   passcuts_user = passcuts_user .and. &
@@ -325,19 +244,13 @@ contains
 
   ! Find the reco QCD partons including
   ! A. All photons if gamma_is_j is on
-  ! B. Non-iso, non-reco photons if reco is on
-  call identify_QCD_partons(is_nextph_iso_reco,p_reco,istatus,ipdg_reco,is_a_j,pQCD,nQCD)
+  ! B. Non-isolated photons
+  call identify_QCD_partons(is_nextph_iso,p_reco,istatus,ipdg_reco,is_a_j,pQCD,nQCD)
 
   ! Apply the Jet cuts
-  if (ickkw.ne.3) then
   passcuts_user = passcuts_user .and. &
   & passcuts_jets(p_reco,pQCD,nQCD,pgamma,nph,is_nph_iso)
   if (.not.passcuts_user) return
-  else
-  passcuts_user=passcuts_user .and. &
-  & passcuts_fxfx(p_reco,pQCD,nQCD)
-  if (.not.passcuts_user) return
-  endif
 
   ! Apply PDG specific cuts
   passcuts_user = passcuts_user .and. &
@@ -580,16 +493,7 @@ contains
 ! End of loop over photons
 
 ! now check that there are enough photons
-  if (split_type_used(QED_pos)) then
-  ! if the process has QED splittings, use the
-  ! get_n_tagged_photons function
-  n_needed_photons = get_n_tagged_photons() &
-  & - get_n_tagged_photons_initial()
-  else
-  ! otherwise, just use the number of photons
-  ! that has been counted
   n_needed_photons = nph
-  endif
 
   if(nphiso.lt.n_needed_photons)then
   passcuts_photons=.false.
@@ -639,7 +543,6 @@ contains
   nQCD=0
   do j=nincoming+1,nexternal
   if (is_a_j(j)) then
-  if (ickkw.eq.3 .and. need_matching_cuts(j).eq.-1) cycle ! skip the 'EW-jets'
   nQCD=nQCD+1
   do i=0,3
   pQCD(i,nQCD)=p(i,j)
@@ -651,39 +554,6 @@ contains
   return
   end subroutine identify_QCD_partons
 
-
-  logical function passcuts_fxfx(p,pQCD,nQCD)
-! In case of FxFx merging, use the lowest clustering scale to apply the cut
-  implicit none
-  double precision p(0:4,nexternal)
-  integer nQCD
-  double precision pQCD(0:3,nexternal)
-  integer NJET,JET(nexternal)
-  double precision rfj,sycut,palg,etaj_max
-  double precision PJET(0:3,nexternal)
-  call require_cuts_runtime_state()
-  passcuts_fxfx=.true.
-! First apply a numerical stability cut
-! Define jet clustering parameters with a pTmin=1 GeV
-  palg=1d0                  ! jet algorithm: 1.0=kt, 0.0=C/A, -1.0 = anti-kt
-  rfj=1d0                   ! the radius parameter
-  sycut=ptj                 ! minimum transverse momentum
-  etaj_max=1000d0
-!     call FASTJET to get all the jets
-  call cuts_fastjet_etamax( &
-  & pQCD,nQCD,rfj,sycut,etaj_max,palg,pjet,njet,jet)
-!     Apply the jet cut
-  if (njet .ne. nQCD .and. njet .ne. nQCD-1) then
-  passcuts_fxfx=.false.
-  return
-  endif
-! Second apply the actual ptj cut on the minimum FxFx_ren_scales(i)
-  if (minval(FxFx_ren_scales(0:nFxFx_ren_scales)).lt.ptj) then
-  passcuts_fxfx=.false.
-  return
-  endif
-  return
-  end function passcuts_fxfx
 
   logical function passcuts_jets(p,pQCD,nQCD,pgamma,nph,is_nph_iso)
   implicit none
@@ -1378,37 +1248,5 @@ contains
 !
   return
   end subroutine get_ID_S_impl
-
-  integer function get_n_tagged_photons()
-  implicit none
-  integer i
-  if (.not. allocated(particle_tag)) then
-    call fail_cuts('particle tags have not been initialized')
-  end if
-  get_n_tagged_photons = 0
-
-  do i = 1, nexternal
-  if (particle_tag(i)) &
-  & get_n_tagged_photons = get_n_tagged_photons+1
-  enddo
-
-  return
-  end function get_n_tagged_photons
-
-  integer function get_n_tagged_photons_initial()
-  implicit none
-  integer i
-  if (.not. allocated(particle_tag)) then
-    call fail_cuts('particle tags have not been initialized')
-  end if
-  get_n_tagged_photons_initial = 0
-
-  do i = 1, nincoming
-  if (particle_tag(i)) &
-  & get_n_tagged_photons_initial = get_n_tagged_photons_initial+1
-  enddo
-
-  return
-  end function get_n_tagged_photons_initial
 
 end module cuts_module

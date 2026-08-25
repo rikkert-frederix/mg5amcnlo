@@ -14,11 +14,3 @@ C
       COMMON /TO_ISOGAMMA_EM/ISOEM
       integer maxjetflavor
       COMMON /to_min_max_cuts/maxjetflavor
-      DOUBLE PRECISION RPHRECO, ETAPHRECO
-      LOGICAL LEPPHRECO, QUARKPHRECO
-      COMMON /TO_PHRECO/ RPHRECO, ETAPHRECO, LEPPHRECO, QUARKPHRECO
-C
-C     SPECIAL CUTS (FOR MERGING)
-C
-      real*8 xmtc,xqcut
-      common /to_specxpt/xmtc,xqcut

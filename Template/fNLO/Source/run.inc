@@ -6,10 +6,10 @@ c     Scales
 c
       real*8          scale,scalefact,ellissextonfact,alpsfact, mue_ref_fixed, mue_over_ref
       logical         fixed_ren_scale,fixed_fac_scale,fixed_couplings,hmult, fixed_extra_scale
-      integer         ickkw,nhmult,dynamical_scale_choice
+      integer         nhmult,dynamical_scale_choice
       common/to_scale/scale,scalefact,ellissextonfact,alpsfact,fixed_ren_scale,
      $                mue_ref_fixed, mue_over_ref, fixed_extra_scale, 
-     $                fixed_fac_scale,fixed_couplings,ickkw,nhmult,hmult,
+     $                fixed_fac_scale,fixed_couplings,nhmult,hmult,
      $                dynamical_scale_choice
 
 c
@@ -51,13 +51,6 @@ c
       double precision bwcutoff
       common/to_bwcutoff/ bwcutoff
 c
-c     kT/pT scheme for xqcut, clustering according to channel
-c
-      integer ktscheme
-      logical chcluster,pdfwgt
-      common/to_cluster/ktscheme,chcluster,pdfwgt
-
-c
 c     Reweight info
 c
       logical do_rwgt_scale, do_rwgt_pdf, store_rwgt_info
@@ -77,26 +70,6 @@ c
       double precision mxxmin4pdg(0:25) 
       logical mxxpart_antipart(1:25) 
       common/TO_PDG_SPECIFIC_CUT/pdg_cut, ptmin4pdg,ptmax4pdg, mxxmin4pdg, mxxpart_antipart
-
-C stuff for alpha running in lepton collisions
-      integer alphascheme, nlep_run, nupq_run, ndnq_run, w_run
-      common/to_alphascheme/alphascheme, nlep_run, nupq_run, ndnq_run, w_run
-
-      logical photons_from_lepton, has_bstrahl
-      common /to_afromee/ photons_from_lepton
-C  PDFs with beamstrahlung use specific initialisation/evaluation
-      common /to_has_bs/ has_bstrahl
-
-C
-C     block for heavy ion beam
-C
-      integer nb_proton(2), nb_neutron(2)
-      common/to_heavyion_pdg/ nb_proton, nb_neutron
-      double precision mass_ion(2)
-      common/to_heavyion_mass/mass_ion
-C UPC parameter
-      double precision RAI(2),xiAI(2)
-      common /heavyion_upc_beams/ RAI, xiAI
 
 c for biassed generation based on the particle flavours of the processes
       integer flavour_bias(0:2)

@@ -14,7 +14,7 @@ module FKSParams
   public :: maxContribType, IRPoleCheckThreshold, Virt_fraction
   public :: PrecisionVirtualAtRunTime, Min_virt_fraction
   public :: NHelForMCoverHels, VetoedContributionTypes
-  public :: SelectedContributionTypes, QED_squared_selected
+  public :: SelectedContributionTypes
   public :: SelectedCouplingOrders, QCD_squared_selected
   public :: separate_flavour_configs, IncludeBornContributions
   public :: use_poly_virtual, initialize_fks_params, finalize_fks_params
@@ -26,7 +26,7 @@ module FKSParams
   double precision :: IRPoleCheckThreshold,Virt_fraction, &
        PrecisionVirtualAtRunTime,Min_virt_fraction
   integer  :: NHelForMCoverHels,VetoedContributionTypes(0:maxContribsSelected), &
-              SelectedContributionTypes(0:maxContribsSelected),QED_squared_selected, &
+              SelectedContributionTypes(0:maxContribsSelected), &
               QCD_squared_selected
   integer, allocatable :: SelectedCouplingOrders(:,:)
   logical :: separate_flavour_configs,IncludeBornContributions,use_poly_virtual
@@ -103,11 +103,6 @@ contains
              read(68,*,end=999) QCD_squared_selected
              if (QCD_squared_selected .lt. -1) then
                 stop 'QCD_squared_selected must be >= -1.'
-             endif
-          else if (buff .eq. '#QED^2==') then
-             read(68,*,end=999) QED_squared_selected
-             if (QED_squared_selected .lt. -1) then
-                stop 'QED_squared_selected must be >= -1.'
              endif
           else if (buff .eq. '#VirtualFraction') then
              read(68,*,end=999) Virt_fraction
@@ -226,11 +221,6 @@ contains
        else
           write(*,*) ' > QCD_squared_selected      = ',QCD_squared_selected
        endif
-       if (QED_squared_selected.eq.-1) then
-          write(*,*) ' > QED_squared_selected      = All'
-       else
-          write(*,*) ' > QED_squared_selected      = ',QED_squared_selected
-       endif
        if (SelectedCouplingOrders(1,0).gt.0) then
           do j=1,SelectedCouplingOrders(1,0)
              write(*,*) ' > SelectedCouplingOrders(',j,') = ', &
@@ -263,7 +253,6 @@ contains
     NHelForMCoverHels=5
     PrecisionVirtualAtRunTime=1d-3
     Virt_fraction=1d0
-    QED_squared_selected=-1
     QCD_squared_selected=-1
     Min_virt_fraction=0.005d0
     separate_flavour_configs=.false.

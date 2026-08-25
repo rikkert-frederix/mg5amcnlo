@@ -1,11 +1,9 @@
 module binoth_lha_madloop_backend
   use FKSParams
   use process_dimensions, only: nexternal, nincoming, max_bhel, &
-       nsplitorders, amp_split_size, amp_split_size_born, qed_pos, &
-       nlo_orders, order_names
+       nsplitorders, amp_split_size, nlo_orders, order_names
   use split_orders, only: orders_to_amp_split_pos, &
        amp_split_pos_to_orders
-  use cuts_module, only: get_n_tagged_photons
   implicit none
   private
 
@@ -96,10 +94,8 @@ contains
     integer :: iamp
     integer :: order_name_width
     integer :: amp_orders(nsplitorders), split_amp_orders(nsplitorders)
-    integer :: ntagph, qed_pow_b
     logical :: cpol
     integer, external :: getordpowfromindex_ml5
-    double precision, external :: get_virtual_a0Gmu_conv
     double precision, external :: ran2
     ioerr_counter = 0
     order_name_width = maxval(len_trim(order_names))
@@ -250,24 +246,6 @@ contains
 
     ! MadLoop already returns CDR virtuals.  The disabled conversion hook is
     ! retained through the legacy DRtoCDR external entry point.
-
-    ntagph = get_n_tagged_photons()
-    if (ntagph /= 0) then
-      do i = 1, amp_split_size_born
-        call amp_split_pos_to_orders(i, amp_orders)
-        born_wgt = amp_split(i)
-        qed_pow_b = amp_orders(qed_pos)
-        amp_orders(qed_pos) = amp_orders(qed_pos) + 2
-        if (amp_orders(qed_pos) > nlo_orders(qed_pos)) cycle
-
-        amp_split_poles_ml(orders_to_amp_split_pos(amp_orders),1) = &
-             amp_split_poles_ml(orders_to_amp_split_pos(amp_orders),1) + &
-             get_virtual_a0Gmu_conv(qed_pow_b,ntagph,1,born_wgt)
-        amp_split_finite_ml(orders_to_amp_split_pos(amp_orders)) = &
-             amp_split_finite_ml(orders_to_amp_split_pos(amp_orders)) + &
-             get_virtual_a0Gmu_conv(qed_pow_b,ntagph,0,born_wgt)
-      end do
-    end if
 
     cpol = .false.
     ret_code_common = ret_code

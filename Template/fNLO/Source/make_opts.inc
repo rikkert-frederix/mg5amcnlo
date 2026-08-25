@@ -20,11 +20,6 @@ ifneq ($(UNAME), Darwin)
 endif
 
 
-# add -fPIC for EW sudakov Standalone
-ifdef ewsudsa
-  FFLAGS+= -fPIC
-endif
-
 ifeq ($(origin CXXFLAGS),undefined)
   #CXXFLAGS= -g 
   CXXFLAGS = -O $(STDLIB_FLAG) $(MACFLAG)
@@ -53,6 +48,7 @@ endif
 
 # Increase the number of allowed charcters in a Fortran line
 FFLAGS+= -ffixed-line-length-132
+FFLAGS+= -ffree-line-length-none
 # ensure that no-automatic is done
 FFLAGS+= -fno-automatic
 

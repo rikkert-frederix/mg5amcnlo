@@ -6784,16 +6784,14 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                     raise Exception( "Your model is identified as not fully supported within MG5aMC.\n" +\
                       "You can NOT run with FxFx/UnLOPS matching/merging. Please check if merging outside MG5aMC are suitable or refrain to use merging with this model")
             
-            # Ordinary fixed-order NLO runs do not support FxFx or UNLOPS.
-            # The dedicated fNLO template retains the fixed-order FxFx
-            # clustering/reweighting implementation, but neither UNLOPS nor
-            # the NNLL+NLO jet-veto mode.
+            # Fixed-order NLO runs do not support FxFx or UNLOPS. The reduced
+            # fNLO template also excludes the NNLL+NLO jet-veto mode.
             if 'shower_cards' not in self.cards and self.opt['switch']['fixed_order'] == 'ON':
                 fixed_order_only = proc_charac and \
                     'fixed_order_only' in proc_charac and \
                     proc_charac['fixed_order_only'] in \
                     [True, 'True', 'true', 'T', '.true.']
-                unsupported_ickkw = [-1, 4] if fixed_order_only else [3, 4]
+                unsupported_ickkw = [-1, 3, 4] if fixed_order_only else [3, 4]
                 if self.run_card['ickkw'] in unsupported_ickkw:
                     # -1 is NNLL+NLO jet veto, 3 is FxFx and 4 is UNLOPS
                     mergemode = {

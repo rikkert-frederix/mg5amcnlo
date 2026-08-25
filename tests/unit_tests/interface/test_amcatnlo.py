@@ -23,8 +23,11 @@ import madgraph.interface.master_interface as master_cmd
 import madgraph.interface.madgraph_interface  as mg_cmd
 import madgraph.interface.extended_cmd as ext_cmd
 import madgraph.interface.amcatnlo_interface as mecmd
+import madgraph.interface.amcatnlo_run_interface as run_mecmd
 import madgraph.iolibs.export_v4 as export_v4
+import madgraph.iolibs.export_fks as export_fks
 import madgraph.various.misc as misc
+import madgraph.various.banner as banner_mod
 import os
 import tempfile
 from io import StringIO
@@ -65,6 +68,63 @@ class TestMadEventCmd(unittest.TestCase):
                              os.path.realpath(custom_path))
             self.assertEqual(args, [])
 
+    def test_fnlo_rejects_non_qcd_corrections(self):
+        """The reduced fNLO template accepts QCD corrections only."""
+
+        class FakeFKSMultiProcess(object):
+
+            def __init__(self, ewsudakov=False):
+                self.ewsudakov = ewsudakov
+
+            def get(self, name):
+                if name == 'ewsudakov':
+                    return self.ewsudakov
+                return None
+
+        interface = object.__new__(mecmd.aMCatNLOInterface)
+        interface._curr_model = {'name': 'sm'}
+
+        with tempfile.TemporaryDirectory() as output_root:
+            interface.writing_dir = output_root
+            interface._generate_info = 'p p > t t~ [QCD]'
+            interface._fks_multi_proc = FakeFKSMultiProcess()
+            interface.check_output(['fNLO'])
+
+            interface._generate_info = 'p p > t t~ [QED]'
+            interface._fks_multi_proc = FakeFKSMultiProcess()
+            with self.assertRaisesRegex(
+                    interface.InvalidCmd, 'QCD corrections only'):
+                interface.check_output(['fNLO'])
+
+            interface._generate_info = 'p p > t t~ [QCD]'
+            interface._fks_multi_proc = FakeFKSMultiProcess(ewsudakov=True)
+            with self.assertRaisesRegex(
+                    interface.InvalidCmd, 'EW Sudakov corrections'):
+                interface.check_output(['fNLO'])
+
+        self.assertEqual(
+            export_fks.get_nlo_correction_orders('p p > t t~ [QCD]'),
+            ['QCD'])
+        self.assertEqual(
+            export_fks.get_nlo_correction_orders(
+                'p p > t t~ [real=QCD] --no_warning=duplicate'),
+            ['QCD'])
+        self.assertEqual(
+            export_fks.get_nlo_correction_orders('p p > t t~ [LOonly]'),
+            ['QCD'])
+
+    def test_fnlo_run_card_include_is_reduced(self):
+        """Hidden matching and EW fields do not leak into run_card.inc."""
+
+        run_card = banner_mod.RunCardNLO()
+        run_mecmd.prepare_fixed_order_only_run_card(run_card)
+        include = StringIO()
+        run_card.write_include_file(None, include)
+        include_text = include.getvalue().lower()
+
+        for parameter in run_mecmd.FNLO_UNSUPPORTED_RUN_CARD_PARAMETERS:
+            self.assertNotIn(parameter, include_text)
+
     def test_fnlo_exporter_and_template(self):
         """The fNLO factory route uses the fixed-order-only template."""
 
@@ -101,6 +161,21 @@ class TestMadEventCmd(unittest.TestCase):
             subprocess_dir, 'montecarlocounter.f')))
         self.assertFalse(os.path.exists(pjoin(
             subprocess_dir, 'montecarlocounter_alt.f')))
+        for removed_source in [
+                'cluster.f90', 'cluster_bridge.f', 'recmom.f90',
+                'ewsudakov_functions.f90',
+                'ewsudakov_functions_dummy.f90', 'sa_ewsudakov.f90',
+                'sub_f2py_ewsudakov.f90']:
+            self.assertFalse(os.path.exists(pjoin(
+                subprocess_dir, removed_source)))
+
+        for template_source in ['run.inc', 'cuts.inc', 'run_state.f90']:
+            with open(pjoin(template_dir, 'Source', template_source)) as stream:
+                source = stream.read().lower()
+            for matching_name in [
+                    'ickkw', 'xqcut', 'xmtc', 'ktscheme', 'chcluster',
+                    'pdfwgt', 'to_cluster', 'to_specxpt']:
+                self.assertNotIn(matching_name, source)
 
         with open(pjoin(subprocess_dir, 'fks_singular.f90')) as stream:
             fks_singular = stream.read()

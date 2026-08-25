@@ -5,14 +5,7 @@
       logical is_a_j(nexternal),is_a_lp(nexternal),is_a_lm(nexternal)
       logical is_a_ph(nexternal)
       common /to_specisa/is_a_j,is_a_lp,is_a_lm,is_a_ph
-      integer nfxfx_ren_scales
-      double precision fxfx_ren_scales(0:nexternal)
-      double precision fxfx_fac_scale(2)
-      common /c_fxfx_scales/fxfx_ren_scales,nfxfx_ren_scales,
-     &     fxfx_fac_scale
-
-      call sync_kinematic_state(is_a_j,is_a_lp,is_a_lm,is_a_ph,
-     &     fxfx_ren_scales,nfxfx_ren_scales,fxfx_fac_scale)
+      call sync_kinematic_state(is_a_j,is_a_lp,is_a_lm,is_a_ph)
       end
 
 

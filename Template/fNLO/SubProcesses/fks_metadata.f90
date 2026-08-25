@@ -12,11 +12,8 @@ module fks_metadata
   integer, allocatable, save :: fks_j_from_i_values(:, :, :)
   integer, allocatable, save :: particle_type_values(:, :)
   integer, allocatable, save :: pdg_type_values(:, :)
-  logical, allocatable, save :: particle_tag_values(:, :)
-  double precision, allocatable, save :: particle_charge_values(:, :)
   logical, allocatable, save :: split_type_values(:, :)
   logical, allocatable, save :: need_color_links_values(:)
-  logical, allocatable, save :: need_charge_links_values(:)
 
   public :: initialize_fks_metadata
   public :: validate_fks_metadata
@@ -25,36 +22,29 @@ module fks_metadata
   public :: fks_i_d, fks_j_d
   public :: extra_cnt_d, isplitorder_born_d, isplitorder_cnt_d
   public :: fks_j_from_i_d
-  public :: particle_type_d, pdg_type_d, particle_tag_d
-  public :: particle_charge_d, split_type_d
-  public :: need_color_links_d, need_charge_links_d
+  public :: particle_type_d, pdg_type_d, split_type_d
+  public :: need_color_links_d
 
 contains
 
   subroutine initialize_fks_metadata(fks_i_in, fks_j_in, extra_cnt_in, &
        isplitorder_born_in, isplitorder_cnt_in, fks_j_from_i_in, &
-       particle_type_in, pdg_type_in, particle_tag_in, &
-       particle_charge_in, split_type_in, need_color_links_in, &
-       need_charge_links_in)
+       particle_type_in, pdg_type_in, split_type_in, need_color_links_in)
     integer, intent(in) :: fks_i_in(:), fks_j_in(:)
     integer, intent(in) :: extra_cnt_in(:)
     integer, intent(in) :: isplitorder_born_in(:)
     integer, intent(in) :: isplitorder_cnt_in(:)
     integer, intent(in) :: fks_j_from_i_in(:, :, 0:)
     integer, intent(in) :: particle_type_in(:, :), pdg_type_in(:, :)
-    logical, intent(in) :: particle_tag_in(:, :)
-    double precision, intent(in) :: particle_charge_in(:, :)
     logical, intent(in) :: split_type_in(:, :)
     logical, intent(in) :: need_color_links_in(:)
-    logical, intent(in) :: need_charge_links_in(:)
     integer :: configuration, emitter, count
 
     call validate_process_dimensions()
     call validate_input_shapes(fks_i_in, fks_j_in, extra_cnt_in, &
          isplitorder_born_in, isplitorder_cnt_in, fks_j_from_i_in, &
-         particle_type_in, pdg_type_in, particle_tag_in, &
-         particle_charge_in, split_type_in, need_color_links_in, &
-         need_charge_links_in)
+         particle_type_in, pdg_type_in, split_type_in, &
+         need_color_links_in)
     call validate_input_values(fks_i_in, fks_j_in, extra_cnt_in, &
          isplitorder_born_in, isplitorder_cnt_in, fks_j_from_i_in, &
          split_type_in)
@@ -62,9 +52,8 @@ contains
     if (metadata_initialized) then
       if (.not. same_metadata(fks_i_in, fks_j_in, extra_cnt_in, &
            isplitorder_born_in, isplitorder_cnt_in, fks_j_from_i_in, &
-           particle_type_in, pdg_type_in, particle_tag_in, &
-           particle_charge_in, split_type_in, need_color_links_in, &
-           need_charge_links_in)) then
+           particle_type_in, pdg_type_in, split_type_in, &
+           need_color_links_in)) then
         call fail_validation('metadata were reinitialized with ' // &
              'different values')
       end if
@@ -79,11 +68,8 @@ contains
     allocate(fks_j_from_i_values(fks_configs, nexternal, 0:nexternal))
     allocate(particle_type_values(fks_configs, nexternal))
     allocate(pdg_type_values(fks_configs, nexternal))
-    allocate(particle_tag_values(fks_configs, nexternal))
-    allocate(particle_charge_values(fks_configs, nexternal))
     allocate(split_type_values(fks_configs, nsplitorders))
     allocate(need_color_links_values(fks_configs))
-    allocate(need_charge_links_values(fks_configs))
 
     fks_i_values = fks_i_in
     fks_j_values = fks_j_in
@@ -92,11 +78,8 @@ contains
     isplitorder_cnt_values = isplitorder_cnt_in
     particle_type_values = particle_type_in
     pdg_type_values = pdg_type_in
-    particle_tag_values = particle_tag_in
-    particle_charge_values = particle_charge_in
     split_type_values = split_type_in
     need_color_links_values = need_color_links_in
-    need_charge_links_values = need_charge_links_in
 
     ! fks_info.inc DATA-initializes only the emitter row of this table.
     ! Canonical zeroes make all unspecified rows portable and retain the
@@ -184,16 +167,9 @@ contains
     if (allocated(fks_j_from_i_values)) deallocate(fks_j_from_i_values)
     if (allocated(particle_type_values)) deallocate(particle_type_values)
     if (allocated(pdg_type_values)) deallocate(pdg_type_values)
-    if (allocated(particle_tag_values)) deallocate(particle_tag_values)
-    if (allocated(particle_charge_values)) then
-      deallocate(particle_charge_values)
-    end if
     if (allocated(split_type_values)) deallocate(split_type_values)
     if (allocated(need_color_links_values)) then
       deallocate(need_color_links_values)
-    end if
-    if (allocated(need_charge_links_values)) then
-      deallocate(need_charge_links_values)
     end if
     metadata_initialized = .false.
   end subroutine finalize_fks_metadata
@@ -266,22 +242,6 @@ contains
   end function pdg_type_d
 
 
-  logical function particle_tag_d(configuration, particle)
-    integer, intent(in) :: configuration, particle
-    call check_configuration(configuration)
-    call check_particle(particle)
-    particle_tag_d = particle_tag_values(configuration, particle)
-  end function particle_tag_d
-
-
-  double precision function particle_charge_d(configuration, particle)
-    integer, intent(in) :: configuration, particle
-    call check_configuration(configuration)
-    call check_particle(particle)
-    particle_charge_d = particle_charge_values(configuration, particle)
-  end function particle_charge_d
-
-
   logical function split_type_d(configuration, split_order)
     integer, intent(in) :: configuration, split_order
     call check_configuration(configuration)
@@ -299,34 +259,23 @@ contains
   end function need_color_links_d
 
 
-  logical function need_charge_links_d(configuration)
-    integer, intent(in) :: configuration
-    call check_configuration(configuration)
-    need_charge_links_d = need_charge_links_values(configuration)
-  end function need_charge_links_d
-
-
   subroutine validate_input_shapes(fks_i_in, fks_j_in, extra_cnt_in, &
        isplitorder_born_in, isplitorder_cnt_in, fks_j_from_i_in, &
-       particle_type_in, pdg_type_in, particle_tag_in, &
-       particle_charge_in, split_type_in, need_color_links_in, &
-       need_charge_links_in)
+       particle_type_in, pdg_type_in, split_type_in, &
+       need_color_links_in)
     integer, intent(in) :: fks_i_in(:), fks_j_in(:), extra_cnt_in(:)
     integer, intent(in) :: isplitorder_born_in(:), isplitorder_cnt_in(:)
     integer, intent(in) :: fks_j_from_i_in(:, :, 0:)
     integer, intent(in) :: particle_type_in(:, :), pdg_type_in(:, :)
-    logical, intent(in) :: particle_tag_in(:, :)
-    double precision, intent(in) :: particle_charge_in(:, :)
     logical, intent(in) :: split_type_in(:, :)
-    logical, intent(in) :: need_color_links_in(:), need_charge_links_in(:)
+    logical, intent(in) :: need_color_links_in(:)
 
     if (size(fks_i_in) /= fks_configs .or. &
         size(fks_j_in) /= fks_configs .or. &
         size(extra_cnt_in) /= fks_configs .or. &
         size(isplitorder_born_in) /= fks_configs .or. &
         size(isplitorder_cnt_in) /= fks_configs .or. &
-        size(need_color_links_in) /= fks_configs .or. &
-        size(need_charge_links_in) /= fks_configs) then
+        size(need_color_links_in) /= fks_configs) then
       call fail_validation('a configuration table has the wrong extent')
     end if
     if (size(fks_j_from_i_in, 1) /= fks_configs .or. &
@@ -339,11 +288,7 @@ contains
     if (size(particle_type_in, 1) /= fks_configs .or. &
         size(particle_type_in, 2) /= nexternal .or. &
         size(pdg_type_in, 1) /= fks_configs .or. &
-        size(pdg_type_in, 2) /= nexternal .or. &
-        size(particle_tag_in, 1) /= fks_configs .or. &
-        size(particle_tag_in, 2) /= nexternal .or. &
-        size(particle_charge_in, 1) /= fks_configs .or. &
-        size(particle_charge_in, 2) /= nexternal) then
+        size(pdg_type_in, 2) /= nexternal) then
       call fail_validation('a particle metadata table has the wrong shape')
     end if
     if (size(split_type_in, 1) /= fks_configs .or. &
@@ -413,11 +358,8 @@ contains
     if (.not. allocated(fks_j_from_i_values)) return
     if (.not. allocated(particle_type_values)) return
     if (.not. allocated(pdg_type_values)) return
-    if (.not. allocated(particle_tag_values)) return
-    if (.not. allocated(particle_charge_values)) return
     if (.not. allocated(split_type_values)) return
     if (.not. allocated(need_color_links_values)) return
-    if (.not. allocated(need_charge_links_values)) return
     if (size(fks_i_values) /= fks_configs) return
     if (size(fks_j_values) /= fks_configs) return
     if (size(extra_cnt_values) /= fks_configs) return
@@ -431,31 +373,23 @@ contains
     if (size(particle_type_values, 2) /= nexternal) return
     if (size(pdg_type_values, 1) /= fks_configs) return
     if (size(pdg_type_values, 2) /= nexternal) return
-    if (size(particle_tag_values, 1) /= fks_configs) return
-    if (size(particle_tag_values, 2) /= nexternal) return
-    if (size(particle_charge_values, 1) /= fks_configs) return
-    if (size(particle_charge_values, 2) /= nexternal) return
     if (size(split_type_values, 1) /= fks_configs) return
     if (size(split_type_values, 2) /= nsplitorders) return
     if (size(need_color_links_values) /= fks_configs) return
-    if (size(need_charge_links_values) /= fks_configs) return
     storage_shapes_are_valid = .true.
   end function storage_shapes_are_valid
 
 
   logical function same_metadata(fks_i_in, fks_j_in, extra_cnt_in, &
        isplitorder_born_in, isplitorder_cnt_in, fks_j_from_i_in, &
-       particle_type_in, pdg_type_in, particle_tag_in, &
-       particle_charge_in, split_type_in, need_color_links_in, &
-       need_charge_links_in)
+       particle_type_in, pdg_type_in, split_type_in, &
+       need_color_links_in)
     integer, intent(in) :: fks_i_in(:), fks_j_in(:), extra_cnt_in(:)
     integer, intent(in) :: isplitorder_born_in(:), isplitorder_cnt_in(:)
     integer, intent(in) :: fks_j_from_i_in(:, :, 0:)
     integer, intent(in) :: particle_type_in(:, :), pdg_type_in(:, :)
-    logical, intent(in) :: particle_tag_in(:, :)
-    double precision, intent(in) :: particle_charge_in(:, :)
     logical, intent(in) :: split_type_in(:, :)
-    logical, intent(in) :: need_color_links_in(:), need_charge_links_in(:)
+    logical, intent(in) :: need_color_links_in(:)
     integer :: configuration, emitter, count
 
     same_metadata = .false.
@@ -467,12 +401,8 @@ contains
     if (.not. all(isplitorder_cnt_values == isplitorder_cnt_in)) return
     if (.not. all(particle_type_values == particle_type_in)) return
     if (.not. all(pdg_type_values == pdg_type_in)) return
-    if (.not. all(particle_tag_values .eqv. particle_tag_in)) return
-    if (.not. all(particle_charge_values == particle_charge_in)) return
     if (.not. all(split_type_values .eqv. split_type_in)) return
     if (.not. all(need_color_links_values .eqv. need_color_links_in)) return
-    if (.not. all(need_charge_links_values .eqv. &
-         need_charge_links_in)) return
     do configuration = 1, fks_configs
       emitter = fks_i_in(configuration)
       count = fks_j_from_i_in(configuration, emitter, 0)

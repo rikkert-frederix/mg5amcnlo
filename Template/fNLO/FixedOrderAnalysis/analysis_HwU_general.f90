@@ -1,11 +1,9 @@
 module analysis_hwu_general_module
   use process_dimensions, only: nexternal, nincoming
   use run_state, only: jetalgo, jetradius, ptj, etaj, gamma_is_j, &
-       ptgmin, r0gamma, xn, epsgamma, etagamma, rphreco, etaphreco, &
-       lepphreco, quarkphreco, isoem
+       ptgmin, r0gamma, xn, epsgamma, etagamma, isoem
   use HwU_module, only: HwU_inithist, HwU_book, HwU_fill
-  use cuts_module, only: chi_gamma_iso, iso_getdrv40, sortzv, &
-       get_n_tagged_photons
+  use cuts_module, only: chi_gamma_iso, iso_getdrv40, sortzv
   use kin_functions_module, only: pt => pt_impl, eta => eta_impl
   implicit none
   private
@@ -141,7 +139,6 @@ contains
 !ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
   subroutine analysis_fill(p,istatus,ipdg,wgts,ibody)
 !ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-  use momentum_recombination, only: recombine_momenta_notagph
   implicit none
   integer, intent(in) :: istatus(nexternal)
   integer, intent(in) :: iPDG(nexternal)
@@ -172,19 +169,8 @@ contains
   logical is_a_lp(nexternal),is_a_lm(nexternal),is_a_j(nexternal) &
   & ,is_a_ph(nexternal)
 !      integer iph1,iph2,iph3
-! First, try to recombine photons with leptons
-!      if (.not.quarkphreco) then
-!         write (*,*) 'quark-photon recombination is turned off. '/
-!     $        /'Do need it'
-!         stop
-!      endif
-!      if (.not. lepphreco) then
-!         write (*,*) 'lepton-photon recombination is turned off. '
-!     $        //'Do need it.'
-!         stop
-!      endif
-  call recombine_momenta_notagph(rphreco, etaphreco, lepphreco, quarkphreco, &
-  & p, iPDG, p_reco, iPDG_reco)
+  p_reco = p
+  iPDG_reco = iPDG
 
 ! Put all (light) QCD partons(+photon) in momentum array for jet clustering.
   nQCD=0
@@ -248,10 +234,6 @@ contains
   endif
   enddo
   if(nph.eq.0)goto 444
-!         write(*,*) 'ERROR in cuts.f: photon isolation is not working'
-!     $           // ' for mixed QED-QCD corrections'
-!         stop 1
-
   if(isoEM)then
   nem=nph
   do k=1,nem
@@ -358,12 +340,6 @@ contains
 
 
   enddo
-  if(nphiso.lt.get_n_tagged_photons())then
-  print*,"mismatch with cuts.f"
-  stop
-  endif
-
-
 444 continue
 ! End photon isolation
   endif
@@ -651,7 +627,7 @@ contains
 
 
 
-!         How to tag orders (QCD+QED*100)
+!         How to tag QCD and Born coupling orders
 !
 !         if (i.eq. 3.and.orders_tag_plot.ne.4) cycle
 !         if (i.eq. 4.and.orders_tag_plot.ne.202) cycle

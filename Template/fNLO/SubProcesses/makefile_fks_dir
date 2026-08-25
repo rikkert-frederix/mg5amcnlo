@@ -4,8 +4,6 @@ include ../analyse_opts
 
 LIBDIR = $(abspath ../../lib/)/
 ANADIR = ../../FixedOrderAnalysis/
-HERE := $(dir $(abspath $(firstword $(MAKEFILE_LIST))))
-PDIR := $(strip $(notdir $(patsubst %/,%,$(strip $(HERE)))))
 
 
 #check if fastjet-config is set
@@ -27,7 +25,6 @@ NLOLIBS=-L$(LIBDIR) $(libmadloop) $(libcuttools) $(libOLP)
 # variables 'by hand'
 # NLOLIBS= -L. -lMadLoop -L$(LIBDIR) -lcts
 LINKLIBS = -L$(LIBDIR) -ldhelas -lgeneric -lmodel -lpdf -lcernlib $(llhapdf)
-LINKLIBSSUD = -L$(LIBDIR) -ldhelas -lgeneric -lmodel -lcernlib 
 LIBS = $(LIBDIR)libdhelas.a $(LIBDIR)libgeneric.a $(LIBDIR)libmodel.a	\
 $(LIBDIR)libpdf.a $(LIBDIR)libcernlib.a
 
@@ -48,7 +45,7 @@ FILES= process_dimensions.o process_dimensions_bridge.o			\
 	 $(patsubst %.f,%.o,$(wildcard parton_lum_*.f)) 			\
 	 $(patsubst %.f,%.o,$(wildcard matrix_*.f)) 			\
 	 FKSParams.o real_me_chooser.o chooser_functions.o		\
-	 chooser_functions_bridge.o recmom.o				\
+	 chooser_functions_bridge.o					\
 	 genps_fks.o genps_fks_bridge.o kinematic_runtime_state.o	\
 	 setcuts.o						\
 	 setcuts_bridge.o						\
@@ -56,45 +53,30 @@ FILES= process_dimensions.o process_dimensions_bridge.o			\
 	 $(patsubst %.f,%.o,$(wildcard b_sf_???.f)) 			\
 	 born.o sborn_sf.o extra_cnt_wrapper.o				\
 	 $(patsubst %.f,%.o,$(wildcard born_cnt_*.f))			\
-         $(patsubst %.f90,%.o,$(wildcard ewsudakov*.f90)) 		\
-         $(patsubst %.f,%.o,$(wildcard  ewsudakov*.f)) 			\
-         $(patsubst %.f,%.o,$(wildcard  numder*.f)) 			\
 	 momentum_reshuffling.o momentum_reshuffling_bridge.o		\
-	 rescale_alpha_tagged.o						\
 	 fks_Sij.o $(fastjetfortran_madfks)				\
 	 fks_singular.o fks_singular_bridge.o			\
 	 reweight_xsec.o boostwdir2.o       				\
-	 cluster.o cluster_bridge.o splitorders_stuff.o		\
+	 splitorders_stuff.o					\
 	 splitorders_stuff_bridge.o					\
 	 get_color.o iproc_map.o iproc_map_bridge.o			\
 	 MC_integer.o						\
 	 $(pineappl_interface) $(pineappl_interface_bridge) weight_lines.o \
 	 mint_module.o polfit.o
 
-FILESSUD= process_dimensions.o process_dimensions_bridge.o \
-         fks_metadata.o fks_metadata_bridge.o \
-         $(patsubst %.f90,%.o,$(wildcard ewsudakov*.f90)) 		\
-         $(patsubst %.f,%.o,$(wildcard  ewsudakov*.f)) 			\
-         $(patsubst %.f,%.o,$(wildcard  numder*.f)) 			\
-	 born.o born_hel.o momentum_reshuffling.o			\
-	 momentum_reshuffling_bridge.o splitorders_stuff.o		\
-	 splitorders_stuff_bridge.o sa_ewsudakov_dummyfcts.o \
-	 sa_ewsudakov_dummyfcts_bridge.o
-
-
 # Every shipped analysis is a module plus one external-ABI bridge.  Derive the
 # companion object here as well as in FOAnalyseCard so hand-written
 # analyse_opts files cannot silently omit it.  Linking two bridges would define
 # analysis_begin/end/fill twice, so reject that selection at parse time.
 FNLO_MODULE_ANALYSES = \
-	analysis_HwU_general.o analysis_HwU_general_sdk.o \
+	analysis_HwU_general.o \
 	analysis_HwU_pp_V.o analysis_HwU_pp_h.o \
 	analysis_HwU_pp_hjj.o \
 	analysis_HwU_pp_lplm.o analysis_HwU_pp_lvl.o \
 	analysis_HwU_pp_lvl2.o analysis_HwU_pp_taptam.o \
 	analysis_HwU_pp_tj.o analysis_HwU_pp_ttx.o \
-	analysis_HwU_pp_ttx_v2.o analysis_HwU_pp_wpz.o \
-	analysis_HwU_template.o analysis_pp_wz_ewsud.o
+	analysis_HwU_pp_ttx_v2.o \
+	analysis_HwU_template.o
 FNLO_MODULE_ANALYSIS_BRIDGES = \
 	$(patsubst %.o,%_bridge.o,$(FNLO_MODULE_ANALYSES))
 FNLO_SELECTED_ANALYSES = $(filter $(FNLO_MODULE_ANALYSES),$(FO_ANALYSE))
@@ -142,10 +124,6 @@ MINTFO= $(RUN) driver_mintFO.o driver_mintFO_bridge.o BinothLHA.o \
 POLES= $(RUN) check_poles.o check_poles_bridge.o BinothLHA.o \
 	BinothLHA_bridge.o
 
-EWSUDSA = sa_ewsudakov.o sa_ewsudakov_bridge.o \
-	 sub_f2py_ewsudakov.o $(FILESSUD)
-EWSUDLIB = $(FILESSUD)
-
 # Files for the matrix-element soft/collinear limit test
 TEST= $(RUN) test_soft_col_limits.o test_soft_col_limits_bridge.o \
 	BinothLHADummy.o BinothLHADummy_bridge.o
@@ -186,24 +164,10 @@ test_soft_col_limits: $(TEST) mint_module.o
 	rm test_soft_col_limits.o
 	strip test_soft_col_limits
 
-ewsudakov_sa: $(EWSUDSA) 
-	$(FC) -o ewsudakov_sa $(EWSUDSA) $(LINKLIBS)  $(LDFLAGS)
-	strip ewsudakov_sa
-
 $(LIBDIR)/libdhelas.$(dylibext):
 	$(MAKE) -C "$(LIBDIR)/../Source/DHELAS" shared
 $(LIBDIR)/libmodel.$(dylibext):
 	$(MAKE) -C "$(LIBDIR)/../Source/MODEL" shared
-
-libewsud_$(PDIR).$(dylibext): $(LIBDIR)/libdhelas.$(dylibext) $(LIBDIR)/libmodel.$(dylibext) sub_f2py_ewsudakov.o ../../Source/MODEL/*.o            $(LIBDIR)/../Source/kin_functions.o $(LIBDIR)/../Source/ranmar.o
-	gfortran $(DYNLIBFLAG) -o libewsud_$(PDIR).$(dylibext) $(FILESSUD) ../../Source/DHELAS/*.o ../../Source/MODEL/*.o            $(LIBDIR)/../Source/kin_functions.o $(LIBDIR)/../Source/ranmar.o
-
-libsudpy: $(EWSUDLIB) libewsud_$(PDIR).$(dylibext) $(LIBDIR)/libmodel.$(dylibext) $(LIBDIR)/libdhelas.$(dylibext)
-	touch __init__.py
-	#ar rcs libewsud.$(libext) $(EWSUDLIB)
-	LDFLAGS="-Wl,-rpath,$(HERE)" $(F2PY) -c \
-		sub_f2py_ewsudakov.f90 sub_f2py_ewsudakov_bridge.f \
-		-L$(HERE) -lewsud_$(PDIR) $(LINKLIBS) -m ewsudpy_$(PDIR)
 
 check_poles: $(POLES) $(libmadloop)
 	$(FC) -o check_poles $(POLES) $(NLOLIBS) $(APPLLIBS) $(LINKLIBS) $(FJLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(LDFLAGS)
@@ -229,18 +193,9 @@ splitorders_stuff_bridge.o: splitorders_stuff.o process_dimensions.o
 momentum_reshuffling_bridge.o: momentum_reshuffling.o \
 	process_dimensions.o
 pineappl_interface_dummy_bridge.o: pineappl_interface_dummy.o
-sub_f2py_ewsudakov_bridge.o: sub_f2py_ewsudakov.o
 fastjet_wrapper_bridge.o: fastjet_wrapper.o
 dummy_fct_bridge.o: dummy_fct.o
 iproc_map_bridge.o: iproc_map.o
-ewsudakov_functions_dummy.o: $(LIBDIR)kin_functions_module.mod
-ewsudakov_functions_dummy_bridge.o: ewsudakov_functions_dummy.o
-ewsudakov_functions.o: process_dimensions.o splitorders_stuff.o \
-	$(LIBDIR)kin_functions_module.mod
-ewsudakov_functions_bridge.o: ewsudakov_functions.o \
-	process_dimensions_bridge.o $(LIBDIR)run_state.mod
-sa_ewsudakov_dummyfcts.o: $(LIBDIR)ranmar_module.mod
-sa_ewsudakov_dummyfcts_bridge.o: sa_ewsudakov_dummyfcts.o
 FKSParams.o: process_dimensions.o
 analysis_dummy.o: process_dimensions.o
 analysis_dummy_bridge.o: analysis_dummy.o process_dimensions.o
@@ -251,14 +206,12 @@ open_output_files_bridge.o: open_output_files.o
 HwU_bridge.o: HwU.o
 $(FNLO_MODULE_ANALYSES): process_dimensions.o HwU.o open_output_files.o
 $(FNLO_MODULE_ANALYSIS_BRIDGES): %_bridge.o: %.o process_dimensions.o
-analysis_HwU_general.o: recmom.o cuts.o $(LIBDIR)run_state.mod \
+analysis_HwU_general.o: cuts.o $(LIBDIR)run_state.mod \
 	$(LIBDIR)kin_functions_module.mod
-analysis_HwU_general_sdk.o: recmom.o $(LIBDIR)run_state.mod
 analysis_HwU_pp_hjj.o: boostwdir2.o
 analysis_HwU_pp_tj.o: $(LIBDIR)run_state.mod
 analysis_HwU_pp_V.o analysis_HwU_pp_taptam.o \
-	analysis_HwU_pp_ttx_v2.o analysis_HwU_pp_wpz.o \
-	analysis_pp_wz_ewsud.o: $(LIBDIR)kin_functions_module.mod
+	analysis_HwU_pp_ttx_v2.o: $(LIBDIR)kin_functions_module.mod
 mint_module.o : FKSParams.o MC_integer.o polfit.o
 BinothLHA_OLP.o: process_dimensions.o FKSParams.o
 BinothLHA.o: process_dimensions.o FKSParams.o splitorders_stuff.o cuts.o
@@ -279,11 +232,6 @@ driver_mintFO.o: process_dimensions.o fks_metadata.o genps_fks.o \
 driver_mintFO_bridge.o: driver_mintFO.o
 chooser_functions.o: process_dimensions.o fks_metadata.o weight_lines.o
 chooser_functions_bridge.o: chooser_functions.o
-cluster.o: process_dimensions.o weight_lines.o $(LIBDIR)run_state.mod \
-	$(LIBDIR)gaussian_integration.mod \
-	$(LIBDIR)alfas_functions_module.mod \
-	$(LIBDIR)kin_functions_module.mod
-cluster_bridge.o: cluster.o
 setcuts.o: process_dimensions.o fks_metadata.o \
 	kinematic_runtime_state.o mint_module.o $(LIBDIR)run_state.mod
 setcuts_bridge.o: setcuts.o
@@ -307,17 +255,13 @@ madfks_plot_bridge.o: madfks_plot.o
 check_poles.o: process_dimensions.o fks_metadata.o mint_module.o \
 	FKSParams.o $(LIBDIR)run_state.mod
 check_poles_bridge.o: check_poles.o
-sa_ewsudakov.o: process_dimensions.o
-sa_ewsudakov_bridge.o: sa_ewsudakov.o
 cuts.o: process_dimensions.o kinematic_runtime_state.o boostwdir2.o \
-	recmom.o $(LIBDIR)run_state.mod $(LIBDIR)timing_state.mod \
+	$(LIBDIR)run_state.mod $(LIBDIR)timing_state.mod \
 	$(LIBDIR)kin_functions_module.mod
 cuts_bridge.o: cuts.o
 analysis_HwU_pp_hjj.o: boostwdir2.o
-analysis_HwU_general.o: recmom.o cuts.o \
+analysis_HwU_general.o: cuts.o \
 	$(LIBDIR)kin_functions_module.mod
-analysis_HwU_general_sdk.o: recmom.o
-recmom.o: process_dimensions.o $(LIBDIR)kin_functions_module.mod
 momentum_reshuffling.o: process_dimensions.o \
 	$(LIBDIR)kin_functions_module.mod
 splitorders_stuff.o: process_dimensions.o

@@ -283,8 +283,6 @@ contains
       ibody = 2                 ! n-body
     case (20)
       ibody = 3                 ! Born
-    case (100:102)
-      ibody = 10 + itype - 100  ! EW Sudakov
     case default
       write (*, *) 'Error in outfun: unknown itype', itype
       stop 1

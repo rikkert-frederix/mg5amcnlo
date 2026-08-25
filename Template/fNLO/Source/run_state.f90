@@ -9,25 +9,22 @@ module run_state
   public :: scale, scalefact, ellissextonfact, alpsfact
   public :: mue_ref_fixed, mue_over_ref, fixed_ren_scale
   public :: fixed_fac_scale, fixed_couplings, fixed_extra_scale
-  public :: ickkw, nhmult, hmult, dynamical_scale_choice
+  public :: nhmult, hmult, dynamical_scale_choice
   public :: fixed_qes_scale, mur_over_ref, muf1_over_ref, muf2_over_ref
   public :: qes_over_ref, muf_over_ref, mur_ref_fixed
   public :: muf1_ref_fixed, muf2_ref_fixed, qes_ref_fixed, muf_ref_fixed
   public :: mur2_current, muf12_current, muf22_current, qes2_current
   public :: lpp, ebeam, xbk, q2fact, bwcutoff
-  public :: ktscheme, chcluster, pdfwgt
   public :: do_rwgt_scale, do_rwgt_pdf, store_rwgt_info
   public :: pdf_set_min, pdf_set_max, rw_fscale_down, rw_fscale_up
   public :: rw_rscale_down, rw_rscale_up, fo_lhe_weight_ratio
   public :: pdg_cut, ptmin4pdg, ptmax4pdg, mxxmin4pdg
-  public :: mxxpart_antipart, alphascheme, nlep_run, nupq_run
-  public :: ndnq_run, w_run, photons_from_lepton, has_bstrahl
-  public :: nb_proton, nb_neutron, mass_ion, rai, xiai, flavour_bias
+  public :: mxxpart_antipart
+  public :: flavour_bias
   public :: jetalgo, jetradius, ptj, etaj, ptl, etal, drll, drll_sf
   public :: mll, mll_sf, gamma_is_j, ptgmin, r0gamma, xn, epsgamma
-  public :: etagamma, isoem, maxjetflavor, rphreco, etaphreco
-  public :: lepphreco, quarkphreco, xmtc, xqcut
-  public :: lhaid, pdfscheme, pdlabel, epa_label, pdsublabel
+  public :: etagamma, isoem, maxjetflavor
+  public :: lhaid, pdfscheme, pdlabel
   public :: asmz, nloop, iseed, nevents, event_norm, pineappl
   public :: jet_distance_parameter
   public :: idbmup, ebmup, pdfgup, pdfsup, idwtup, nprup
@@ -43,13 +40,12 @@ module run_state
   logical :: fixed_fac_scale
   logical :: fixed_couplings
   logical :: fixed_extra_scale
-  integer :: ickkw
   integer :: nhmult
   logical :: hmult
   integer :: dynamical_scale_choice
   common /to_scale/ scale, scalefact, ellissextonfact, alpsfact, &
        fixed_ren_scale, mue_ref_fixed, mue_over_ref, fixed_extra_scale, &
-       fixed_fac_scale, fixed_couplings, ickkw, nhmult, hmult, &
+       fixed_fac_scale, fixed_couplings, nhmult, hmult, &
        dynamical_scale_choice
 
   logical :: fixed_qes_scale
@@ -87,11 +83,6 @@ module run_state
   double precision :: bwcutoff
   common /to_bwcutoff/ bwcutoff
 
-  integer :: ktscheme
-  logical :: chcluster
-  logical :: pdfwgt
-  common /to_cluster/ ktscheme, chcluster, pdfwgt
-
   logical :: do_rwgt_scale
   logical :: do_rwgt_pdf
   logical :: store_rwgt_info
@@ -114,27 +105,6 @@ module run_state
   logical :: mxxpart_antipart(1:25)
   common /to_pdg_specific_cut/ pdg_cut, ptmin4pdg, ptmax4pdg, &
        mxxmin4pdg, mxxpart_antipart
-
-  integer :: alphascheme
-  integer :: nlep_run
-  integer :: nupq_run
-  integer :: ndnq_run
-  integer :: w_run
-  common /to_alphascheme/ alphascheme, nlep_run, nupq_run, ndnq_run, w_run
-
-  logical :: photons_from_lepton
-  logical :: has_bstrahl
-  common /to_afromee/ photons_from_lepton
-  common /to_has_bs/ has_bstrahl
-
-  integer :: nb_proton(2)
-  integer :: nb_neutron(2)
-  double precision :: mass_ion(2)
-  double precision :: rai(2)
-  double precision :: xiai(2)
-  common /to_heavyion_pdg/ nb_proton, nb_neutron
-  common /to_heavyion_mass/ mass_ion
-  common /heavyion_upc_beams/ rai, xiai
 
   integer :: flavour_bias(0:2)
   common /c_flavour_bias/ flavour_bias
@@ -167,22 +137,10 @@ module run_state
   integer :: maxjetflavor
   common /to_min_max_cuts/ maxjetflavor
 
-  double precision :: rphreco
-  double precision :: etaphreco
-  logical :: lepphreco
-  logical :: quarkphreco
-  common /to_phreco/ rphreco, etaphreco, lepphreco, quarkphreco
-
-  double precision :: xmtc
-  double precision :: xqcut
-  common /to_specxpt/ xmtc, xqcut
-
   integer :: lhaid
   integer :: pdfscheme
   character(len=7) :: pdlabel
-  character(len=7) :: epa_label
-  character(len=7) :: pdsublabel(2)
-  common /to_pdf/ lhaid, pdfscheme, pdlabel, epa_label, pdsublabel
+  common /to_pdf/ lhaid, pdfscheme, pdlabel
 
   double precision :: asmz
   integer :: nloop
@@ -229,7 +187,6 @@ contains
     fixed_fac_scale = .false.
     fixed_couplings = .false.
     fixed_extra_scale = .false.
-    ickkw = 0
     nhmult = 0
     hmult = .false.
     dynamical_scale_choice = 0
@@ -253,9 +210,6 @@ contains
     xbk = 0d0
     q2fact = 0d0
     bwcutoff = 0d0
-    ktscheme = 0
-    chcluster = .false.
-    pdfwgt = .false.
     do_rwgt_scale = .false.
     do_rwgt_pdf = .false.
     store_rwgt_info = .false.
@@ -271,18 +225,6 @@ contains
     ptmax4pdg = 0d0
     mxxmin4pdg = 0d0
     mxxpart_antipart = .false.
-    alphascheme = 0
-    nlep_run = 0
-    nupq_run = 0
-    ndnq_run = 0
-    w_run = 0
-    photons_from_lepton = .false.
-    has_bstrahl = .false.
-    nb_proton = 0
-    nb_neutron = 0
-    mass_ion = 0d0
-    rai = 0d0
-    xiai = 0d0
     flavour_bias = 0
     jetalgo = 0d0
     jetradius = 0d0
@@ -302,17 +244,9 @@ contains
     etagamma = 0d0
     isoem = .false.
     maxjetflavor = 0
-    rphreco = 0d0
-    etaphreco = 0d0
-    lepphreco = .false.
-    quarkphreco = .false.
-    xmtc = 0d0
-    xqcut = 0d0
     lhaid = 0
     pdfscheme = 0
     pdlabel = ''
-    epa_label = ''
-    pdsublabel = ''
     asmz = 0d0
     nloop = 0
     iseed = 0_run_seed_kind

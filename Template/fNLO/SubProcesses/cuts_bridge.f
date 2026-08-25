@@ -7,15 +7,6 @@ c Call after SETCUTS, including whenever the selected FKS channel changes.
       implicit none
       include 'nexternal.inc'
       include 'genps.inc'
-      include 'orders.inc'
-      logical split_type_used(nsplitorders)
-      common /to_split_type_used/split_type_used
-      integer need_matching_s(nexternal),need_matching_h(nexternal)
-      integer need_matching_cuts(nexternal)
-      common /c_need_matching/need_matching_s,need_matching_h,
-     $     need_matching_cuts
-      logical particle_tag(nexternal)
-      common /c_particle_tag/particle_tag
       double precision etmin(nincoming+1:nexternal-1)
       double precision etmax(nincoming+1:nexternal-1)
       double precision mxxmin(nincoming+1:nexternal-1,
@@ -24,11 +15,6 @@ c Call after SETCUTS, including whenever the selected FKS channel changes.
       logical is_a_j(nexternal),is_a_lp(nexternal)
       logical is_a_lm(nexternal),is_a_ph(nexternal)
       common /to_specisa/is_a_j,is_a_lp,is_a_lm,is_a_ph
-      double precision fxfx_ren_scales(0:nexternal)
-      double precision fxfx_fac_scale(2)
-      integer nfxfx_ren_scales
-      common /c_fxfx_scales/fxfx_ren_scales,nfxfx_ren_scales,
-     $     fxfx_fac_scale
       double precision pmass(nexternal)
       common /to_mass/pmass
       integer idup(nexternal,maxproc)
@@ -39,11 +25,8 @@ c Call after SETCUTS, including whenever the selected FKS channel changes.
       common /parton_cms_stuff/ybst_til_tolab,ybst_til_tocm,
      $     sqrtshat,shat
 
-      call initialize_cuts_runtime_state(split_type_used,
-     $     need_matching_s,need_matching_h,need_matching_cuts,
-     $     particle_tag,etmin,etmax,mxxmin,is_a_j,is_a_lp,is_a_lm,
-     $     is_a_ph,fxfx_ren_scales,nfxfx_ren_scales,
-     $     fxfx_fac_scale)
+      call initialize_cuts_runtime_state(etmin,etmax,mxxmin,
+     $     is_a_j,is_a_lp,is_a_lm,is_a_ph)
       call initialize_cuts_event_state(pmass,idup,ybst_til_tolab)
       return
       end

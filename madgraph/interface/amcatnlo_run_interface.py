@@ -144,8 +144,13 @@ def enabled_event_options(options):
                       if options.get(key, False)))
 
 
-FNLO_SHOWER_RUN_CARD_PARAMETERS = frozenset({
-    'parton_shower', 'shower_scale_factor', 'mcatnlo_delta'})
+FNLO_UNSUPPORTED_RUN_CARD_PARAMETERS = frozenset({
+    'ickkw', 'parton_shower', 'shower_scale_factor', 'mcatnlo_delta',
+    'rphreco', 'etaphreco', 'lepphreco', 'quarkphreco',
+    'photons_from_lepton', 'has_bstrahl', 'alphascheme',
+    'nlep_run', 'nupq_run', 'ndnq_run', 'w_run',
+    'nb_proton1', 'nb_proton2', 'nb_neutron1', 'nb_neutron2',
+    'mass_ion1', 'mass_ion2', 'pdlabel1', 'pdlabel2'})
 
 FNLO_BUNDLED_PDF_LABELS = frozenset({
     'nn23lo', 'nn23lo1', 'nn23nlo'})
@@ -156,24 +161,21 @@ def prepare_fixed_order_only_run_card(run_card):
 
     Keep the values in the Python card object because shared NLO interface
     code still queries them.  Removing them from ``includepath`` is enough to
-    prevent :class:`RunCardNLO` from recreating the three assignments which
+    prevent :class:`RunCardNLO` from recreating assignments which
     are deliberately absent from the fNLO run card and Fortran template.
     """
 
-    explicitly_set = sorted(FNLO_SHOWER_RUN_CARD_PARAMETERS.intersection(
+    explicitly_set = sorted(FNLO_UNSUPPORTED_RUN_CARD_PARAMETERS.intersection(
         getattr(run_card, 'user_set', set())))
     if explicitly_set:
         raise banner_mod.InvalidRunCard(
             '%s are not available for fNLO outputs' %
             ', '.join(explicitly_set))
 
-    if run_card['ickkw'] == -1:
+    if run_card['ickkw'] != 0:
         raise banner_mod.InvalidRunCard(
-            'NNLL+NLO jet-veto computations (ickkw=-1) are not '
-            'available for fNLO outputs')
-    if run_card['ickkw'] == 4:
-        raise banner_mod.InvalidRunCard(
-            'UNLOPS merging (ickkw=4) is not available for fNLO outputs')
+            'Jet matching and merging (ickkw=%s) are not available for '
+            'fNLO outputs' % run_card['ickkw'])
 
     beam_types = (run_card['lpp1'], run_card['lpp2'])
     unsupported_beams = sorted(set(
@@ -199,7 +201,7 @@ def prepare_fixed_order_only_run_card(run_card):
 
     for parameters in run_card.includepath.values():
         parameters[:] = [name for name in parameters
-                         if name not in FNLO_SHOWER_RUN_CARD_PARAMETERS]
+                         if name not in FNLO_UNSUPPORTED_RUN_CARD_PARAMETERS]
 
 
 def compile_dir(*arguments):

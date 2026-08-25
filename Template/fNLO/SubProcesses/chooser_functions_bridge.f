@@ -44,35 +44,21 @@
       integer fks_j_from_i(nexternal,0:nexternal)
       integer particle_type(nexternal),pdg_type(nexternal)
       common /c_fks_inc/fks_j_from_i,particle_type,pdg_type
-      double precision particle_charge(nexternal)
-      double precision particle_charge_born(nexternal-1)
-      common /c_charges/particle_charge
-      common /c_charges_born/particle_charge_born
       integer i_fks,j_fks
       common /fks_indices/i_fks,j_fks
-      integer particle_type_born(nexternal-1)
-      common /c_particle_type_born/particle_type_born
-      logical particle_tag(nexternal)
-      common /c_particle_tag/particle_tag
-      logical particle_tag_born(nexternal-1)
-      common /c_particle_tag/particle_tag_born
-      logical need_color_links,need_charge_links
-      common /c_need_links/need_color_links,need_charge_links
+      logical need_color_links
+      common /c_need_links/need_color_links
       integer extra_cnt,isplitorder_born,isplitorder_cnt
       common /c_extra_cnt/extra_cnt,isplitorder_born,isplitorder_cnt
       logical split_type(nsplitorders)
       common /c_split_type/split_type
       logical is_aorg(nexternal)
       common /c_is_aorg/is_aorg
-      logical is_charged(nexternal)
-      common /c_is_charged/is_charged
 
       call fks_inc_chooser_impl(nfksprocess,fks_j_from_i,
-     $     particle_type,pdg_type,particle_charge,
-     $     particle_charge_born,i_fks,j_fks,particle_type_born,
-     $     particle_tag,particle_tag_born,need_color_links,
-     $     need_charge_links,extra_cnt,isplitorder_born,
-     $     isplitorder_cnt,split_type,is_aorg,is_charged)
+     $     particle_type,pdg_type,i_fks,j_fks,need_color_links,
+     $     extra_cnt,isplitorder_born,isplitorder_cnt,split_type,
+     $     is_aorg)
       return
       end
 
@@ -85,6 +71,7 @@
       integer nfksprocess
       common /c_nfksprocess/nfksprocess
       include 'leshouche_decl.inc'
+      common /c_leshouche_idup_d/idup_d
       integer idup_common(nexternal,maxproc_used)
       integer mothup_common(2,nexternal,maxproc_used)
       integer icolup_common(2,nexternal,maxflow_used)
@@ -97,7 +84,7 @@
       integer icolup(2,nexternal,maxflow)
       integer i
       include 'born_leshouche.inc'
-      save idup_d,mothup_d,icolup_d,niprocs_d
+      save mothup_d,icolup_d,niprocs_d
 
       call initialize_leshouche_data(maxproc_used,maxflow_used,
      $     idup_d,mothup_d,icolup_d,niprocs_d,idup,mothup,icolup)
@@ -139,17 +126,14 @@
       end
 
 
-      subroutine get_mother_col_charge(i_type,ch_i,j_type,ch_j,
-     $     m_type,ch_m)
-      use chooser_functions_module, only: get_mother_col_charge_impl
+      subroutine get_mother_colour(i_type,j_type,m_type)
+      use chooser_functions_module, only: get_mother_colour_impl
       implicit none
       integer i_type,j_type,m_type
-      double precision ch_i,ch_j,ch_m
       integer i_fks,j_fks
       common /fks_indices/i_fks,j_fks
 
-      call get_mother_col_charge_impl(i_type,ch_i,j_type,ch_j,
-     $     m_type,ch_m,i_fks,j_fks)
+      call get_mother_colour_impl(i_type,j_type,m_type,i_fks,j_fks)
       return
       end
 

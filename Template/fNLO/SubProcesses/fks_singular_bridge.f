@@ -15,8 +15,6 @@ c generated matrix elements, chooser, genps, and fixed-order driver.
       include 'nFKSconfigs.inc'
       include 'coupl.inc'
       include 'q_es.inc'
-      include 'has_ewsudakov.inc'
-      include 'ewsudakov_haslo.inc'
       include 'pineappl_common.inc'
       include 'leshouche_decl.inc'
 
@@ -61,29 +59,6 @@ c generated matrix elements, chooser, genps, and fixed-order driver.
       common /to_amp_split_6to5f/amp_split_6to5f,
      $     amp_split_6to5f_muf,amp_split_6to5f_mur
 
-      double precision amp_split_alpha(amp_split_size)
-      double precision amp_split_alpha_muf(amp_split_size)
-      double precision amp_split_alpha_mur(amp_split_size)
-      target amp_split_alpha,amp_split_alpha_muf,amp_split_alpha_mur
-      common /to_amp_split_alpha/amp_split_alpha,
-     $     amp_split_alpha_muf,amp_split_alpha_mur
-
-      double complex amp_split_ewsud_lsc(amp_split_size)
-      double complex amp_split_ewsud_ssc(amp_split_size)
-      double complex amp_split_ewsud_xxc(amp_split_size)
-      double complex amp_split_ewsud_par(amp_split_size)
-      double complex amp_split_ewsud_qcd(amp_split_size)
-      double complex amp_split_ewsud_parqcd(amp_split_size)
-      target amp_split_ewsud_lsc,amp_split_ewsud_ssc
-      target amp_split_ewsud_xxc,amp_split_ewsud_par
-      target amp_split_ewsud_qcd,amp_split_ewsud_parqcd
-      common /to_amp_ewsud_lsc/amp_split_ewsud_lsc
-      common /to_amp_ewsud_ssc/amp_split_ewsud_ssc
-      common /to_amp_ewsud_xxc/amp_split_ewsud_xxc
-      common /to_amp_ewsud_par/amp_split_ewsud_par
-      common /to_amp_ewsud_qcd/amp_split_ewsud_qcd
-      common /to_amp_ewsud_parqcd/amp_split_ewsud_parqcd
-
       double precision amp_split_virt(amp_split_size)
       double precision amp_split_born_for_virt(amp_split_size)
       double precision amp_split_avv(amp_split_size)
@@ -125,33 +100,15 @@ c generated matrix elements, chooser, genps, and fixed-order driver.
 
       integer fks_j_from_i(nexternal,0:nexternal)
       integer particle_type(nexternal),pdg_type(nexternal)
-      double precision particle_charge(nexternal)
-      double precision particle_charge_born(nexternal-1)
-      logical particle_tag(nexternal),split_type(nsplitorders)
+      logical split_type(nsplitorders)
       logical split_type_used(nsplitorders)
       double complex ans_cnt(2,nsplitorders)
       target fks_j_from_i,particle_type,pdg_type
-      target particle_charge,particle_charge_born,particle_tag
       target split_type,split_type_used,ans_cnt
       common /c_fks_inc/fks_j_from_i,particle_type,pdg_type
-      common /c_charges/particle_charge
-      common /c_charges_born/particle_charge_born
-      common /c_particle_tag/particle_tag
       common /c_split_type/split_type
       common /c_born_cnt/ans_cnt
       common /to_split_type_used/split_type_used
-
-      double precision fxfx_ren_scales(0:nexternal)
-      double precision fxfx_fac_scale(2)
-      integer nfxfx_ren_scales
-      integer need_matching_s(nexternal),need_matching_h(nexternal)
-      integer need_matching_cuts(nexternal)
-      target fxfx_ren_scales,fxfx_fac_scale,nfxfx_ren_scales
-      target need_matching_s,need_matching_h,need_matching_cuts
-      common /c_fxfx_scales/fxfx_ren_scales,nfxfx_ren_scales,
-     $     fxfx_fac_scale
-      common /c_need_matching/need_matching_s,need_matching_h,
-     $     need_matching_cuts
 
       double precision amp2(ngraphs),jamp2(0:ncolor)
       target amp2,jamp2
@@ -199,8 +156,7 @@ c generated matrix elements, chooser, genps, and fixed-order driver.
       target is_aorg
       common /c_is_aorg/is_aorg
 
-      target g,gal,mu_r,mdl_mh,mdl_mt,mdl_mw,mdl_mz
-      target mdl_wh,mdl_wt,mdl_ww,mdl_wz,qes2
+      target g,mdl_mt,qes2
       target amp_split,amp_split_cnt
       target appl_amp_split_size,appl_qcdpower,appl_qedpower
       target appl_nproc,appl_x1,appl_x2,appl_muf2,appl_mur2
@@ -212,24 +168,15 @@ c generated matrix elements, chooser, genps, and fixed-order driver.
       call init_fks_metadata_bridge()
       include 'pmass.inc'
 
-      call initialize_fks_model_state(g,gal,mu_r,qes2,
-     $     mdl_mh,mdl_mt,mdl_mw,mdl_mz,mdl_wh,mdl_wt,mdl_ww,mdl_wz,
-     $     nf,nl,has_ewsudakov,has_lo1,has_lo2,lo1_pos,lo2_pos,
-     $     pmass)
+      call initialize_fks_model_state(g,qes2,mdl_mt,nf,pmass)
       call initialize_fks_phase_state(p_born,p_born_coll,
      $     p_born_norad,p_ev,p1_cnt,wgt_cnt,pswgt_cnt,jac_cnt,
      $     idup_common,mothup_common,icolup_common,niprocs_common,
-     $     fxfx_ren_scales,nfxfx_ren_scales,fxfx_fac_scale,
-     $     need_matching_s,need_matching_h,need_matching_cuts,
      $     is_aorg,amp2,jamp2,subproc_pd,subproc_iproc,flavour_map,
      $     iproc_save,eto,etoi,maxproc_found)
       call initialize_fks_amplitude_state(amp_split,amp_split_cnt,
      $     amp_split_6to5f,amp_split_6to5f_muf,
-     $     amp_split_6to5f_mur,amp_split_alpha,
-     $     amp_split_alpha_muf,amp_split_alpha_mur,
-     $     amp_split_ewsud_lsc,amp_split_ewsud_ssc,
-     $     amp_split_ewsud_xxc,amp_split_ewsud_par,
-     $     amp_split_ewsud_qcd,amp_split_ewsud_parqcd,
+     $     amp_split_6to5f_mur,
      $     amp_split_virt,amp_split_born_for_virt,amp_split_avv,
      $     amp_split_wgtnstmp,amp_split_wgtwnstmpmuf,
      $     amp_split_wgtwnstmpmur,amp_split_wgtdegrem_xi,
@@ -237,7 +184,6 @@ c generated matrix elements, chooser, genps, and fixed-order driver.
      $     amp_split_wgtpsch_p,amp_split_wgtpsch_l,
      $     amp_split_wgtpsch_d,amp_split_soft,amp_split_finite_ml,
      $     amp_split_poles_fks,fks_j_from_i,particle_type,pdg_type,
-     $     particle_charge,particle_charge_born,particle_tag,
      $     split_type,ans_cnt,split_type_used,idup_d)
       call initialize_fks_config_state(config_mass,config_width,
      $     config_forest,config_sprop,config_tprid,config_map,
@@ -249,28 +195,10 @@ c generated matrix elements, chooser, genps, and fixed-order driver.
      $     appl_wf,appl_wb,appl_flavmap,appl_event_weight,
      $     appl_vegaswgt)
       call init_fks_singular_born_config_bridge()
-      call init_fks_born_leshouche_bridge()
       call validate_fks_singular_state()
       initialized=.true.
       return
       end
-
-
-      subroutine init_fks_born_leshouche_bridge()
-      use fks_singular_module, only: initialize_fks_born_ids
-      implicit none
-      include 'nexternal.inc'
-      include 'born_maxamps.inc'
-      integer idup(nexternal,maxproc)
-      integer mothup(2,nexternal,maxproc)
-      integer icolup(2,nexternal,maxflow)
-      integer i
-      include 'born_leshouche.inc'
-
-      call initialize_fks_born_ids(idup)
-      return
-      end
-
 
       subroutine init_fks_singular_born_config_bridge()
       use fks_singular_module, only: initialize_fks_generated_state
@@ -343,20 +271,6 @@ c historical COMMON storage are initialized by init_fks_singular_bridge.
       call implementation()
       end subroutine compute_6to5flav_cnt
 
-      subroutine compute_ewsudakov()
-      use fks_singular_module, only: implementation => compute_ewsudakov
-      implicit none
-      call init_fks_singular_bridge()
-      call implementation()
-      end subroutine compute_ewsudakov
-
-      subroutine compute_alpha_cnt()
-      use fks_singular_module, only: implementation => compute_alpha_cnt
-      implicit none
-      call init_fks_singular_bridge()
-      call implementation()
-      end subroutine compute_alpha_cnt
-
       subroutine compute_nbody_noborn()
       use fks_singular_module, only: implementation => compute_nbody_noborn
       implicit none
@@ -423,16 +337,6 @@ c historical COMMON storage are initialized by init_fks_singular_bridge.
       call init_fks_singular_bridge()
       momenta_equal_uborn=implementation(p1,p2,jfks1,ifks1,jfks2,ifks2)
       end function momenta_equal_uborn
-
-      subroutine set_FxFx_scale(iterm,p)
-      use process_dimensions, only: nexternal
-      use fks_singular_module, only: implementation => set_FxFx_scale
-      implicit none
-      integer :: iterm
-      double precision :: p(0:3,nexternal)
-      call init_fks_singular_bridge()
-      call implementation(iterm,p)
-      end subroutine set_FxFx_scale
 
       subroutine compute_prefactors_nbody(vegas_wgt)
       use fks_singular_module, only: implementation => compute_prefactors_nbody
@@ -628,85 +532,85 @@ c historical COMMON storage are initialized by init_fks_singular_bridge.
       call implementation(p,xi_i_fks,y_ij_fks,wgt)
       end subroutine sborncol_isr
 
-      subroutine xkplus(PDFscheme,col1,col2,ch1,ch2,x,xkk)
+      subroutine xkplus(PDFscheme,col1,col2,x,xkk)
       use fks_singular_module, only: implementation => xkplus
       implicit none
       integer :: PDFscheme,col1,col2
-      double precision :: ch1,ch2,x,xkk(2)
+      double precision :: x,xkk(2)
       call init_fks_singular_bridge()
-      call implementation(PDFscheme,col1,col2,ch1,ch2,x,xkk)
+      call implementation(PDFscheme,col1,col2,x,xkk)
       end subroutine xkplus
 
-      subroutine xklog(PDFscheme,col1,col2,ch1,ch2,x,xkk)
+      subroutine xklog(PDFscheme,col1,col2,x,xkk)
       use fks_singular_module, only: implementation => xklog
       implicit none
       integer :: PDFscheme,col1,col2
-      double precision :: ch1,ch2,x,xkk(2)
+      double precision :: x,xkk(2)
       call init_fks_singular_bridge()
-      call implementation(PDFscheme,col1,col2,ch1,ch2,x,xkk)
+      call implementation(PDFscheme,col1,col2,x,xkk)
       end subroutine xklog
 
-      subroutine xkdelta(PDFscheme,col1,col2,ch1,ch2,xkk)
+      subroutine xkdelta(PDFscheme,col1,col2,xkk)
       use fks_singular_module, only: implementation => xkdelta
       implicit none
       integer :: PDFscheme,col1,col2
-      double precision :: ch1,ch2,xkk(2)
+      double precision :: xkk(2)
       call init_fks_singular_bridge()
-      call implementation(PDFscheme,col1,col2,ch1,ch2,xkk)
+      call implementation(PDFscheme,col1,col2,xkk)
       end subroutine xkdelta
 
-      subroutine AP_reduced(col1,col2,ch1,ch2,t,z,ap)
+      subroutine AP_reduced(col1,col2,t,z,ap)
       use fks_singular_module, only: implementation => AP_reduced
       implicit none
       integer :: col1,col2
-      double precision :: ch1,ch2,t,z,ap(2)
+      double precision :: t,z,ap(2)
       call init_fks_singular_bridge()
-      call implementation(col1,col2,ch1,ch2,t,z,ap)
+      call implementation(col1,col2,t,z,ap)
       end subroutine AP_reduced
 
-      subroutine AP_reduced_prime(col1,col2,ch1,ch2,t,z,apprime)
+      subroutine AP_reduced_prime(col1,col2,t,z,apprime)
       use fks_singular_module, only: implementation => AP_reduced_prime
       implicit none
       integer :: col1,col2
-      double precision :: ch1,ch2,t,z,apprime(2)
+      double precision :: t,z,apprime(2)
       call init_fks_singular_bridge()
-      call implementation(col1,col2,ch1,ch2,t,z,apprime)
+      call implementation(col1,col2,t,z,apprime)
       end subroutine AP_reduced_prime
 
-      subroutine Qterms_reduced_timelike(col1,col2,ch1,ch2,t,z,Qterms)
+      subroutine Qterms_reduced_timelike(col1,col2,t,z,Qterms)
       use fks_singular_module, only: implementation => Qterms_reduced_timelike
       implicit none
       integer :: col1,col2
-      double precision :: ch1,ch2,t,z,Qterms(2)
+      double precision :: t,z,Qterms(2)
       call init_fks_singular_bridge()
-      call implementation(col1,col2,ch1,ch2,t,z,Qterms)
+      call implementation(col1,col2,t,z,Qterms)
       end subroutine Qterms_reduced_timelike
 
-      subroutine Qterms_reduced_spacelike(col1,col2,ch1,ch2,t,z,Qterms)
+      subroutine Qterms_reduced_spacelike(col1,col2,t,z,Qterms)
       use fks_singular_module, only: implementation => Qterms_reduced_spacelike
       implicit none
       integer :: col1,col2
-      double precision :: ch1,ch2,t,z,Qterms(2)
+      double precision :: t,z,Qterms(2)
       call init_fks_singular_bridge()
-      call implementation(col1,col2,ch1,ch2,t,z,Qterms)
+      call implementation(col1,col2,t,z,Qterms)
       end subroutine Qterms_reduced_spacelike
 
-      subroutine AP_reduced_SUSY(col1,col2,ch1,ch2,t,z,ap)
+      subroutine AP_reduced_SUSY(col1,col2,t,z,ap)
       use fks_singular_module, only: implementation => AP_reduced_SUSY
       implicit none
       integer :: col1,col2
-      double precision :: ch1,ch2,t,z,ap(2)
+      double precision :: t,z,ap(2)
       call init_fks_singular_bridge()
-      call implementation(col1,col2,ch1,ch2,t,z,ap)
+      call implementation(col1,col2,t,z,ap)
       end subroutine AP_reduced_SUSY
 
-      subroutine AP_reduced_massive(col1,col2,ch1,ch2,t,z,q2,m2,ap)
+      subroutine AP_reduced_massive(col1,col2,t,z,q2,m2,ap)
       use fks_singular_module, only: implementation => AP_reduced_massive
       implicit none
       integer :: col1,col2
-      double precision :: ch1,ch2,t,z,q2,m2,ap(2)
+      double precision :: t,z,q2,m2,ap(2)
       call init_fks_singular_bridge()
-      call implementation(col1,col2,ch1,ch2,t,z,q2,m2,ap)
+      call implementation(col1,col2,t,z,q2,m2,ap)
       end subroutine AP_reduced_massive
 
       subroutine sbornsoft(pp,xi_i_fks,y_ij_fks,wgt)

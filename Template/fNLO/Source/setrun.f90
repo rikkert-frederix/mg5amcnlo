@@ -82,15 +82,6 @@ contains
       stop 1
     end if
 
-    ! Check and initialize the FxFx parameters.
-    if (ickkw /= 0 .and. ickkw /= 3) then
-      write(*, *) 'ickkw parameter not known. ickkw=', ickkw
-      stop
-    end if
-    chcluster = .false.
-    ktscheme = 1
-    xqcut = 0d0
-    xmtc = 0d0
     jet_distance_parameter = 1d0
 
     ! Set alpha_s(mZ).  The model coupling is obtained through the fixed-form
@@ -142,32 +133,10 @@ contains
 
     idum = 0
     do i = 1, 2
-      if (lpp(i) == 1 .or. lpp(i) == 2) then
-        if (nb_proton(i) == 1 .and. nb_neutron(i) == 0) then
-          idbmup(i) = 2212
-        else if (nb_proton(i) == 0 .and. nb_neutron(i) == 1) then
-          idbmup(i) = 2112
-        else
-          idbmup(i) = 1000000000 + &
-               (nb_proton(i) + nb_neutron(i)) * 10 + &
-               nb_proton(i) * 10000
-        end if
-      else if (lpp(i) == -1 .or. lpp(i) == -2) then
-        if (nb_proton(i) == 1 .and. nb_neutron(i) == 0) then
-          idbmup(i) = -2212
-        else
-          idbmup(i) = -(1000000000 + &
-               (nb_proton(i) + nb_neutron(i)) * 10 + &
-               nb_proton(i) * 10000)
-        end if
-      else if (lpp(i) == 3) then
-        idbmup(i) = 11
-      else if (lpp(i) == -3) then
-        idbmup(i) = -11
-      else if (lpp(i) == 4) then
-        idbmup(i) = 13
-      else if (lpp(i) == -4) then
-        idbmup(i) = -13
+      if (lpp(i) == 1) then
+        idbmup(i) = 2212
+      else if (lpp(i) == -1) then
+        idbmup(i) = -2212
       else if (lpp(i) == 0) then
         open(unit=71, status='old', file='initial_states_map.dat')
         read(71, *, iostat=read_status) idum, idum, idbmup(1), idbmup(2)
@@ -178,7 +147,8 @@ contains
         end if
         close(71)
       else
-        idbmup(i) = lpp(i)
+        write(*, *) 'Unsupported fNLO beam type:', lpp(i)
+        stop 1
       end if
       ebmup(i) = ebeam(i)
     end do

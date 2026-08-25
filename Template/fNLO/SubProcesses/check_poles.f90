@@ -2,7 +2,7 @@ module check_poles_module
   use process_dimensions, only: nexternal, nincoming, fks_configs, &
        validate_process_dimensions
   use fks_metadata, only: fks_i_d, pdg_type_d, validate_fks_metadata
-  use run_state, only: lpp, ebeam, nb_proton, nb_neutron
+  use run_state, only: lpp, ebeam
   use mint_module, only: iconfig, ichan, iconfigs
   use FKSParams, only: paramFileName, IRPoleCheckThreshold, &
        FKSParamReader
@@ -234,8 +234,7 @@ contains
     if (abs(lpp(1)) == 1 .and. abs(lpp(2)) == 1) then
       energy = max((ebeam(1) + ebeam(2)) / 20d0, 2d0 * total_mass)
     else if (lpp(1) == 2 .and. lpp(2) == 2) then
-      energy = max((ebeam(1) / (nb_proton(1) + nb_neutron(1)) + &
-           ebeam(2) / (nb_proton(2) + nb_neutron(2))) / 200d0, &
+      energy = max((ebeam(1) + ebeam(2)) / 200d0, &
            2d0 * total_mass)
     else
       energy = ebeam(1) + ebeam(2)

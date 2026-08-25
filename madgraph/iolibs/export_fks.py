@@ -63,6 +63,29 @@ if madgraph.ordering:
 # the base to compute the orders_tag
 orderstag_base = 100
 
+
+def get_nlo_correction_orders(process_line):
+    """Return the perturbative orders requested in an NLO process line.
+
+    The process objects used for mixed-order generation may internally list
+    every coupling order in the model, even for an explicit ``[QCD]`` input.
+    The bracket in the original command is therefore the authoritative source
+    for deciding which corrections an output format must support.
+    """
+
+    process_line = process_line.split(' --', 1)[0]
+    match = re.search(r'\[([^\]]*)\]', process_line)
+    if not match:
+        return []
+
+    content = match.group(1).strip()
+    if '=' in content:
+        content = content.split('=', 1)[1].strip()
+    if content == 'LOonly':
+        return ['QCD']
+    return content.split()
+
+
 def get_orderstag(ords):
     step = 1
     tag = 0
@@ -154,6 +177,12 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 shutil.rmtree(target)
             elif os.path.lexists(target):
                 os.remove(target)
+
+        # Common is copied after the fNLO tree, so restore the smaller
+        # fixed-order PDF state include that deliberately shadows Common.
+        shutil.copy(
+            pjoin(self.get_fks_template_dir(), 'Source', 'PDF', 'pdf.inc'),
+            pjoin(self.dir_path, 'Source', 'PDF', 'pdf.inc'))
 
 #===============================================================================
 # copy the Template in a new directory.
@@ -407,6 +436,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             event_assets = [
                 pjoin('Cards', 'shower_card.dat'),
                 pjoin('Cards', 'shower_card_default.dat'),
+                pjoin('Cards', 'reweight_card_default.dat'),
                 pjoin('bin', 'generate_events'),
                 pjoin('bin', 'shower'),
                 pjoin('bin', 'internal', 'split_jobs.py')]
@@ -680,20 +710,20 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               nconfigs,max_leg_number,nfksconfs,
                               fortran_model)
         
-        # For processes with only QCD splittings, write
-        # the file with the mapping of born vs real diagrams
-        # Otherwise, write a dummy file
-        filename = 'real_from_born_configs.inc'
-        if self.proc_characteristic['splitting_types'] == ['QCD']:
-            self.write_real_from_born_configs(
-                              writers.FortranWriter(filename), 
-                              matrix_element,
-                              fortran_model)
-        else:
-            self.write_real_from_born_configs_dummy(
-                              writers.FortranWriter(filename), 
-                              matrix_element,
-                              fortran_model)
+        if self.opt.get('fks_template') != 'fNLO':
+            # For processes with only QCD splittings, write the mapping used
+            # by matching code; otherwise, write a dummy file.
+            filename = 'real_from_born_configs.inc'
+            if self.proc_characteristic['splitting_types'] == ['QCD']:
+                self.write_real_from_born_configs(
+                                  writers.FortranWriter(filename),
+                                  matrix_element,
+                                  fortran_model)
+            else:
+                self.write_real_from_born_configs_dummy(
+                                  writers.FortranWriter(filename),
+                                  matrix_element,
+                                  fortran_model)
 
         filename = 'maxconfigs.inc'
         self.write_maxconfigs_file(writers.FortranWriter(filename),
@@ -722,15 +752,16 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                             writers.FortranWriter90(filename),
                             matrix_element)
 
-        filename = 'a0Gmuconv.inc'
-        startfroma0 = self.write_a0gmuconv_file(
-                            writers.FortranWriter(filename),
-                            matrix_element)
+        if self.opt.get('fks_template') != 'fNLO':
+            filename = 'a0Gmuconv.inc'
+            startfroma0 = self.write_a0gmuconv_file(
+                                writers.FortranWriter(filename),
+                                matrix_element)
 
-        filename = 'rescale_alpha_tagged.f'
-        self.write_rescale_a0gmu_file(
-                            writers.FortranWriter(filename),
-                            startfroma0, matrix_element, split_types)
+            filename = 'rescale_alpha_tagged.f'
+            self.write_rescale_a0gmu_file(
+                                writers.FortranWriter(filename),
+                                startfroma0, matrix_element, split_types)
 
         filename = 'orders.h'
         self.write_orders_c_header_file(
@@ -857,7 +888,6 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 'boostwdir2.f': 'boostwdir2.f90',
                 'chooser_functions.f': 'chooser_functions.f90',
                 'check_poles.f': 'check_poles.f90',
-                'cluster.f': 'cluster.f90',
                 'cuts.f': 'cuts.f90',
                 'dummy_fct.f': 'dummy_fct.f90',
                 'driver_mintFO.f': 'driver_mintFO.f90',
@@ -875,7 +905,6 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 'pineappl_interface_dummy.f':
                     'pineappl_interface_dummy.f90',
                 'polfit.f': 'polfit.f90',
-                'recmom.f': 'recmom.f90',
                 'reweight_xsec.f': 'reweight_xsec.f90',
                 'setcuts.f': 'setcuts.f90',
                 'setscales.f': 'setscales.f90',
@@ -904,7 +933,6 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               'setscales_bridge.f',
                               'chooser_functions_bridge.f',
                               'check_poles_bridge.f',
-                              'cluster_bridge.f',
                               'cuts_bridge.f',
                               'genps_fks_bridge.f',
                               'symmetry_fks_v3_bridge.f',
@@ -927,6 +955,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 'analysis_lhe.f',
                 'check_sudakov.f',
                 'check_sudakov_angle2.f',
+                'cluster.f',
                 'dire_fortran.cc',
                 'eepdf.inc',
                 'fill_MC_mshell.f',
@@ -941,6 +970,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 'pythia8_fortran_dummy.cc',
                 'pythia8_wrapper.cc',
                 'recluster.cc',
+                'recmom.f',
                 'reweight_xsec_events.f',
                 'reweight_xsec_events_pdf_dummy.f',
                 'sudakov.f',
@@ -953,16 +983,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                                              'montecarlocounter.f')
                          and filename not in fixed_order_excluded_sources]
 
-        if (matrix_element.ewsudakov and
-                self.opt.get('fks_template') == 'fNLO'):
-            linkfiles.extend(['ewsudakov_functions.f90',
-                              'ewsudakov_functions_bridge.f'])
-        elif matrix_element.ewsudakov:
+        if matrix_element.ewsudakov and \
+                self.opt.get('fks_template') != 'fNLO':
             linkfiles.append('ewsudakov_functions.f')
-        elif self.opt.get('fks_template') == 'fNLO':
-            linkfiles.extend(['ewsudakov_functions_dummy.f90',
-                              'ewsudakov_functions_dummy_bridge.f'])
-        else:
+        elif self.opt.get('fks_template') != 'fNLO':
             linkfiles.append('ewsudakov_functions_dummy.f')
 
         for file in linkfiles:
@@ -1080,22 +1104,42 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             makejpg = True
         output_dependencies = mg5options['output_dependencies']
         
-        self.proc_characteristic['ew_sudakov'] = 'ewsudakov' in matrix_elements.keys() and \
-                                                 matrix_elements['ewsudakov']
-        
+        fixed_order_only = self.opt.get('fks_template') == 'fNLO'
+        has_ew_sudakov = ('ewsudakov' in matrix_elements.keys() and
+                          matrix_elements['ewsudakov'])
+        process_lines = []
+        for command in history:
+            if command.startswith('generate '):
+                process_lines.append(command[len('generate '):])
+            elif command.startswith('add process '):
+                process_lines.append(command[len('add process '):])
+        if not process_lines and history.get('generate'):
+            process_lines.append(history.get('generate'))
+        perturbation_order = []
+        for process_line in process_lines:
+            for order in get_nlo_correction_orders(process_line):
+                if order not in perturbation_order:
+                    perturbation_order.append(order)
+
+        if fixed_order_only:
+            if has_ew_sudakov:
+                raise MadGraph5Error(
+                    'EW Sudakov corrections are not available for fNLO '
+                    'outputs')
+            unsupported = sorted(
+                set(perturbation_order).difference(['QCD']))
+            if unsupported:
+                raise MadGraph5Error(
+                    'fNLO output supports QCD corrections only; found %s' %
+                    ', '.join(unsupported))
+
+        self.proc_characteristic['ew_sudakov'] = has_ew_sudakov
+
         self.proc_characteristic['grouped_matrix'] = False
         self.proc_characteristic['complex_mass_scheme'] = mg5options['complex_mass_scheme']
         self.proc_characteristic['nlo_mixed_expansion'] = mg5options['nlo_mixed_expansion']
-        self.proc_characteristic['fixed_order_only'] = \
-            self.opt.get('fks_template') == 'fNLO'
+        self.proc_characteristic['fixed_order_only'] = fixed_order_only
         # determine perturbation order
-        perturbation_order = []
-        firstprocess = history.get('generate')
-        order = re.findall(r"\[(.*)\]", firstprocess)
-        if 'QED' in order[0]:
-            perturbation_order.append('QED')
-        if 'QCD' in order[0]:
-            perturbation_order.append('QCD')
         self.proc_characteristic['perturbation_order'] = perturbation_order 
         
         self.create_proc_charac()
@@ -2207,21 +2251,23 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             self.opt['sa_symmetry']=False
 
 
-        # Add information relevant for FxFx matching:
-        # Maximum QCD power in all the contributions
-        max_qcd_order = 0
-        for diag in matrix_element.get('diagrams'):
-            orders = diag.calculate_orders()
-            if 'QCD' in orders:
-                max_qcd_order = max(max_qcd_order,orders['QCD'])  
-        max_n_light_final_partons = max(len([1 for id in proc.get_final_ids() 
-        if proc.get('model').get_particle(id).get('mass')=='ZERO' and
-               proc.get('model').get_particle(id).get('color')>1])
-                                    for proc in matrix_element.get('processes'))
-        # Maximum number of final state light jets to be matched
-        self.proc_characteristic['max_n_matched_jets'] = max(
-                               self.proc_characteristic['max_n_matched_jets'],
-                                   min(max_qcd_order,max_n_light_final_partons))   
+        if self.opt.get('fks_template') != 'fNLO':
+            # Add information relevant for FxFx matching.
+            max_qcd_order = 0
+            for diag in matrix_element.get('diagrams'):
+                orders = diag.calculate_orders()
+                if 'QCD' in orders:
+                    max_qcd_order = max(max_qcd_order, orders['QCD'])
+            max_n_light_final_partons = max(
+                len([1 for particle_id in proc.get_final_ids()
+                     if proc.get('model').get_particle(
+                         particle_id).get('mass') == 'ZERO' and
+                     proc.get('model').get_particle(
+                         particle_id).get('color') > 1])
+                for proc in matrix_element.get('processes'))
+            self.proc_characteristic['max_n_matched_jets'] = max(
+                self.proc_characteristic['max_n_matched_jets'],
+                min(max_qcd_order, max_n_light_final_partons))
 
         # Set lowercase/uppercase Fortran code
         writers.FortranWriter.downcase = False
@@ -2332,6 +2378,18 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             # MZ this is probably not the best way to go
             file = open(pjoin(_file_path, \
             'iolibs/template_files/born_cnt_splitorders_fks.inc')).read()
+
+        if (proc_type == 'born' and
+                self.opt.get('fks_template') == 'fNLO'):
+            file = file.replace(
+                "      include 'has_ewsudakov.inc'\n", '')
+            start = file.index(
+                'C check that, if one include the sudakov corrections')
+            end = file.index('\n\n do j = 1, nsplitorders', start)
+            file = file[:start] + file[end + 2:]
+            start = file.index('      SUBROUTINE SBORN_ONEHEL')
+            end = file.index('SUBROUTINE SBORN_SPLITORDERS', start)
+            file = file[:start] + file[end:]
 
         file = file % replace_dict
 
@@ -2448,6 +2506,9 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                             matrix_element,
                             nsqorders,
                             fortran_model)
+
+        if self.opt.get('fks_template') == 'fNLO':
+            return
 
         # finally the matrix elements needed for the sudakov approximation
         # of ew corrections. 
@@ -2849,22 +2910,23 @@ Parameters              %(params)s\n\
             raise writers.FortranWriter.FortranWriterError(\
                 "writer not FortranWriter")
             
-        # Add information relevant for FxFx matching:
-        # Maximum QCD power in all the contributions
-        max_qcd_order = 0
-        for diag in matrix_element.get('diagrams'):
-            orders = diag.calculate_orders()
-            if 'QCD' in orders:
-                max_qcd_order = max(max_qcd_order,orders['QCD'])  
-        max_n_light_final_partons = max(len([1 for id in proc.get_final_ids() 
-        if proc.get('model').get_particle(id).get('mass')=='ZERO' and
-               proc.get('model').get_particle(id).get('color')>1])
-                                    for proc in matrix_element.get('processes'))
-        # Maximum number of final state light jets to be matched
-        misc.sprint(self.proc_characteristic['max_n_matched_jets'], max_qcd_order,max_n_light_final_partons)
-        self.proc_characteristic['max_n_matched_jets'] = max(
-                               self.proc_characteristic['max_n_matched_jets'],
-                                   min(max_qcd_order,max_n_light_final_partons))    
+        if self.opt.get('fks_template') != 'fNLO':
+            # Add information relevant for FxFx matching.
+            max_qcd_order = 0
+            for diag in matrix_element.get('diagrams'):
+                orders = diag.calculate_orders()
+                if 'QCD' in orders:
+                    max_qcd_order = max(max_qcd_order, orders['QCD'])
+            max_n_light_final_partons = max(
+                len([1 for particle_id in proc.get_final_ids()
+                     if proc.get('model').get_particle(
+                         particle_id).get('mass') == 'ZERO' and
+                     proc.get('model').get_particle(
+                         particle_id).get('color') > 1])
+                for proc in matrix_element.get('processes'))
+            self.proc_characteristic['max_n_matched_jets'] = max(
+                self.proc_characteristic['max_n_matched_jets'],
+                min(max_qcd_order, max_n_light_final_partons))
             
             
         # Set lowercase/uppercase Fortran code
@@ -3081,8 +3143,11 @@ Parameters              %(params)s\n\
             # this is when no color links are there
             replace_dict['iflines_col'] += 'write(*,*) \'Error in sborn_sf, no color links\'\nstop\n'
 
-        file = open(os.path.join(_file_path, \
-                          'iolibs/template_files/sborn_sf_fks.inc')).read()
+        template = ('sborn_sf_qcd_fks.inc'
+                    if self.opt.get('fks_template') == 'fNLO'
+                    else 'sborn_sf_fks.inc')
+        file = open(os.path.join(
+            _file_path, 'iolibs', 'template_files', template)).read()
         file = file % replace_dict
         writer.writelines(file)
 
@@ -3959,8 +4024,12 @@ Parameters              %(params)s\n\
         replace_dict['fks_j_from_i_lines'] = '\n'.join(fks_j_from_i_lines)
         replace_dict['split_type_lines'] = '\n'.join(split_type_lines)
 
-        content = open(os.path.join(_file_path, \
-                    'iolibs/template_files/fks_info.inc')).read() % replace_dict
+        template = ('fks_info_qcd.inc'
+                    if self.opt.get('fks_template') == 'fNLO'
+                    else 'fks_info.inc')
+        content = open(os.path.join(
+            _file_path, 'iolibs', 'template_files', template)).read()
+        content = content % replace_dict
 
         if not isinstance(writer, writers.FortranWriter):
             raise writers.FortranWriter.FortranWriterError(\
@@ -5483,27 +5552,6 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
                      'timing_variables.inc',
                      'orderstag_base.inc',
                      'orderstags_glob.dat']
-
-        if self.opt.get('fks_template') == 'fNLO':
-            fixed_order_sudakov_replacements = {
-                'ewsudakov_functions.f': 'ewsudakov_functions.f90',
-                'momentum_reshuffling.f': 'momentum_reshuffling.f90',
-                'sa_ewsudakov.f': 'sa_ewsudakov.f90',
-                'sa_ewsudakov_dummyfcts.f':
-                    'sa_ewsudakov_dummyfcts.f90',
-                'splitorders_stuff.f': 'splitorders_stuff.f90',
-                'sub_f2py_ewsudakov.f': 'sub_f2py_ewsudakov.f90',
-                'weight_lines.f': 'weight_lines.f90'}
-            linkfiles = [fixed_order_sudakov_replacements.get(filename,
-                                                               filename)
-                         for filename in linkfiles
-                         if filename != 'add_write_info.f']
-            linkfiles.extend(['ewsudakov_functions_bridge.f',
-                              'momentum_reshuffling_bridge.f',
-                              'sa_ewsudakov_bridge.f',
-                              'sa_ewsudakov_dummyfcts_bridge.f',
-                              'splitorders_stuff_bridge.f',
-                              'sub_f2py_ewsudakov_bridge.f'])
 
         for file in linkfiles:
             ln('../' + file , '.')

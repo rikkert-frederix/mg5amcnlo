@@ -3,7 +3,7 @@ module test_soft_col_limits_module
        nsplitorders, amp_split_size, amp_split_size_born, order_names, &
        validate_process_dimensions
   use fks_metadata, only: fks_i_d, pdg_type_d, validate_fks_metadata
-  use run_state, only: lpp, ebeam, nb_proton, nb_neutron, ptj, ptl, &
+  use run_state, only: lpp, ebeam, ptj, ptl, &
        mll, mll_sf, ptgmin
   use kinematic_runtime_state, only: is_a_j, is_a_lp, is_a_lm, &
        is_a_ph, validate_kinematic_state
@@ -268,9 +268,9 @@ do i=nincoming+1,nexternal
    endif
 enddo
 if (lpp(1).ne.0) ebeam(1)=max(ebeam(1) &
-  &      /(nb_proton(1)+nb_neutron(1))/20d0,totmass)
+  &      /20d0,totmass)
 if (lpp(2).ne.0) ebeam(2)=max(ebeam(2) &
-  &      /(nb_proton(2)+nb_neutron(2))/20d0,totmass)
+  &      /20d0,totmass)
 
 
 write(*,*)'  '

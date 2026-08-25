@@ -57,8 +57,7 @@
       integer particle_type(nexternal),pdg_type(nexternal)
       common /c_fks_inc/ fks_j_from_i,particle_type,pdg_type
       integer i_type,j_type,m_type
-      double precision ch_i,ch_j,ch_m
-      common /cparticle_types/ i_type,j_type,m_type,ch_i,ch_j,ch_m
+      common /cparticle_types/ i_type,j_type,m_type
       double precision conversion,pmass(nexternal),zero
       parameter (zero=0d0)
       include 'pmass.inc'

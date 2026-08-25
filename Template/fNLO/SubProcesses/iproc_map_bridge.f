@@ -33,7 +33,7 @@ c Python-generated declarations and COMMON boundary for iproc_map.f90.
          xbk(1)=0.5d0
          xbk(2)=0.5d0
          dummy=dlum()
-         call map_iproc_configuration(nfksprocess,qcd_pos,qed_pos,
+         call map_iproc_configuration(nfksprocess,qcd_pos,
      $        split_type,idup,i_fks,j_fks,iproc,iproc_save,eto,etoi,
      $        maxproc_found)
       enddo

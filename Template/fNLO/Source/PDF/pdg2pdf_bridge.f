@@ -19,9 +19,9 @@ c     Everything below this boundary is implemented in Fortran modules.
       use pdg2pdf_internal_module, only: pdg2pdf_internal_value
       implicit none
       integer ih,ipdg,ibeam,lhaid,pdfscheme
-      character(len=7) pdlabel,epa_label,pdsublabel(2)
+      character(len=7) pdlabel
       double precision x,xmu
-      common /to_pdf/ lhaid,pdfscheme,pdlabel,epa_label,pdsublabel
+      common /to_pdf/ lhaid,pdfscheme,pdlabel
 
       pdg2pdf=pdg2pdf_internal_value(ih,ipdg,ibeam,x,xmu,pdlabel)
       end

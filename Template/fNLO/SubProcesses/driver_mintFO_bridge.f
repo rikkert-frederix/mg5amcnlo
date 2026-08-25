@@ -126,7 +126,6 @@
       include 'genps.inc'
       include 'nexternal.inc'
       include 'nFKSconfigs.inc'
-      include 'has_ewsudakov.inc'
       integer ncall,nitmax,irestart
       integer ini_fin_fks(maxchannels)
       common /fks_channels/ini_fin_fks
@@ -156,7 +155,7 @@
       integer random_offset_split
       common /c_random_offset_split/random_offset_split
 
-      call init_driver_generated_data(mapconfig,has_ewsudakov)
+      call init_driver_generated_data(mapconfig)
       call get_user_params_impl(ncall,nitmax,irestart,ini_fin_fks,
      $     isum_hel,multi_channel,use_cut,lbw,abrv,nbody,mc_hel,
      $     random_offset_split)

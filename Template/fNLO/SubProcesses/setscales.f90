@@ -1,14 +1,12 @@
 module setscales_module
   use process_dimensions, only: nexternal, nincoming, max_particles, &
-       born_orders, qcd_pos, validate_process_dimensions
-  use kinematic_runtime_state, only: is_a_j, fxfx_ren_scales, &
-       nfxfx_ren_scales, fxfx_fac_scale, validate_kinematic_state
+       validate_process_dimensions
+  use kinematic_runtime_state, only: is_a_j, validate_kinematic_state
   use run_state, only: scale, fixed_ren_scale, fixed_fac_scale, &
        fixed_couplings, fixed_qes_scale, mur_over_ref, muf1_over_ref, &
        muf2_over_ref, qes_over_ref, mur_ref_fixed, muf1_ref_fixed, &
        muf2_ref_fixed, qes_ref_fixed, mur2_current, muf12_current, &
-       muf22_current, qes2_current, q2fact, ickkw, &
-       dynamical_scale_choice
+       muf22_current, qes2_current, q2fact, dynamical_scale_choice
   use extra_weights, only: wgtbpower
   use timing_state, only: t_coupl
   use alfas_functions_module, only: alphas
@@ -191,7 +189,7 @@ contains
     implicit none
     double precision, intent(in) :: pp(0:, :)
     integer, parameter :: imurtype = 1
-    integer :: i, j, nn, njet, iqcd, bpower
+    integer :: i, j, nn, njet, iqcd
     integer :: jet(nexternal)
     double precision :: tmp, tmp1, tmp2, xm2
     double precision :: pqcd(0:3, nexternal), pjet(0:3, nexternal)
@@ -202,20 +200,6 @@ contains
     if (nincoming == 1) then
       tmp = pp(0, 1)
       temp_scale_id = 'Mass of decaying particle'
-    else if (ickkw == 3) then
-      bpower = born_orders(qcd_pos) / 2
-      if (bpower > nfxfx_ren_scales) then
-        tmp = fxfx_ren_scales(0)**(bpower - nfxfx_ren_scales)
-      else if (bpower == 0) then
-        tmp = fxfx_ren_scales(0)
-      else
-        tmp = 1d0
-      end if
-      do i = 1, nfxfx_ren_scales
-        tmp = tmp * fxfx_ren_scales(i)
-      end do
-      tmp = tmp**(1d0 / max(dble(bpower), 1d0))
-      temp_scale_id = 'FxFx merging scale'
     else if (imurtype == 1) then
       tmp = scale_global_ref_impl(pp)
     else if (imurtype == 2) then
@@ -332,10 +316,7 @@ contains
 
     call validate_momenta(pp, 'muF_ref_dynamic')
     tmp = 0d0
-    if (ickkw == 3) then
-      tmp = (fxfx_fac_scale(1) + fxfx_fac_scale(2)) / 2d0
-      temp_scale_id = 'FxFx merging scale'
-    else if (imuftype == 1) then
+    if (imuftype == 1) then
       tmp = scale_global_ref_impl(pp)
     else if (imuftype == 2) then
       do i = nincoming + 1, nexternal

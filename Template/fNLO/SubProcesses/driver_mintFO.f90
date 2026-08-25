@@ -14,8 +14,8 @@ module driver_mintfo_module
        amp_split_size, amp_split_size_born, lmaxconfigs, &
        validate_process_dimensions
   use fks_metadata, only: fks_i_d, fks_j_d, pdg_type_d, &
-       need_color_links_d, need_charge_links_d, validate_fks_metadata
-  use run_state, only: lpp, ickkw, fixed_fac_scale, muf1_over_ref, &
+       need_color_links_d, validate_fks_metadata
+  use run_state, only: lpp, fixed_fac_scale, muf1_over_ref, &
        muf2_over_ref, muf1_ref_fixed, muf2_ref_fixed, pineappl, &
        do_rwgt_scale, do_rwgt_pdf
   use genps_fks, only: generate_momenta
@@ -24,15 +24,14 @@ module driver_mintfo_module
   use cuts_module, only: passcuts
   use mc_integer_module, only: get_mc_integer, fill_mc_integer
   use timing_state, only: reset_timing_state, tBorn, tIS, tReal, &
-       tCount, tFxFx, tf_nb, tf_all, t_as, tr_s, tr_pdf, t_plot, &
-       t_cuts, t_isum, tOLP, tGenPS, t_ewsud, t_coupl
+       tCount, tf_nb, tf_all, t_as, tr_s, tr_pdf, t_plot, &
+       t_cuts, t_isum, tOLP, tGenPS, t_coupl
   implicit none
   private
 
   integer, allocatable, save :: generated_mapconfig(:, :)
   integer, allocatable, save :: initial_final_fks_map(:, :)
   integer, allocatable, save :: born_fks_process_map(:)
-  logical, save :: has_ewsudakov_data = .false.
   logical, save :: generated_data_initialized = .false.
   logical, save :: sigint_first_time = .true.
   logical, save :: born_map_first_time = .true.
@@ -114,11 +113,6 @@ module driver_mintfo_module
       integer, intent(in) :: nfks
     end subroutine update_fks_dir
 
-    subroutine set_fxfx_scale(iterm, momentum)
-      integer, intent(in) :: iterm
-      double precision, intent(in) :: momentum(0:3, *)
-    end subroutine set_fxfx_scale
-
     subroutine compute_prefactors_nbody(vegas_wgt)
       double precision, intent(in) :: vegas_wgt
     end subroutine compute_prefactors_nbody
@@ -137,9 +131,6 @@ module driver_mintfo_module
 
     subroutine compute_born()
     end subroutine compute_born
-
-    subroutine compute_ewsudakov()
-    end subroutine compute_ewsudakov
 
     subroutine compute_nbody_noborn()
     end subroutine compute_nbody_noborn
@@ -200,10 +191,9 @@ module driver_mintfo_module
 
 contains
 
-  subroutine init_driver_generated_data(mapconfig_in, has_ewsudakov_in)
+  subroutine init_driver_generated_data(mapconfig_in)
     implicit none
     integer, intent(in) :: mapconfig_in(0:, 0:)
-    logical, intent(in) :: has_ewsudakov_in
 
     call validate_process_dimensions(require_born=.true.)
     if (ubound(mapconfig_in, 1) /= lmaxconfigs .or. &
@@ -212,8 +202,7 @@ contains
     end if
 
     if (generated_data_initialized) then
-      if (any(generated_mapconfig /= mapconfig_in) .or. &
-          has_ewsudakov_data .neqv. has_ewsudakov_in) then
+      if (any(generated_mapconfig /= mapconfig_in)) then
         call fail_driver('generated driver data changed after initialization')
       end if
       return
@@ -221,7 +210,6 @@ contains
 
     allocate(generated_mapconfig(0:lmaxconfigs, 0:fks_configs))
     generated_mapconfig = mapconfig_in
-    has_ewsudakov_data = has_ewsudakov_in
     generated_data_initialized = .true.
   end subroutine init_driver_generated_data
 
@@ -237,7 +225,6 @@ contains
       deallocate(born_fks_process_map)
     end if
     generated_data_initialized = .false.
-    has_ewsudakov_data = .false.
     sigint_first_time = .true.
     born_map_first_time = .true.
     sum_fks_directories = .false.
@@ -401,15 +388,14 @@ contains
     call cpu_time(time_after)
     time_total = time_after - time_before
     time_other = time_total - (tBorn + tGenPS + tReal + tCount + tIS + &
-         tFxFx + tf_nb + tf_all + t_as + tr_s + tr_pdf + t_plot + &
-         t_cuts + t_isum + t_ewsud + t_coupl)
+         tf_nb + tf_all + t_as + tr_s + tr_pdf + t_plot + &
+         t_cuts + t_isum + t_coupl)
     write (*, *) 'Time spent in Born : ', tBorn
     write (*, *) 'Time spent in PS_Generation : ', tGenPS
     write (*, *) 'Time spent in Reals_evaluation: ', tReal
     write (*, *) 'Time spent in Counter_terms : ', tCount
     write (*, *) 'Time spent in Integrated_CT : ', tIS - tOLP
     write (*, *) 'Time spent in Virtuals : ', tOLP
-    write (*, *) 'Time spent in FxFx_cluster : ', tFxFx
     write (*, *) 'Time spent in Nbody_prefactor : ', tf_nb
     write (*, *) 'Time spent in N1body_prefactor : ', tf_all
     write (*, *) 'Time spent in Adding_alphas_pdf : ', t_as
@@ -418,7 +404,6 @@ contains
     write (*, *) 'Time spent in Filling_plots : ', t_plot
     write (*, *) 'Time spent in Applying_cuts : ', t_cuts
     write (*, *) 'Time spent in Sum_ident_contr : ', t_isum
-    write (*, *) 'Time spent in EW_sudakov : ', t_ewsud
     write (*, *) 'Time spent in AlphaS_dependencies : ', t_coupl
     write (*, *) 'Time spent in Other_tasks : ', time_other
     write (*, *) 'Time spent in Total : ', time_total
@@ -500,7 +485,6 @@ contains
     wgt_me_real = 0d0
     skip_nplusone = .false.
 
-    if (ickkw == 3) call set_fxfx_scale(0, momentum)
     call update_vegas_x_impl(xx, vegas_variables, nndim, abrv)
     call get_mc_integer(max(ini_fin_fks(ichan), 1), &
          initial_final_fks_map(ini_fin_fks(ichan), 0), picked_integer, &
@@ -523,9 +507,6 @@ contains
       if (p_born(0, 1) >= 0d0) then
         call compute_prefactors_nbody(vegas_wgt)
         call set_cms_stuff(ordinary_event)
-        if (ickkw == 3) then
-          call set_fxfx_scale(1, p1_cnt(0, 1, ordinary_event))
-        end if
         passcuts_nbody = passcuts(p1_cnt(0, 1, ordinary_event), reweight)
         if (passcuts_nbody) then
           pass_cuts_check = .true.
@@ -533,11 +514,8 @@ contains
           call include_multichannel_enhance(1)
           if (abrv(1:2) /= 'vi') then
             call compute_born()
-            if (abrv /= 'born' .and. abrv /= 'bovi') then
-              call compute_ewsudakov()
-            end if
           end if
-          if (abrv /= 'born' .and. abrv /= 'bosk') then
+          if (abrv /= 'born') then
             call compute_nbody_noborn()
           end if
         end if
@@ -547,7 +525,7 @@ contains
     end if
 
     if (abrv(1:4) /= 'born' .and. abrv(1:4) /= 'bovi' .and. &
-        abrv(1:4) /= 'bosk' .and. abrv(1:2) /= 'vi' .and. &
+        abrv(1:2) /= 'vi' .and. &
         .not. skip_nplusone) then
       nbody = .false.
       if (sum_fks_directories) then
@@ -573,16 +551,12 @@ contains
 
         call compute_prefactors_n1body(vegas_wgt, jacobian)
         call set_cms_stuff(ordinary_event)
-        if (ickkw == 3) then
-          call set_fxfx_scale(2, p1_cnt(0, 1, ordinary_event))
-        end if
         passcuts_nbody = passcuts(&
              p1_cnt(0, 1, ordinary_event), reweight)
         call set_cms_stuff(collinear_event)
         passcuts_coll = (use_evpr .and. passcuts_nbody) .or. &
              passcuts(p1_cnt(0, 1, collinear_event), reweight)
         call set_cms_stuff(real_event)
-        if (ickkw == 3) call set_fxfx_scale(3, momentum)
         passcuts_n1body = passcuts(momentum, reweight)
 
         if (passcuts_nbody .and. abrv /= 'real') then
@@ -705,13 +679,12 @@ contains
     born_fks_process_map = 0
 
     do ifks = 1, fks_configs
-      if (need_color_links_d(ifks) .or. need_charge_links_d(ifks)) then
+      if (need_color_links_d(ifks)) then
         born_fks_process_map(ifks) = ifks
       end if
       if (born_fks_process_map(ifks) == 0) then
         do candidate = 1, fks_configs
-          if ((need_color_links_d(candidate) .or. &
-              need_charge_links_d(candidate)) .and. &
+          if (need_color_links_d(candidate) .and. &
               fks_j_d(ifks) == fks_j_d(candidate)) then
             born_fks_process_map(ifks) = candidate
             exit
@@ -720,8 +693,7 @@ contains
       end if
       if (born_fks_process_map(ifks) == 0) then
         do candidate = 1, fks_configs
-          if (need_color_links_d(candidate) .or. &
-              need_charge_links_d(candidate)) then
+          if (need_color_links_d(candidate)) then
             if (fks_j_d(candidate) <= nincoming .and. &
                 fks_j_d(ifks) <= nincoming) then
               born_fks_process_map(ifks) = candidate
@@ -736,8 +708,7 @@ contains
       end if
       if (born_fks_process_map(ifks) == 0) then
         do candidate = 1, fks_configs
-          if (need_color_links_d(candidate) .or. &
-              need_charge_links_d(candidate)) then
+          if (need_color_links_d(candidate)) then
             born_fks_process_map(ifks) = candidate
           end if
         end do
@@ -946,15 +917,6 @@ contains
           write (*, *) 'Process generated with [LOonly=QCD]. ' // &
                'Setting abrv to "born".'
           abrv = 'born'
-          if (ickkw == 3) then
-            write (*, *) 'FxFx merging not possible with' // &
-                 ' [LOonly=QCD] processes'
-            stop 1
-          end if
-        else if (has_ewsudakov_data) then
-          write (*, *) 'Process with sudakov approximation for EWcorr' // &
-               'Setting abrv to "bosk".'
-          abrv = 'bosk'
         else
           write (*, *) 'Process only with virtual corrections' // &
                'Setting abrv to "bovi".'

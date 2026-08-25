@@ -42,32 +42,19 @@
 ! contributions included by MadFKS in the context of mixed-order expansions
 ! ==========================================================================
 !
-! Set the QCD and QED squared order that must be factorized by the  
-! contribution selected. This follows the same convention as the syntax 
-! QCD^2== and QED^2== used at generation time. The default value of -1 
+! Set the QCD squared order that must be factorized by the contribution
+! selected. This follows the same convention as the QCD^2== syntax used
+! at generation time. The default value of -1
 ! instructs MadFKS to include all those available.
 !
 #QCD^2==
 -1
 ! Default :: -1
 !
-#QED^2==
--1
-! Default :: -1
-!
 ! Alternatively the user can defined a list of squared orders to select
 ! The first entry is the number of specifed squared orders, and the ordering
-! is indicated in orders.inc with typically QCD first, followed by QED
+! is indicated in orders.inc.
 ! This is just the generalization of the short-hand above.
-!
-! Example:
-!
-! #SelectedCouplingOrders
-! 2
-! 4 0
-! 2 2
-!
-! Selects all contribution factorizing \alpha_s^2 and \alpha_s * \alpha.
 !
 #SelectedCouplingOrders
 0

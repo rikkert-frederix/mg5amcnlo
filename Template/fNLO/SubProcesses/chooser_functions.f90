@@ -1,12 +1,11 @@
 module chooser_functions_module
   use process_dimensions, only: nexternal, nincoming, max_branch, &
        lmaxconfigs, maxproc, maxflow, fks_configs, nsplitorders, &
-       qcd_pos, qed_pos, validate_process_dimensions
+       qcd_pos, validate_process_dimensions
   use fks_metadata, only: validate_fks_metadata, fks_i_d, fks_j_d, &
        extra_cnt_d, isplitorder_born_d, isplitorder_cnt_d, &
-       fks_j_from_i_d, particle_type_d, pdg_type_d, particle_tag_d, &
-       particle_charge_d, split_type_d, need_color_links_d, &
-       need_charge_links_d
+       fks_j_from_i_d, particle_type_d, pdg_type_d, split_type_d, &
+       need_color_links_d
   use weight_lines, only: pdg, pdg_uborn
   implicit none
   private
@@ -42,7 +41,7 @@ module chooser_functions_module
   public :: leshouche_inc_chooser_impl
   public :: read_configs_props_core
   public :: read_leshouche_info_impl
-  public :: get_mother_col_charge_impl
+  public :: get_mother_colour_impl
   public :: set_pdg_impl
   public :: fill_needed_splittings_impl
 
@@ -280,27 +279,18 @@ contains
 
 
   subroutine fks_inc_chooser_impl(nfksprocess, fks_j_from_i, &
-       particle_type, pdg_type, particle_charge, &
-       particle_charge_born, i_fks, j_fks, particle_type_born, &
-       particle_tag, particle_tag_born, need_color_links, &
-       need_charge_links, extra_cnt, isplitorder_born, &
-       isplitorder_cnt, split_type, is_aorg, is_charged)
+       particle_type, pdg_type, i_fks, j_fks, need_color_links, &
+       extra_cnt, isplitorder_born, isplitorder_cnt, split_type, is_aorg)
     implicit none
     integer, intent(in) :: nfksprocess
     integer, intent(inout) :: fks_j_from_i(:, 0:)
     integer, intent(out) :: particle_type(:), pdg_type(:)
-    double precision, intent(out) :: particle_charge(:)
-    double precision, intent(out) :: particle_charge_born(:)
     integer, intent(out) :: i_fks, j_fks
-    integer, intent(out) :: particle_type_born(:)
-    logical, intent(out) :: particle_tag(:), particle_tag_born(:)
-    logical, intent(out) :: need_color_links, need_charge_links
+    logical, intent(out) :: need_color_links
     integer, intent(out) :: extra_cnt, isplitorder_born
     integer, intent(out) :: isplitorder_cnt
-    logical, intent(out) :: split_type(:), is_aorg(:), is_charged(:)
-    integer :: particle, position, lower_particle, upper_particle
-    integer :: i_type, j_type, mother_type
-    double precision :: i_charge, j_charge, mother_charge
+    logical, intent(out) :: split_type(:), is_aorg(:)
+    integer :: particle, position
 
     call validate_process_dimensions()
     call validate_fks_metadata()
@@ -311,7 +301,6 @@ contains
     isplitorder_born = isplitorder_born_d(nfksprocess)
     isplitorder_cnt = isplitorder_cnt_d(nfksprocess)
     need_color_links = need_color_links_d(nfksprocess)
-    need_charge_links = need_charge_links_d(nfksprocess)
 
     do particle = 1, nexternal
       if (fks_j_from_i_d(nfksprocess, particle, 0) >= 0 .and. &
@@ -326,43 +315,8 @@ contains
       end if
       particle_type(particle) = &
            particle_type_d(nfksprocess, particle)
-      particle_tag(particle) = particle_tag_d(nfksprocess, particle)
-      particle_charge(particle) = &
-           particle_charge_d(nfksprocess, particle)
       pdg_type(particle) = pdg_type_d(nfksprocess, particle)
-      is_aorg(particle) = abs(pdg_type(particle)) == 21 .or. &
-           pdg_type(particle) == 22
-      is_charged(particle) = particle_type(particle) /= 1 .or. &
-           particle_charge(particle) /= 0d0
-    end do
-
-    lower_particle = min(i_fks, j_fks)
-    upper_particle = max(i_fks, j_fks)
-    do particle = 1, lower_particle - 1
-      particle_type_born(particle) = particle_type(particle)
-      particle_charge_born(particle) = particle_charge(particle)
-      particle_tag_born(particle) = particle_tag(particle)
-    end do
-
-    i_type = particle_type(i_fks)
-    j_type = particle_type(j_fks)
-    i_charge = particle_charge(i_fks)
-    j_charge = particle_charge(j_fks)
-    particle_tag_born(lower_particle) = particle_tag(j_fks)
-    call get_mother_col_charge_impl(i_type, i_charge, j_type, &
-         j_charge, mother_type, mother_charge, i_fks, j_fks)
-    particle_type_born(lower_particle) = mother_type
-    particle_charge_born(lower_particle) = mother_charge
-
-    do particle = lower_particle + 1, upper_particle - 1
-      particle_tag_born(particle) = particle_tag(particle)
-      particle_type_born(particle) = particle_type(particle)
-      particle_charge_born(particle) = particle_charge(particle)
-    end do
-    do particle = upper_particle + 1, nexternal
-      particle_type_born(particle - 1) = particle_type(particle)
-      particle_charge_born(particle - 1) = particle_charge(particle)
-      particle_tag_born(particle - 1) = particle_tag(particle)
+      is_aorg(particle) = abs(pdg_type(particle)) == 21
     end do
 
     do position = 1, nsplitorders
@@ -574,62 +528,38 @@ contains
   end subroutine read_leshouche_info_impl
 
 
-  subroutine get_mother_col_charge_impl(i_type, ch_i, j_type, ch_j, &
-       m_type, ch_m, i_fks, j_fks)
+  subroutine get_mother_colour_impl(i_type, j_type, m_type, i_fks, j_fks)
     implicit none
     integer, intent(in) :: i_type, j_type, i_fks, j_fks
-    double precision, intent(in) :: ch_i, ch_j
     integer, intent(out) :: m_type
-    double precision, intent(out) :: ch_m
 
-    if (abs(i_type) == abs(j_type) .and. &
-        abs(ch_i) == abs(ch_j) .and. abs(i_type) > 1) then
+    if (abs(i_type) == abs(j_type) .and. abs(i_type) > 1) then
       m_type = 8
-      ch_m = 0d0
       if ((j_fks <= nincoming .and. abs(i_type) == 3 .and. &
            j_type /= i_type) .or. &
           (j_fks > nincoming .and. abs(i_type) == 3 .and. &
            j_type /= -i_type)) then
-        write (*, *) 'Flavour mismatch #1col in get_mother_col_charge', &
+        write (*, *) 'Flavour mismatch #1 in get_mother_colour', &
              i_fks, j_fks, i_type, j_type
         stop
       end if
-    else if (abs(i_type) == abs(j_type) .and. &
-             abs(ch_i) == abs(ch_j) .and. abs(i_type) == 1) then
-      m_type = 1
-      ch_m = 0d0
-      if ((j_fks <= nincoming .and. abs(ch_i) > 0d0 .and. &
-           ch_j /= ch_i) .or. &
-          (j_fks > nincoming .and. abs(ch_i) > 0d0 .and. &
-           ch_j /= -ch_i)) then
-        write (*, *) 'Flavour mismatch #1chg in get_mother_col_charge', &
-             i_fks, j_fks, ch_i, ch_j
-        stop
-      end if
-    else if ((abs(i_type) == 3 .and. j_type == 8) .or. &
-             (abs(ch_i) > 0d0 .and. ch_j == 0d0)) then
+    else if (abs(i_type) == 3 .and. j_type == 8) then
       if (j_fks <= nincoming) then
         m_type = -i_type
-        if (m_type == -1) m_type = 1
-        ch_m = -ch_i
       else
-        write (*, *) 'Error in get_mother_col_charge: (i,j)=(q,g)'
+        write (*, *) 'Error in get_mother_colour: (i,j)=(q,g)'
         stop
       end if
-    else if ((i_type == 8 .and. abs(j_type) == 3) .or. &
-             (ch_i == 0d0 .and. abs(ch_j) > 0d0)) then
+    else if (i_type == 8 .and. abs(j_type) == 3) then
       m_type = j_type
-      ch_m = ch_j
-    else if (i_type == 8 .and. j_type == 1 .and. ch_i == 0d0 .and. &
-             ch_j == 0d0) then
+    else if (i_type == 8 .and. j_type == 1) then
       m_type = 0
-      ch_m = 0d0
     else
-      write (*, *) 'Flavour mismatch #2 in get_mother_col_charge', &
+      write (*, *) 'Flavour mismatch #2 in get_mother_colour', &
            i_type, j_type, m_type
       stop
     end if
-  end subroutine get_mother_col_charge_impl
+  end subroutine get_mother_colour_impl
 
 
   subroutine set_pdg_impl(ict, ifks, idup)
@@ -650,13 +580,10 @@ contains
       else if (particle == fks_j_d(ifks)) then
         if (abs(pdg(fks_i_d(ifks), ict)) == &
             abs(pdg(fks_j_d(ifks), ict)) .and. &
-            abs(pdg(fks_i_d(ifks), ict)) /= 21 .and. &
-            abs(pdg(fks_i_d(ifks), ict)) /= 22) then
+            abs(pdg(fks_i_d(ifks), ict)) /= 21) then
           if (extra_cnt_d(ifks) == 0) then
             if (split_type_d(ifks, qcd_pos)) then
               pdg_uborn(particle, ict) = 21
-            else if (split_type_d(ifks, qed_pos)) then
-              pdg_uborn(particle, ict) = 22
             else
               write (*, *) 'set_pdg ', &
                    'ERROR#1 in PDG assigment for underlying Born'
@@ -665,19 +592,15 @@ contains
           else
             if (isplitorder_born_d(ifks) == qcd_pos) then
               pdg_uborn(particle, ict) = 21
-            else if (isplitorder_born_d(ifks) == qcd_pos) then
-              pdg_uborn(particle, ict) = 22
             else
               write (*, *) 'set_pdg ', &
                    'ERROR#2 in PDG assigment for underlying Born'
               stop 1
             end if
           end if
-        else if (abs(pdg(fks_i_d(ifks), ict)) == 21 .or. &
-                 abs(pdg(fks_i_d(ifks), ict)) == 22) then
+        else if (abs(pdg(fks_i_d(ifks), ict)) == 21) then
           pdg_uborn(particle, ict) = pdg(fks_j_d(ifks), ict)
-        else if (pdg(fks_j_d(ifks), ict) == 21 .or. &
-                 pdg(fks_j_d(ifks), ict) == 22) then
+        else if (pdg(fks_j_d(ifks), ict) == 21) then
           pdg_uborn(particle, ict) = -pdg(fks_i_d(ifks), ict)
         else
           write (*, *) &
@@ -689,8 +612,6 @@ contains
       else if (particle == nexternal) then
         if (split_type_d(ifks, qcd_pos)) then
           pdg_uborn(particle, ict) = 21
-        else if (split_type_d(ifks, qed_pos)) then
-          pdg_uborn(particle, ict) = 22
         else
           if (ifks == 1) then
             pdg_uborn(particle, ict) = 21

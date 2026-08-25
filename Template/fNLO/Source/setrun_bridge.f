@@ -8,7 +8,6 @@ c-----------------------------------------------------------------------
       use setrun_module, only: complete_setrun
       implicit none
 
-      call init_ewsudakov_defaults_bridge()
       call reset_run_state()
       call initialize_extra_weights()
       include 'run_card.inc'

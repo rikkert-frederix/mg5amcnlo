@@ -64,11 +64,11 @@ contains
   end subroutine finalize_iproc_map_workspace
 
 
-  subroutine map_iproc_configuration(nfksprocess, qcd_pos, qed_pos, &
+  subroutine map_iproc_configuration(nfksprocess, qcd_pos, &
        split_type, idup, i_fks, j_fks, iproc, iproc_save, eto, etoi, &
        maxproc_found)
     implicit none
-    integer, intent(in) :: nfksprocess, qcd_pos, qed_pos
+    integer, intent(in) :: nfksprocess, qcd_pos
     logical, intent(in) :: split_type(:)
     integer, intent(in) :: idup(:, :)
     integer, intent(in) :: i_fks, j_fks, iproc
@@ -78,7 +78,7 @@ contains
 
     integer :: i, ii, j, jj, nequal
     integer :: mother_position, removed_position
-    logical :: qcd_split, qed_split
+    logical :: qcd_split
 
     call check_iproc_workspace(size(idup, 1), size(idup, 2))
 
@@ -103,9 +103,8 @@ contains
     end if
 
     qcd_split = split_order_is_active(qcd_pos, split_type)
-    qed_split = split_order_is_active(qed_pos, split_type)
-    if (qcd_split .and. qed_split) then
-      write(*,*) 'IPROCMAP: NOT IMPLEMENTED'
+    if (.not. qcd_split) then
+      write(*,*) 'No active QCD splitting in iproc_map', nfksprocess
       stop
     end if
 
@@ -121,20 +120,10 @@ contains
       do i = 1, size(idup, 1) - 1
         if (i == mother_position) then
           if (abs(idup(i_fks, j)) == abs(idup(j_fks, j))) then
-            if (qcd_split) then
-              current_ids(i, j) = 21
-            else if (qed_split) then
-              current_ids(i, j) = 22
-            else
-              write(*,*) 'No active splitting order in iproc_map', &
-                   nfksprocess
-              stop
-            end if
-          else if (abs(idup(i_fks, j)) == 21 .or. &
-               idup(i_fks, j) == 22) then
+            current_ids(i, j) = 21
+          else if (abs(idup(i_fks, j)) == 21) then
             current_ids(i, j) = idup(j_fks, j)
-          else if (idup(j_fks, j) == 21 .or. &
-               idup(j_fks, j) == 22) then
+          else if (idup(j_fks, j) == 21) then
             current_ids(i, j) = -idup(i_fks, j)
           else
             write(*,*) 'Error #1 in iproc_map', nfksprocess, &

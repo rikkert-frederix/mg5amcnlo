@@ -6,7 +6,6 @@ module timing_state
   real, public :: tIS
   real, public :: tReal
   real, public :: tCount
-  real, public :: tFxFx
   real, public :: tf_nb
   real, public :: tf_all
   real, public :: t_as
@@ -17,12 +16,11 @@ module timing_state
   real, public :: t_isum
   real, public :: tOLP
   real, public :: tGenPS
-  real, public :: t_ewsud
   real, public :: t_coupl
 
-  common /timings/ tBorn, tIS, tReal, tCount, tFxFx, tf_nb, tf_all, &
+  common /timings/ tBorn, tIS, tReal, tCount, tf_nb, tf_all, &
        t_as, tr_s, tr_pdf, t_plot, t_cuts, t_isum, tOLP, tGenPS, &
-       t_ewsud, t_coupl
+       t_coupl
 
   public :: reset_timing_state
 
@@ -35,7 +33,6 @@ contains
     tIS = 0.0
     tReal = 0.0
     tCount = 0.0
-    tFxFx = 0.0
     tf_nb = 0.0
     tf_all = 0.0
     t_as = 0.0
@@ -46,7 +43,6 @@ contains
     t_isum = 0.0
     tOLP = 0.0
     tGenPS = 0.0
-    t_ewsud = 0.0
     t_coupl = 0.0
   end subroutine reset_timing_state
 
