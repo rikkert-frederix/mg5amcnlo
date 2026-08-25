@@ -7,8 +7,7 @@ CUTTOOLSDIR= ./CutTools/
 IREGIDIR= ./IREGI/src/
 
 GENERIC = $(alfas_functions).o rw_routines.o kin_functions.o		\
-	  run_printout.o dgauss.o ranmar.o setrun.o derivative.o	\
-	  zerox64_cernlib.o
+	  run_printout.o dgauss.o ranmar.o setrun.o
 
 ifneq ("$(wildcard ./RUNNING)","")
 	LINKLIBS += -lrunning

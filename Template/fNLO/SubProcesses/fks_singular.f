@@ -1262,8 +1262,6 @@ c f_* multiplication factors for Born and nbody
       double precision p_born_used(0:3,nexternal-1)
       double precision p_born(0:3,nexternal-1)
       common/pborn/    p_born
-      double precision p_born_ev(0:3,nexternal-1)
-      common/pborn_ev/ p_born_ev
       double precision p_born_coll(0:3,nexternal-1)
       common/pborn_coll/p_born_coll
       double precision p_born_norad(0:3,nexternal-1)
@@ -1293,11 +1291,6 @@ c f_* multiplication factors for Born and nbody
       common/factor_n1body/f_r,f_s,f_c,f_dc,f_sc,f_dsc
       double precision f_pdfsch_d,f_pdfsch_p,f_pdfsch_l
       common/factor_pdfsch/f_pdfsch_d,f_pdfsch_p,f_pdfsch_l
-      integer igranny,iaunt
-      logical granny_chain(-nexternal:nexternal),granny_is_res
-     &     ,granny_chain_real_final(-nexternal:nexternal)
-      common /c_granny_res/igranny,iaunt,granny_is_res,granny_chain
-     &     ,granny_chain_real_final
       logical calculatedBorn
       common/ccalculatedBorn/calculatedBorn
       logical use_evpr
@@ -1339,14 +1332,12 @@ c Compute the multi-channel enhancement factor 'enhance'.
          endif
       endif
 
-c In the case there is the special phase-space mapping for resonances,
-C or when not doing event projection
-c use the Born computed with those as the mapping.
+c When not doing event projection, use the Born point computed by that
+c mapping for the real multi-channel enhancement.
       enhance_real=1.d0
-      if ((granny_is_res .or. .not.use_evpr).and. imode.eq.2) then
-         if (granny_is_res) p_born_used(:,:) = p_born_ev(:,:) 
-         if (.not.use_evpr) p_born_used(:,:) = p_born_norad(:,:) 
-         if (p_born_ev(0,1).gt.0d0) then
+      if (.not.use_evpr.and.imode.eq.2) then
+         p_born_used(:,:) = p_born_norad(:,:)
+         if (p_born_used(0,1).gt.0d0) then
             calculatedBorn=.false.
             pas(0:3,nexternal)=0d0
             pas(0:3,1:nexternal-1)=p_born_used(0:3,1:nexternal-1)
@@ -6220,177 +6211,6 @@ c Check to see if this channel needs to be included in the multi-channeling
       enddo
       goto 12
       end
-
-      subroutine set_granny(nFKSprocess,iconf,mass_min)
-c This determines of the grandmother of the FKS pair is a resonance. If
-c so, set granny_is_res=.true. and also set to which internal propagator
-c the grandmother corresponds (igranny) as well as the aunt (iaunt).
-c This information can be used to improve the phase-space
-c parametrisation.
-      use mint_module
-      implicit none
-      include 'genps.inc'
-      include 'nexternal.inc'
-      include 'nFKSconfigs.inc'
-c arguments
-      integer nFKSprocess,iconf
-      double precision mass_min(-nexternal:nexternal)
-c common block that is filled by this subroutine
-      logical granny_is_res
-      integer igranny,iaunt
-      logical granny_chain(-nexternal:nexternal)
-     &     ,granny_chain_real_final(-nexternal:nexternal)
-      common /c_granny_res/igranny,iaunt,granny_is_res,granny_chain
-     &     ,granny_chain_real_final
-c other common blocks
-      integer i_fks,j_fks
-      common/fks_indices/i_fks,j_fks
-c     local
-      integer size
-      parameter (size=fks_configs*maxchannels)
-      logical firsttime_fks(fks_configs,maxchannels)
-      data firsttime_fks/size*.true./
-      integer i,imother
-c save
-      logical granny_is_res_fks(fks_configs,maxchannels)
-      integer igranny_fks(fks_configs,maxchannels),iaunt_fks(fks_configs
-     $     ,maxchannels)
-      logical granny_chain_fks(-nexternal:nexternal,fks_configs
-     $     ,maxchannels)
-      save granny_is_res_fks,igranny_fks,iaunt_fks,granny_chain_fks
-c itree info
-      include 'born_conf.inc'
-c propagator info
-      double precision zero
-      parameter (zero=0d0)
-      double precision pmass(-nexternal:0,lmaxconfigs)
-      double precision pwidth(-nexternal:0,lmaxconfigs)
-      integer pow(-nexternal:0,lmaxconfigs)
-      include 'coupl.inc'
-      include 'born_props.inc'
-c
-c If it's the firsttime going into this subroutine for this nFKSprocess,
-c save all the relevant information so that for later calls a simple
-c copy will do.
-      if (firsttime_fks(nFKSprocess,ichan)) then
-         firsttime_fks(nFKSprocess,ichan)=.false.
-c need to have at least 2->3 (or 1->3) process to have non-trivial
-c grandmother
-         if (nexternal-nincoming.lt.3) then
-            igranny_fks(nFKSprocess,ichan)=0
-            iaunt_fks(nFKSprocess,ichan)=0
-            granny_is_res_fks(nFKSprocess,ichan)=.false.
-            igranny=0
-            iaunt=0
-            granny_is_res=.false.
-            return
-c j_fks needs to be final state to have non-trivial grandmother
-         elseif (j_fks.le.nincoming) then
-            igranny_fks(nFKSprocess,ichan)=0
-            iaunt_fks(nFKSprocess,ichan)=0
-            granny_is_res_fks(nFKSprocess,ichan)=.false.
-            igranny=0
-            iaunt=0
-            granny_is_res=.false.
-            return
-         endif
-c determine if grandmother is an s-channel particle. If so, set igranny
-c and iaunt.
-         imother=min(i_fks,j_fks)
-         do i=-1,-(nexternal-(2+nincoming)),-1
-            if (iforest(1,i,iconf).eq.1 .or.
-     &              iforest(1,i,iconf).eq.2) then
-c no more s-channels, so exit the do-loop and set igranny=0
-               igranny_fks(nFKSprocess,ichan)=0
-               iaunt_fks(nFKSprocess,ichan)=0
-               exit
-            elseif (iforest(1,i,iconf).eq.imother) then
-c Daughter 1 is the fks_mother.
-               igranny_fks(nFKSprocess,ichan)=i
-               iaunt_fks(nFKSprocess,ichan)=iforest(2,i,iconf)
-               exit
-            elseif (iforest(2,i,iconf).eq.imother) then
-c Daughter 2 is the fks_mother.
-               igranny_fks(nFKSprocess,ichan)=i
-               iaunt_fks(nFKSprocess,ichan)=iforest(1,i,iconf)
-               exit
-            endif
-         enddo
-c If there is an s-channel grandmother, determine if it's a resonance by
-c making sure that it's massive and has a non-zero width. In the special
-c case that the grandmother is the s-hat propagator (which means that
-c the process has no t-channels), set granny_is_res to false.
-         if (igranny_fks(nFKSprocess,ichan).ne.0 .and.
-     $        igranny_fks(nFKSprocess,ichan).ne.-(nexternal-(2+nincoming))) then
-            if (pmass(igranny_fks(nFKSprocess,ichan),iconf).ne.0d0 .and.
-     $           pwidth(igranny_fks(nFKSprocess,ichan),iconf).gt.0d0) then
-               ! also check if the sum of all the masses of all final
-               ! state particles originating from the granny is smaller
-               ! than the mass of the granny. Otherwise it will never be
-               ! on-shell, and we don't need the special mapping.
-               if (pmass(igranny_fks(nFKSprocess,ichan),iconf) .gt.
-     $              mass_min(igranny_fks(nFKSprocess,ichan))) then
-                  granny_is_res_fks(nFKSprocess,ichan)=.true.
-               else
-                  granny_is_res_fks(nFKSprocess,ichan)=.false.
-               endif
-            else
-               granny_is_res_fks(nFKSprocess,ichan)=.false.
-            endif
-         else
-            granny_is_res_fks(nFKSprocess,ichan)=.false.
-         endif
-c Now we have igranny and granny_is_res_fks. We can now determine the
-c chain of s-channels that originates from the grandmother
-         do i=-nexternal,nexternal
-            granny_chain_fks(i,nFKSprocess,ichan)=.false.
-         enddo
-         if (granny_is_res_fks(nFKSprocess,ichan)) then
-c granny is part of the chain            
-            granny_chain_fks(igranny_fks(nFKSprocess,ichan),nFKSprocess,ichan)
-     &           =.true.
-c loop from the granny to the external particles. If mother was part of
-c the granny chain, so are the daugthers.
-            do i=igranny_fks(nFKSprocess,ichan),-1
-               if (granny_chain_fks(i,nFKSprocess,ichan)) then
-                  granny_chain_fks(iforest(1,i,iconf),nFKSprocess,ichan) =
-     $                 .true.
-                  granny_chain_fks(iforest(2,i,iconf),nFKSprocess,ichan) =
-     $                 .true.
-               endif
-            enddo
-         endif
-      endif
-c Here is the simply copy for later calls to this subroutine: set
-c igranny, iaunt and granny_is_res from the saved information
-      if (granny_is_res_fks(nFKSprocess,ichan)) then
-         igranny=igranny_fks(nFKSprocess,ichan)
-         iaunt=iaunt_fks(nFKSprocess,ichan)
-         granny_is_res=.true.
-         do i=-nexternal,nexternal
-            granny_chain(i)=granny_chain_fks(i,nFKSprocess,ichan)
-            if (i.le.0) then
-               granny_chain_real_final(i)=.false.
-            elseif (i.lt.max(i_fks,j_fks)) then
-               granny_chain_real_final(i)=granny_chain(i)
-            elseif(i.eq.max(i_fks,j_fks)) then
-               granny_chain_real_final(i)=.true.
-            else
-               granny_chain_real_final(i)=granny_chain(i-1)
-            endif
-         enddo
-      else
-         igranny=0
-         iaunt=0
-         granny_is_res=.false.
-         do i=-nexternal,nexternal
-            granny_chain(i)=.false.
-            granny_chain_real_final(i)=.false.
-         enddo
-      endif
-      return
-      end
-
 
       subroutine set_mu_central(ic,dd,c_mu2_r,c_mu2_f)
       use weight_lines
