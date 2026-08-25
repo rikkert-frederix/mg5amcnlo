@@ -492,26 +492,6 @@ c value to the list of weights using the add_wgt subroutine
       if (f_nb.eq.0d0) return
       if (xi_i_hat_ev*xiimax_cnt(0) .gt. xiBSVcut_used) return
       call bornsoftvirtual(p1_cnt(0,1,0),bsv_wgt,virt_wgt,born_wgt)
-      if (ickkw.eq.-1) then
-         if (wgtbpower.ne.0) then
-            write (*,*) 'ERROR in VETO XSec: bpower should'/
-     $           /' be zero (no QCD partons at the'/
-     $           /' Born allowed)', wgtbpower
-         endif
-         H1_factor_virt=virt_wgt/(g22/(4d0*pi))/born_wgt
-         born_wgt_veto=born_wgt/g2
-         call compute_veto_compensating_factor(H1_factor_virt
-     $        ,born_wgt_veto,1d0,1d0,veto_compensating_factor)
-C Since VETOXSEC must still be adapted in FKS_EW, I put a dummy
-C order array here which I arbitrarily chose to be the (-1,-1)
-C to make sure that it cannot be incorrectly understood.
-         do i=1,nsplitorders
-           orders(i)=-1
-         enddo
-         call add_wgt(7,orders,-veto_compensating_factor*f_nb,0d0,0d0)
-        write(*,*) 'FIX VETOXSEC in FKS_EW'
-        stop
-      endif
       iamp_test=0
       do iamp=1, amp_split_size
         if (amp_split_wgtnstmp(iamp).eq.0d0.and.
@@ -613,7 +593,7 @@ C wrt the hard matrix element. Relevant for lepton collisions.
       return
       end
 
-      subroutine compute_real_emission(p,sudakov_damp)
+      subroutine compute_real_emission(p)
 c This subroutine computes the real-emission matrix elements and adds
 c its value to the list of weights using the add_wgt subroutine
       use extra_weights
@@ -625,7 +605,6 @@ c its value to the list of weights using the add_wgt subroutine
       integer orders(nsplitorders)
       integer iamp
       double precision s_ev,fks_Sij,p(0:3,nexternal),wgt1,fx_ev
-     $     ,sudakov_damp
       external fks_Sij
       integer            i_fks,j_fks
       common/fks_indices/i_fks,j_fks
@@ -649,12 +628,7 @@ c its value to the list of weights using the add_wgt subroutine
         orders_tag=get_orders_tag(orders)
         amp_pos=iamp
         wgt1=amp_split(iamp)*s_ev*f_r/g**(qcd_power)
-        if (sudakov_damp.gt.0d0) then
-          call add_wgt(1,orders,wgt1*sudakov_damp,0d0,0d0)
-        endif
-        if (sudakov_damp.lt.1d0) then
-          call add_wgt(11,orders,wgt1*(1d0-sudakov_damp),0d0,0d0)
-        endif
+        call add_wgt(1,orders,wgt1,0d0,0d0)
       enddo
       call cpu_time(tAfter)
       tReal=tReal+(tAfter-tBefore)
@@ -1033,7 +1007,7 @@ c     iterm= -3 : only restore scales for n+1-body w/o recomputing
      &     ,nfxfx_ren_scales_izero,nfxfx_ren_scales_mohdr
       double precision p(0:3,nexternal),p_last_izero(0:3,nexternal)
      &     ,p_last_mohdr(0:3,nexternal),rewgt,rewgt_izero,rewgt_mohdr
-     &     ,rewgt_exp_izero,rewgt_exp_mohdr,pthardness
+     &     ,rewgt_exp_izero,rewgt_exp_mohdr
      &     ,fxfx_ren_scales_izero(0:nexternal),fxfx_fac_scale_izero(2)
      &     ,fxfx_ren_scales_mohdr(0:nexternal),fxfx_fac_scale_mohdr(2)
       logical setclscales,rewgt_izero_calculated,rewgt_mohdr_calculated
@@ -1068,11 +1042,6 @@ c     iterm= -3 : only restore scales for n+1-body w/o recomputing
       common /c_need_matching/ need_matching_S,need_matching_H
      $     ,need_matching_cuts
       save need_matching_izero
-      double precision shower_S_scale(fks_configs*2)
-     &     ,shower_H_scale(fks_configs*2),ref_H_scale(fks_configs*2)
-     &     ,pt_hardness
-      common /cshowerscale2/shower_S_scale,shower_H_scale,ref_H_scale
-     &     ,pt_hardness
       call cpu_time(tBefore)
       ktscheme=1
       if (iterm.eq.0) then
@@ -1103,12 +1072,6 @@ c n-body momenta FxFx Sudakov factor (i.e. for S-events)
      $           ,1,need_matching_S(i_fks:nexternal-1)]
             need_matching_izero(1:nexternal)=
      $           need_matching_S(1:nexternal)
-c Update shower starting scale to be the scale down to which the MINLO
-c Sudakov factors are included.
-            shower_S_scale(nFKSprocess*2-1)=
-     $           minval(FxFx_ren_scales(0:nFxFx_ren_scales))
-            shower_S_scale(nFKSprocess*2)=
-     $           shower_S_scale(nFKSprocess*2-1)
          endif
          rewgt_izero_calculated=.true.
          iterm_last_izero=iterm
@@ -1156,19 +1119,6 @@ c n+1-body momenta FxFx Sudakov factor (i.e. for H-events)
             rewgt_mohdr=min(rewgt_mohdr,1d0)
             need_matching_H(1:nexternal)=need_matching(1:nexternal)
             need_matching_cuts(1:nexternal)=need_matching_H(1:nexternal)
-c Update shower starting scale
-            pthardness=ref_H_scale(nFKSprocess*2)-
-     $           shower_H_scale(nFKSprocess*2)
-            shower_H_scale(nFKSprocess*2)=
-     $           minval(FxFx_ren_scales(0:nFxFx_ren_scales))
-            ref_H_scale(nFKSprocess*2)=shower_H_scale(nFKSprocess*2)
-     $           +pthardness
-            pthardness=ref_H_scale(nFKSprocess*2-1)-
-     $           shower_H_scale(nFKSprocess*2-1)
-            shower_H_scale(nFKSprocess*2-1)= 
-     $           shower_H_scale(nFKSprocess*2)
-            ref_H_scale(nFKSprocess*2-1)=shower_H_scale(nFKSprocess*2-1)
-     $           +pthardness
          endif
          rewgt_mohdr_calculated=.true.
          iterm_last_mohdr=iterm
@@ -1615,8 +1565,6 @@ c     type=3 : integrated counter terms
 c     type=4 : soft counter-term
 c     type=5 : collinear counter-term
 c     type=6 : soft-collinear counter-term
-c     type=7 : O(alphaS) expansion of Sudakov factor for NNLL+NLO
-c     type=11: real-emission (with n-body kin.)
 c     type=14: virtual corrections
 c     type=15: virt-trick: average born contribution
 c     type=20+x: EW sudakov, x=sud_mod
@@ -1859,8 +1807,7 @@ c Real-emission contribution with n+1-body kinematics.
             enddo
          enddo
          H_event(icontr)=.true.
-      elseif(type.ge.2 .and. type.le.7 .or. type.eq.11
-     $        .or. type.eq.14 .or. type.eq.15
+      elseif(type.ge.2 .and. type.le.6 .or. type.eq.14 .or. type.eq.15
      $        .or. (type.ge.20 .and. type.le.22)) then
 c Born, counter term, soft-virtual, or n-body real contributions.
          do i=1,nexternal
@@ -1875,29 +1822,6 @@ c Born, counter term, soft-virtual, or n-body real contributions.
       endif
       return
       end
-
-
-      subroutine include_veto_multiplier
-      use weight_lines
-      use extra_weights
-      implicit none
-c Multiply all the weights by the NNLL-NLO jet veto Sudakov factors,
-c i.e., the term on the 2nd line of Eq.(20) of arXiv:1412.8408.
-      include 'nexternal.inc'
-      integer i,j
-      if (H1_factor_virt.ne.0d0) then
-         call compute_veto_multiplier(H1_factor_virt,1d0,1d0
-     &        ,veto_multiplier)
-         do i=1,icontr
-            do j=1,3
-               wgt(j,i)=wgt(j,i)*veto_multiplier
-            enddo
-         enddo
-      else
-         veto_multiplier=1d0
-      endif
-      end
-      
       subroutine include_PDF_and_alphas
 c Multiply the saved wgt() info by the PDFs, alpha_S and the scale
 c dependence and saves the weights in the wgts() array. The weights in
@@ -2009,10 +1933,10 @@ c and not be part of the plots nor computation of the cross section.
       use weight_lines
       implicit none
       include 'nexternal.inc'
-      logical              fixed_order,nlo_ps
-      common /c_fnlo_nlops/fixed_order,nlo_ps
+      logical fixed_order
+      common /c_fixed_order/fixed_order
       integer ict,i_add,i,j,k,ict_new,n
-      if ((.not.fixed_order).or.nlo_ps .or. niproc(ict).eq.1) then
+      if ((.not.fixed_order).or.niproc(ict).eq.1) then
          return
       endif
       i_add=niproc(ict)-1
@@ -2228,113 +2152,6 @@ c add the weights to the array
       return
       end
 
-      subroutine reweight_scale_NNLL
-c Use the saved weight lines info to perform scale reweighting. Extends the
-c wgts() array to include the weights. Special for the NNLL+NLO jet-veto
-c computations (ickkw.eq.-1).
-      use weight_lines
-      use extra_weights
-      use FKSParams
-      implicit none
-      include 'nexternal.inc'
-      include 'run.inc'
-      include 'timing_variables.inc'
-      include 'genps.inc'
-      integer i,ks,kh,iwgt_save
-      double precision xlum(maxscales),dlum,pi,mu2_r(maxscales)
-     &     ,mu2_f(maxscales),mu2_q,alphas,g(maxscales),rwgt_muR_dep_fac
-     &     ,veto_multiplier_new(maxscales,maxscales)
-     &     ,veto_compensating_factor_new,conv
-      external rwgt_muR_dep_fac
-      parameter (pi=3.1415926535897932385d0)
-      external dlum,alphas
-      integer              nFKSprocess
-      common/c_nFKSprocess/nFKSprocess
-      INTEGER              IPROC
-      DOUBLE PRECISION PD(0:MAXPROC)
-      COMMON /SUBPROC/ PD, IPROC
-      parameter (conv=389379660d0) ! conversion to picobarns
-      call cpu_time(tBefore)
-      write(*,*) 'FIX NLLL'
-      stop 1
-      if (icontr.eq.0) return
-      if (dyn_scale(0).gt.1) then
-         write (*,*) "When doing NNLL+NLO veto, "/
-     $        /"can only do one dynamical_scale_choice",dyn_scale(0)
-         stop
-      endif
-
-c currently we have 'iwgt' weights in the wgts() array.
-      iwgt_save=iwgt
-c compute the new veto multiplier factor      
-      do ks=1,nint(scalevarR(0))
-         if ((.not. lscalevar(1)) .and. ks.ne.1) exit
-         do kh=1,nint(scalevarF(0))
-            if ((.not. lscalevar(1)) .and. kh.ne.1) exit
-            if (H1_factor_virt.ne.0d0) then
-               call compute_veto_multiplier(H1_factor_virt,scalevarR(ks)
-     $              ,scalevarF(kh),veto_multiplier_new(ks,kh))
-               veto_multiplier_new(ks,kh)=veto_multiplier_new(ks,kh)
-     &              /veto_multiplier
-            else
-               veto_multiplier_new(ks,kh)=1d0
-            endif
-         enddo
-      enddo
-c loop over all the contributions in the weight lines module
-      do i=1,icontr
-         iwgt=iwgt_save
-         nFKSprocess=nFKS(i)
-         xbk(1) = bjx(1,i)
-         xbk(2) = bjx(2,i)
-         mu2_q=scales2(1,i)
-c Hard scale variation
-         do kh=1,nint(scalevarF(0))
-            if ((.not. lscalevar(1)) .and. kh.ne.1) exit
-c soft scale variation
-            do ks=1,nint(scalevarR(0))
-               if ((.not. lscalevar(1)) .and. ks.ne.1) exit
-               mu2_r(ks)=scales2(2,i)*scalevarR(ks)**2
-               g(ks)=sqrt(4d0*pi*alphas(sqrt(mu2_r(ks))))
-               mu2_f(ks)=scales2(2,i)*scalevarR(ks)**2
-               q2fact(1)=mu2_f(ks)
-               q2fact(2)=mu2_f(ks)
-               xlum(ks) = dlum()
-               if (separate_flavour_configs .and. ipr(i).ne.0) then
-                  if (nincoming.eq.2) then
-                     xlum=pd(ipr(i))*conv
-                  else
-                     xlum=pd(ipr(i))
-                  endif
-               endif
-               iwgt=iwgt+1      ! increment the iwgt for the wgts() array
-               call weight_lines_allocated(nexternal,max_contr,iwgt
-     $              ,max_iproc)
-c add the weights to the array
-               if (itype(i).ne.7) then
-                  wgts(iwgt,i)=xlum(ks) * (wgt(1,i)+wgt(2,i)
-     &                 *log(mu2_r(ks)/mu2_q)+wgt(3,i)*log(mu2_f(ks)
-     &                 /mu2_q))*g(ks)**QCDpower(i)
-               else
-c special for the itype=7 (i.e, the veto-compensating factor)                  
-                  call compute_veto_compensating_factor(H1_factor_virt
-     &                 ,born_wgt_veto,scalevarR(ks),scalevarF(kh)
-     &                 ,veto_compensating_factor_new)
-                  wgts(iwgt,i)=xlum(ks) * wgt(1,i)*g(ks)**QCDpower(i)
-     &                 /veto_compensating_factor
-     &                 *veto_compensating_factor_new
-               endif
-               wgts(iwgt,i)=wgts(iwgt,i)*rwgt_muR_dep_fac(
-     &              sqrt(mu2_r(ks)),sqrt(scales2(2,i)),cpower(i))
-               wgts(iwgt,i)=wgts(iwgt,i)*veto_multiplier_new(ks,kh)
-            enddo
-         enddo
-      enddo
-      call cpu_time(tAfter)
-      tr_s=tr_s+(tAfter-tBefore)
-      return
-      end
-
       subroutine reweight_pdf
 c Use the saved weight_lines info to perform PDF reweighting. Extends the
 c wgts() array to include the weights.
@@ -2538,7 +2355,7 @@ c section
       if (icontr.eq.0) return
       do i=1,icontr
          if (itype(i).eq.2 .or. itype(i).eq.3 .or. itype(i).eq.14 .or.
-     &        itype(i).eq.7 .or. itype(i).eq.15) then
+     &        itype(i).eq.15) then
             sig=sig+wgts(1,i)
          endif
       enddo
@@ -2557,7 +2374,7 @@ c excluding the nbody contributions.
       if (icontr.eq.0) return
       do i=1,icontr
          if (itype(i).ne.2 .and. itype(i).ne.3 .and. itype(i).ne.14
-     &        .and. itype(i).ne.7 .and. itype(i).ne.15.and.itype(i).lt.20) then
+     &        .and. itype(i).ne.15.and.itype(i).lt.20) then
              ! MZ <20 is needed to exclude the ew sudakov 
             sig=sig+wgts(1,i)
          endif
@@ -5340,22 +5157,20 @@ CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
                amp_split_virt(iamp)=amp_split_finite_ML(iamp)
             enddo
             virtual_over_born=virt_wgt/born_wgt
-            if (ickkw.ne.-1) then
-               virt_wgt = 0d0
-               do iamp=1,amp_split_size
-                  if (amp_split_virt(iamp).eq.0d0) cycle
-                  if (use_poly_virtual) then
-                     amp_split_virt(iamp)=amp_split_virt(iamp)-
-     $                    polyfit(iamp)
-     $                    *amp_split_born_for_virt(iamp)
-                  else
-                     amp_split_virt(iamp)=amp_split_virt(iamp)-
-     $                    average_virtual(iamp,ichan)
-     $                     *amp_split_born_for_virt(iamp)
-                  endif
-                  virt_wgt = virt_wgt + amp_split_virt(iamp)
-               enddo
-            endif
+            virt_wgt = 0d0
+            do iamp=1,amp_split_size
+               if (amp_split_virt(iamp).eq.0d0) cycle
+               if (use_poly_virtual) then
+                  amp_split_virt(iamp)=amp_split_virt(iamp)-
+     $                 polyfit(iamp)
+     $                 *amp_split_born_for_virt(iamp)
+               else
+                  amp_split_virt(iamp)=amp_split_virt(iamp)-
+     $                 average_virtual(iamp,ichan)
+     $                 *amp_split_born_for_virt(iamp)
+               endif
+               virt_wgt = virt_wgt + amp_split_virt(iamp)
+            enddo
             if (abrv.ne.'virt') then
                virt_wgt=virt_wgt/virtual_fraction(ichan)
                do iamp=1,amp_split_size
@@ -5374,7 +5189,7 @@ CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
          amp_split_virt(1:amp_split_size)=
      $        amp_split_virt_save(1:amp_split_size)
       endif
-      if (abrv(1:4).ne.'virt' .and. ickkw.ne.-1) then
+      if (abrv(1:4).ne.'virt') then
          if (use_poly_virtual) then
             avv_wgt=polyfit(0)*born_wgt
             do iamp=1, amp_split_size
@@ -6004,7 +5819,7 @@ c
       end
 
 
-      subroutine setfksfactor(match_to_shower)
+      subroutine setfksfactor
       use weight_lines
       use extra_weights
       use mint_module
@@ -6024,7 +5839,6 @@ c
       common/sctests/softtest,colltest
 
       integer config_fks,i,j,fac1,fac2,kchan
-      logical match_to_shower
 
       double precision fkssymmetryfactor,fkssymmetryfactorBorn,
      &     fkssymmetryfactorDeg
@@ -6322,12 +6136,6 @@ c (should be the one in the real instead).
      &          dble(iden_real_FKS(nFKSprocess))
 
       
-c The fNLO template supports fixed-order computations only.
-      if (match_to_shower) then
-         write (*,*) 'ERROR: shower matching is not available in fNLO'
-         stop 1
-      endif
-
       fac_i=fac_i_FKS(nFKSprocess)
       fac_j=fac_j_FKS(nFKSprocess)
       ngluons=ngluons_FKS(nFKSprocess)

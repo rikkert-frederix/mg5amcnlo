@@ -80,8 +80,7 @@ c        Binomial statistics: use for unweighted events. (Assumes that
 c        all events have equal weight (up to a sign)).
 c     input 1: Simply sum all PS points; error is estimated by the
 c        variance between the separate iterations. This assumes that
-c        each iteration has the same number of PS points (This is the
-c        topdrawer default in MG5_aMC).
+c        each iteration has the same number of PS points.
 c     input 2: Sum PS points for a given iteration and error estimate by
 c       square root of the sum of the squares. Perform a weighted average
 c       iteration-by-iteration
@@ -665,6 +664,5 @@ c dummy subroutine
       subroutine addfil(string)
       character*(*) string
       end
-
 
 

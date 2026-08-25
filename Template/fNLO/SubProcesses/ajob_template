@@ -64,14 +64,8 @@ TAGTAGTAGTAGTAGTAGTAG for i in 1 ; do
     if  [[ -e log.txt ]] ; then
 	rm -f log.txt
     fi
-    if  [[ -e MADatNLO.top ]] ; then
-	rm -f MADatNLO.top
-    fi
     if  [[ -e MADatNLO.HwU ]] ; then
 	rm -f MADatNLO.HwU
-    fi
-    if  [[ -e MADatNLO.root ]] ; then
-	rm -f MADatNLO.root
     fi
     if  [[ -e randinit ]] ; then
 	rm -f randinit

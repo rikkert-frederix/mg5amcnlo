@@ -6784,11 +6784,20 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                     raise Exception( "Your model is identified as not fully supported within MG5aMC.\n" +\
                       "You can NOT run with FxFx/UnLOPS matching/merging. Please check if merging outside MG5aMC are suitable or refrain to use merging with this model")
             
-            # ensure that for fixed order ICKKW model are not set to FxFx and/or UNLOPS
+            # Ordinary fixed-order NLO runs do not support FxFx or UNLOPS.
+            # The dedicated fNLO template retains the fixed-order FxFx
+            # clustering/reweighting implementation, but neither UNLOPS nor
+            # the NNLL+NLO jet-veto mode.
             if 'shower_cards' not in self.cards and self.opt['switch']['fixed_order'] == 'ON':
-                if self.run_card['ickkw'] in [3,4]:
-                    # 3 is FxFx and 4 is UNLOPS
-                    mergemode = {3:'FxFx', 4:'UNLOPS'}
+                fixed_order_only = proc_charac and \
+                    'fixed_order_only' in proc_charac and \
+                    proc_charac['fixed_order_only'] in \
+                    [True, 'True', 'true', 'T', '.true.']
+                unsupported_ickkw = [-1, 4] if fixed_order_only else [3, 4]
+                if self.run_card['ickkw'] in unsupported_ickkw:
+                    # -1 is NNLL+NLO jet veto, 3 is FxFx and 4 is UNLOPS
+                    mergemode = {
+                        -1: 'NNLL+NLO jet veto', 3: 'FxFx', 4: 'UNLOPS'}
                     raise Exception("You are running in fixed order mode but ICKKW is set to %s (%s). This does not make sense. Please fix and retry" %(self.run_card['ickkw'], mergemode[self.run_card['ickkw']]))
 
 
@@ -8169,6 +8178,3 @@ def scanparamcardhandling(input_path=lambda obj: pjoin(obj.me_dir, 'Cards', 'par
 
         return new_fct
     return decorator    
-
-
-

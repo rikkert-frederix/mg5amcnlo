@@ -176,7 +176,7 @@ c Note that tests are always performed at fixed energy with Bjorken x=1.
       do iconfig=bs_min,bs_max  ! Born configurations
          ichan=1
          iconfigs(1)=iconfig
-         call setfksfactor(.false.)
+         call setfksfactor
          call setcuts
          ntry=1
 

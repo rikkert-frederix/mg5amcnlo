@@ -145,7 +145,7 @@ c need to be included, and we can simply quit the process.
       endif
       call fks_inc_chooser()
       call leshouche_inc_chooser()
-      call setfksfactor(.false.)
+      call setfksfactor
       symfactvirt = 1d0
 
       nfail = 0

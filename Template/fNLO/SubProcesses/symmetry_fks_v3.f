@@ -94,7 +94,7 @@ c factors. Hence, simply use the first fks_configuration.
       iconfig=1
       ichan=1
       iconfigs(1)=iconfig
-      call setfksfactor(.false.)
+      call setfksfactor
 c
       ndim = 3*(nexternal-nincoming)-4
       if (abs(lpp(1)).ge.1) ndim=ndim+1

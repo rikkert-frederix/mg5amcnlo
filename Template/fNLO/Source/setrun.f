@@ -32,8 +32,6 @@ c
       logical pineappl
       common /for_pineappl/ pineappl
       integer idum
-      logical              fixed_order,nlo_ps
-      common /c_fnlo_nlops/fixed_order,nlo_ps
 c jet-rate distance. To be set to 1 for FxFx
       double precision D
       common/to_dj/D
@@ -46,8 +44,6 @@ c Set UPC parameter
         call get_nucleus_RA(nb_proton(1),nb_neutron(1),RAI(1))
         call get_nucleus_RA(nb_proton(2),nb_neutron(2),RAI(2))
       endif
-c Change shower_MC string to upper case
-      call to_upper(shower_MC)
 c Determine if there is a need to do scale and/or PDF reweighting
       do_rwgt_scale=.false.
       do i=1,dyn_scale(0)
@@ -98,9 +94,8 @@ c check that the event normalization input is reasoble
      &        /'Current input is: ', event_norm
          stop 1
       endif
-c Check parameters for FxFx/UNLOPS/NNLL-veto
-      if ( ickkw.ne.0 .and. ickkw.ne.4 .and. ickkw.ne.3 .and.
-     &     ickkw.ne.-1) then
+c Check parameters for FxFx
+      if (ickkw.ne.0 .and. ickkw.ne.3) then
          write (*,*) 'ickkw parameter not known. ickkw=',ickkw
          stop
       endif
@@ -129,7 +124,7 @@ c Set alphaS(mZ)
           write(*,*) 'The default order of alpha_s running is fixed to '
      &         ,nloop
       endif
-      if (nlo_ps.or.pineappl) then
+      if (pineappl) then
 C Fill common block for Les Houches init info
          do i=1,2
             if(lpp(i).eq.1.or.lpp(i).eq.2) then

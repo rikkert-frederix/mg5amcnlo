@@ -11,7 +11,6 @@ c  ET(p)              : transverse energy of particle
 c  PT(p)              : transverse momentum of particle
 c  DJ(p1,p2)          : y*S (Durham) value for two partons
 c  DJB(p1,p2)         : mT^2=m^2+pT^2 for one particle
-c  PYJB(p1,p2)        : The Pythia ISR pT^2=(1-x)*Q^2
 c  DJ2(p1,p2)         : scalar product squared
 c  threedot(p1,p2)    : 3-vector Dot product (accept 4 vector in entry)
 c  rho                : |p| in lab frame
@@ -276,37 +275,6 @@ c$$$      write(*,*) 'dj = ',dj
       endif
       end
       
-      double precision function PYDJ(p1,p2)
-c***************************************************************************
-c     Uses Durham algorythm to calculate the y value for two partons
-c     If collision type is hh, hadronic jet measure is used
-c       y_{ij} = 2min[p_{i,\perp}^2,p_{j,\perp}^2]/S
-c                  (cosh(\eta_i-\eta_j)-cos(\phi_1-\phi_2))
-c***************************************************************************
-      implicit none
-c
-c     Arguments
-c
-      double precision p1(0:4),p2(0:4) ! 4 is mass**2
-c
-c     Global
-c
-      double precision D
-      common/to_dj/D
-c
-c     Local
-c
-
-      double precision SumDot
-      external SumDot
-c-----
-c  Begin Code
-c-----
-
-      pydj = p1(0)*p2(0)/(p1(0)+p2(0))**2*SumDot(p1,p2,1d0)
-
-      end
-      
       double precision function DJ1(p1,p2)
 c***************************************************************************
 c     Uses single-sided Durham algorythm to calculate the y value for 
@@ -387,102 +355,6 @@ c        djb = 0d0
         djb = (p1(0)-p1(3))*(p1(0)+p1(3)) ! p1(1)**2+p1(2)**2+pm1
 c        djb = p1(1)**2+p1(2)**2+p1(4)
       endif
-      end
-
-      double precision function PYJB(p2,p1,ppart,z)
-c***************************************************************************
-c     Calculate the Pythia ISR evolution pT2
-c       pTE2 = (1-z)(Q2+m2), Q2=-(p1-p2)**2, z=sred/sprev
-c     Note! p1 and p2 must have mass**2 component!
-c***************************************************************************
-      implicit none
-c
-c     Arguments
-c
-      double precision p1(0:4),p2(0:4),ppart(0:3),z
-c
-c     Local
-c
-      double precision sred,sprev,Q2,pstar(0:3),pm2
-      integer i
-      double precision dot,SumDot,PT
-
-c-----
-c  Begin Code
-c-----
-      pm2=0
-
-      if(p1(4).gt.0.or.p2(4).gt.0.and..not.
-     $   (p1(4).gt.0.and.p2(4).gt.0)) pm2=max(p1(4),p2(4))
-      do i=0,3
-        pstar(i)=p1(i)-p2(i)
-      enddo
-      Q2=-dot(pstar,pstar)+pm2
-      if(Q2.lt.0)then
-c        print *,'Error in PYJB: Q2 = ',Q2
-        PYJB=1d30
-        return
-      endif
-      sprev=SumDot(p1,ppart,1d0)
-      sred=SumDot(pstar,ppart,1d0)
-
-      if(sred.lt.1d0)then
-        PYJB=1d20
-        z=0d0
-        return
-      endif
-
-      z=sred/sprev
-      if(z.gt.1.or.z.lt.0)then
-        print *,'Error in PYJB: z = ',z,', sprev = ',sprev,
-     $     ', sred = ',sred,', Q2 = ',Q2
-        stop
-      endif
-      PYJB=(1d0-z)*Q2
-      end
-
-      double precision function zclus(p2,p1,ppart)
-c***************************************************************************
-c     Calculate the Pythia ISR evolution pT2
-c     z=sred/sprev
-c***************************************************************************
-      implicit none
-c
-c     Arguments
-c
-      double precision p1(0:3),p2(0:3),ppart(0:3)
-c
-c     Local
-c
-      double precision sred,sprev,pstar(0:3)
-      integer i, nerr
-      data nerr/0/
-      double precision dot,SumDot
-
-c-----
-c  Begin Code
-c-----
-      do i=0,3
-        pstar(i)=p1(i)-p2(i)
-      enddo
-      sprev=SumDot(p1,ppart,1d0)
-      sred=SumDot(pstar,ppart,1d0)
-
-      if(sred.lt.1d0)then
-        zclus=0d0
-        return
-      endif
-
-      zclus=sred/sprev
-      if((zclus.gt.1.or.zclus.lt.0).and.nerr.le.10)then
-        print *,'Error in zclus: zclus = ',zclus,', sprev = ',sprev,
-     $     ', sred = ',sred
-        nerr=nerr+1
-        if(nerr.eq.100)
-     $       print *,'No more zclus errors will be printed'
-      endif
-
-      return
       end
 
       double precision function DJ2(p1,p2)
@@ -712,4 +584,3 @@ c
       if(phi.lt.zero) phi=phi+2*pi
       return
       end
-

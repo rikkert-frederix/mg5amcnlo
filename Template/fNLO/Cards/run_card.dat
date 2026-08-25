@@ -106,9 +106,9 @@ $ion_pdf
 #***********************************************************************
  %(custom_fcts)s = custom_fcts ! List of files containing user hook function
 #***********************************************************************
-# Fixed-order jet-veto option:                                        *
+# Fixed-order merging option:                                         *
 #   0: Standard fixed-order computation                               *
-#  -1: NNLL+NLO jet-veto computation. See arXiv:1412.8408 [hep-ph].    *
+#   3: FxFx clustering and reweighting                                *
 #***********************************************************************
  %(ickkw)s        = ickkw
 #***********************************************************************

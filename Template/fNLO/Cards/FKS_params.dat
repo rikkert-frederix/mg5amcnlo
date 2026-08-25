@@ -84,13 +84,6 @@
 !     type=4 : soft counter-term
 !     type=5 : collinear counter-term
 !     type=6 : soft-collinear counter-term
-!     type=7 : O(alphaS) expansion of Sudakov factor for NNLL+NLO
-!     type=8 : soft counter-term (with n+1-body kin.)
-!     type=9 : collinear counter-term (with n+1-body kin.)
-!     type=10: soft-collinear counter-term (with n+1-body kin.)
-!     type=11: real-emission (with n-body kin.)
-!     type=12: MC subtraction with n-body kin.
-!     type=13: MC subtraction with n+1-body kin.
 !     type=14: virtual corrections
 !     type=15: virt-trick: average born contribution
 ! ==========================================================================

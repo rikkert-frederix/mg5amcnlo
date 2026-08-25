@@ -64,18 +64,6 @@ c concatenates str1 and str2 into str. Ignores trailing blanks of str1,str2
       if(l1+l2+1.le.l) str(l1+l2+1:l)= ' '
       end
 
-      block data skiphistos
-c If integrate will be allowed to save and restore histograms
-c (the default mode of operation till Nov 2013), then set:
-c  skiph=.false.
-c here. Otherwise, if skiph=.true., no information on the histograms
-c will be saved in the .sv1 and .sv2 by the routine integrate()
-      implicit none
-      logical skiph
-      common/cskiph/skiph
-      data skiph/.true./
-      end
-
       subroutine
      # integrate(init,sig,str,n,inew,idim,icalls,avgi,sd,chi2a,isave)
       implicit real * 8 (a-h,o-z)
@@ -221,22 +209,16 @@ c- give up.
       write(*,*) 'unusable restart file'
       stop
 99    continue
-c In this case the accumulated values in the histograms common block
-c could have been altered in the attempt to read the save file.
-c Abort. (if itmp=2 this is not the case)
+c Abort after failing to read a usable save file.
       write(*,*) 'corrupted file',fname,'.'
       write(*,'(a,/)')
-     # 'The attempt to read the corrupted file may have corrupted',
-     # 'the histogram common block. Delete the corrupted file, or',
+     # 'Delete the corrupted file, or',
      # 'rerun one more iteration, or run with nit=11.'
       stop
       end
 
       subroutine savea(name,statf)
-      include "dbook.inc"
-      PARAMETER (NMB=NPLOTS)
       character * 80 runstr,string
-      character * 3 books(nmb)
       real * 8 xl,xu,acc
       common/bveg1/xl(58),xu(58),acc,ndim,ncall,itmx,nprn
       real * 8 xi,si,si2,swgt,schi
@@ -244,11 +226,8 @@ c Abort. (if itmp=2 this is not the case)
 
       common/runstr/runstr
       character * (*) name, statf
-      logical skiph
-      common/cskiph/skiph
 c
-c Salva gli istogrammi in uso (marcati 'YES' in book(j))
-c e tutte le informazioni per vegas, il seme del numero
+c Salva le informazioni per vegas, il seme del numero
 c casuale, etc.
 c Marchia la fine del file con i numeri acos(-1.),exp(1.),log(10.),
 c
@@ -263,20 +242,6 @@ c version of save file
       write(97,101) string
 c runstring
       write(97,101)  runstr
-c booked histograms
-      if(.not.skiph)then
-      write(97,104)  nmb
-      write(97,102)  (book(j),j=1,nmb)
-c Mbook block
-      do j=1,nmb
-         if(book(j).eq.'YES') then
-            write(97,103)
-     &      (hist(j,k),k=1,nbin(j)),uscore(j),oscore(j)
-            write(97,104)
-     &      (ihis(j,k),k=1,nbin(j)),iuscore(j),ioscore(j),ient(j)
-         endif
-      enddo
-      endif
 c Vegas block
       write(97,104)
      & ndo,it,num1,num2,ndim
@@ -292,10 +257,8 @@ c end mark
       close(97)
       return
 c
-c Loads the histograms found in the (ascii) save file into the common block.
-c Previous values are overwritten.
-c Does not modify histograms not present in the file.
-c If all goes well, it riturns iflag= 0.
+c Loads the Vegas state found in the (ascii) save file.
+c If all goes well, it returns iflag= 0.
 c If there are errors (e.g. IO errors, the mark at the end of the file
 c is not found, etc.) and in the input operation the common blocks
 c may have been corrupted, returns iflag=1.
@@ -310,26 +273,6 @@ c version of save file
 c run string
       string = ' '
       read(97,101,err=2,end=2) string
-c marked histograms
-      if(.not.skiph)then
-      read(unit=97,fmt=104,err=2,end=2) nhs
-      if(nhs.gt.nmb) then
-         write(*,*) 'Error: save files had nmb=',nhs
-         write(*,*) 'Running program has nmb=',nmb,'<',nhs
-         write(*,*) 'Make nmb >= ',nhs,' in running program'
-         stop
-      endif
-      read(unit=97,fmt=102,err=1,end=1) (books(j),j=1,nhs)
-c Mbook block
-      do j=1,nhs
-         if(books(j).eq.'YES') then
-            read(unit=97,fmt=103,err=1,end=1)
-     &      (hist(j,k),k=1,nbin(j)),uscore(j),oscore(j)
-            read(unit=97,fmt=104,err=1,end=1)
-     &      (ihis(j,k),k=1,nbin(j)),iuscore(j),ioscore(j),ient(j)
-         endif
-      enddo
-      endif
 c vegas block
       read(unit=97,fmt=104,err=1,end=1)
      & ndo,it,num1,num2,ndim
@@ -366,10 +309,7 @@ c
       end
 
       subroutine save(name,statf)
-      include "dbook.inc"
-      PARAMETER (NMB=NPLOTS)
       character * 80 runstr,string
-      character * 3 books(nmb)
       real * 8 xl,xu,acc
       common/bveg1/xl(58),xu(58),acc,ndim,ncall,itmx,nprn
       real * 8 xi,si,si2,swgt,schi
@@ -377,11 +317,8 @@ c
 
       common/runstr/runstr
       character * (*) name, statf
-      logical skiph
-      common/cskiph/skiph
 c
-c Salva gli istogrammi in uso (marcati 'YES' in book(j))
-c e tutte le informazioni per vegas, il seme del numero
+c Salva le informazioni per vegas, il seme del numero
 c casuale, etc.
 c Marchia la fine del file con i numeri acos(-1.),exp(1.),log(10.),
 c
@@ -391,21 +328,6 @@ c version of save program
       write(97) string
 c run string
       write(97)  runstr
-c Mbook Block
-      if(.not.skiph)then
-      write(97) nmb
-      write(97)  (book(j),j=1,nmb)
-      do j=1,nmb
-         if(book(j).eq.'YES') then
-           write(97)
-     &     (hist(j,k),k=1,nbin(j))
-     &     ,uscore(j),oscore(j)
-     &     ,(ihis(j,k),k=1,nbin(j))
-     &     ,iuscore(j),ioscore(j)
-     &     ,ient(j)
-         endif
-      enddo
-      endif
 c Vegas Block
       write(97)
      & ndo,it,num1,num2,ndim
@@ -419,10 +341,8 @@ c
       close(97)
       return
 c
-c Loads the histograms found in the file into the common block.
-c Previous values are overwritten.
-c Does not modify histograms not present in the file.
-c If all goes well, it riturns iflag= 0.
+c Loads the Vegas state found in the file.
+c If all goes well, it returns iflag= 0.
 c If there are errors (e.g. IO errors, the mark at the end of the file
 c is not found, etc.) and in the input operation the common blocks
 c may have been corrupted, returns iflag=1.
@@ -437,27 +357,6 @@ c version of save file
 c run string
       string = ' '
       read(unit=97,err=2,end=2) string
-c Mbook block
-      if(.not.skiph)then
-      read(97,err=2,end=2) nhs
-      if(nhs.gt.nmb) then
-         write(*,*) 'Error: save files had nmb=',nhs
-         write(*,*) 'Running program has nmb=',nmb,'<',nhs
-         write(*,*) 'Make nmb >= ',nhs,' in running program'
-         stop
-      endif
-      read(97,err=1,end=1) (books(j),j=1,nhs)
-      do j=1,nhs
-         if(books(j).eq.'YES') then
-            read(97,err=1,end=1)
-     &      (hist(j,k),k=1,nbin(j))
-     &      ,uscore(j),oscore(j)
-     &      ,(ihis(j,k),k=1,nbin(j))
-     &      ,iuscore(j),ioscore(j)
-     &      ,ient(j)
-         endif
-      enddo
-      endif
 c Vegas Block
       read(97,err=1,end=1)
      & ndo,it,num1,num2,ndim
@@ -861,5 +760,4 @@ c Set nprn equal to zero to print nothing
       stddev=sd
       return
       end
-
 

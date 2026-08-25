@@ -78,9 +78,6 @@ fi
 if [[ -e ../run_card.dat  ]]; then
   mv ../run_card.dat ./Cards/run_card.dat
 fi
-if [[ -e ../pythia_card.dat  ]]; then
-  mv ../pythia_card.dat ./Cards/pythia_card.dat
-fi
 if [[ -e ../pgs_card.dat  ]]; then
   mv ../pgs_card.dat ./Cards/pgs_card.dat
 fi

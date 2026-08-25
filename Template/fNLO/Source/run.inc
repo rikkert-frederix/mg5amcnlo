@@ -40,10 +40,6 @@ c redundant with that of common block /to_scale/
       common/cscales_current_values/muR2_current,muF12_current,
      &                              muF22_current,QES2_current
 
-c Re-scale of the shower starting scale
-      double precision shower_scale_factor
-      common/cshower_scale_factor/shower_scale_factor
-c
 c     Collider
 c
       integer                                        lpp(2)
@@ -60,15 +56,6 @@ c
       integer ktscheme
       logical chcluster,pdfwgt
       common/to_cluster/ktscheme,chcluster,pdfwgt
-
-c
-c     Shower MonteCarlo
-c     
-      character*10 shower_mc
-      common /cMonteCarloType/shower_mc
-
-      logical mcatnlo_delta
-      common /cMCatNLO_Delta/ mcatnlo_delta
 
 c
 c     Reweight info

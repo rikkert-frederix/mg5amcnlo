@@ -124,8 +124,8 @@ module mint_module
   double precision, dimension(0:nintervals,ndimmax) :: xgrid_new
 
 ! Common blocks used elsewhere in the code
-  logical              fixed_order,nlo_ps
-  common /c_fnlo_nlops/fixed_order,nlo_ps
+  logical fixed_order
+  common /c_fixed_order/fixed_order
 
 ! functions and subroutines:
   public :: mint,read_grids_from_file

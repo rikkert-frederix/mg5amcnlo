@@ -40,7 +40,7 @@ endif
 FILES= $(patsubst %.f,%.o,$(wildcard parton_lum_*.f)) 			\
 	 $(patsubst %.f,%.o,$(wildcard matrix_*.f)) 			\
 	 FKSParams.o real_me_chooser.o chooser_functions.o recmom.o	\
-	 genps_fks.o setcuts.o setscales.o veto_xsec.o		 	\
+	 genps_fks.o setcuts.o setscales.o			 	\
 	 $(patsubst %.f,%.o,$(wildcard b_sf_???.f)) 			\
 	 born.o sborn_sf.o extra_cnt_wrapper.o				\
 	 $(patsubst %.f,%.o,$(wildcard born_cnt_*.f))			\
@@ -51,7 +51,7 @@ FILES= $(patsubst %.f,%.o,$(wildcard parton_lum_*.f)) 			\
 	 fks_Sij.o $(fastjetfortran_madfks) fks_singular.o		\
 	 reweight_xsec.o boostwdir2.o       				\
 	 cluster.o splitorders_stuff.o 			\
-	 get_color.o iproc_map.o sudakov.o				\
+	 get_color.o iproc_map.o					\
 	 MC_integer.o						\
 	 $(pineappl_interface) weight_lines.o mint_module.o polfit.o
 
@@ -63,7 +63,7 @@ FILESSUD= \
 
 
 # Files needed for mintFO
-RUN= $(FO_ANALYSE) $(FILES) cuts.o dummy_fct.o pythia_unlops.o recluster.o 		\
+RUN= $(FO_ANALYSE) $(FILES) cuts.o dummy_fct.o				\
 	born_hel.o open_output_files.o madfks_plot.o
 
 # Files for mintFO
@@ -72,14 +72,8 @@ MINTFO= $(RUN) driver_mintFO.o BinothLHA.o
 # Files for check_poles
 POLES= $(RUN) check_poles.o BinothLHA.o
 
-# Files for check_sudakov
-EWSUD= $(RUN) check_sudakov.o BinothLHA.o
-
 EWSUDSA = sa_ewsudakov.o sub_f2py_ewsudakov.o $(FILESSUD) 
 EWSUDLIB = $(FILESSUD)
-
-# Files for check_sudakov_angle2
-EWSUD2= $(RUN) check_sudakov_angle2.o BinothLHA.o
 
 # Files for the matrix-element soft/collinear limit test
 TEST= $(RUN) test_soft_col_limits.o BinothLHADummy.o
@@ -116,10 +110,6 @@ test_soft_col_limits: $(TEST) mint_module.o
 	rm test_soft_col_limits.o
 	strip test_soft_col_limits
 
-check_sudakov: $(EWSUD) $(libmadloop)
-	$(FC) -o check_sudakov $(EWSUD) $(NLOLIBS) $(APPLLIBS) $(LINKLIBS) $(FJLIBS) $(LDFLAGS)
-	strip check_sudakov
-
 ewsudakov_sa: $(EWSUDSA) 
 	$(FC) -o ewsudakov_sa $(EWSUDSA) $(LINKLIBS)  $(LDFLAGS)
 	strip ewsudakov_sa
@@ -136,10 +126,6 @@ libsudpy: $(EWSUDLIB) libewsud_$(PDIR).$(dylibext) $(LIBDIR)/libmodel.$(dylibext
 	touch __init__.py
 	#ar rcs libewsud.$(libext) $(EWSUDLIB)
 	LDFLAGS="-Wl,-rpath,$(HERE)" $(F2PY)  -c sub_f2py_ewsudakov.f -L$(HERE) -lewsud_$(PDIR) $(LINKLIBS) -m ewsudpy_$(PDIR)
-
-check_sudakov_angle2: $(EWSUD2) $(libmadloop)
-	$(FC) -o check_sudakov_angle2 $(EWSUD2) $(NLOLIBS) $(APPLLIBS) $(LINKLIBS) $(FJLIBS) $(LDFLAGS)
-	strip check_sudakov_angle2
 
 check_poles: $(POLES) $(libmadloop)
 	$(FC) -o check_poles $(POLES) $(NLOLIBS) $(APPLLIBS) $(LINKLIBS) $(FJLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(LDFLAGS)
@@ -160,7 +146,7 @@ driver_mintFO.o: weight_lines.o mint_module.o FKSParams.o
 chooser_functions.o: weight_lines.o
 cluster.o: weight_lines.o
 setcuts.o: mint_module.o
-genps_fks.o: mint_module.o FKSParams.o
+genps_fks.o: FKSParams.o
 symmetry_fks_v3.o: mint_module.o
 test_soft_col_limits.o: mint_module.o
 madfks_plot.o: mint_module.o

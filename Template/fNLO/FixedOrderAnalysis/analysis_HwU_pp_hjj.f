@@ -12,7 +12,6 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       data cc/'        ','vbfcuts '/
       double precision pi
       PARAMETER (PI=3.14159265358979312D0)
-      include 'dbook.inc'
       real*8 vetomin, vetomax
       integer nbinveto
       common /to_veto_hist/vetomin,vetomax,nbinveto
@@ -774,4 +773,3 @@ c
 
       return
       end
-

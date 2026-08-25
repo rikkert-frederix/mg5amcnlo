@@ -59,7 +59,7 @@ c are filled from the PDG codes (iPDG array) in this function.
      $,is_a_ph(nexternal),is_nph_iso(nexternal),is_nextph_iso(nexternal)
      $,is_nextph_iso_reco(nexternal)
       logical is_a_lp_reco(nexternal),is_a_lm_reco(nexternal)
-      logical passcuts_leptons, passcuts_unlops_jv, passcuts_photons, 
+      logical passcuts_leptons, passcuts_photons,
      $        passcuts_jets, passcuts_pdgs,passcuts_fxfx
       logical dummy_cuts
       passcuts_user=.true. ! event is okay; otherwise it is changed
@@ -94,15 +94,10 @@ C***************************************************************
       ! B. Non-iso, non-reco photons if reco is on
       call identify_QCD_partons(is_nextph_iso_reco,p_reco,istatus,ipdg_reco,is_a_j,pQCD,nQCD)
 
-      ! Apply the UNLOPS/JetVeto cuts
-      passcuts_user = passcuts_user .and. 
-     $                  passcuts_unlops_jv(p_reco,istatus,ipdg_reco,pQCD,nQCD,ickkw)
-      if (.not.passcuts_user) return
-
       ! Apply the Jet cuts
       if (ickkw.ne.3) then
          passcuts_user = passcuts_user .and. 
-     $                  passcuts_jets(p_reco,pQCD,nQCD,pgamma,nph,is_nph_iso,ickkw)
+     $                  passcuts_jets(p_reco,pQCD,nQCD,pgamma,nph,is_nph_iso)
          if (.not.passcuts_user) return
       else
          passcuts_user=passcuts_user .and.
@@ -484,14 +479,13 @@ c Second apply the actual ptj cut on the minimum FxFx_ren_scales(i)
       return
       end
       
-      logical function passcuts_jets(p,pQCD,nQCD,pgamma,nph,is_nph_iso,ickkw)
+      logical function passcuts_jets(p,pQCD,nQCD,pgamma,nph,is_nph_iso)
       implicit none
       include 'nexternal.inc'
       double precision p(0:4,nexternal)
       integer nQCD, nph
       double precision pQCD(0:3,nexternal), pgamma(0:3,nexternal)
       logical is_nph_iso(nexternal)
-      integer ickkw
       include "cuts.inc"
 
       integer NJET,JET(nexternal)
@@ -508,9 +502,6 @@ c Second apply the actual ptj cut on the minimum FxFx_ren_scales(i)
       passcuts_jets=.true.
 
 c JET CUTS
-
-C       do nothing if ickkw=4 (UNLOPS)
-      if (ickkw.eq.4)return
 
       if (ptj.gt.0d0.and.nQCD.gt.1) then
 
@@ -564,61 +555,6 @@ c Apply the jet cuts
 
       return
       end
-
-
-
-      logical function passcuts_unlops_jv(p,istatus,ipdg,pQCD,nQCD,ickkw)
-      implicit none
-      include 'nexternal.inc'
-      integer istatus(nexternal)
-      integer iPDG(nexternal)
-      double precision p(0:4,nexternal)
-      logical is_a_j(nexternal)
-      integer nQCD
-      double precision pQCD(0:3,nexternal)
-      integer ickkw
-      include "cuts.inc"
-      double precision p_unlops(0:3,nexternal)
-      logical passUNLOPScuts
-      integer i, j 
-
-      REAL*8 pt
-      external pt
-
-      passcuts_unlops_jv=.true.
-
-
-c THE UNLOPS CUT:
-      if (ickkw.eq.4 .and. ptj.gt.0d0) then
-c Use special pythia pt cut for minimal pT
-         do i=1,nexternal
-            do j=0,3
-               p_unlops(j,i)=p(j,i)
-            enddo
-         enddo
-         call pythia_UNLOPS(p_unlops,passUNLOPScuts)
-         if (.not. passUNLOPScuts) then
-            passcuts_unlops_jv=.false.
-            return
-         endif
-c THE VETO XSEC CUT:
-      elseif (ickkw.eq.-1 .and. ptj.gt.0d0) then
-c Use veto'ed Xsec for analytic NNLL resummation
-         if (nQCD.ne.1) then
-            write (*,*) 'ERROR: more than one QCD parton in '/
-     $           /'this event in cuts.f. There should only be one'
-            stop
-         endif
-         if (pt(pQCD(0,1)) .gt. ptj) then
-            passcuts_unlops_jv=.false.
-            return
-         endif
-      endif
-      return
-      end
-
-
-
       logical function passcuts_leptons(p,istatus,ipdg,is_a_lp_reco,is_a_lm_reco)
       implicit none
       include 'nexternal.inc'
@@ -1285,5 +1221,3 @@ c
 
       return
       end
-
-

@@ -13,3 +13,11 @@
       integer idummy
       double precision dummy(2)
       end
+
+      subroutine accum(idummy)
+      integer idummy
+      end
+
+      subroutine addfil(string)
+      character*(*) string
+      end

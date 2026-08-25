@@ -541,11 +541,7 @@ c a scale to be used as a reference for renormalization scale
       external user_dynamical_scale
 c
       tmp=0
-      if(ickkw.eq.-1)then
-c Special for analytic resummation in veto'ed cross sections:
-         tmp=ptj
-         temp_scale_id='NLO+NNLL veto scale: ptj_max'
-      elseif(dynamical_scale_choice.eq.1) then
+      if(dynamical_scale_choice.eq.1) then
 c         Total transverse energy of the event.         
           tmp=0d0
           do i=3,nexternal
@@ -593,4 +589,3 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 c
       return
       end
-

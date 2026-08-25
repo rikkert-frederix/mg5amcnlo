@@ -191,9 +191,12 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             logger.error('Could not cd to directory %s' % dirpath)
             return 0
 
-        # Copy the Pythia8 Sudakov tables (needed for MC@NLO-DELTA matching)
-        shutil.copy(os.path.join(self.mgme_dir,'vendor','SudGen','sudakov.f'), \
-                    os.path.join(self.dir_path,'SubProcesses','sudakov.f'),follow_symlinks=True)
+        # Copy the Pythia8 Sudakov tables needed by MC@NLO-DELTA matching.
+        # They have no fixed-order caller and are deliberately absent from
+        # fNLO outputs.
+        if self.opt.get('fks_template') != 'fNLO':
+            shutil.copy(os.path.join(self.mgme_dir,'vendor','SudGen','sudakov.f'), \
+                        os.path.join(self.dir_path,'SubProcesses','sudakov.f'),follow_symlinks=True)
 
         # We add here the user-friendly MadLoop option setter.
         cpfiles= ["SubProcesses/MadLoopParamReader.f",
@@ -786,32 +789,42 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'polfit.f']
 
         if self.opt.get('fks_template') == 'fNLO':
-            event_sources = {
+            fixed_order_excluded_sources = {
                 'MCmasses_HERWIG6.inc',
                 'MCmasses_HERWIGPP.inc',
                 'MCmasses_PYTHIA6PT.inc',
                 'MCmasses_PYTHIA6Q.inc',
                 'MCmasses_PYTHIA8.inc',
+                'Boosts.h',
                 'LHAFortran_aMCatNLO.h',
                 'add_write_info.f',
                 'analysis_lhe.f',
+                'check_sudakov.f',
+                'check_sudakov_angle2.f',
                 'dire_fortran.cc',
                 'fill_MC_mshell.f',
                 'handling_lhe_events.f',
                 'hep_event_streams.inc',
                 'madfks_mcatnlo.inc',
+                'open_output_files_dummy.f',
+                'pythia_unlops.f',
                 'pythia8_control.inc',
                 'pythia8_control_setup.inc',
                 'pythia8_fortran.cc',
                 'pythia8_fortran_dummy.cc',
                 'pythia8_wrapper.cc',
+                'recluster.cc',
                 'reweight_xsec_events.f',
                 'reweight_xsec_events_pdf_dummy.f',
+                'sudakov.f',
+                'unlops.inc',
+                'veto_xsec.f',
+                'veto_xsec.inc',
                 'write_event.f'}
             linkfiles = [filename for filename in linkfiles
                          if filename not in ('driver_mintMC.f',
                                              'montecarlocounter.f')
-                         and filename not in event_sources]
+                         and filename not in fixed_order_excluded_sources]
 
         if matrix_element.ewsudakov:
             linkfiles.append('ewsudakov_functions.f')
@@ -4906,9 +4919,12 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
             logger.error('Could not cd to directory %s' % dirpath)
             return 0
 
-        # Copy the Pythia8 Sudakov tables (needed for MC@NLO-DELTA matching)
-        shutil.copy(os.path.join(self.mgme_dir,'vendor','SudGen','sudakov.f'), \
-                    os.path.join(self.dir_path,'SubProcesses','sudakov.f'),follow_symlinks=True)
+        # Copy the Pythia8 Sudakov tables needed by MC@NLO-DELTA matching.
+        # They have no fixed-order caller and are deliberately absent from
+        # fNLO outputs.
+        if self.opt.get('fks_template') != 'fNLO':
+            shutil.copy(os.path.join(self.mgme_dir,'vendor','SudGen','sudakov.f'), \
+                        os.path.join(self.dir_path,'SubProcesses','sudakov.f'),follow_symlinks=True)
         
         # We add here the user-friendly MadLoop option setter.
         cpfiles= ["SubProcesses/MadLoopParamReader.f",

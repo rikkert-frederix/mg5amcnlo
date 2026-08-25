@@ -19,7 +19,7 @@ Use bin/calculate_xsect to calculate the cross section and distributions:
 
 Replace NLO with LO for a leading-order computation. Results and
 histograms are stored below Events/RUN. The supported analysis formats
-are HwU, TopDrawer, ROOT and none.
+are HwU and none.
 
 aMCatNLO
 --------

@@ -85,7 +85,6 @@ c     Setup the timing variable
 c
       call cpu_time(tBefore)
       fixed_order=.true.
-      nlo_ps=.false.
 
 c     Read general MadFKS parameters
 c
@@ -196,12 +195,6 @@ c Don't safe the reweight information when just setting up the grids.
 c
          write (*,*) 'imode is ',imode
 
-         if (ickkw.eq.-1) then
-            min_virt_fraction=1d0
-            do kchan=1,nchans
-               virtual_fraction(kchan)=1d0
-            enddo
-         endif
          call mint(sigint)
          call topout
          call deallocate_weight_lines
@@ -257,12 +250,11 @@ c
       call cpu_time(tAfter)
       tTot = tAfter-tBefore
       tOther = tTot - (tBorn+tGenPS+tReal+tCount+tIS+tFxFx+tf_nb+tf_all
-     &     +t_as+tr_s+tr_pdf+t_plot+t_cuts+t_MC_subt+t_isum+t_ewsud
+     &     +t_as+tr_s+tr_pdf+t_plot+t_cuts+t_isum+t_ewsud
      $     +t_coupl)
       write(*,*) 'Time spent in Born : ',tBorn
       write(*,*) 'Time spent in PS_Generation : ',tGenPS
       write(*,*) 'Time spent in Reals_evaluation: ',tReal
-      write(*,*) 'Time spent in MCsubtraction : ',t_MC_subt
       write(*,*) 'Time spent in Counter_terms : ',tCount
       write(*,*) 'Time spent in Integrated_CT : ',tIS-tOLP
       write(*,*) 'Time spent in Virtuals : ',tOLP      
@@ -314,7 +306,6 @@ c timing statistics
       data tr_pdf/0.0/
       data t_plot/0.0/
       data t_cuts/0.0/
-      data t_MC_subt/0.0/
       data t_isum/0.0/
       data t_coupl/0.0/
       end
@@ -401,7 +392,6 @@ c PineAPPL
       virtual_over_born=0d0
       wgt_me_born=0d0
       wgt_me_real=0d0
-      if (ickkw.eq.-1) H1_factor_virt=0d0
       if (ickkw.eq.3) call set_FxFx_scale(0,p)
       call update_vegas_x(xx,x)
       call get_MC_integer(max(ini_fin_fks(ichan),1)
@@ -496,18 +486,16 @@ c The n+1-body contributions (including counter terms)
             call set_cms_stuff(mohdr)
             call set_alphaS(p)
             call include_multichannel_enhance(2)
-            call compute_real_emission(p,1d0)
+            call compute_real_emission(p)
          endif
       enddo
       
  12   continue
 c Include PDFs and alpha_S and reweight to include the uncertainties
-      if (ickkw.eq.-1) call include_veto_multiplier
       call include_PDF_and_alphas
 
       if (doreweight) then
-         if (do_rwgt_scale .and. ickkw.ne.-1) call reweight_scale
-         if (do_rwgt_scale .and. ickkw.eq.-1) call reweight_scale_NNLL
+         if (do_rwgt_scale) call reweight_scale
          if (do_rwgt_pdf) call reweight_pdf
       endif
       
@@ -547,7 +535,7 @@ c Finalize PS point
       call fks_inc_chooser()
       call leshouche_inc_chooser()
       call setcuts
-      call setfksfactor(.false.)
+      call setfksfactor
       return
       end
       

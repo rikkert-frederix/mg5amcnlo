@@ -144,6 +144,39 @@ def enabled_event_options(options):
                       if options.get(key, False)))
 
 
+FNLO_SHOWER_RUN_CARD_PARAMETERS = frozenset({
+    'parton_shower', 'shower_scale_factor', 'mcatnlo_delta'})
+
+
+def prepare_fixed_order_only_run_card(run_card):
+    """Remove matching-only entries from an fNLO Fortran include.
+
+    Keep the values in the Python card object because shared NLO interface
+    code still queries them.  Removing them from ``includepath`` is enough to
+    prevent :class:`RunCardNLO` from recreating the three assignments which
+    are deliberately absent from the fNLO run card and Fortran template.
+    """
+
+    explicitly_set = sorted(FNLO_SHOWER_RUN_CARD_PARAMETERS.intersection(
+        getattr(run_card, 'user_set', set())))
+    if explicitly_set:
+        raise banner_mod.InvalidRunCard(
+            '%s are not available for fNLO outputs' %
+            ', '.join(explicitly_set))
+
+    if run_card['ickkw'] == -1:
+        raise banner_mod.InvalidRunCard(
+            'NNLL+NLO jet-veto computations (ickkw=-1) are not '
+            'available for fNLO outputs')
+    if run_card['ickkw'] == 4:
+        raise banner_mod.InvalidRunCard(
+            'UNLOPS merging (ickkw=4) is not available for fNLO outputs')
+
+    for parameters in run_card.includepath.values():
+        parameters[:] = [name for name in parameters
+                         if name not in FNLO_SHOWER_RUN_CARD_PARAMETERS]
+
+
 def compile_dir(*arguments):
     """compile the direcory p_dir
     arguments is the tuple (me_dir, p_dir, mode, options, tests, exe, run_mode)
@@ -1348,6 +1381,9 @@ class AskRunNLO(cmd.ControlSwitch):
     
     def check_value_shower(self, value):
         """ """
+
+        if self.fixed_order_only:
+            return value.upper() == 'OFF'
         
         if value.upper() in self.get_allowed_shower():
             return True
@@ -1672,16 +1708,21 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
                 '%s is not available for fNLO outputs' % action)
 
     def ensure_fixed_order_analysis_available(self, analyse=None):
-        """Forbid the built-in fixed-order LHE writer in fNLO outputs."""
+        """Allow only non-event histogram output in fNLO directories."""
 
         if analyse is None:
             analyse = getattr(self, 'analyse_card', None)
-        if is_fixed_order_only(
+        if not is_fixed_order_only(
                 self.me_dir, getattr(self, 'proc_characteristics', None)) \
-                and analyse is not None \
-                and analyse.get('fo_analysis_format', '').lower() == 'lhe':
+                or analyse is None:
+            return
+
+        analysis_format = analyse.get('fo_analysis_format', '').lower()
+        # FOAnalyseCard stores the value ``none`` as an empty string.
+        if analysis_format not in ['', 'none', 'hwu']:
             raise self.InvalidCmd(
-                'FO_ANALYSIS_FORMAT=LHE is not available for fNLO outputs')
+                'FO_ANALYSIS_FORMAT=%s is not available for fNLO outputs; '
+                'use HwU or none' % analysis_format.upper())
 
     def do_reweight(self, line):
         self.ensure_event_workflow_available('Event reweighting')
@@ -1893,6 +1934,11 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
         """Advanced commands: this is for creating the correct run_card.inc from the nlo format"""
                 #check if no 'Auto' are present in the file
         self.check_param_card(pjoin(self.me_dir, 'Cards','param_card.dat'))
+
+        fixed_order_only = is_fixed_order_only(
+            self.me_dir, getattr(self, 'proc_characteristics', None))
+        if fixed_order_only:
+            prepare_fixed_order_only_run_card(self.run_card)
         
         # propagate the FO_card entry FO_LHE_weight_ratio to the run_card.
         # this variable is system only in the run_card 
@@ -1900,8 +1946,7 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
         # run_card directly.
         if mode in ['LO', 'NLO']:
             self.ensure_fixed_order_analysis_available()
-        if mode in ['LO', 'NLO'] and not is_fixed_order_only(
-                self.me_dir, getattr(self, 'proc_characteristics', None)):
+        if mode in ['LO', 'NLO'] and not fixed_order_only:
             name = 'fo_lhe_weight_ratio'
             FO_card = analyse_card.FOAnalyseCard(pjoin(self.me_dir,'Cards', 'FO_analyse_card.dat'))
             if name in FO_card:
@@ -5654,7 +5699,13 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
             exe = 'madevent_mintFO'
             tests = ['test_ME']
             self.ensure_fixed_order_analysis_available()
-            self.analyse_card.write_card(pjoin(self.me_dir, 'SubProcesses', 'analyse_opts'))
+            analyse_opts = pjoin(
+                self.me_dir, 'SubProcesses', 'analyse_opts')
+            if fixed_order_only:
+                self.analyse_card.write_card(
+                    analyse_opts, fixed_order_only=True)
+            else:
+                self.analyse_card.write_card(analyse_opts)
             self.analyse_card.update_FO_extrapaths_ajob(pjoin(self.me_dir, 'SubProcesses', 'ajob_template'))
         elif mode in ['aMC@NLO', 'aMC@LO','noshower','noshowerLO']:
             exe = 'madevent_mintMC'
@@ -6137,8 +6188,8 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
                         self.ask_run_configuration(mode, options)
     #                    raise aMCatNLOError(error)
             elif self.run_card['ickkw'] == -1 and mode in ['aMC@NLO', 'noshower']:
-                    # NNLL+NLO jet-veto only possible for LO event generation or fNLO runs.
-                raise self.InvalidCmd("""NNLL+NLO jet veto runs (ickkw=-1) only possible for fNLO or LO.""")
+                    # NNLL+NLO jet-veto is only possible for LO event generation.
+                raise self.InvalidCmd("""NNLL+NLO jet veto runs (ickkw=-1) only possible for LO.""")
         if 'aMC@' in mode or mode == 'onlyshower':
             self.shower_card = self.banner.charge_card('shower_card')
             

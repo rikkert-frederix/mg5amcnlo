@@ -282,11 +282,9 @@ c
       
       subroutine generate_momenta_conf_wrapper(nndim,jac,x,itree,qmass
      $     ,qwidth,p)
-      use mint_module
       implicit none
       include 'nexternal.inc'
       include 'genps.inc'
-      include 'nFKSconfigs.inc'
       integer nndim
       double precision jac,x(99),p(0:3,nexternal)
       integer itree(2,-max_branch:-1),i,j
@@ -344,13 +342,6 @@ c     debug stuff
       logical do_mapping_granny
       logical softtest,colltest
       common/sctests/softtest,colltest
-      integer              nFKSprocess
-      common/c_nFKSprocess/nFKSprocess
-c Common block with information to determine if we should not write a
-c possible resonance.
-      logical write_granny(fks_configs)
-      integer which_is_granny(fks_configs)
-      common/write_granny_resonance/which_is_granny,write_granny
       integer isolsign
       common /c_isolsign/isolsign
       double precision border,border_massive,border_massless,fborder
@@ -365,11 +356,6 @@ c possible resonance.
       common /to_mass/pmass
       character*4 abrv
       common /to_abrv/ abrv
-      character*10 shower_mc
-      common /cMonteCarloType/shower_mc
-c
-      write_granny(nFKSprocess)=.true.
-      which_is_granny(nFKSprocess)=0
 c
       do i=-1,1
          granny_m2_red(i)=-99d99
@@ -380,17 +366,13 @@ c 'do_mapping_granny' to false to never do the phase-space mapping to
 c keep the invariant mass of the granny fixed.
       do_mapping_granny=.true.
          
-c When doing only the Born, or when matching to Pythia8, never do the
-c granny phase-space mapping.
-      if ( abrv(1:4).eq.'born' .or.
-     &     (nlo_ps .and. shower_mc(1:7).eq.'PYTHIA8') )
-     &        do_mapping_granny=.false.
+c When doing only the Born, never do the granny phase-space mapping.
+      if (abrv(1:4).eq.'born') do_mapping_granny=.false.
 
 c Set the minimal tau = x1*x2. This also checks if granny is a resonance
       call set_tau_min()
 
       if (granny_is_res) then
-         which_is_granny(nFKSprocess)=igranny
          if (.not. do_mapping_granny) then
             compute_non_shifted=.true.
             compute_mapped=.false.
@@ -533,11 +515,7 @@ c     Could add importance sampling here
 c only counter-event exists.
             input_granny_m2=.false.
             only_event_phsp=.false.
-c In principle skip_event_phsp can be set to .true. to save time, but
-c need to set it to .false. to fill shat_ev (et al) to be able to assign
-c a shower scale. The kinematics won't be used, because below jac=-222
-c and p(0,1)=-99d0.
-            skip_event_phsp=.false. 
+            skip_event_phsp=.true.
             call generate_momenta_conf(input_granny_m2,nndim,jac,x
      $           ,granny_m2_red,rat_xi,itree,qmass,qwidth,p)
             jac=-222
@@ -554,9 +532,6 @@ c integrate as normal
             enddo
             call generate_momenta_conf(input_granny_m2,nndim,jac,x
      $           ,granny_m2_red,rat_xi,itree,qmass,qwidth,p)
-c In this case, we should not write the grandmother in the event file,
-c because the shower should not keep its inv. mass fixed.
-            write_granny(nFKSprocess)=.false.
          endif
          if (compute_mapped) then
 c Special Phase-space generation for granny stuff: keep its invariant

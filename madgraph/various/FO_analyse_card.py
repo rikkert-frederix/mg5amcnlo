@@ -99,12 +99,17 @@ class FOAnalyseCard(dict):
 
 
 
-    def write_card(self, card_path):
+    def write_card(self, card_path, fixed_order_only=False):
         """write the parsed FO_analyse.dat (to be included in the Makefile) 
-        in side card_path.
+        in side card_path.  ``fixed_order_only`` selects the reduced fNLO
+        analysis surface, for which only HwU histograms or no analysis are
+        available.
         if self.testing, the function returns its content"""
 
-        if 'fo_analysis_format' in self and self['fo_analysis_format'].lower() in ['lhe','none']:
+        analysis_format = self.get('fo_analysis_format', '').lower()
+        if 'fo_analysis_format' in self and \
+                (analysis_format in ['lhe', 'none'] or
+                 (fixed_order_only and analysis_format == '')):
             if self['fo_analyse']:
                 logger.warning('FO_ANALYSE parameter of the FO_analyse card should be empty for this analysis format. Removing this information.')
                 self['fo_analyse'] = ''
@@ -115,16 +120,26 @@ class FOAnalyseCard(dict):
             value = self[key].lower()
             if key in self.string_vars:
                 if key == 'fo_analysis_format':
-                    if value == 'topdrawer':
-                        to_add = 'dbook.o open_output_files_dummy.o HwU_dummy.o'
-                    elif value == 'hwu':
-                        to_add = 'HwU.o open_output_files_dummy.o'
-                    elif value == 'root':
-                        to_add = 'rbook_fe8.o rbook_be8.o HwU_dummy.o'
-                    elif value == 'lhe':
-                        to_add = 'analysis_lhe.o open_output_files_dummy.o'
+                    if fixed_order_only:
+                        if value == 'hwu':
+                            to_add = 'HwU.o'
+                        elif value in ['', 'none']:
+                            to_add = 'analysis_dummy.o HwU_dummy.o'
+                        else:
+                            raise FOAnalyseCardError(
+                                'FO_ANALYSIS_FORMAT=%s is not available for '
+                                'fNLO outputs; use HwU or none' % value.upper())
                     else:
-                        to_add = 'analysis_dummy.o dbook.o open_output_files_dummy.o HwU_dummy.o'
+                        if value == 'topdrawer':
+                            to_add = 'dbook.o open_output_files_dummy.o HwU_dummy.o'
+                        elif value == 'hwu':
+                            to_add = 'HwU.o open_output_files_dummy.o'
+                        elif value == 'root':
+                            to_add = 'rbook_fe8.o rbook_be8.o HwU_dummy.o'
+                        elif value == 'lhe':
+                            to_add = 'analysis_lhe.o open_output_files_dummy.o'
+                        else:
+                            to_add = 'analysis_dummy.o dbook.o open_output_files_dummy.o HwU_dummy.o'
                         
 
 
@@ -175,5 +190,4 @@ class FOAnalyseCard(dict):
         ajob_out = open(ajob_path, 'w')
         ajob_out.write(ajob_new)
         ajob_out.close()
-
 

@@ -40,7 +40,7 @@ c it does not work if set to true, besides particular cases
        DATA s_to_rij / .true. /
        END
 
-       BLOCK DATA are_we_using_check_sudakov
+       BLOCK DATA default_cs_run
        implicit none
        logical cs_run
        COMMON /to_cs_run/ cs_run
@@ -2001,5 +2001,4 @@ c      get_qcd_lo2 =0d0
 
       return
       end
-
 
