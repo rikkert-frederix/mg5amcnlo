@@ -5,7 +5,7 @@ module weight_lines
   public :: max_contr, max_wgt, max_iproc, icontr, iwgt
   public :: H_event, itype, nFKS, QCDpower, pdg, pdg_uborn
   public :: parton_pdg_uborn, parton_pdg, plot_id, niproc, ipr
-  public :: parton_pdf, icontr_sum, ifold_cnt, orderstag, amppos
+  public :: ifold_cnt, orderstag, amppos
   public :: momenta, momenta_m, wgt, wgt_ME_tree, bjx, scales2
   public :: g_strong, wgts, parton_iproc, y_bst, cpower, plot_wgts
   public :: weight_lines_allocated, deallocate_weight_lines

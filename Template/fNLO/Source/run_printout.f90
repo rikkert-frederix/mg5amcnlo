@@ -1,4 +1,6 @@
 module run_printout_module
+  use run_state, only: lpp, ebeam, pdlabel, asmz, nloop, &
+       fixed_ren_scale, scale, fixed_fac_scale, q2fact
   implicit none
   private
 
@@ -6,20 +8,8 @@ module run_printout_module
 
 contains
 
-  subroutine write_run_summary(lpp, ebeam, pdlabel, asmz, nloop, &
-                               fixed_ren_scale, scale, fixed_fac_scale, &
-                               q2fact)
+  subroutine write_run_summary()
     implicit none
-    integer, intent(in) :: lpp(2)
-    double precision, intent(in) :: ebeam(2)
-    character(len=*), intent(in) :: pdlabel
-    double precision, intent(in) :: asmz
-    integer, intent(in) :: nloop
-    logical, intent(in) :: fixed_ren_scale
-    double precision, intent(in) :: scale
-    logical, intent(in) :: fixed_fac_scale
-    double precision, intent(in) :: q2fact(2)
-
     character(len=2) :: beam_name(2)
     double precision :: energy
     integer :: i

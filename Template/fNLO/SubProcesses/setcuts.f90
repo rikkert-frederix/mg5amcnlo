@@ -28,7 +28,6 @@ module setcuts_module
   integer, allocatable, save :: saved_schan_order(:)
 
   public :: setcuts_impl, set_tau_min_impl, schan_order_impl
-  public :: initialize_setcuts_state, finalize_setcuts_state
 
   interface
     double precision function ran2()

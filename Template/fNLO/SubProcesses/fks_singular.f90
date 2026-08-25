@@ -15,6 +15,9 @@ use reweight_xsec_module, only: rwgt_muR_dep_fac_value
 use kin_functions_module, only: dot => dot_impl, rho => rho_impl
 use fks_sij_module, only: initialize_fks_sij_module, &
   set_fks_sij_partition_state, fks_sij_impl
+use FKSParams, only: use_poly_virtual
+use chooser_functions_module, only: get_mother_colour_impl, set_pdg_impl
+use madfks_plot_module, only: initplot_impl, outfun_impl
 implicit none
 private
 
@@ -118,26 +121,18 @@ logical, save :: fks_singular_state_initialized=.false.
 integer :: nfksprocess
 common /c_nfksprocess/ nfksprocess
 
-public :: compute_born, compute_6to5flav_cnt
+public :: compute_born
 public :: compute_nbody_noborn, compute_real_emission
 public :: compute_soft_counter_term, compute_collinear_counter_term
-public :: compute_soft_collinear_ct_impl, pdg_equal, colour_con_equal
-public :: momenta_equal, momenta_equal_uborn
+public :: compute_soft_collinear_ct_impl
 public :: compute_prefactors_nbody, include_multichannel_enhance
-public :: compute_prefactors_n1body, add_wgt, include_pdf_and_alphas
-public :: separate_flavour_config, set_pdg_codes, reweight_scale
+public :: compute_prefactors_n1body, include_pdf_and_alphas
+public :: reweight_scale
 public :: reweight_pdf, fill_pineappl_weights, get_wgt_nbody
 public :: get_wgt_no_nbody, fill_plots, fill_mint_function
-public :: rotate_invar, trp_rotate_invar, getaziangles
-public :: phspncheck_born, phspncheck_nocms, xlen4, sreal
-public :: sborncol_fsr, sborncol_isr, xkplus, xklog, xkdelta
-public :: ap_reduced, ap_reduced_prime, qterms_reduced_timelike
-public :: qterms_reduced_spacelike, ap_reduced_susy, ap_reduced_massive
-public :: sbornsoft, eikonal_reduced, sreal_deg, set_cms_stuff
-public :: xmom_compare, xmcompare, xprintout, checkres, checkres2
-public :: bornsoftvirtual, eikonal_ireg, xj1a, ddilog, getpoles
-public :: setfksfactor, set_mu_central, ran2, fill_configurations_common
-public :: fill_configurations_born, fill_configurations_real
+public :: rotate_invar, phspncheck_born, phspncheck_nocms
+public :: sreal, set_cms_stuff, xmom_compare, xprintout, checkres2
+public :: getpoles, setfksfactor, ran2, fill_configurations_common
 public :: initialize_fks_model_state, initialize_fks_phase_state
 public :: initialize_fks_amplitude_state, initialize_fks_config_state
 public :: initialize_fks_pineappl_state, initialize_fks_generated_state
@@ -989,7 +984,7 @@ appl_qedpower(j) = orders(qed_pos)
 enddo
 endif
 ! Initialize hiostograms for fixed order runs
-if (fixed_order) call initplot
+if (fixed_order) call initplot_impl()
 firsttime=.false.
 endif
 call set_cms_stuff(0)
@@ -1399,7 +1394,7 @@ cpower(icontr)=wgtcpower
 orderstag(icontr)=orders_tag
 amppos(icontr)=amp_pos
 ipr(icontr)=0
-call set_pdg(icontr,nFKSprocess)
+call set_pdg_impl(icontr,nFKSprocess,idup)
 
 ! Compensate for the fact that in the Born matrix elements, we use the
 ! identical particle symmetry factor of the corresponding real emission
@@ -2003,7 +1998,8 @@ enddo
 ! call the analysis/histogramming routines
 orders_tag_plot=orderstag(i)
 amp_pos_plot=amppos(i)
-call outfun(momenta(0,1,i),y_bst(i),www,pdg(1,i),plot_id(i))
+call outfun_impl(momenta(0,1,i),y_bst(i),www,pdg(1,i),plot_id(i), &
+  external_masses)
 endif
 enddo
 call cpu_time(tAfter)
@@ -4489,7 +4485,7 @@ RETURN
 end function DDILOG
 
 
-subroutine getpoles(p,xmu2,double,single,fksprefact)
+subroutine getpoles(p,xmu2,double,single,fksprefact,split_poles)
 ! Returns the residues of double and single poles according to
 ! eq.(B.1) and eq.(B.2) if fksprefact=.true.. When fksprefact=.false.,
 ! the prefactor (mu2/Q2)^ep in eq.(B.1) is expanded, and giving an
@@ -4498,6 +4494,7 @@ implicit none
 !      include "fks.inc"
 double precision p(0:3,nexternal), xmu2, double, single
 logical fksprefact
+double precision, optional, intent(out) :: split_poles(amp_split_size,2)
 double precision c(0:1), gamma(0:1), gammap(0:1)
 common/fks_colors/c,gamma,gammap
 integer i_fks, j_fks
@@ -4628,6 +4625,7 @@ nFKSprocess = nFKSprocess_save
 call fks_inc_chooser()
 
 if(.not.fksprefact)single=single+double*dlog(xmu2/QES2)
+if (present(split_poles)) split_poles=amp_split_poles_FKS
 !
 return
 end subroutine getpoles
@@ -4806,7 +4804,7 @@ enddo
 ! Set color types of i_fks, j_fks and fks_mother.
 i_type=particle_type(i_fks)
 j_type=particle_type(j_fks)
-call get_mother_colour(i_type,j_type,m_type)
+call get_mother_colour_impl(i_type,j_type,m_type,i_fks,j_fks)
 i_type_FKS(nFKSprocess)=i_type
 j_type_FKS(nFKSprocess)=j_type
 m_type_FKS(nFKSprocess)=m_type
@@ -4830,7 +4828,7 @@ enddo
 ! Born matrix elements.
 iden_born_FKS(nFKSprocess)=1
 call weight_lines_allocated(nexternal,max_contr,max_wgt ,max_iproc)
-call set_pdg(0,nFKSprocess)
+call set_pdg_impl(0,nFKSprocess,idup)
 do i=1,nexternal
 iden(i)=1
 enddo

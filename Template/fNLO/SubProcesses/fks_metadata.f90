@@ -17,8 +17,6 @@ module fks_metadata
 
   public :: initialize_fks_metadata
   public :: validate_fks_metadata
-  public :: finalize_fks_metadata
-  public :: fks_metadata_is_initialized
   public :: fks_i_d, fks_j_d
   public :: extra_cnt_d, isplitorder_born_d, isplitorder_cnt_d
   public :: fks_j_from_i_d

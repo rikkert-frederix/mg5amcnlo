@@ -15,9 +15,6 @@ module binoth_lha_user_backend
   end interface
 
   public :: binoth_lha_eval
-  public :: binoth_lha_init_impl
-  public :: dr_to_cdr_impl
-  public :: get_procnum_impl
 
 contains
 

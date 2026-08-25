@@ -6,29 +6,6 @@ c Process-generated declaration boundary for madfks_plot_module.
 
       call initplot_impl()
       end
-
-
-      subroutine topout
-      use madfks_plot_module, only: topout_impl
-      implicit none
-
-      call topout_impl()
-      end
-
-
-      subroutine outfun(pp,ybst_til_tolab,www,ipdg,itype)
-      use madfks_plot_module, only: outfun_impl
-      implicit none
-      include 'nexternal.inc'
-      double precision pp(0:3,nexternal),ybst_til_tolab,www(*)
-      integer ipdg(nexternal),itype
-      double precision pmass(nexternal)
-      common /to_mass/ pmass
-
-      call outfun_impl(pp,ybst_til_tolab,www,ipdg,itype,pmass)
-      end
-
-
       subroutine plot_pine_bridge(action,norm,ibody,itype,www)
       use run_state, only: pineappl
       implicit none

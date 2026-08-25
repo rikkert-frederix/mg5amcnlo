@@ -3,31 +3,13 @@ module kin_functions_module
   private
 
   public :: delta_phi_impl
-  public :: dj
-  public :: dj1_impl
-  public :: dj1
-  public :: dj2_impl
-  public :: dj_impl
-  public :: djb
-  public :: djb_impl
   public :: dot_impl
   public :: et_impl
   public :: eta_impl
-  public :: four_momentum_impl
-  public :: four_momentum_set2_impl
-  public :: phi_impl
   public :: pt_impl
-  public :: ptdot_impl
-  public :: r2_impl
-  public :: rap
-  public :: rap_impl
-  public :: rap2_impl
   public :: rho_impl
-  public :: sumdot_impl
-  public :: switchhel_impl
   public :: switchmom_impl
   public :: theta_impl
-  public :: threedot_impl
 
 contains
 

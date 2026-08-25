@@ -6,8 +6,6 @@ module fastjet_timing_wrapper
 
   public :: fastjet_timed
   public :: fastjet_etamax_timed
-  public :: reset_fastjet_timing
-  public :: get_fastjet_timing
 
   interface
     subroutine amcatnlo_fastjetppgenkt(pqcd, nn, rfj, sycut, palg, &

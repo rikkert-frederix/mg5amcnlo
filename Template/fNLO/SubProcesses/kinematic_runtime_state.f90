@@ -8,12 +8,10 @@ module kinematic_runtime_state
   logical, allocatable, public :: is_a_lm(:)
   logical, allocatable, public :: is_a_ph(:)
 
-  logical, public :: kinematic_state_initialized = .false.
+  logical :: kinematic_state_initialized = .false.
 
   public :: init_kinematic_state
   public :: sync_kinematic_state
-  public :: reset_kinematic_state
-  public :: finalize_kinematic_state
   public :: validate_kinematic_state
 
 contains

@@ -7,7 +7,6 @@ module setrun_module
   private
 
   public :: complete_setrun
-  public :: get_pdfup
 
 contains
 

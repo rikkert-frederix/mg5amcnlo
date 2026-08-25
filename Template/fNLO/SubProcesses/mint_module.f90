@@ -48,6 +48,7 @@ module mint_module
   use polynomial_fit, only: init_polyfit, add_point_polyfit, &
        do_polyfit, get_polyfit, save_polyfit, restore_polyfit
   implicit none
+  private
   integer, parameter, private :: nintervals=32    ! max number of intervals in the integration grids
   integer, parameter, public  :: ndimmax=60       ! max number of dimensions of the integral
   integer, parameter, public  :: n_ave_virt=10    ! max number of grids to set up to approx virtual
@@ -55,7 +56,7 @@ module mint_module
   integer, parameter, private :: nintervals_virt=8! max number of intervals in the grids for the approx virtual
   integer, parameter, private :: min_inter=4      ! minimal number of intervals
   integer, parameter, private :: min_it0=4        ! minimal number of iterations in the mint step 0 phase
-  integer, parameter, public :: max_fold=512     ! 8*8*8 is max folding for the three variables
+  integer, parameter :: max_fold=512     ! 8*8*8 is max folding for the three variables
   integer, parameter, private :: max_points=100000! maximum number of points to trow per iteration if not enough non-zero points can be found.
   integer, parameter, public  :: maxchannels=20 ! set as least as large as in amcatnlo_run_interface
   ! Note that the number of intervals in the integration grids, 'nintervals', cannot be arbitrarily large.
@@ -76,7 +77,7 @@ module mint_module
   double precision, dimension(0:n_ave_virt), public :: virt_wgt_mint,born_wgt_mint,polyfit
   double precision, dimension(maxchannels), public :: virtual_fraction
   double precision, dimension(nintegrals,0:maxchannels), public :: ans,unc
-  logical :: only_virt,new_point,pass_cuts_check
+  logical, public :: only_virt,new_point,pass_cuts_check
 
 ! private variables
   character(len=13), parameter, dimension(nintegrals), private :: title=(/ &
@@ -134,12 +135,11 @@ module mint_module
   integer, allocatable, private :: even_iii(:),even_kkk(:)
 
 ! Common blocks used elsewhere in the code
-  logical fixed_order
+  logical, public :: fixed_order
   common /c_fixed_order/fixed_order
 
 ! functions and subroutines:
-  public :: mint,read_grids_from_file,initialize_mint_state, &
-       finalize_mint_state
+  public :: mint
   private :: initialise_mint,setup_basic_mint &
        &,update_accumulated_results,prepare_next_iteration &
        &,check_desired_accuracy,update_integration_grids &

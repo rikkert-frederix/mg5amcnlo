@@ -3,8 +3,6 @@ module reweight_xsec_module
   private
 
   public :: rwgt_muR_dep_fac_value
-  public :: odeint, rkck, rkqs
-  public :: runalpha, rhs, inibeta, runmass, inigamma
 
 contains
 

@@ -35,12 +35,9 @@ module chooser_functions_module
 
   public :: init_configs_props
   public :: initialize_leshouche_data
-  public :: finalize_chooser_data
   public :: configs_props_chooser_core
   public :: fks_inc_chooser_impl
   public :: leshouche_inc_chooser_impl
-  public :: read_configs_props_core
-  public :: read_leshouche_info_impl
   public :: get_mother_colour_impl
   public :: set_pdg_impl
   public :: fill_needed_splittings_impl

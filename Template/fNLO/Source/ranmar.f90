@@ -2,8 +2,8 @@ module ranmar_module
   implicit none
   private
 
-  integer, parameter, public :: ranmar_real_kind = selected_real_kind(15, 307)
-  integer, parameter, public :: ranmar_seed_kind = selected_int_kind(18)
+  integer, parameter :: ranmar_real_kind = selected_real_kind(15, 307)
+  integer, parameter :: ranmar_seed_kind = selected_int_kind(18)
 
   real(kind=ranmar_real_kind) :: random_values(97) = 0.0_ranmar_real_kind
   real(kind=ranmar_real_kind) :: carry = 0.0_ranmar_real_kind
@@ -21,7 +21,7 @@ module ranmar_module
   integer :: random_offset_split_common
   common /c_random_offset_split/ random_offset_split_common
 
-  type, public :: ranmar_state_type
+  type :: ranmar_state_type
     real(kind=ranmar_real_kind) :: random_values(97)
     real(kind=ranmar_real_kind) :: carry
     real(kind=ranmar_real_kind) :: carry_decrement
@@ -33,14 +33,7 @@ module ranmar_module
     integer :: ntuple_kl
   end type ranmar_state_type
 
-  public :: get_base
-  public :: get_moffset
-  public :: get_offset
-  public :: get_ranmar_state
   public :: ntuple
-  public :: ranmar
-  public :: rmarin
-  public :: set_ranmar_state
 
 contains
 

@@ -30,17 +30,3 @@ c Call after SETCUTS, including whenever the selected FKS channel changes.
       call initialize_cuts_event_state(pmass,idup,ybst_til_tolab)
       return
       end
-
-
-c The generated FastJet wrapper name exceeds the Fortran 95 identifier
-c limit, so keep this short standards-compliant adapter at the ABI edge.
-      subroutine cuts_fastjet_etamax(pqcd,nn,rfj,sycut,etamax,
-     $     palg,pjet,njet,jet)
-      implicit none
-      integer nn,njet,jet(nn)
-      double precision pqcd(0:3,nn),rfj,sycut,etamax,palg
-      double precision pjet(0:3,nn)
-      call amcatnlo_fastjetppgenkt_etamax_timed(pqcd,nn,rfj,
-     $     sycut,etamax,palg,pjet,njet,jet)
-      return
-      end

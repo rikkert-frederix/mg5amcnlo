@@ -9,36 +9,20 @@ module cuts_module
        delta_phi => delta_phi_impl, theta => theta_impl, dot => dot_impl
   use timing_state, only: t_cuts
   use kinematic_runtime_state, only: sync_kinematic_state
+  use fastjet_timing_wrapper, only: fastjet_etamax_timed
+  use fixed_order_user_hooks, only: accept_dummy_cuts
   implicit none
   private
 
   public :: initialize_cuts_runtime_state, initialize_cuts_event_state
-  public :: finalize_cuts_module
-  public :: passcuts_user, identify_part_partons, passcuts_photons
-  public :: identify_qcd_partons, passcuts_jets
-  public :: passcuts_leptons, passcuts_pdgs, passcuts
-  public :: chi_gamma_iso, sortzv, sorttf, sortti, sorttc, icmpch
-  public :: iso_getdrv40, iso_getdr, iso_getpseudorap, iso_getdelphi
-  public :: r2_04, pt_04, eta_04, invm2_04
-  public :: get_id_h_impl, get_id_s_impl
+  public :: passcuts
+  public :: chi_gamma_iso, sortzv, iso_getdrv40
   double precision, allocatable :: etmin(:), etmax(:), mxxmin(:,:)
   double precision, allocatable :: event_masses(:)
   integer, allocatable :: event_idup(:,:)
   double precision :: ybst_til_tolab = 0d0
   logical :: cuts_runtime_initialized = .false.
   logical :: cuts_event_initialized = .false.
-
-  interface
-    subroutine cuts_fastjet_etamax(pqcd, nn, rfj, &
-         sycut, etamax, palg, pjet, njet, jet)
-      implicit none
-      integer, intent(in) :: nn
-      integer, intent(out) :: njet, jet(nn)
-      double precision, intent(in) :: pqcd(0:3, nn)
-      double precision, intent(in) :: rfj, sycut, etamax, palg
-      double precision, intent(out) :: pjet(0:3, nn)
-    end subroutine cuts_fastjet_etamax
-  end interface
 
 contains
 
@@ -213,8 +197,6 @@ contains
   logical is_a_lp(nexternal),is_a_lm(nexternal),is_a_j(nexternal) &
   & ,is_a_ph(nexternal),is_nph_iso(nexternal),is_nextph_iso(nexternal)
   logical is_a_lp_reco(nexternal),is_a_lm_reco(nexternal)
-  logical dummy_cuts
-  external dummy_cuts
   call require_cuts_runtime_state()
   passcuts_user=.true. ! event is okay; otherwise it is changed
 
@@ -262,11 +244,8 @@ contains
 ! PUT HERE YOUR USER-DEFINED CUTS
 !***************************************************************
 !***************************************************************
-!     advise way to implement user-defined cuts:
-!     define the function dummy_cuts in a file
-!      (template in SubProcesses/dummy_fct.f)
-!     then in the run_card set the custom_fct variable to [PATH_TO_THE_FILE_CONTAINING_THE_FCT]
-  passcuts_user = dummy_cuts(P,istatus,ipdg)
+!     User-defined fixed-order cuts live in fixed_order_user_hooks.
+  passcuts_user = accept_dummy_cuts()
 !$$$C EXAMPLE: cut on top quark pT
 !$$$C          Note that PDG specific cut are more optimised than simple user cut
 !$$$      do i=1,nexternal   ! loop over all external particles
@@ -610,7 +589,7 @@ contains
 !                                            necessarily correspond to the particle
 !                                            label in the process
 !
-  call cuts_fastjet_etamax( &
+  call fastjet_etamax_timed( &
   & pQCD,nQCD,rfj,sycut,etaj,palg,pjet,njet,jet)
 !
 !******************************************************************************

@@ -5,6 +5,8 @@ use process_dimensions, only: nexternal, nincoming, max_particles, &
 use run_state
 use timing_state, only: tGenPS
 use kin_functions_module, only: dot => dot_impl, rho => rho_impl
+use fks_singular_module, only: rotate_invar, phspncheck_born, &
+  phspncheck_nocms, xmom_compare
 implicit none
 private
 public :: generate_momenta

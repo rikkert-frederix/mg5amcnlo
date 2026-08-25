@@ -35,15 +35,7 @@ module fks_sij_module
 
   public :: initialize_fks_sij_module
   public :: set_fks_sij_partition_state
-  public :: set_fks_sij_kinematic_state
-  public :: set_fks_hij_state
   public :: fks_sij_impl
-  public :: get_dkl_sij_impl
-  public :: get_cms_energy_impl
-  public :: get_cms_costh_fks_impl
-  public :: costh_fks_impl
-  public :: h_damp_impl
-  public :: fks_hij_impl
 
 contains
 

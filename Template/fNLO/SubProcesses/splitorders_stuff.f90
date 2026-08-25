@@ -9,16 +9,12 @@ module split_orders
   logical, allocatable :: first_contribution_message(:)
   logical :: split_orders_initialized = .false.
 
-  public :: initialize_split_orders
-  public :: finalize_split_orders
   public :: get_orders_tag
-  public :: get_orders_tag_from_amp_pos
   public :: orders_to_amp_split_pos
   public :: amp_split_pos_to_orders
   public :: lo_qcd_to_amp_pos
   public :: nlo_qcd_to_amp_pos
   public :: check_amp_split
-  public :: orders_equal
 
 contains
 

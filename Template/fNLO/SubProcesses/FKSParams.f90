@@ -17,8 +17,7 @@ module FKSParams
   public :: SelectedContributionTypes
   public :: SelectedCouplingOrders, QCD_squared_selected
   public :: separate_flavour_configs, IncludeBornContributions
-  public :: use_poly_virtual, initialize_fks_params, finalize_fks_params
-  public :: FKSParamReader, DefaultFKSParam
+  public :: use_poly_virtual, FKSParamReader
   character(len=64), parameter ::  paramFileName='FKS_params.dat'
   integer,parameter :: maxContribsSelected=100, &
                        maxCouplingsSelected=100, &

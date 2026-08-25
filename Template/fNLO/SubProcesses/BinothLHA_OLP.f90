@@ -1,6 +1,7 @@
 module binoth_lha_olp_backend
   use FKSParams, only: IRPoleCheckThreshold
   use process_dimensions, only: nexternal
+  use fks_singular_module, only: getpoles
   implicit none
   private
 
@@ -20,8 +21,6 @@ module binoth_lha_olp_backend
   end interface
 
   public :: binoth_lha_eval
-  public :: binoth_lha_init_impl
-  public :: dr_to_cdr_impl
 
 contains
 

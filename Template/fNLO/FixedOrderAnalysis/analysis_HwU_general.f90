@@ -42,15 +42,6 @@ contains
   & ,' |T@LO2      ',' |T@LO3      ',' |T@NLO1     ' &
   & ,' |T@NLO2     ',' |T@NLO3     ',' |T@NLO4     '/
 
-!     Also specific perturbative orders can be directly plotted, adding for examples
-!     the following further entries in the variable data
-!     $        ' |T@QCD4QED0 ',
-!     $        ,' |T@QCD2QED2 ',' |T@QCD0QED4 ',' |T@QCD6QED0 '
-!     $        ,' |T@QCD4QED2 ',' |T@QCD2QED4 ',' |T@QCD0QED6 '
-!     $        ,' |T@QCD8QED0 ',' |T@QCD6QED2 ',' |T@QCD4QED4 '
-!     $        ,' |T@QCD2QED6 ',' |T@QCD0QED8 '
-!
-!     See also line 376 in this file
   call HwU_inithist(nwgt,weights_info)
   do i=1,9
   l=(i-1)*59

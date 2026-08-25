@@ -4,7 +4,6 @@ module ajob_file_module
 
   integer :: file_counter = 0
 
-  public :: initialize_ajob_file_module
   public :: open_bash_file
   public :: close_bash_file
 

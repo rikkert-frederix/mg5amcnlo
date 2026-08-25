@@ -3,20 +3,11 @@
 ! The histogram implementation is kept in modules.  External entry points and
 ! process-generated PineAPPL declarations are isolated in HwU_bridge.f.
 
-module HwU_wgts_info_len
+module HwU_module
   implicit none
   private
 
-  integer, parameter, public :: wgts_info_len = 80
-
-end module HwU_wgts_info_len
-
-
-module HwU_variables
-  use HwU_wgts_info_len, only: wgts_info_len
-  implicit none
-  public
-
+  integer, parameter :: wgts_info_len = 80
   integer :: max_plots = 0
   integer :: max_points = 0
   integer :: max_bins = 0
@@ -40,14 +31,6 @@ module HwU_variables
   double precision, allocatable :: step(:)
   double precision, allocatable :: p_wgts(:, :)
 
-end module HwU_variables
-
-
-module HwU_module
-  use HwU_variables
-  implicit none
-  private
-
   double precision :: accumulated_iterations = 0d0
 
   interface
@@ -70,17 +53,11 @@ module HwU_module
   end interface
 
   public :: HwU_inithist
-  public :: set_error_estimation
   public :: HwU_book
   public :: HwU_fill
   public :: HwU_add_points
   public :: HwU_accum_iter
-  public :: finalize_histograms
-  public :: accumulate_results
   public :: HwU_output
-  public :: HwU_deallocate_all
-  public :: HwU_allocate_p
-  public :: HwU_allocate_histo
   public :: accum
   public :: addfil
 

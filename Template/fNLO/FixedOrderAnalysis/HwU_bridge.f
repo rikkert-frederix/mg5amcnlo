@@ -63,49 +63,6 @@ c histogram implementation in HwU.f90 has no generated INCLUDE files.
          enddo
       endif
       end
-
-
-c External histogram ABI.  The implementation remains in the free-form
-c HwU_module; legacy analyses can continue to call these entry points.
-
-      subroutine HwU_inithist(nweights,wgt_info)
-      use HwU_module,
-     &     only: module_HwU_inithist => HwU_inithist
-      implicit none
-      integer nweights
-      character(len=*) wgt_info(*)
-      call module_HwU_inithist(nweights,wgt_info)
-      end
-
-
-      subroutine set_error_estimation(input)
-      use HwU_module,
-     &     only: module_set_error => set_error_estimation
-      implicit none
-      integer input
-      call module_set_error(input)
-      end
-
-
-      subroutine HwU_book(label,title_l,nbin_l,xmin,xmax)
-      use HwU_module, only: module_HwU_book => HwU_book
-      implicit none
-      integer label,nbin_l
-      character(len=*) title_l
-      double precision xmin,xmax
-      call module_HwU_book(label,title_l,nbin_l,xmin,xmax)
-      end
-
-
-      subroutine HwU_fill(label,x,wgts)
-      use HwU_module, only: module_HwU_fill => HwU_fill
-      implicit none
-      integer label
-      double precision x,wgts(*)
-      call module_HwU_fill(label,x,wgts)
-      end
-
-
       subroutine HwU_add_points
       use HwU_module,
      &     only: module_HwU_add_points => HwU_add_points
@@ -123,27 +80,6 @@ c HwU_module; legacy analyses can continue to call these entry points.
       double precision values(2)
       call module_HwU_accum_iter(inclde,nPSpoints,values)
       end
-
-
-      subroutine finalize_histograms(nPSpoints)
-      use HwU_module,
-     &     only: module_finalize => finalize_histograms
-      implicit none
-      integer nPSpoints
-      call module_finalize(nPSpoints)
-      end
-
-
-      subroutine accumulate_results(label,nPSinv,niter,values)
-      use HwU_module,
-     &     only: module_accumulate => accumulate_results
-      implicit none
-      integer label
-      double precision nPSinv,niter,values(2)
-      call module_accumulate(label,nPSinv,niter,values)
-      end
-
-
       subroutine HwU_output(unit,xnorm)
       use HwU_module, only: module_HwU_output => HwU_output
       implicit none
@@ -151,33 +87,6 @@ c HwU_module; legacy analyses can continue to call these entry points.
       double precision xnorm
       call module_HwU_output(unit,xnorm)
       end
-
-
-      subroutine HwU_deallocate_all
-      use HwU_module,
-     &     only: module_HwU_deallocate => HwU_deallocate_all
-      implicit none
-      call module_HwU_deallocate
-      end
-
-
-      subroutine HwU_allocate_p
-      use HwU_module,
-     &     only: module_HwU_allocate_p => HwU_allocate_p
-      implicit none
-      call module_HwU_allocate_p
-      end
-
-
-      subroutine HwU_allocate_histo(label,nbin_l)
-      use HwU_module,
-     &     only: module_HwU_allocate => HwU_allocate_histo
-      implicit none
-      integer label,nbin_l
-      call module_HwU_allocate(label,nbin_l)
-      end
-
-
       subroutine accum(idummy)
       use HwU_module, only: module_accum => accum
       implicit none

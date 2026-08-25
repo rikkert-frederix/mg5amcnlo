@@ -4,6 +4,7 @@ module binoth_lha_madloop_backend
        nsplitorders, amp_split_size, nlo_orders, order_names
   use split_orders, only: orders_to_amp_split_pos, &
        amp_split_pos_to_orders
+  use fks_singular_module, only: getpoles
   implicit none
   private
 
@@ -50,21 +51,9 @@ module binoth_lha_madloop_backend
       double precision, intent(out) :: mu_r_value, alpha_s
     end subroutine binoth_lha_update_couplings
 
-    subroutine binoth_lha_getpoles_bridge(p, scale, double_pole, &
-         single_pole, include_prefactor, split_poles)
-      use process_dimensions, only: nexternal, amp_split_size
-      implicit none
-      double precision, intent(in) :: p(0:3,nexternal-1), scale
-      double precision, intent(out) :: double_pole, single_pole
-      logical, intent(in) :: include_prefactor
-      double precision, intent(out) :: split_poles(amp_split_size,2)
-    end subroutine binoth_lha_getpoles_bridge
   end interface
 
   public :: binoth_lha_eval
-  public :: binoth_lha_init_impl
-  public :: dr_to_cdr_impl
-  public :: get_procnum_impl
 
 contains
 
@@ -244,15 +233,14 @@ contains
       return
     end if
 
-    ! MadLoop already returns CDR virtuals.  The disabled conversion hook is
-    ! retained through the legacy DRtoCDR external entry point.
+    ! MadLoop already returns CDR virtuals, so no scheme conversion is applied.
 
     cpol = .false.
     ret_code_common = ret_code
     if ((firsttime .or. mc_hel == 0) .and. &
         mod(ret_code,100)/10 /= 3 .and. mod(ret_code,100)/10 /= 4) then
-      call binoth_lha_getpoles_bridge(p, qes2, madfks_double, &
-           madfks_single, fksprefact, amp_split_poles_fks)
+      call getpoles(p, qes2, madfks_double, madfks_single, fksprefact, &
+           amp_split_poles_fks)
       polecheck_passed = .true.
       do iamp = 1, amp_split_size
         if (iamp /= 0) then

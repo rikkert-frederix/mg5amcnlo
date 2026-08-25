@@ -1,4 +1,5 @@
 module driver_mintfo_module
+  use run_printout_module, only: write_run_summary
   use extra_weights, only: doreweight
   use mint_module, only: maxchannels, n_ave_virt, average_virtual, &
        virtual_fraction, min_virt_fraction_mint, n_ord_virt, ncalls0, &
@@ -26,6 +27,16 @@ module driver_mintfo_module
   use timing_state, only: reset_timing_state, tBorn, tIS, tReal, &
        tCount, tf_nb, tf_all, t_as, tr_s, tr_pdf, t_plot, &
        t_cuts, t_isum, tOLP, tGenPS, t_coupl
+  use fks_singular_module, only: compute_prefactors_nbody, &
+       compute_prefactors_n1body, set_cms_stuff, &
+       include_multichannel_enhance, compute_born, &
+       compute_nbody_noborn, compute_soft_counter_term, &
+       compute_soft_collinear_ct_impl, compute_collinear_counter_term, &
+       compute_real_emission, include_pdf_and_alphas, reweight_scale, &
+       reweight_pdf, fill_pineappl_weights, get_wgt_nbody, &
+       get_wgt_no_nbody, fill_plots, fill_mint_function, &
+       fill_configurations_common, setfksfactor, ran2
+  use madfks_plot_module, only: topout_impl
   implicit none
   private
 
@@ -36,15 +47,12 @@ module driver_mintfo_module
   logical, save :: sigint_first_time = .true.
   logical, save :: born_map_first_time = .true.
   logical, save :: sum_fks_directories = .false.
+  integer :: nfksprocess
+  common /c_nfksprocess/ nfksprocess
 
   public :: run_mintfo_driver
   public :: init_driver_generated_data
-  public :: finalize_mintfo_driver
   public :: sigint_impl
-  public :: update_fks_dir_impl
-  public :: setup_ini_fin_fks_map_impl
-  public :: get_born_nfksprocess_impl
-  public :: update_vegas_x_impl
   public :: get_user_params_impl
 
   interface
@@ -59,6 +67,9 @@ module driver_mintfo_module
 
     subroutine init_genps_fks_bridge()
     end subroutine init_genps_fks_bridge
+
+    subroutine init_fks_singular_bridge()
+    end subroutine init_fks_singular_bridge
 
     integer function drv_getpid()
     end function drv_getpid
@@ -79,12 +90,6 @@ module driver_mintfo_module
     subroutine printout()
     end subroutine printout
 
-    subroutine run_printout()
-    end subroutine run_printout
-
-    subroutine fill_configurations_common()
-    end subroutine fill_configurations_common
-
     subroutine get_user_params(ncall, nitmax, irestart)
       integer, intent(out) :: ncall, nitmax, irestart
     end subroutine get_user_params
@@ -99,9 +104,6 @@ module driver_mintfo_module
       character(len=*) :: string
     end subroutine addfil
 
-    subroutine topout()
-    end subroutine topout
-
     double precision function sigint(xx, vegas_wgt, ifl, f)
       use mint_module, only: ndimmax, nintegrals
       double precision, intent(in) :: xx(ndimmax), vegas_wgt
@@ -109,84 +111,12 @@ module driver_mintfo_module
       double precision, intent(out) :: f(nintegrals)
     end function sigint
 
-    subroutine update_fks_dir(nfks)
-      integer, intent(in) :: nfks
-    end subroutine update_fks_dir
-
-    subroutine compute_prefactors_nbody(vegas_wgt)
-      double precision, intent(in) :: vegas_wgt
-    end subroutine compute_prefactors_nbody
-
-    subroutine compute_prefactors_n1body(vegas_wgt, jacobian)
-      double precision, intent(in) :: vegas_wgt, jacobian
-    end subroutine compute_prefactors_n1body
-
-    subroutine set_cms_stuff(counterevent)
-      integer, intent(in) :: counterevent
-    end subroutine set_cms_stuff
-
-    subroutine include_multichannel_enhance(mode)
-      integer, intent(in) :: mode
-    end subroutine include_multichannel_enhance
-
-    subroutine compute_born()
-    end subroutine compute_born
-
-    subroutine compute_nbody_noborn()
-    end subroutine compute_nbody_noborn
-
-    subroutine compute_soft_counter_term()
-    end subroutine compute_soft_counter_term
-
-    subroutine drv_soft_collinear()
-    end subroutine drv_soft_collinear
-
-    subroutine compute_collinear_counter_term()
-    end subroutine compute_collinear_counter_term
-
-    subroutine compute_real_emission(momentum)
-      double precision, intent(in) :: momentum(0:3, *)
-    end subroutine compute_real_emission
-
-    subroutine include_pdf_and_alphas()
-    end subroutine include_pdf_and_alphas
-
-    subroutine reweight_scale()
-    end subroutine reweight_scale
-
-    subroutine reweight_pdf()
-    end subroutine reweight_pdf
-
-    subroutine fill_pineappl_weights(vegas_wgt)
-      double precision, intent(in) :: vegas_wgt
-    end subroutine fill_pineappl_weights
-
-    subroutine get_wgt_nbody(weight)
-      double precision, intent(out) :: weight
-    end subroutine get_wgt_nbody
-
-    subroutine get_wgt_no_nbody(weight)
-      double precision, intent(out) :: weight
-    end subroutine get_wgt_no_nbody
-
-    subroutine fill_plots()
-    end subroutine fill_plots
-
-    subroutine fill_mint_function(function_values)
-      double precision, intent(out) :: function_values(*)
-    end subroutine fill_mint_function
-
     subroutine fks_inc_chooser()
     end subroutine fks_inc_chooser
 
     subroutine leshouche_inc_chooser()
     end subroutine leshouche_inc_chooser
 
-    subroutine setfksfactor()
-    end subroutine setfksfactor
-
-    double precision function ran2()
-    end function ran2
   end interface
 
 contains
@@ -283,10 +213,11 @@ contains
 
     call setrun()
     call setpara('param_card.dat')
+    call init_fks_singular_bridge()
     call setcuts()
     call sync_cuts_bridge_state()
     call printout()
-    call run_printout()
+    call write_run_summary()
     call fill_configurations_common()
     call init_genps_fks_bridge()
     call check_amp_split()
@@ -348,7 +279,7 @@ contains
       end if
       write (*, *) 'imode is ', imode
       call mint(sigint)
-      call topout()
+      call topout_impl()
       call deallocate_weight_lines()
     else
       write (*, *) 'Unknown imode', imode
@@ -496,7 +427,7 @@ contains
       nbody = .true.
       calculated_born = .false.
       call get_born_nfksprocess_impl(nfks_picked, nfks_born)
-      call update_fks_dir(nfks_born)
+      call update_fks_dir_impl(nfks_born)
       if (ini_fin_fks(ichan) == 0) then
         jacobian = 1d0
       else
@@ -544,7 +475,7 @@ contains
         wgt_me_born = 0d0
         wgt_me_real = 0d0
         jacobian = mc_integer_weight
-        call update_fks_dir(ifks)
+        call update_fks_dir_impl(ifks)
         call generate_momenta(nndim, iconfig, jacobian, &
              vegas_variables, momentum)
         if (p_born(0, 1) < 0d0) cycle
@@ -566,7 +497,7 @@ contains
           call include_multichannel_enhance(3)
           call compute_soft_counter_term()
           call set_cms_stuff(soft_collinear_event)
-          call drv_soft_collinear()
+          call compute_soft_collinear_ct_impl()
         end if
         if (passcuts_coll .and. abrv /= 'real') then
           call set_alphas(p1_cnt(0:3, 1:nexternal, collinear_event))
@@ -614,9 +545,11 @@ contains
   end function sigint_impl
 
 
-  subroutine update_fks_dir_impl()
+  subroutine update_fks_dir_impl(nfks)
     implicit none
+    integer, intent(in) :: nfks
 
+    nfksprocess = nfks
     call fks_inc_chooser()
     call leshouche_inc_chooser()
     call setcuts()

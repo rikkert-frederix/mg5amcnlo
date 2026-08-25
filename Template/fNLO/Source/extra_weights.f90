@@ -12,7 +12,6 @@ module extra_weights
   public :: wgtbpower, wgtcpower, LHAPDFsetname
   public :: cpower_pos, runfac, ren_group_coeff_in
   public :: initialize_extra_weights, validate_extra_weights
-  public :: finalize_extra_weights, extra_weights_are_initialized
 
   integer, parameter :: iwgtinfo = -5
   integer, parameter :: maxscales = 9

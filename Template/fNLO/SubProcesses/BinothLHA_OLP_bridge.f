@@ -29,34 +29,3 @@
       mu_r_value=mu_r
       return
       end
-
-
-      subroutine BinothLHAInit()
-      use binoth_lha_olp_backend, only: binoth_lha_init_impl
-      implicit none
-
-      call binoth_lha_init_impl()
-      return
-      end
-
-
-      subroutine DRtoCDR(conversion)
-      use binoth_lha_olp_backend, only: dr_to_cdr_impl
-      implicit none
-      include 'nexternal.inc'
-      include 'coupl.inc'
-      integer i_fks,j_fks
-      common /fks_indices/ i_fks,j_fks
-      integer fks_j_from_i(nexternal,0:nexternal)
-      integer particle_type(nexternal),pdg_type(nexternal)
-      common /c_fks_inc/ fks_j_from_i,particle_type,pdg_type
-      integer i_type,j_type,m_type
-      common /cparticle_types/ i_type,j_type,m_type
-      double precision conversion,pmass(nexternal),zero
-      parameter (zero=0d0)
-      include 'pmass.inc'
-
-      call dr_to_cdr_impl(conversion,i_fks,j_fks,particle_type,
-     &     m_type,pmass)
-      return
-      end

@@ -3,7 +3,6 @@ module rw_routines
   private
 
   public :: case_trap2
-  public :: to_upper
 
 contains
 

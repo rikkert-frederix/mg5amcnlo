@@ -1,4 +1,5 @@
 module check_poles_module
+  use run_printout_module, only: write_run_summary
   use process_dimensions, only: nexternal, nincoming, fks_configs, &
        validate_process_dimensions
   use fks_metadata, only: fks_i_d, pdg_type_d, validate_fks_metadata
@@ -6,6 +7,7 @@ module check_poles_module
   use mint_module, only: iconfig, ichan, iconfigs
   use FKSParams, only: paramFileName, IRPoleCheckThreshold, &
        FKSParamReader
+  use fks_singular_module, only: setfksfactor, ran2
   implicit none
   private
 
@@ -46,9 +48,6 @@ module check_poles_module
 
   public :: run_check_poles
   public :: initialize_check_poles_data
-  public :: finalize_check_poles_data
-  public :: rambo_impl
-  public :: rans_impl
 
   interface
     subroutine init_process_dimensions_bridge()
@@ -62,6 +61,9 @@ module check_poles_module
 
     subroutine init_check_poles_data_bridge()
     end subroutine init_check_poles_data_bridge
+
+    subroutine init_fks_singular_bridge()
+    end subroutine init_fks_singular_bridge
 
     subroutine check_poles_set_model_scale(scale_value)
       double precision, intent(in) :: scale_value
@@ -95,17 +97,11 @@ module check_poles_module
     subroutine printout()
     end subroutine printout
 
-    subroutine run_printout()
-    end subroutine run_printout
-
     subroutine fks_inc_chooser()
     end subroutine fks_inc_chooser
 
     subroutine leshouche_inc_chooser()
     end subroutine leshouche_inc_chooser
-
-    subroutine setfksfactor()
-    end subroutine setfksfactor
 
     subroutine force_stability_check(enabled)
       logical, intent(in) :: enabled
@@ -133,8 +129,6 @@ module check_poles_module
       double precision, intent(out) :: virtual_weight
     end subroutine binothlha
 
-    double precision function ran2()
-    end function ran2
   end interface
 
 contains
@@ -215,10 +209,11 @@ contains
 
     call setrun()
     call setpara('param_card.dat')
+    call init_fks_singular_bridge()
     call setcuts()
     call sync_cuts_bridge_state()
     call printout()
-    call run_printout()
+    call write_run_summary()
     call init_check_poles_data_bridge()
     if (.not. generated_data_initialized) then
       call fail_check_poles('generated masses are not initialized')

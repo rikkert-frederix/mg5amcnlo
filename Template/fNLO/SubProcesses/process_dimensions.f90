@@ -35,13 +35,11 @@ module process_dimensions
   integer, public :: nsqso_born = 0
 
   logical, public :: process_dimensions_initialized = .false.
-  logical, public :: born_dimensions_initialized = .false.
+  logical :: born_dimensions_initialized = .false.
 
   public :: initialize_process_dimensions
   public :: initialize_born_dimensions
-  public :: finalize_process_dimensions
   public :: validate_process_dimensions
-  public :: process_dimensions_are_valid
 
 contains
 

@@ -12,6 +12,8 @@ module setscales_module
   use alfas_functions_module, only: alphas
   use kin_functions_module, only: pt => pt_impl, et => et_impl, &
        dot => dot_impl
+  use fastjet_timing_wrapper, only: fastjet_timed
+  use fixed_order_user_hooks, only: fixed_user_scale
   implicit none
   private
 
@@ -27,30 +29,9 @@ module setscales_module
   logical :: first_set_alphas = .true.
   double precision :: current_g = 0d0
 
-  public :: sync_setscales_state
-  public :: set_alphas_impl
-  public :: set_ren_scale_impl, mur_ref_dynamic_impl
-  public :: set_fac_scale_impl, muf_ref_dynamic_impl
-  public :: set_qes_scale_impl, qes_ref_dynamic_impl
-  public :: scale_global_ref_impl
-  public :: set_alphas, set_ren_scale, mur_ref_dynamic
-  public :: set_fac_scale, muf_ref_dynamic
-  public :: set_qes_scale, qes_ref_dynamic, scale_global_reference
+  public :: set_alphas, set_ren_scale, set_fac_scale
 
   interface
-    double precision function user_dynamical_scale(p)
-      double precision, intent(in) :: p(0:3, *)
-    end function user_dynamical_scale
-
-    subroutine amcatnlo_fastjetppgenkt_timed(p, npart, radius, ptmin, &
-         algorithm, pjet, njet, jet)
-      double precision, intent(in) :: p(0:3, *)
-      integer, intent(in) :: npart
-      double precision, intent(in) :: radius, ptmin, algorithm
-      double precision, intent(out) :: pjet(0:3, *)
-      integer, intent(out) :: njet, jet(*)
-    end subroutine amcatnlo_fastjetppgenkt_timed
-
     double precision function amcatnlo_fastjetdmergemax(index)
       integer, intent(in) :: index
     end function amcatnlo_fastjetdmergemax
@@ -235,7 +216,7 @@ contains
         palg = 1d0
         rfj = 0.4d0
         sycut = 0d0
-        call amcatnlo_fastjetppgenkt_timed(pqcd, nn, rfj, sycut, &
+        call fastjet_timed(pqcd, nn, rfj, sycut, &
              palg, pjet, njet, jet)
         if (nn - 1 > nint(wgtbpower)) then
           write(*, *) 'More Born QCD partons than Born QCD ' // &
@@ -417,7 +398,7 @@ contains
       temp_scale_id = 'fixed scale'
     else if (dynamical_scale_choice == 10 .or. &
              dynamical_scale_choice == 0) then
-      tmp = user_dynamical_scale(pp)
+      tmp = fixed_user_scale(mur_ref_fixed, temp_scale_id)
     else
       write(*, *) 'Unknown option in scale_global_reference', &
            dynamical_scale_choice

@@ -70,54 +70,6 @@
       end
 
 
-      subroutine update_fks_dir(nfks)
-      use driver_mintfo_module, only: update_fks_dir_impl
-      implicit none
-      integer nfks,nfksprocess
-      common /c_nfksprocess/nfksprocess
-
-      nfksprocess=nfks
-      call update_fks_dir_impl()
-      return
-      end
-
-
-      subroutine setup_ini_fin_fks_map(ini_fin_fks_map)
-      use driver_mintfo_module, only: setup_ini_fin_fks_map_impl
-      implicit none
-      include 'nFKSconfigs.inc'
-      integer ini_fin_fks_map(0:2,0:fks_configs)
-
-      call setup_ini_fin_fks_map_impl(ini_fin_fks_map)
-      return
-      end
-
-
-      subroutine get_born_nfksprocess(nfks_in,nfks_out)
-      use driver_mintfo_module, only: get_born_nfksprocess_impl
-      implicit none
-      integer nfks_in,nfks_out
-
-      call get_born_nfksprocess_impl(nfks_in,nfks_out)
-      return
-      end
-
-
-      subroutine update_vegas_x(xx,x)
-      use driver_mintfo_module, only: update_vegas_x_impl
-      use mint_module, only: ndimmax
-      implicit none
-      double precision xx(ndimmax),x(99)
-      integer nndim
-      common /tosigint/nndim
-      character(len=4) abrv
-      common /to_abrv/abrv
-
-      call update_vegas_x_impl(xx,x,nndim,abrv)
-      return
-      end
-
-
       subroutine get_user_params(ncall,nitmax,irestart)
       use driver_mintfo_module, only: init_driver_generated_data,
      $     get_user_params_impl
@@ -159,17 +111,5 @@
       call get_user_params_impl(ncall,nitmax,irestart,ini_fin_fks,
      $     isum_hel,multi_channel,use_cut,lbw,abrv,nbody,mc_hel,
      $     random_offset_split)
-      return
-      end
-
-
-      subroutine drv_soft_collinear()
-      implicit none
-      interface
-      subroutine compute_soft_collinear_counter_term()
-      end subroutine compute_soft_collinear_counter_term
-      end interface
-
-      call compute_soft_collinear_counter_term()
       return
       end

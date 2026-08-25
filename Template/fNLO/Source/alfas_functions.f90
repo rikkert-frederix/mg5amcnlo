@@ -46,14 +46,7 @@ module alfas_functions_module
   real(dp) :: grid_mid_sf(0:gridsize_mid)
   real(dp) :: grid_high_sf(0:gridsize_high)
 
-  public :: alfa_impl
-  public :: alfaw_impl
   public :: alphas
-  public :: alphas_from_grids_impl
-  public :: alphas_not_timed_impl
-  public :: initialize_alfas_backend
-  public :: mfrun_impl
-  public :: newton1_impl
 
 contains
 
@@ -75,33 +68,6 @@ contains
     bmass = 4.7d0
     qmass_initialized = .true.
   end subroutine initialize_alfas_backend
-
-  double precision function alfa_impl(alfa0, qsq)
-    implicit none
-    real(dp), intent(in) :: alfa0, qsq
-
-    alfa_impl = alfa0 / &
-         (1d0 - alfa0 * log(qsq / zmass**2) / 3d0 / pi)
-  end function alfa_impl
-
-
-  double precision function alfaw_impl(alfaw0, qsq, nh)
-    implicit none
-    real(dp), intent(in) :: alfaw0, qsq
-    integer, intent(in) :: nh
-    real(dp) :: dum
-    integer :: nq
-
-    if (qsq >= tmass**2) then
-      nq = 6
-    else
-      nq = 5
-    end if
-    dum = (22d0 - 4d0 * nq - nh / 2d0) / (12d0 * pi)
-    alfaw_impl = alfaw0 / &
-         (1d0 + dum * alfaw0 * log(qsq / zmass**2))
-  end function alfaw_impl
-
 
   double precision function alphas_from_grids_impl(scale, asmz, nloop)
     implicit none

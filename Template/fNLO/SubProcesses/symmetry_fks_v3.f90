@@ -8,6 +8,10 @@ module symmetry_fks_module
   use run_state, only: lpp
   use setscales_module, only: set_alphas
   use cuts_module, only: passcuts
+  use run_printout_module, only: write_run_summary
+  use ajob_file_module, only: open_bash_file, close_bash_file
+  use fks_singular_module, only: fill_configurations_common, &
+       setfksfactor, set_cms_stuff, ran2
   implicit none
   private
 
@@ -15,10 +19,12 @@ module symmetry_fks_module
   logical :: symmetry_data_initialized = .false.
 
   public :: initialize_symmetry_data
-  public :: finalize_symmetry_data
   public :: run_symmetry
 
   interface
+    subroutine init_fks_singular_bridge()
+    end subroutine init_fks_singular_bridge
+
     subroutine fks_inc_chooser()
     end subroutine fks_inc_chooser
 
@@ -41,36 +47,11 @@ module symmetry_fks_module
     subroutine printout()
     end subroutine printout
 
-    subroutine run_printout()
-    end subroutine run_printout
-
-    subroutine fill_configurations_common()
-    end subroutine fill_configurations_common
-
-    subroutine setfksfactor()
-    end subroutine setfksfactor
-
-    double precision function ran2()
-    end function ran2
-
-    subroutine set_cms_stuff(iconfiguration)
-      integer, intent(in) :: iconfiguration
-    end subroutine set_cms_stuff
-
     subroutine sborn(p, wgt)
       double precision, intent(in) :: p(0:3, *)
       complex(kind=kind(0d0)), intent(out) :: wgt(2)
     end subroutine sborn
 
-    subroutine open_bash_file(unit_number, file_name, name_length)
-      integer, intent(in) :: unit_number
-      character(len=*), intent(in) :: file_name
-      integer, intent(in) :: name_length
-    end subroutine open_bash_file
-
-    subroutine close_bash_file(unit_number)
-      integer, intent(in) :: unit_number
-    end subroutine close_bash_file
   end interface
 
 contains
@@ -168,10 +149,11 @@ contains
     call leshouche_inc_chooser()
     call setrun()
     call setpara('param_card.dat')
+    call init_fks_singular_bridge()
     call setcuts()
     call sync_cuts_bridge_state()
     call printout()
-    call run_printout()
+    call write_run_summary()
     call fill_configurations_common()
     iconfig = 1
     ichan = 1

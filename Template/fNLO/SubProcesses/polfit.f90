@@ -27,7 +27,6 @@ module polynomial_fit
   public :: get_polyfit
   public :: save_polyfit
   public :: restore_polyfit
-  public :: finalize_polyfit
 
 contains
 

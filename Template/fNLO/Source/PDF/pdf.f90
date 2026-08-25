@@ -5,9 +5,6 @@ module pdf_dispatch_module
   integer, parameter :: dp = kind(1.0d0)
   real(dp), allocatable :: nnfx_workspace(:)
 
-  public :: fdist_impl
-  public :: finalize_pdf_dispatch
-  public :: initialize_pdf_dispatch
   public :: pftopdg_impl
 
   interface

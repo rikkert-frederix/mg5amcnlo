@@ -15,8 +15,6 @@ module pdg2pdf_lhapdf6_module
   integer :: replacement_index = cache_size
   logical :: cache_initialized = .false.
 
-  public :: initialize_pdg2pdf_lhapdf6
-  public :: finalize_pdg2pdf_lhapdf6
   public :: pdg2pdf_lhapdf6_value
 
 contains

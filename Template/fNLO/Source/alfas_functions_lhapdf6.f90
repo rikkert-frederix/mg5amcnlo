@@ -4,7 +4,6 @@ module alfas_functions_module
 
   integer, parameter :: dp = kind(1d0)
   real(dp), parameter :: pi = 3.14159265358979323846d0
-  real(dp), parameter :: zmass = 91.188d0
   real(dp), parameter :: tmass = 174d0
 
   interface
@@ -18,11 +17,7 @@ module alfas_functions_module
     end function alphasPDFm
   end interface
 
-  public :: alfa_impl
-  public :: alfaw_impl
   public :: alphas
-  public :: alphas_impl
-  public :: mfrun_impl
 
 contains
 
@@ -32,33 +27,6 @@ contains
 
     alphas = alphas_impl(q)
   end function alphas
-
-  double precision function alfa_impl(alfa0, qsq)
-    implicit none
-    real(dp), intent(in) :: alfa0, qsq
-
-    alfa_impl = alfa0 / &
-         (1d0 - alfa0 * log(qsq / zmass**2) / 3d0 / pi)
-  end function alfa_impl
-
-
-  double precision function alfaw_impl(alfaw0, qsq, nh)
-    implicit none
-    real(dp), intent(in) :: alfaw0, qsq
-    integer, intent(in) :: nh
-    real(dp) :: dum
-    integer :: nq
-
-    if (qsq >= tmass**2) then
-      nq = 6
-    else
-      nq = 5
-    end if
-    dum = (22d0 - 4d0 * nq - nh / 2d0) / (12d0 * pi)
-    alfaw_impl = alfaw0 / &
-         (1d0 + dum * alfaw0 * log(qsq / zmass**2))
-  end function alfaw_impl
-
 
   double precision function alphas_impl(q)
     implicit none

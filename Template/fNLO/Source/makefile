@@ -8,7 +8,7 @@ IREGIDIR= ./IREGI/src/
 
 GENERIC = timing_state.o $(alfas_functions).o alfas_functions_bridge.o	\
 	  rw_routines.o run_state.o kin_functions.o run_printout.o		\
-	  run_printout_bridge.o dgauss.o ranmar.o setrun.o setrun_bridge.o
+	  ranmar.o setrun.o setrun_bridge.o
 
 ifneq ("$(wildcard ./RUNNING)","")
 	LINKLIBS += -lrunning
@@ -21,7 +21,7 @@ endif
 	$(FC) $(FFLAGS) -c $<
 
 all: $(LIBDIR)libdhelas.a $(LIBDIR)libgeneric.a $(LIBDIR)libpdf.a	\
-    $(LIBDIR)libmodel.a $(LIBDIR)libcernlib.a \
+    $(LIBDIR)libmodel.a \
     param_card.inc $(LIBS)
 	rm -f PDF/*.o
 
@@ -48,15 +48,11 @@ setrun_bridge.o: run_card.inc MODEL/coupl.inc extra_weights.o \
 
 alfas_functions_bridge.o: $(alfas_functions).o
 kin_functions.o: run_state.o
-run_printout_bridge.o: run_printout.o PDF/pdf.inc run.inc alfas.inc
+run_printout.o: run_state.o
 
-$(LIBDIR)libpdf.a: $(LIBDIR)libgeneric.a $(LIBDIR)libcernlib.a PDF
+$(LIBDIR)libpdf.a: $(LIBDIR)libgeneric.a PDF
 	rm -f $(LIBDIR)libpdf.a
 	cd PDF; make	
-
-$(LIBDIR)libcernlib.a: CERNLIB
-	rm -f $(LIBDIR)libcernlib.a
-	cd CERNLIB; make	
 
 $(LIBDIR)libmodel.a: MODEL param_card.inc
 	rm -f $(LIBDIR)libmodel.a
@@ -101,7 +97,6 @@ clean:
 	rm -f *.o *.mod
 	rm -f param_card.inc run_card.inc
 	cd MODEL; make clean; cd ..
-	cd CERNLIB; make clean; cd ..
 	cd PDF; make clean; cd ..
 	cd DHELAS; make clean; cd ..
 	if [ -d $(CUTTOOLSDIR) ]; then cd $(CUTTOOLSDIR); make clean; cd ..; fi

@@ -175,6 +175,7 @@ c-----------------------------------------------------------------------
 
       subroutine test_limits_sreal_bridge(momentum,xi_fks,y_fks,
      $     weight,split_weights)
+      use fks_singular_module, only: sreal
       implicit none
       include 'nexternal.inc'
       include 'orders.inc'
@@ -182,15 +183,6 @@ c-----------------------------------------------------------------------
       double precision xi_fks,y_fks,weight
       double precision split_weights(amp_split_size)
       integer iamp
-      interface
-         subroutine sreal(momentum_in,xi_in,y_in,weight_out)
-         implicit none
-         include 'nexternal.inc'
-         double precision momentum_in(0:3,nexternal)
-         double precision xi_in,y_in,weight_out
-         end subroutine sreal
-      end interface
-
       call sreal(momentum,xi_fks,y_fks,weight)
       do iamp=1,amp_split_size
          split_weights(iamp)=amp_split(iamp)

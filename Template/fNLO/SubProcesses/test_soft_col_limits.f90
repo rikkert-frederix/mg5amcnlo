@@ -10,6 +10,8 @@ module test_soft_col_limits_module
   use split_orders, only: amp_split_pos_to_orders
   use genps_fks, only: generate_momenta
   use mint_module, only: ndim, iconfig, ichan, iconfigs, new_point
+  use fks_singular_module, only: fill_configurations_common, &
+       setfksfactor, set_cms_stuff, xprintout, checkres2, ran2
   implicit none
   private
 
@@ -118,18 +120,9 @@ module test_soft_col_limits_module
       character(len=*), intent(in) :: card_name
     end subroutine setpara
 
-    subroutine fill_configurations_common()
+    subroutine init_fks_singular_bridge()
       implicit none
-    end subroutine fill_configurations_common
-
-    subroutine setfksfactor()
-      implicit none
-    end subroutine setfksfactor
-
-    subroutine set_cms_stuff(counterevent)
-      implicit none
-      integer, intent(in) :: counterevent
-    end subroutine set_cms_stuff
+    end subroutine init_fks_singular_bridge
 
     subroutine sborn(momentum, weight)
       use process_dimensions, only: nexternal
@@ -138,34 +131,6 @@ module test_soft_col_limits_module
       complex(kind=kind(0d0)), intent(out) :: weight(2)
     end subroutine sborn
 
-    subroutine xprintout(unit_number, value, limiting_value)
-      implicit none
-      integer, intent(in) :: unit_number
-      double precision, intent(in) :: value, limiting_value
-    end subroutine xprintout
-
-    subroutine checkres2(values, limiting_values, weights, &
-         limiting_weights, momenta, limiting_momenta, flag, maximum, &
-         event, i_fks, j_fks, return_code)
-      use process_dimensions, only: nexternal
-      implicit none
-      double precision, intent(in) :: values(15)
-      double precision, intent(in) :: &
-           limiting_values(15)
-      double precision, intent(in) :: weights(15)
-      double precision, intent(in) :: &
-           limiting_weights(15)
-      double precision, intent(in) :: &
-           momenta(15, 0:3, nexternal + 1)
-      double precision, intent(in) :: &
-           limiting_momenta(0:3, nexternal + 1)
-      integer, intent(in) :: flag, maximum, event, i_fks, j_fks
-      integer, intent(out) :: return_code
-    end subroutine checkres2
-
-    double precision function ran2()
-      implicit none
-    end function ran2
   end interface
 
 contains
@@ -203,6 +168,7 @@ read (*,*) nsofttests,ncolltests
 
 call setrun               !Sets up run parameters
 call setpara('param_card.dat') !Sets up couplings and masses
+call init_fks_singular_bridge()
 call fill_configurations_common
 call init_test_limits_data_bridge()
 call validate_generated_data()

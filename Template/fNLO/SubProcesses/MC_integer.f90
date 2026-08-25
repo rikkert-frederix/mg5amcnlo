@@ -18,8 +18,6 @@ module mc_integer_module
   double precision, allocatable, save :: acc(:, :)
   logical, allocatable, save :: firsttime(:)
 
-  public :: initialize_mc_integer
-  public :: finalize_mc_integer
   public :: get_mc_integer
   public :: reset_mc_grid
   public :: fill_mc_integer
