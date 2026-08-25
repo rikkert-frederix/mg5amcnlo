@@ -1,3 +1,10 @@
+      module genps_fks
+      implicit none
+      private
+      public :: generate_momenta
+
+      contains
+
       subroutine generate_momenta(ndim,iconfig,wgt,x,p)
       implicit none
       include 'genps.inc'
@@ -346,9 +353,6 @@ c local
       logical one_body,pass
       logical use_evpr
       common /to_use_evpr/use_evpr
-c external
-      double precision lambda
-      external lambda
 c parameters
       logical fks_as_is
       parameter (fks_as_is=.false.)
@@ -1055,8 +1059,6 @@ c Boost the momenta
 
       double precision pwgt, flux
 
-      double precision lambda
-      external lambda
       real*8 pi
       parameter (pi=3.1415926535897932d0)
 
@@ -2628,9 +2630,6 @@ c     Local
 c
       double precision y1,y2,yr,ysqr
 c     
-c     External
-c
-      double precision lambda
 c-----
 c  Begin Code
 c-----
@@ -2911,8 +2910,8 @@ c
      &     ,t,tmax_temp,phi,dum,dum3(-1:1),s_m,tm,tiny
       parameter (tiny=1d-8)
       integer i,ibranch,idim
-      double precision lambda,dot
-      external lambda,dot
+      double precision dot
+      external dot
       double precision s_mass(-nexternal:nexternal)
       common/to_phase_space_s_channel/s_mass
 c 
@@ -3052,8 +3051,8 @@ c
       parameter (one=1d0)
       double precision costh,phi,xa2,xb2
       integer i,ix
-      double precision lambda,dot
-      external lambda,dot
+      double precision dot
+      external dot
       double precision vtiny
       parameter (vtiny=1d-12)
 c
@@ -3601,3 +3600,5 @@ C dressed lepton stuff
 
       return
       end
+
+      end module genps_fks

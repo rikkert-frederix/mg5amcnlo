@@ -3,6 +3,7 @@ c*****************************************************************************
 c     Given identical particles, and the configurations. This program identifies
 c     identical configurations and specifies which ones can be skipped
 c*****************************************************************************
+      use genps_fks, only: generate_momenta
       use mint_module
       implicit none
 c

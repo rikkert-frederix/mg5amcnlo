@@ -286,6 +286,7 @@ c timing statistics
 
       
       double precision function sigint(xx,vegas_wgt,ifl,f)
+      use genps_fks, only: generate_momenta
       use weight_lines
       use extra_weights
       use mint_module
