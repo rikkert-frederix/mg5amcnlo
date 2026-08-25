@@ -23,10 +23,7 @@ C LOCAL VARIABLES
 C                                                                     
       INTEGER I, ICROSS,LP                                      
 %(pdf_vars)s
-C                                                                     
-C     STUFF FOR UPC
-C
-      DOUBLE PRECISION PHOTONPDFSQUARE
+%(upc_definition)s
 C                                                                     
 C EXTERNAL FUNCTIONS                                                  
 C                                                                     
@@ -41,14 +38,7 @@ C
       include "run.inc"                                               
       integer imirror
       common/cmirror/imirror
-C
-C     STUFF FOR DRESSED EE COLLISIONS
-C     
-      include 'eepdf.inc'
-      double precision ee_comp_prod
-%(ee_comp_vars)s
-      integer i_ee
-      include "../../Source/PDF/pdf.inc"
+%(eepdf_definition)s
 C                                                                     
 C DATA                                                                
 C                                                                     

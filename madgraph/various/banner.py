@@ -2818,6 +2818,9 @@ class RunCard(ConfigFile):
         else:
             check_dir = pjoin( MG5DIR, 'Template', 'Common', 'Source', 'PDF', 'lep_densities')
 
+        if not os.path.isdir(check_dir):
+            return
+
         for name in os.listdir(check_dir):
             if os.path.isdir(pjoin(check_dir, name)):
                 identity = (-11,11)

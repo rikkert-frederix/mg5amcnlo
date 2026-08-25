@@ -147,6 +147,9 @@ def enabled_event_options(options):
 FNLO_SHOWER_RUN_CARD_PARAMETERS = frozenset({
     'parton_shower', 'shower_scale_factor', 'mcatnlo_delta'})
 
+FNLO_BUNDLED_PDF_LABELS = frozenset({
+    'nn23lo', 'nn23lo1', 'nn23nlo'})
+
 
 def prepare_fixed_order_only_run_card(run_card):
     """Remove matching-only entries from an fNLO Fortran include.
@@ -171,6 +174,28 @@ def prepare_fixed_order_only_run_card(run_card):
     if run_card['ickkw'] == 4:
         raise banner_mod.InvalidRunCard(
             'UNLOPS merging (ickkw=4) is not available for fNLO outputs')
+
+    beam_types = (run_card['lpp1'], run_card['lpp2'])
+    unsupported_beams = sorted(set(
+        beam for beam in beam_types if abs(beam) not in [0, 1]))
+    if unsupported_beams:
+        raise banner_mod.InvalidRunCard(
+            'fNLO supports only no-PDF (lpp=0), proton (lpp=1), and '
+            'antiproton (lpp=-1) beams; unsupported lpp value(s): %s' %
+            ', '.join(str(beam) for beam in unsupported_beams))
+
+    pdf_label = str(run_card['pdlabel']).strip().lower()
+    supported_pdf_labels = FNLO_BUNDLED_PDF_LABELS.union({'lhapdf'})
+    if any(beam != 0 for beam in beam_types):
+        supported_pdf_label = pdf_label in supported_pdf_labels
+    else:
+        supported_pdf_label = (pdf_label == 'none' or
+                               pdf_label in supported_pdf_labels)
+    if not supported_pdf_label:
+        raise banner_mod.InvalidRunCard(
+            'fNLO supports only no PDF, LHAPDF6, or the bundled NNPDF '
+            'labels nn23lo, nn23lo1, and nn23nlo; got pdlabel=%s' %
+            run_card['pdlabel'])
 
     for parameters in run_card.includepath.values():
         parameters[:] = [name for name in parameters
@@ -1938,7 +1963,13 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
         fixed_order_only = is_fixed_order_only(
             self.me_dir, getattr(self, 'proc_characteristics', None))
         if fixed_order_only:
-            prepare_fixed_order_only_run_card(self.run_card)
+            card_mode, card_options = self.check_treatcards(
+                self.split_arg(line))
+            if card_mode in ['run', 'all']:
+                if not hasattr(self, 'run_card'):
+                    self.run_card = banner_mod.RunCard(
+                        card_options['run_card'])
+                prepare_fixed_order_only_run_card(self.run_card)
         
         # propagate the FO_card entry FO_LHE_weight_ratio to the run_card.
         # this variable is system only in the run_card 
@@ -5663,6 +5694,7 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
             raise aMCatNLOError(
                 'This fNLO process only supports fixed-order LO or NLO runs')
         if fixed_order_only:
+            prepare_fixed_order_only_run_card(self.run_card)
             self.ensure_fixed_order_analysis_available()
 
         os.mkdir(pjoin(self.me_dir, 'Events', self.run_name))
@@ -5739,6 +5771,12 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
                 (abs(self.banner.get_detail('run_card', 'lpp1')) not in [0, 3, 4] or \
                  abs(self.banner.get_detail('run_card', 'lpp2')) not in [0, 3, 4]):
 
+            if fixed_order_only:
+                lhapdf_version = self.get_lhapdf_version()
+                if not lhapdf_version.startswith('6.'):
+                    raise aMCatNLOError(
+                        'fNLO supports LHAPDF 6 only; found LHAPDF %s' %
+                        lhapdf_version)
             self.link_lhapdf(libdir, [pjoin('SubProcesses', p) for p in p_dirs])
             pdfsetsdir = self.get_lhapdf_pdfsetsdir()
             lhaid_list = self.run_card['lhaid']

@@ -23,11 +23,39 @@ pjoin = os.path.join
 
 logger = logging.getLogger('madgraph.stdout')
 
+
+def _analysis_bridge_object(module_object):
+    return os.path.splitext(module_object)[0] + '_bridge.o'
+
 class FOAnalyseCardError(Exception):
     pass
 
 class FOAnalyseCard(dict):
     """A simple handler for the fixed-order analyse card """
+
+    # These fNLO analyses are free-form modules.  Their external
+    # analysis_begin/end/fill ABI is supplied by a same-stem fixed-form
+    # bridge, selected automatically below.  Keep this list in sync with
+    # Template/fNLO/FixedOrderAnalysis.
+    fnlo_module_analyses = (
+        'analysis_HwU_general.o',
+        'analysis_HwU_general_sdk.o',
+        'analysis_HwU_pp_V.o',
+        'analysis_HwU_pp_h.o',
+        'analysis_HwU_pp_hjj.o',
+        'analysis_HwU_pp_lplm.o',
+        'analysis_HwU_pp_lvl.o',
+        'analysis_HwU_pp_lvl2.o',
+        'analysis_HwU_pp_taptam.o',
+        'analysis_HwU_pp_tj.o',
+        'analysis_HwU_pp_ttx.o',
+        'analysis_HwU_pp_ttx_v2.o',
+        'analysis_HwU_pp_wpz.o',
+        'analysis_HwU_template.o',
+        'analysis_pp_wz_ewsud.o',
+    )
+    fnlo_module_analysis_bridges = tuple(map(
+        _analysis_bridge_object, fnlo_module_analyses))
 
     string_vars = ['fo_extralibs', 'fo_extrapaths', 'fo_includepaths', 
                    'fo_analyse', 'fo_analysis_format', 'fo_lhe_min_weight',
@@ -114,6 +142,38 @@ class FOAnalyseCard(dict):
                 logger.warning('FO_ANALYSE parameter of the FO_analyse card should be empty for this analysis format. Removing this information.')
                 self['fo_analyse'] = ''
 
+        fnlo_analysis_bridge = ''
+        if fixed_order_only and analysis_format == 'hwu':
+            analysis_objects = self.get('fo_analyse', '').split()
+            selected_modules = [obj for obj in analysis_objects
+                                if os.path.basename(obj) in
+                                self.fnlo_module_analyses]
+            selected_bridges = [obj for obj in analysis_objects
+                                if os.path.basename(obj) in
+                                self.fnlo_module_analysis_bridges]
+            if len(selected_modules) > 1:
+                raise FOAnalyseCardError(
+                    'Only one shipped fNLO analysis module can be selected; '
+                    'got %s' % ', '.join(selected_modules))
+            if len(selected_bridges) > 1:
+                raise FOAnalyseCardError(
+                    'Only one shipped fNLO analysis bridge can be selected; '
+                    'got %s' % ', '.join(selected_bridges))
+            if selected_bridges and not selected_modules:
+                raise FOAnalyseCardError(
+                    'Select the shipped fNLO analysis module, not its bridge; '
+                    'the bridge is added automatically')
+            if selected_modules:
+                module_object = selected_modules[0]
+                fnlo_analysis_bridge = _analysis_bridge_object(module_object)
+                if selected_bridges and \
+                        selected_bridges[0] != fnlo_analysis_bridge:
+                    raise FOAnalyseCardError(
+                        'The selected fNLO analysis bridge does not match %s' %
+                        module_object)
+                if fnlo_analysis_bridge in analysis_objects:
+                    fnlo_analysis_bridge = ''
+
         lines = []
         to_add = ''
         for key in self.keylist:
@@ -122,7 +182,9 @@ class FOAnalyseCard(dict):
                 if key == 'fo_analysis_format':
                     if fixed_order_only:
                         if value == 'hwu':
-                            to_add = 'HwU.o'
+                            to_add = 'HwU.o HwU_bridge.o'
+                            if fnlo_analysis_bridge:
+                                to_add += ' ' + fnlo_analysis_bridge
                         elif value in ['', 'none']:
                             to_add = 'analysis_dummy.o HwU_dummy.o'
                         else:
@@ -190,4 +252,3 @@ class FOAnalyseCard(dict):
         ajob_out = open(ajob_path, 'w')
         ajob_out.write(ajob_new)
         ajob_out.close()
-

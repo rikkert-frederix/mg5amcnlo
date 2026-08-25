@@ -9792,8 +9792,12 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
             ## write fj_lhapdf_opts file            
             # Create configuration file [path to executable] for amcatnlo
             filename = os.path.join(self._export_dir, 'Cards', 'amcatnlo_configuration.txt')
-            opts_to_keep = ['lhapdf', 'fastjet', 'pythia8_path', 'hwpp_path', 'thepeg_path', 
-                                                                    'hepmc_path', 'eMELA']
+            if self._export_format == 'fNLO':
+                opts_to_keep = ['lhapdf', 'fastjet']
+            else:
+                opts_to_keep = ['lhapdf', 'fastjet', 'pythia8_path',
+                                'hwpp_path', 'thepeg_path', 'hepmc_path',
+                                'eMELA']
             to_keep = {}
             for opt in opts_to_keep:
                 if self.options[opt]:

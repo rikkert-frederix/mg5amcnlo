@@ -98,6 +98,63 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         return pjoin(self.mgme_dir, 'Template',
                      self.opt.get('fks_template', 'NLO'))
 
+    def write_pdf_opendata(self):
+        """Write generated PDF helpers, omitting unsupported fNLO backends."""
+
+        super(ProcessExporterFortranFKS, self).write_pdf_opendata()
+        self.remove_fnlo_unsupported_pdf_helpers()
+
+    def export_model_files(self, model_path):
+        """Export model files without restoring unsupported fNLO fluxes."""
+
+        result = super(ProcessExporterFortranFKS, self).export_model_files(
+            model_path)
+        self.remove_fnlo_unsupported_pdf_helpers()
+        return result
+
+    def remove_fnlo_unsupported_pdf_helpers(self):
+        """Remove generated helpers for PDF backends absent from fNLO."""
+
+        if self.opt.get('fks_template') != 'fNLO':
+            return
+
+        unsupported_helpers = [
+            pjoin(self.dir_path, 'Source', 'PDF', 'pdfwrap_emela.f'),
+            pjoin(self.dir_path, 'Source', 'eepdf.inc'),
+            pjoin(self.dir_path, 'Source', 'PDF', 'eepdf.inc'),
+            pjoin(self.dir_path, 'Source', 'ElectroweakFlux.inc'),
+            pjoin(self.dir_path, 'Source', 'PDF', 'ElectroweakFlux.inc')]
+        for helper in unsupported_helpers:
+            if os.path.lexists(helper):
+                os.remove(helper)
+
+    def remove_fnlo_common_sources(self):
+        """Remove Common-template sources superseded by the fNLO overlay."""
+
+        if self.opt.get('fks_template') != 'fNLO':
+            return
+
+        superseded_sources = [
+            pjoin('Source', 'alfas_functions_lhapdf.f'),
+            pjoin('Source', 'PDF', 'Ctq6Pdf.f'),
+            pjoin('Source', 'PDF', 'dfint.f'),
+            pjoin('Source', 'PDF', 'eepdf.f'),
+            pjoin('Source', 'PDF', 'gridpdfaux.f'),
+            pjoin('Source', 'PDF', 'kerset.f'),
+            pjoin('Source', 'PDF', 'pdg2pdf.f'),
+            pjoin('Source', 'PDF', 'pdg2pdf_epdf.f'),
+            pjoin('Source', 'PDF', 'pdg2pdf_epdf_mela.f'),
+            pjoin('Source', 'PDF', 'pdg2pdf_lhapdf.f'),
+            pjoin('Source', 'PDF', 'pdg2pdf_lhapdf6.f'),
+            pjoin('Source', 'PDF', 'gammaUPC'),
+            pjoin('Source', 'PDF', 'lep_densities')]
+        for relative_path in superseded_sources:
+            target = pjoin(self.dir_path, relative_path)
+            if os.path.isdir(target) and not os.path.islink(target):
+                shutil.rmtree(target)
+            elif os.path.lexists(target):
+                os.remove(target)
+
 #===============================================================================
 # copy the Template in a new directory.
 #===============================================================================
@@ -132,6 +189,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         elif not os.path.isfile(os.path.join(dir_path, 'TemplateVersion.txt')):
             if not mgme_dir:
                 raise MadGraph5Error("No valid MG_ME path given for MG4 run directory creation.")
+        self.remove_fnlo_common_sources()
         try:
             shutil.copy(os.path.join(mgme_dir, 'MGMEVersion.txt'), dir_path)
         except IOError:
@@ -379,6 +437,11 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 model.restrict_card.write(out_path)
             else:
                 files.cp(model.restrict_card, out_path)
+
+        # The UFO-to-Fortran conversion creates ElectroweakFlux.inc after
+        # export_model_files has returned.  Remove that late-generated helper
+        # as well for the fixed-order-only template.
+        self.remove_fnlo_unsupported_pdf_helpers()
 
 
     #===============================================================================
@@ -765,7 +828,6 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'recmom.f',
                      'test_soft_col_limits.f',
                      'symmetry_fks_v3.f',
-                     'vegas2.for',
                      'write_ajob.f',
                      'handling_lhe_events.f',
                      'write_event.f',
@@ -789,6 +851,70 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'polfit.f']
 
         if self.opt.get('fks_template') == 'fNLO':
+            fixed_order_source_replacements = {
+                'analysis_dummy.f': 'analysis_dummy.f90',
+                'BinothLHADummy.f': 'BinothLHADummy.f90',
+                'boostwdir2.f': 'boostwdir2.f90',
+                'chooser_functions.f': 'chooser_functions.f90',
+                'check_poles.f': 'check_poles.f90',
+                'cluster.f': 'cluster.f90',
+                'cuts.f': 'cuts.f90',
+                'dummy_fct.f': 'dummy_fct.f90',
+                'driver_mintFO.f': 'driver_mintFO.f90',
+                'fastjet_wrapper.f': 'fastjet_wrapper.f90',
+                'fks_Sij.f': 'fks_Sij.f90',
+                'fks_singular.f': 'fks_singular.f90',
+                'genps_fks.f': 'genps_fks.f90',
+                'HwU_dummy.f': 'HwU_dummy.f90',
+                'iproc_map.f': 'iproc_map.f90',
+                'madfks_plot.f': 'madfks_plot.f90',
+                'MC_integer.f': 'MC_integer.f90',
+                'momentum_reshuffling.f': 'momentum_reshuffling.f90',
+                'open_output_files.f': 'open_output_files.f90',
+                'orderstags_glob.f': 'orderstags_glob.f90',
+                'pineappl_interface_dummy.f':
+                    'pineappl_interface_dummy.f90',
+                'polfit.f': 'polfit.f90',
+                'recmom.f': 'recmom.f90',
+                'reweight_xsec.f': 'reweight_xsec.f90',
+                'setcuts.f': 'setcuts.f90',
+                'setscales.f': 'setscales.f90',
+                'splitorders_stuff.f': 'splitorders_stuff.f90',
+                'symmetry_fks_v3.f': 'symmetry_fks_v3.f90',
+                'test_soft_col_limits.f': 'test_soft_col_limits.f90',
+                'weight_lines.f': 'weight_lines.f90',
+                'write_ajob.f': 'write_ajob.f90'}
+            linkfiles = [fixed_order_source_replacements.get(filename,
+                                                              filename)
+                         for filename in linkfiles]
+            linkfiles.extend(['process_dimensions.f90',
+                              'process_dimensions_bridge.f',
+                              'fks_metadata.f90',
+                              'fks_metadata_bridge.f',
+                              'analysis_dummy_bridge.f',
+                              'BinothLHADummy_bridge.f',
+                              'fks_singular_bridge.f',
+                              'fastjet_wrapper_bridge.f',
+                              'HwU_dummy_bridge.f',
+                              'kinematic_runtime_state.f90',
+                              'momentum_reshuffling_bridge.f',
+                              'pineappl_interface_dummy_bridge.f',
+                              'splitorders_stuff_bridge.f',
+                              'setcuts_bridge.f',
+                              'setscales_bridge.f',
+                              'chooser_functions_bridge.f',
+                              'check_poles_bridge.f',
+                              'cluster_bridge.f',
+                              'cuts_bridge.f',
+                              'genps_fks_bridge.f',
+                              'symmetry_fks_v3_bridge.f',
+                              'test_soft_col_limits_bridge.f',
+                              'dummy_fct_bridge.f',
+                              'driver_mintFO_bridge.f',
+                              'iproc_map_bridge.f',
+                              'madfks_plot_bridge.f',
+                              'open_output_files_bridge.f',
+                              'write_ajob_bridge.f'])
             fixed_order_excluded_sources = {
                 'MCmasses_HERWIG6.inc',
                 'MCmasses_HERWIGPP.inc',
@@ -802,6 +928,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 'check_sudakov.f',
                 'check_sudakov_angle2.f',
                 'dire_fortran.cc',
+                'eepdf.inc',
                 'fill_MC_mshell.f',
                 'handling_lhe_events.f',
                 'hep_event_streams.inc',
@@ -826,8 +953,15 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                                              'montecarlocounter.f')
                          and filename not in fixed_order_excluded_sources]
 
-        if matrix_element.ewsudakov:
+        if (matrix_element.ewsudakov and
+                self.opt.get('fks_template') == 'fNLO'):
+            linkfiles.extend(['ewsudakov_functions.f90',
+                              'ewsudakov_functions_bridge.f'])
+        elif matrix_element.ewsudakov:
             linkfiles.append('ewsudakov_functions.f')
+        elif self.opt.get('fks_template') == 'fNLO':
+            linkfiles.extend(['ewsudakov_functions_dummy.f90',
+                              'ewsudakov_functions_dummy_bridge.f'])
         else:
             linkfiles.append('ewsudakov_functions_dummy.f')
 
@@ -837,7 +971,19 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
 
         #copy the makefile 
         os.system("ln -s ../makefile_fks_dir ./makefile")
-        if matrix_element.virt_matrix_element:
+        if self.opt.get('fks_template') == 'fNLO':
+            if matrix_element.virt_matrix_element:
+                ln('../BinothLHA.f90', '.')
+                ln('../BinothLHA_bridge.f', '.')
+            elif OLP != 'MadLoop':
+                ln('../BinothLHA_OLP.f90', '.', 'BinothLHA.f90')
+                ln('../BinothLHA_OLP_bridge.f', '.',
+                   'BinothLHA_bridge.f')
+            else:
+                ln('../BinothLHA_user.f90', '.', 'BinothLHA.f90')
+                ln('../BinothLHA_user_bridge.f', '.',
+                   'BinothLHA_bridge.f')
+        elif matrix_element.virt_matrix_element:
             os.system("ln -s ../BinothLHA.f ./BinothLHA.f")
         elif OLP!='MadLoop':
             os.system("ln -s ../BinothLHA_OLP.f ./BinothLHA.f")
@@ -3859,9 +4005,26 @@ Parameters              %(params)s\n\
         pdf_vars, pdf_data, pdf_lines, eepdf_vars = \
                 self.get_pdf_lines_mir(matrix_element, ninitial, False, False)
         replace_dict['pdf_vars'] = pdf_vars
-        replace_dict['ee_comp_vars'] = eepdf_vars
         replace_dict['pdf_data'] = pdf_data
         replace_dict['pdf_lines'] = pdf_lines
+
+        if self.opt.get('fks_template') == 'fNLO':
+            replace_dict['upc_definition'] = ''
+            replace_dict['eepdf_definition'] = ''
+        else:
+            replace_dict['upc_definition'] = (
+                'C     STUFF FOR UPC\n'
+                'C\n'
+                '      DOUBLE PRECISION PHOTONPDFSQUARE\n')
+            replace_dict['eepdf_definition'] = (
+                'C\n'
+                'C     STUFF FOR DRESSED EE COLLISIONS\n'
+                'C\n'
+                "      INCLUDE 'eepdf.inc'\n"
+                '      DOUBLE PRECISION EE_COMP_PROD\n' +
+                eepdf_vars +
+                '      INTEGER I_EE\n'
+                "      INCLUDE '../../Source/PDF/pdf.inc'\n")
 
         file = open(os.path.join(_file_path, \
                           'iolibs/template_files/parton_lum_n_fks.inc')).read()
@@ -4394,6 +4557,7 @@ Parameters              %(params)s\n\
 
         processes = matrix_element.get('processes')
         model = processes[0].get('model')
+        fixed_order_only = self.opt.get('fks_template') == 'fNLO'
 
         pdf_definition_lines = ""
         ee_pdf_definition_lines = ""
@@ -4431,18 +4595,21 @@ Parameters              %(params)s\n\
                     pdgtopdf[pdg] = 6000000 + pdg
 
             # Get PDF variable declarations for all initial states
-            ee_pdf_definition_lines += "DOUBLE PRECISION dummy_components(n_ee)\n" 
+            if not fixed_order_only:
+                ee_pdf_definition_lines += \
+                    "DOUBLE PRECISION dummy_components(n_ee)\n"
             for i in [0,1]:
                 pdf_definition_lines += "DOUBLE PRECISION " + \
                                        ",".join(["%s%d" % (pdf_codes[pdg],i+1) \
                                                  for pdg in \
                                                  initial_states[i]]) + \
                                                  "\n"
-                ee_pdf_definition_lines += "DOUBLE PRECISION " + \
-                                       ",".join(["%s%d_components(n_ee)" % (pdf_codes[pdg],i+1) \
-                                                 for pdg in \
-                                                 initial_states[i]]) + \
-                                                 "\n"
+                if not fixed_order_only:
+                    ee_pdf_definition_lines += "DOUBLE PRECISION " + \
+                                           ",".join(["%s%d_components(n_ee)" % (pdf_codes[pdg],i+1) \
+                                                     for pdg in \
+                                                     initial_states[i]]) + \
+                                                     "\n"
 
             # Get PDF data lines for all initial states
             for i in [0,1]:
@@ -4453,7 +4620,8 @@ Parameters              %(params)s\n\
                                                  "\n"
 
             # Get PDF lines for UPC (non-factorized PDF)
-            if 22 in initial_states[0] and 22 in initial_states[1]:
+            if (not fixed_order_only and
+                    22 in initial_states[0] and 22 in initial_states[1]):
                 if subproc_group:
                     pdf_lines = pdf_lines + \
                         "IF (ABS(LPP(IB(1))).EQ.2.AND.ABS(LPP(IB(2))).EQ.2.AND.(PDLABEL(1:4).EQ.'edff'.OR.PDLABEL(1:4).EQ.'chff'))THEN\n"
@@ -4490,12 +4658,15 @@ Parameters              %(params)s\n\
                             if abs(pdgtopdf[initial_state]) <= 10:  
                                 pdf_lines = pdf_lines + \
                                      ("%s%d=PDG2PDF(LPP(IB(%d)),%d, IB(%d)," + \
-                                         "XBK(IB(%d)),DSQRT(Q2FACT(%d)))\n" + \
-                                     "IF ((ABS(LPP(%d)).EQ.4.or.ABS(LPP(%d)).EQ.3).and.pdlabel.ne.'none') %s%d_components(1:n_ee) = ee_components(1:n_ee)\n") % \
+                                         "XBK(IB(%d)),DSQRT(Q2FACT(%d)))\n") % \
                                          (
                                            pdf_codes[initial_state], i + 1, ibeam, pdgtopdf[initial_state], ibeam,
-                                          ibeam, ibeam,
-                                          ibeam, ibeam, pdf_codes[initial_state], ibeam)
+                                          ibeam, ibeam)
+                                if not fixed_order_only:
+                                    pdf_lines += \
+                                        "IF ((ABS(LPP(%d)).EQ.4.or.ABS(LPP(%d)).EQ.3).and.pdlabel.ne.'none') %s%d_components(1:n_ee) = ee_components(1:n_ee)\n" % \
+                                        (ibeam, ibeam,
+                                         pdf_codes[initial_state], ibeam)
                             else:
                                 # setting other partons flavours outside quark, gluon, photon to be 0d0
                                 pdf_lines = pdf_lines + \
@@ -4506,12 +4677,15 @@ Parameters              %(params)s\n\
                             if abs(pdgtopdf[initial_state]) <= 10:  
                                 pdf_lines = pdf_lines + \
                                      ("%s%d=PDG2PDF(LPP(%d),%d,%d," + \
-                                         "XBK(%d),DSQRT(Q2FACT(%d)))\n" + \
-                                     "IF ((ABS(LPP(%d)).EQ.4.or.ABS(LPP(%d)).EQ.3).and.pdlabel.ne.'none') %s%d_components(1:n_ee) = ee_components(1:n_ee)\n") % \
+                                         "XBK(%d),DSQRT(Q2FACT(%d)))\n") % \
                                          (
                                            pdf_codes[initial_state], i + 1, ibeam, pdgtopdf[initial_state], ibeam,
-                                          ibeam, ibeam,
-                                          ibeam, ibeam, pdf_codes[initial_state], ibeam)
+                                          ibeam, ibeam)
+                                if not fixed_order_only:
+                                    pdf_lines += \
+                                        "IF ((ABS(LPP(%d)).EQ.4.or.ABS(LPP(%d)).EQ.3).and.pdlabel.ne.'none') %s%d_components(1:n_ee) = ee_components(1:n_ee)\n" % \
+                                        (ibeam, ibeam,
+                                         pdf_codes[initial_state], ibeam)
                             else:
                                 # setting other partons flavours outside quark, gluon, photon to be 0d0
                                 pdf_lines = pdf_lines + \
@@ -4521,7 +4695,8 @@ Parameters              %(params)s\n\
 
                 pdf_lines = pdf_lines + "ENDIF\n"
 
-            if 22 in initial_states[0] and 22 in initial_states[1]:
+            if (not fixed_order_only and
+                    22 in initial_states[0] and 22 in initial_states[1]):
                 pdf_lines = pdf_lines + "ENDIF\n"
 
             # Add up PDFs for the different initial state particles
@@ -4546,9 +4721,10 @@ Parameters              %(params)s\n\
 
                 # this is for the lepton collisions with electron luminosity 
                 # put here "%s%d_components(i_ee)*%s%d_components(i_ee)"
-                pdf_lines += "if (ABS(LPP(1)).EQ.ABS(LPP(2)).and. (ABS(LPP(1)).EQ.3.or.ABS(LPP(1)).EQ.4).and.pdlabel.ne.'none')" + \
-                             "PD(IPROC)=ee_comp_prod(%s_components,%s_components)\n" % \
-                             tuple(comp_list)
+                if not fixed_order_only:
+                    pdf_lines += "if (ABS(LPP(1)).EQ.ABS(LPP(2)).and. (ABS(LPP(1)).EQ.3.or.ABS(LPP(1)).EQ.4).and.pdlabel.ne.'none')" + \
+                                 "PD(IPROC)=ee_comp_prod(%s_components,%s_components)\n" % \
+                                 tuple(comp_list)
 
         # Remove last line break from pdf_lines
         return pdf_definition_lines[:-1], pdf_data_lines[:-1], pdf_lines[:-1], ee_pdf_definition_lines
@@ -4811,6 +4987,7 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
         elif not os.path.isfile(os.path.join(dir_path, 'TemplateVersion.txt')):
             if not mgme_dir:
                 raise MadGraph5Error("No valid MG_ME path given for MG4 run directory creation.")
+        self.remove_fnlo_common_sources()
         try:
             shutil.copy(os.path.join(mgme_dir, 'MGMEVersion.txt'), dir_path)
         except IOError:
@@ -5308,8 +5485,25 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
                      'orderstags_glob.dat']
 
         if self.opt.get('fks_template') == 'fNLO':
-            linkfiles = [filename for filename in linkfiles
+            fixed_order_sudakov_replacements = {
+                'ewsudakov_functions.f': 'ewsudakov_functions.f90',
+                'momentum_reshuffling.f': 'momentum_reshuffling.f90',
+                'sa_ewsudakov.f': 'sa_ewsudakov.f90',
+                'sa_ewsudakov_dummyfcts.f':
+                    'sa_ewsudakov_dummyfcts.f90',
+                'splitorders_stuff.f': 'splitorders_stuff.f90',
+                'sub_f2py_ewsudakov.f': 'sub_f2py_ewsudakov.f90',
+                'weight_lines.f': 'weight_lines.f90'}
+            linkfiles = [fixed_order_sudakov_replacements.get(filename,
+                                                               filename)
+                         for filename in linkfiles
                          if filename != 'add_write_info.f']
+            linkfiles.extend(['ewsudakov_functions_bridge.f',
+                              'momentum_reshuffling_bridge.f',
+                              'sa_ewsudakov_bridge.f',
+                              'sa_ewsudakov_dummyfcts_bridge.f',
+                              'splitorders_stuff_bridge.f',
+                              'sub_f2py_ewsudakov_bridge.f'])
 
         for file in linkfiles:
             ln('../' + file , '.')

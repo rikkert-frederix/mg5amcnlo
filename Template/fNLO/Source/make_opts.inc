@@ -100,25 +100,19 @@ else
   endef
 endif
 
-# Option lhapdf
+# Option LHAPDF 6
+
+ifneq ($(epdf),)
+  $(error The fNLO template no longer supports ePDF/eMELA)
+endif
 
 ifneq ($(lhapdf),)
-  CXXFLAGS += $(shell $(lhapdf) --cppflags)
-  ifeq ($(lhapdfversion),6)
-    alfas_functions=alfas_functions_lhapdf6
-  else
-    alfas_functions=alfas_functions_lhapdf
+  ifneq ($(lhapdfversion),6)
+    $(error The fNLO template supports LHAPDF 6 only)
   endif
+  CXXFLAGS += $(shell $(lhapdf) --cppflags)
+  alfas_functions=alfas_functions_lhapdf6
   llhapdf = $(shell $(lhapdf) --libs)
-
-else ifneq ($(epdf),)
-# option eMELA/ePDF
-EPDFLIBS=$(shell $(epdf) --ldflags)
-alfas_functions=alfas_functions
-CXX=$(DEFAULT_CPP_COMPILER) -std=c++11
-llhapdf = $(shell $(epdf) --ldflags)
-# Add also LHAPDF to the libraries to be linked
-llhapdf+= -lLHAPDF
 else
   alfas_functions=alfas_functions
   llhapdf=

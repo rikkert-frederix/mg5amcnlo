@@ -1,33 +1,77 @@
 !====================================================================
 !
-!  Define common block with all general parameters used by MadFKS 
+!  Define common block with all general parameters used by MadFKS
 !  See their definitions in the file FKS_params.dat.
 !
 !====================================================================
 module FKSParams
+  use process_dimensions, only: nsplitorders, &
+       process_dimensions_initialized
+  implicit none
+  private
+
+  public :: paramFileName, maxContribsSelected, maxCouplingsSelected
+  public :: maxContribType, IRPoleCheckThreshold, Virt_fraction
+  public :: PrecisionVirtualAtRunTime, Min_virt_fraction
+  public :: NHelForMCoverHels, VetoedContributionTypes
+  public :: SelectedContributionTypes, QED_squared_selected
+  public :: SelectedCouplingOrders, QCD_squared_selected
+  public :: separate_flavour_configs, IncludeBornContributions
+  public :: use_poly_virtual, initialize_fks_params, finalize_fks_params
+  public :: FKSParamReader, DefaultFKSParam
   character(len=64), parameter ::  paramFileName='FKS_params.dat'
   integer,parameter :: maxContribsSelected=100, &
                        maxCouplingsSelected=100, &
-                       maxContribType=15, &
-                       maxCouplingTypes=20
-  real*8 :: IRPoleCheckThreshold,Virt_fraction, PrecisionVirtualAtRunTime,Min_virt_fraction
+                       maxContribType=15
+  double precision :: IRPoleCheckThreshold,Virt_fraction, &
+       PrecisionVirtualAtRunTime,Min_virt_fraction
   integer  :: NHelForMCoverHels,VetoedContributionTypes(0:maxContribsSelected), &
               SelectedContributionTypes(0:maxContribsSelected),QED_squared_selected, &
-              SelectedCouplingOrders(maxCouplingTypes,0:maxCouplingsSelected), &
               QCD_squared_selected
+  integer, allocatable :: SelectedCouplingOrders(:,:)
   logical :: separate_flavour_configs,IncludeBornContributions,use_poly_virtual
+  logical :: HasReadOnce=.False.,paramPrinted=.false.
 
 contains
+
+  subroutine initialize_fks_params()
+    implicit none
+
+    if (.not.process_dimensions_initialized) then
+       write(*,*) 'ERROR: process dimensions must be initialized before FKS parameters.'
+       stop 1
+    endif
+
+    if (allocated(SelectedCouplingOrders)) then
+       if (size(SelectedCouplingOrders,1).ne.nsplitorders .or. &
+            lbound(SelectedCouplingOrders,2).ne.0 .or. &
+            ubound(SelectedCouplingOrders,2).ne.maxCouplingsSelected) then
+          write(*,*) 'ERROR: FKS parameter storage has inconsistent dimensions.'
+          stop 1
+       endif
+       return
+    endif
+
+    allocate(SelectedCouplingOrders(nsplitorders,0:maxCouplingsSelected))
+  end subroutine initialize_fks_params
+
+
+  subroutine finalize_fks_params()
+    implicit none
+
+    if (allocated(SelectedCouplingOrders)) deallocate(SelectedCouplingOrders)
+    HasReadOnce=.False.
+    paramPrinted=.False.
+  end subroutine finalize_fks_params
 
   subroutine FKSParamReader(filename, printParam, force)
     ! Reads the file 'filename' and sets the parameters found in that file.
     implicit none
-    logical, save :: HasReadOnce=.False.,paramPrinted=.false.
     logical :: force,couldRead,printParam
     character(*) :: filename
-    CHARACTER(len=64) :: buff, buff2, mode
-    include "orders.inc"
+    character(len=64) :: buff
     integer :: i,j
+    call initialize_fks_params()
     couldRead=.False.
     if (HasReadOnce.and..not.force) then
        goto 901
@@ -124,16 +168,11 @@ contains
                   SelectedCouplingOrders(1,0) .gt. maxCouplingsSelected) then
                 write(*,*) 'SelectedCouplingOrders length should be >= 0 and <=', &
                      maxCouplingsSelected
-                stop 'Format error in FKS_params.dat.'                
+                stop 'Format error in FKS_params.dat.'
              endif
-             do j = 2, maxCouplingTypes
-                SelectedCouplingOrders(j,0) = SelectedCouplingOrders(1,0)
-             enddo
+             SelectedCouplingOrders(:,0) = SelectedCouplingOrders(1,0)
              do j = 1, SelectedCouplingOrders(1,0)
                 read(68,*,end=999) (SelectedCouplingOrders(i,j),i=1,nsplitorders)
-                do i=nsplitorders+1,maxCouplingTypes
-                   SelectedCouplingOrders(i,j)=-1
-                enddo
              enddo
           else
              write(*,*) 'The parameter name ',buff(2:),'is not reckognized.'
@@ -143,12 +182,12 @@ contains
     enddo
 999 continue
     couldRead=.True.
-    goto 998      
+    goto 998
 
 676 continue
     write(*,*) 'ERROR :: MadFKS parameter file ',fileName, &
          ' could not be found or is malformed. Please specify it.'
-    stop 
+    stop
     !   Below is the code if one desires to let the code continue with
     !   a non existing or malformed parameter file
     write(*,*) 'WARNING :: The file ',fileName,' could not be ', &
@@ -161,7 +200,7 @@ contains
     if(printParam.and..not.paramPrinted) then
        write(*,*) &
             '==============================================================='
-       if (couldRead) then      
+       if (couldRead) then
           write(*,*) 'INFO: MadFKS read these parameters from ',filename
        else
           write(*,*) 'INFO: MadFKS used the default parameters.'
@@ -215,10 +254,11 @@ contains
 901 continue
   end subroutine FKSParamReader
 
-  subroutine DefaultFKSParam() 
+  subroutine DefaultFKSParam()
     ! Sets the default parameters
     implicit none
-    integer i,j
+    integer i
+    call initialize_fks_params()
     IRPoleCheckThreshold=1.0d-5
     NHelForMCoverHels=5
     PrecisionVirtualAtRunTime=1d-3
@@ -235,14 +275,8 @@ contains
        SelectedContributionTypes(I)=-1
        VetoedContributionTypes(I)=-1
     enddo
-    do j=1,maxCouplingTypes
-       SelectedCouplingOrders(j,0) = 0
-    enddo
-    do j=1,maxCouplingsSelected
-       do i=1,maxCouplingTypes
-          SelectedCouplingOrders(i,j) = -1
-       enddo
-    enddo
+    SelectedCouplingOrders(:,0) = 0
+    SelectedCouplingOrders(:,1:maxCouplingsSelected) = -1
   end subroutine DefaultFKSParam
 
 end module FKSParams

@@ -4,7 +4,7 @@
 # order runs. Analysis files are meant to be put (or linked) inside
 # <PROCDIR>/FixedOrderAnalysis/ (<PROCDIR> is the name of the exported
 # process directory). See the
-# <PROCDIR>/FixedOrderAnalysis/analysis_*_template.f file for details
+# <PROCDIR>/FixedOrderAnalysis/analysis_*_template.f90 file for details
 # on how to write your own analysis.
 #                                                                               
 #######################################################################
@@ -28,5 +28,6 @@ FO_INCLUDEPATHS =
 #
 # User's analysis (to be put in the <PROCDIR>/FixedOrderAnalysis/
 # directory). Please use .o as extension and white spaces to separate
-# files.
+# files. For HwU, select exactly one shipped analysis module; its same-stem
+# ABI bridge is linked automatically.
 FO_ANALYSE = analysis_HwU_template.o

@@ -6,8 +6,9 @@ PDFDIR= ./PDF/
 CUTTOOLSDIR= ./CutTools/
 IREGIDIR= ./IREGI/src/
 
-GENERIC = $(alfas_functions).o rw_routines.o kin_functions.o		\
-	  run_printout.o dgauss.o ranmar.o setrun.o
+GENERIC = timing_state.o $(alfas_functions).o alfas_functions_bridge.o	\
+	  rw_routines.o run_state.o kin_functions.o run_printout.o		\
+	  run_printout_bridge.o dgauss.o ranmar.o setrun.o setrun_bridge.o
 
 ifneq ("$(wildcard ./RUNNING)","")
 	LINKLIBS += -lrunning
@@ -16,10 +17,11 @@ endif
 
 
 .f.o: ; $(FC) $(FFLAGS) -c $*.f
-.f90.o: ; $(FC) $(FFLAGS) -c $*.f90
+%.o: %.f90
+	$(FC) $(FFLAGS) -c $<
 
 all: $(LIBDIR)libdhelas.a $(LIBDIR)libgeneric.a $(LIBDIR)libpdf.a	\
-    $(LIBDIR)libgammaUPC.a $(LIBDIR)libmodel.a $(LIBDIR)libcernlib.a \
+    $(LIBDIR)libmodel.a $(LIBDIR)libcernlib.a \
     param_card.inc $(LIBS)
 	rm -f PDF/*.o
 
@@ -32,28 +34,25 @@ $(LIBDIR)libdhelas.a: DHELAS
 	rm -f $(LIBDIR)libdhelas.a
 	cd DHELAS; make
 
-$(LIBDIR)libgeneric.a: $(GENERIC)
+$(LIBDIR)libgeneric.a: $(GENERIC) extra_weights.o
 	rm -f $(LIBDIR)libgeneric.a
 	ar cru libgeneric.a $(GENERIC) extra_weights.o
 	ranlib libgeneric.a
 	mv libgeneric.a $(LIBDIR)
-	cp -f extra_weights.mod $(LIBDIR)
-	rm -f $(alfas_functions).o 
+	cp -f *.mod $(LIBDIR)
+	rm -f $(alfas_functions).o alfas_functions_bridge.o
 
-setrun.o: run_card.inc extra_weights.o
-	$(FC) $(FFLAGS) -c -o setrun.o setrun.f
+setrun.o: extra_weights.o run_state.o rw_routines.o
+setrun_bridge.o: run_card.inc MODEL/coupl.inc extra_weights.o \
+		 run_state.o setrun.o
 
-$(LIBDIR)libpdf.a: PDF
+alfas_functions_bridge.o: $(alfas_functions).o
+kin_functions.o: run_state.o
+run_printout_bridge.o: run_printout.o PDF/pdf.inc run.inc alfas.inc
+
+$(LIBDIR)libpdf.a: $(LIBDIR)libgeneric.a $(LIBDIR)libcernlib.a PDF
 	rm -f $(LIBDIR)libpdf.a
 	cd PDF; make	
-
-ifneq (,$(filter edff chff, $(pdlabel)))
-$(LIBDIR)libgammaUPC.$(libext): PDF/gammaUPC
-	cd PDF/gammaUPC; make ; cd ../../
-else
-$(LIBDIR)libgammaUPC.$(libext): PDF/gammaUPC
-	cd PDF/gammaUPC; make -f makefile_dummy; cd ../../
-endif
 
 $(LIBDIR)libcernlib.a: CERNLIB
 	rm -f $(LIBDIR)libcernlib.a
@@ -87,7 +86,6 @@ $(LIBDIR)libiregi.a: $(IREGIDIR)
 clean4pdf:
 	rm -f ../lib/libpdf.a
 	rm -f ../lib/libgeneric.a
-	rm -f ../lib/libgammaUPC.a
 
 cleanCT:
 	cd $(CUTTOOLSDIR); make clean; cd ..
@@ -100,12 +98,11 @@ libmodel: $(LIBDIR)libmodel.a
 libdhelas: $(LIBDIR)libdhelas.a
 
 clean:
-	rm -f *.o
+	rm -f *.o *.mod
 	rm -f param_card.inc run_card.inc
 	cd MODEL; make clean; cd ..
 	cd CERNLIB; make clean; cd ..
 	cd PDF; make clean; cd ..
-	cd PDF/gammaUPC; make clean; cd ../..
 	cd DHELAS; make clean; cd ..
 	if [ -d $(CUTTOOLSDIR) ]; then cd $(CUTTOOLSDIR); make clean; cd ..; fi
 	if [ -d $(IREGIDIR) ]; then cd $(IREGIDIR); make clean; cd ..; fi

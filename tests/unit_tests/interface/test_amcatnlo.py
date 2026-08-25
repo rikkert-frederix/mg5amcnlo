@@ -92,7 +92,9 @@ class TestMadEventCmd(unittest.TestCase):
         self.assertFalse(os.path.exists(pjoin(template_dir, 'MCatNLO')))
         subprocess_dir = pjoin(template_dir, 'SubProcesses')
         self.assertTrue(os.path.exists(pjoin(
-            subprocess_dir, 'driver_mintFO.f')))
+            subprocess_dir, 'driver_mintFO.f90')))
+        self.assertTrue(os.path.exists(pjoin(
+            subprocess_dir, 'driver_mintFO_bridge.f')))
         self.assertFalse(os.path.exists(pjoin(
             subprocess_dir, 'driver_mintMC.f')))
         self.assertFalse(os.path.exists(pjoin(
@@ -100,14 +102,14 @@ class TestMadEventCmd(unittest.TestCase):
         self.assertFalse(os.path.exists(pjoin(
             subprocess_dir, 'montecarlocounter_alt.f')))
 
-        with open(pjoin(subprocess_dir, 'fks_singular.f')) as stream:
+        with open(pjoin(subprocess_dir, 'fks_singular.f90')) as stream:
             fks_singular = stream.read()
         self.assertNotIn('compute_MC_subt_term', fks_singular)
         self.assertNotIn('replace_MC_subt', fks_singular)
         self.assertNotIn('factor_n1body_NLOPS', fks_singular)
 
         with open(pjoin(subprocess_dir,
-                        'test_soft_col_limits.f')) as stream:
+                        'test_soft_col_limits.f90')) as stream:
             limit_test = stream.read()
         self.assertNotIn('xmcsubt', limit_test)
         self.assertNotIn('amp_split_mc', limit_test)

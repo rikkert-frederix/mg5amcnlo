@@ -43,6 +43,10 @@
 
 module mint_module
   use FKSParams ! contains use_poly_virtual
+  use mc_integer_module, only: regrid_MC_integer, empty_MC_integer, &
+       reset_MC_grid
+  use polynomial_fit, only: init_polyfit, add_point_polyfit, &
+       do_polyfit, get_polyfit, save_polyfit, restore_polyfit
   implicit none
   integer, parameter, private :: nintervals=32    ! max number of intervals in the integration grids
   integer, parameter, public  :: ndimmax=60       ! max number of dimensions of the integral
@@ -105,44 +109,51 @@ module mint_module
 
 
   integer, private :: nit,nit_included,kpoint_iter,nint_used,nint_used_virt,min_it,ncalls,pass_cuts_point,ng,npg,k
-  integer, dimension(ndimmax), private :: icell,ncell
+  integer, allocatable, private :: icell(:),ncell(:)
   integer, dimension(nintegrals), private :: non_zero_point,ntotcalls
-  integer, dimension(nintervals,ndimmax,maxchannels), private :: nhits
-  integer, dimension(maxchannels), private :: nhits_in_grids
-  integer, dimension(nintervals_virt,ndimmax,0:n_ave_virt,maxchannels), private :: nvirt,nvirt_acc
+  integer, allocatable, private :: nhits(:,:,:)
+  integer, allocatable, private :: nhits_in_grids(:)
+  integer, allocatable, private :: nvirt(:,:,:,:),nvirt_acc(:,:,:,:)
   logical, private :: double_points,reset,even_rn,firsttime
-  logical, dimension(maxchannels), private :: regridded
-  double precision, dimension(0:nintervals,ndimmax,maxchannels), private :: xgrid,xacc
-  double precision, dimension(nintegrals,0:maxchannels), private :: vtot,etot,chi2
+  logical, allocatable, private :: regridded(:)
+  double precision, allocatable, private :: xgrid(:,:,:),xacc(:,:,:)
+  double precision, allocatable, private :: vtot(:,:),etot(:,:),chi2(:,:)
   double precision, dimension(nintegrals,3), private :: ans3,unc3
   double precision, dimension(nintegrals), private :: ans_l3,unc_l3,chi2_l3,f
-  double precision, dimension(0:maxchannels), private :: ans_chan
+  double precision, allocatable, private :: ans_chan(:)
   double precision, dimension(2), private :: HwU_values
-  double precision, dimension(nintervals_virt,ndimmax,0:n_ave_virt,maxchannels), private :: ave_virt,ave_virt_acc,ave_born_acc
+  double precision, allocatable, private :: ave_virt(:,:,:,:), &
+       ave_virt_acc(:,:,:,:),ave_born_acc(:,:,:,:)
   double precision, private :: vol_chan
-  double precision, dimension(ndimmax), private :: rand
-  double precision, dimension(0:nintervals,ndimmax) :: xgrid_new
+  double precision, allocatable, private :: rand(:)
+  double precision, allocatable, private :: xgrid_new(:,:)
+  logical, private :: bad_iteration=.false.
+  logical, private :: mint_state_initialized=.false.
+  double precision, private :: even_dng=0d0
+  integer, private :: even_current_dim=0
+  integer, allocatable, private :: even_iii(:),even_kkk(:)
 
 ! Common blocks used elsewhere in the code
   logical fixed_order
   common /c_fixed_order/fixed_order
 
 ! functions and subroutines:
-  public :: mint,read_grids_from_file
+  public :: mint,read_grids_from_file,initialize_mint_state, &
+       finalize_mint_state
   private :: initialise_mint,setup_basic_mint &
        &,update_accumulated_results,prepare_next_iteration &
        &,check_desired_accuracy,update_integration_grids &
        &,combine_final_three_iterations &
-       &,print_results_accumulated_three_iterations &
+       &,print_accumulated_last_three &
        &,update_virtual_fraction,combine_iterations &
        &,print_results_accumulated,check_fractional_uncertainty &
        &,print_results_current_iteration &
        &,compute_fractional_uncertainty,combine_results_channels &
        &,check_for_special_channels_loop &
-       &,combine_results_channels_special_loop,get_amount_of_points &
+       &,combine_special_channels,get_amount_of_points &
        &,add_point_to_grids &
        &,accumulate_the_point,compute_integrand,get_random_x &
-       &,start_iteration,reset_accumulated_grids_for_updating &
+       &,start_iteration,reset_accumulated_grids &
        &,check_evenly_random_numbers,finalise_mint,write_results &
        &,write_channel_info,setup_imode_m1,setup_imode_0 &
        &,reset_mint_grids,setup_common,write_grids_to_file &
@@ -151,6 +162,109 @@ module mint_module
        &,get_channel,close_run_zero_res,ran3 &
        &,initialize_even_random_numbers,get_ran
 contains
+
+  subroutine initialize_mint_state
+    implicit none
+    integer :: virtual_dimensions
+
+    if (ndim.lt.1 .or. ndim.gt.ndimmax) then
+       write (*,*) 'Invalid MINT dimension:',ndim
+       stop 1
+    endif
+    if (nchans.lt.1 .or. nchans.gt.maxchannels) then
+       write (*,*) 'Invalid number of MINT channels:',nchans
+       stop 1
+    endif
+    if (n_ord_virt.lt.0 .or. n_ord_virt.gt.n_ave_virt) then
+       write (*,*) 'Invalid number of virtual orders:',n_ord_virt
+       stop 1
+    endif
+
+    virtual_dimensions=max(ndim-3,0)
+    if (mint_state_initialized) then
+       if (size(icell).eq.ndim .and. size(nhits,3).eq.nchans .and. &
+            size(nvirt,2).eq.virtual_dimensions .and. &
+            ubound(nvirt,3).eq.n_ord_virt) return
+       call finalize_mint_state
+    endif
+
+    allocate(icell(ndim),ncell(ndim),rand(ndim))
+    allocate(nhits(nintervals,ndim,nchans))
+    allocate(nhits_in_grids(nchans),regridded(nchans))
+    allocate(xgrid(0:nintervals,ndim,nchans))
+    allocate(xacc(0:nintervals,ndim,nchans))
+    allocate(vtot(nintegrals,0:nchans))
+    allocate(etot(nintegrals,0:nchans))
+    allocate(chi2(nintegrals,0:nchans))
+    allocate(ans_chan(0:nchans))
+    allocate(xgrid_new(0:nintervals,ndim))
+    allocate(nvirt(nintervals_virt,virtual_dimensions, &
+         0:n_ord_virt,nchans))
+    allocate(nvirt_acc(nintervals_virt,virtual_dimensions, &
+         0:n_ord_virt,nchans))
+    allocate(ave_virt(nintervals_virt,virtual_dimensions, &
+         0:n_ord_virt,nchans))
+    allocate(ave_virt_acc(nintervals_virt,virtual_dimensions, &
+         0:n_ord_virt,nchans))
+    allocate(ave_born_acc(nintervals_virt,virtual_dimensions, &
+         0:n_ord_virt,nchans))
+    allocate(even_iii(ndim),even_kkk(ndim))
+
+    icell=0
+    ncell=0
+    rand=0d0
+    nhits=0
+    nhits_in_grids=0
+    regridded=.false.
+    xgrid=0d0
+    xacc=0d0
+    vtot=0d0
+    etot=0d0
+    chi2=0d0
+    ans_chan=0d0
+    xgrid_new=0d0
+    nvirt=0
+    nvirt_acc=0
+    ave_virt=0d0
+    ave_virt_acc=0d0
+    ave_born_acc=0d0
+    even_iii=1
+    even_kkk=1
+    even_dng=0d0
+    even_current_dim=0
+    bad_iteration=.false.
+    mint_state_initialized=.true.
+  end subroutine initialize_mint_state
+
+
+  subroutine finalize_mint_state
+    implicit none
+
+    if (allocated(icell)) deallocate(icell)
+    if (allocated(ncell)) deallocate(ncell)
+    if (allocated(rand)) deallocate(rand)
+    if (allocated(nhits)) deallocate(nhits)
+    if (allocated(nhits_in_grids)) deallocate(nhits_in_grids)
+    if (allocated(regridded)) deallocate(regridded)
+    if (allocated(xgrid)) deallocate(xgrid)
+    if (allocated(xacc)) deallocate(xacc)
+    if (allocated(vtot)) deallocate(vtot)
+    if (allocated(etot)) deallocate(etot)
+    if (allocated(chi2)) deallocate(chi2)
+    if (allocated(ans_chan)) deallocate(ans_chan)
+    if (allocated(xgrid_new)) deallocate(xgrid_new)
+    if (allocated(nvirt)) deallocate(nvirt)
+    if (allocated(nvirt_acc)) deallocate(nvirt_acc)
+    if (allocated(ave_virt)) deallocate(ave_virt)
+    if (allocated(ave_virt_acc)) deallocate(ave_virt_acc)
+    if (allocated(ave_born_acc)) deallocate(ave_born_acc)
+    if (allocated(even_iii)) deallocate(even_iii)
+    if (allocated(even_kkk)) deallocate(even_kkk)
+    even_dng=0d0
+    even_current_dim=0
+    bad_iteration=.false.
+    mint_state_initialized=.false.
+  end subroutine finalize_mint_state
 
   subroutine mint(fun)
     implicit none
@@ -174,7 +288,7 @@ contains
        if (imode.eq.0 .and. nit.eq.1 .and. double_points) then
           call check_for_special_channels_loop(channel_loop_done)
           if (.not.channel_loop_done) goto 2
-          call combine_results_channels_special_loop
+          call combine_special_channels
        else
           call combine_results_channels
        endif
@@ -185,6 +299,7 @@ contains
 
   subroutine initialise_mint
     implicit none
+    call initialize_mint_state
     if (imode.ne.0) call read_grids_from_file
     call setup_basic_mint
     if (imode.eq.0) then
@@ -345,12 +460,12 @@ contains
           enddo
           chi2_l3(i)=chi2_l3(i)/2d0 ! three iterations, so 2 degrees of freedom
        enddo
-       call print_results_accumulated_three_iterations
+       call print_accumulated_last_three
     endif
   end subroutine combine_final_three_iterations
 
 
-  subroutine print_results_accumulated_three_iterations
+  subroutine print_accumulated_last_three
     implicit none
     integer :: i
     double precision, dimension(nintegrals) :: efrac
@@ -368,7 +483,7 @@ contains
     enddo
     write(*,'(a,1x,e10.4)') 'accumulated result last 3 iterrations Chi^2 per DoF =' &
          ,chi2_l3(1)
-  end subroutine print_results_accumulated_three_iterations
+  end subroutine print_accumulated_last_three
 
 
   
@@ -447,7 +562,6 @@ contains
   subroutine check_fractional_uncertainty(efrac)
     implicit none
     double precision, dimension(nintegrals) :: efrac
-    logical, save :: bad_iteration=.false.
     integer iappl
     common /for_applgrid/ iappl
 ! If there was a large fluctation in this iteration, be careful with
@@ -557,14 +671,14 @@ contains
     enddo
   end subroutine check_for_special_channels_loop
 
-  subroutine combine_results_channels_special_loop
+  subroutine combine_special_channels
     implicit none
 ! set the total result for the first iteration to the sum over all the channels
     vtot(1:nintegrals,0)=sum(vtot(1:nintegrals,1:nchans),dim=2)
     etot(1:nintegrals,0)=sum(etot(1:nintegrals,1:nchans)**2,dim=2)
     etot(1:nintegrals,0)=sqrt(etot(1:nintegrals,0))
     ncalls0=ncalls0*nchans
-  end subroutine combine_results_channels_special_loop
+  end subroutine combine_special_channels
   
 
   subroutine get_amount_of_points(enough_points)
@@ -748,7 +862,7 @@ contains
     write (*,*) '------- iteration',nit
     call check_evenly_random_numbers
     if (imode.eq.0) then
-       call reset_accumulated_grids_for_updating
+       call reset_accumulated_grids
     endif
     vtot(1:nintegrals,0:nchans)=0d0
     etot(1:nintegrals,0:nchans)=0d0
@@ -757,7 +871,7 @@ contains
     pass_cuts_point=0
   end subroutine start_iteration
 
-  subroutine reset_accumulated_grids_for_updating
+  subroutine reset_accumulated_grids
     implicit none
     integer :: kchan
     do kchan=1,nchans
@@ -774,7 +888,7 @@ contains
        endif
     enddo
     reset=.false.
-  end subroutine reset_accumulated_grids_for_updating
+  end subroutine reset_accumulated_grids
 
   subroutine check_evenly_random_numbers
     implicit none
@@ -837,9 +951,8 @@ contains
             ,regridded(kchan),np,nhits_in_grids(kchan)   &
             ,ans_chan(kchan),ans(2,kchan),virtual_fraction(kchan)
     enddo
-    call flush(6)
     return
-250 format(a7,i5,1x,a1,1x,i5,1x,l,1x,i8,1x,i8,2x,e10.4,2x,e10.4,2x,e10.4)
+250 format(a7,i5,1x,a1,1x,i5,1x,l1,1x,i8,1x,i8,2x,e10.4,2x,e10.4,2x,e10.4)
   end subroutine write_channel_info
   
 
@@ -928,6 +1041,7 @@ contains
     integer :: i,j,k,kchan,idum
     integer,dimension(maxchannels) :: points
     character(len=3) :: dummy
+    if (.not.mint_state_initialized) call initialize_mint_state
     open (unit=12, file='mint_grids',status='old')
     ans(1,0)=0d0
     unc(1,0)=0d0
@@ -1164,7 +1278,7 @@ contains
   subroutine fill_ave_virt(x,k_ord_virt,virtual,born)
     implicit none
     integer :: kdim,ncell,k_ord_virt
-    double precision,dimension(ndimmax) :: x(ndimmax)
+    double precision,dimension(ndimmax) :: x
     double precision :: virtual,born
     do kdim=1,ndim-3
        ncell=min(int(x(kdim)*nint_used_virt)+1,nint_used_virt)
@@ -1330,29 +1444,26 @@ contains
   function get_ran()
     implicit none
     double precision :: get_ran
-    double precision, save :: dng
     double precision, external ::  ran2
-    integer, dimension(ndimmax), save ::  iii,kkk
-    integer, save :: current_dim
     integer :: i,iret
     if (firsttime) then
 ! initialise the hypercubes
-       dng=1d0/dble(ng)
-       current_dim=0
+       even_dng=1d0/dble(ng)
+       even_current_dim=0
        do i=1,ndim
-          iii(i)=ng
-          kkk(i)=1
+          even_iii(i)=ng
+          even_kkk(i)=1
        enddo
        firsttime=.false.
     endif
-    current_dim=mod(current_dim,ndim)+1
+    even_current_dim=mod(even_current_dim,ndim)+1
 ! This is the random number in the hypercube 'k' for current_dim
-    get_ran=dng*(ran2()+dble(kkk(current_dim)-1))
+    get_ran=even_dng*(ran2()+dble(even_kkk(even_current_dim)-1))
 ! Got random numbers for all dimensions, update kkk() for the next call
-    if (current_dim.eq.ndim) then
-       call nextlexi(iii,kkk,iret)
+    if (even_current_dim.eq.ndim) then
+       call nextlexi(even_iii,even_kkk,iret)
        if (iret.eq.1) then
-          call nextlexi(iii,kkk,iret)
+          call nextlexi(even_iii,even_kkk,iret)
        endif
     endif
   end function get_ran
@@ -1362,7 +1473,3 @@ contains
 
 
 end module mint_module
-  
-! Dummy subroutine (normally used with vegas when resuming plots)
-subroutine resume()
-end subroutine resume
