@@ -5,11 +5,10 @@ c Call after SETCUTS, including whenever the selected FKS channel changes.
       use cuts_module, only: initialize_cuts_runtime_state,
      $     initialize_cuts_event_state
       use fnlo_process_common, only: etmin,etmax,mxxmin,
-     $     pmass=>particle_masses,idup,
-     $     ybst_til_tolab
+     $     pmass=>particle_masses,idup
       implicit none
 
       call initialize_cuts_runtime_state(etmin,etmax,mxxmin)
-      call initialize_cuts_event_state(pmass,idup,ybst_til_tolab)
+      call initialize_cuts_event_state(pmass,idup)
       return
       end

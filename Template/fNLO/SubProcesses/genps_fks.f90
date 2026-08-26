@@ -16,13 +16,12 @@ module genps_fks
                                  soft_counterevent, collinear_counterevent, &
                                  soft_collinear_counterevent, real_event, &
                                  first_counterevent, last_counterevent, &
-                                 skipped_counterevents, xij_aor, &
-                                 i_fks, j_fks, ybst_til_tolab, &
-                                 ybst_til_tocm, sqrtshat, shat, &
+                                 xij_aor, i_fks, j_fks, &
                                  event_xi, event_y, event_xi_hat, &
                                  event_fks_momentum, event_xi_max, &
                                  event_xi_norm, event_bjorken_x, &
-                                 event_sqrt_shat, event_shat, event_ycm, &
+                                 event_sqrt_shat, event_shat, &
+                                 ybst_til_tolab, ybst_til_tocm, &
                                  veckn_ev, veckbarn_ev, xp0jfks, &
                                  softtest, colltest, xi_i_fks_fix, &
                                  y_ij_fks_fix, tau_lower_bound
@@ -128,17 +127,21 @@ contains
     integer ndim
     logical pass
 
-    integer icountevts
+    integer icountevts, event_position
     integer ixEi, ixyij, ixpi, imother
-    double precision xmrec2, m_j_fks, phi_i_fks, rat_xi, tau, &
+    double precision xmrec2, m_j_fks, phi_i_fks, rat_xi, &
       & xi_i_fks, y_ij_fks, xi_i_hat, xiimax, xinorm, xjac, xpswgt, &
-      & ycm, xp(0:3, nexternal), xbjrk(2), p_i_fks(0:3)
+      & xp(0:3, nexternal), p_i_fks(0:3)
     integer i
+    integer, parameter :: event_generation_order(4) = (/ &
+      real_event, soft_counterevent, collinear_counterevent, &
+      soft_collinear_counterevent /)
 
     double precision pi
     parameter(pi=3.1415926535897932d0)
 
     integer isolsign
+    logical skip_counterevents
 
 ! check that the starting PS point is meaningful
     if (xjac0 .lt. 0d0) then
@@ -149,11 +152,10 @@ contains
 ! Here we start with the FKS Stuff
 !
 ! The real event occupies slot 3; slots 0, 1, and 2 are its soft,
-! collinear, and soft-collinear counterevents.  The value 5 skips
-! counterevents for the second massive-emission fold;
-! it is assigned only after the event has been stored and never indexes
-! event storage.
-    icountevts = real_event
+! collinear, and soft-collinear counterevents. They are generated in
+! that explicit order because the real point determines whether the
+! massive-emission second solution has counterevents.
+    skip_counterevents = .false.
 ! Event/counterevent values stay negative until their ordinary context is
 ! generated.  This also forces a failure if a skipped context is consumed.
     do i = first_counterevent, real_event
@@ -161,11 +163,13 @@ contains
       event_xi_max(i) = -1.d0
       stored_event_jacobian(i) = -1.d0
     end do
-! set cm stuff to values to make the program crash if not set elsewhere
-    ybst_til_tolab = 1.d14
-    ybst_til_tocm = 1.d14
-    sqrtshat = 0.d0
-    shat = 0.d0
+! All event momenta use the same tilde-to-laboratory boost. The
+! tilde-to-partonic-CM boost depends on the event and is filled below.
+    ybst_til_tolab = -ycm_born - 0.5d0*log(ebeam(1)/ebeam(2))
+    ybst_til_tocm = 1d14
+! The soft counterevent is always at the Born rapidity, including when
+! cuts prevent its ordinary construction.
+    ybst_til_tocm(soft_counterevent) = 0d0
 ! If the collinear counterevent is not generated, this stays zero.
     xij_aor = (0.d0, 0.d0)
 !
@@ -190,7 +194,16 @@ contains
 ! Here is the beginning of the loop over the momenta for the event and
 ! counter-events. This will fill the xp momenta with the event and
 ! counter-event momenta.
-    counterevent_loop: do
+    counterevent_loop: do event_position = 1, size(event_generation_order)
+      icountevts = event_generation_order(event_position)
+! The second solution of the massive mapping has no counterevents.
+      if (skip_counterevents) exit counterevent_loop
+! Massive emitters and n-body integrations need only the soft
+! counterevent in addition to the real point.
+      if (icountevts .ne. real_event .and. &
+          icountevts .gt. soft_counterevent .and. &
+          (m_j_fks .ne. 0d0 .or. nbody)) cycle counterevent_loop
+
       xjac = xjac0
       xpswgt = xpswgt0
 !
@@ -219,22 +232,22 @@ contains
 ! case 2: j_fks is massive final state
 ! case 3: j_fks is initial state
       if (j_fks .gt. nincoming) then
-        shat = shat_born
-        sqrtshat = sqrtshat_born
-        tau = tau_born
-        ycm = ycm_born
-        xbjrk(1) = xbjrk_born(1)
-        xbjrk(2) = xbjrk_born(2)
+        event_shat(icountevts) = shat_born
+        event_sqrt_shat(icountevts) = sqrtshat_born
+        ybst_til_tocm(icountevts) = 0d0
+        event_bjorken_x(:, icountevts) = xbjrk_born
         if (m_j_fks .eq. 0d0) then
           isolsign = 1
           call generate_momenta_massless_final(icountevts, i_fks, j_fks &
-            & , born_lab_momenta(0:3, imother), shat, sqrtshat, x(ixEi), xmrec2, xp &
+            & , born_lab_momenta(0:3, imother), event_shat(icountevts) &
+            & , event_sqrt_shat(icountevts), x(ixEi), xmrec2, xp &
             & , phi_i_fks, xiimax, xinorm, xi_i_fks, y_ij_fks, xi_i_hat &
             & , p_i_fks, xjac, xpswgt, pass)
         elseif (m_j_fks .gt. 0d0) then
           call generate_momenta_massive_final(icountevts, isolsign &
             & , rat_xi, i_fks, j_fks, born_lab_momenta(0:3, imother) &
-            & , shat, sqrtshat, m_j_fks, x(ixEi), xmrec2, xp, phi_i_fks &
+            & , event_shat(icountevts), event_sqrt_shat(icountevts) &
+            & , m_j_fks, x(ixEi), xmrec2, xp, phi_i_fks &
             & , xiimax, xinorm, xi_i_fks, y_ij_fks, xi_i_hat, p_i_fks, xjac &
             & , xpswgt, pass)
         end if
@@ -242,7 +255,9 @@ contains
         isolsign = 1
         call generate_momenta_initial(icountevts, i_fks, j_fks, xbjrk_born &
           & , tau_born, ycm_born, ycmhat, shat_born, phi_i_fks, xp, x(ixEi) &
-          & , shat, stot, sqrtshat, tau, ycm, xbjrk, p_i_fks, xiimax, xinorm &
+          & , event_shat(icountevts), stot, event_sqrt_shat(icountevts) &
+          & , ybst_til_tocm(icountevts), event_bjorken_x(:, icountevts) &
+          & , p_i_fks, xiimax, xinorm &
           & , xi_i_fks, y_ij_fks, xi_i_hat, xpswgt, xjac, pass)
       else
         write (*, *) 'Error #2 in genps_fks.f', j_fks
@@ -255,38 +270,23 @@ contains
 !
 ! All done, so check four-momentum conservation
       if (pass .and. xjac .gt. 0.d0) then
-        call phspncheck_nocms(nexternal, sqrtshat, m, xp, pass)
+        call phspncheck_nocms(nexternal, event_sqrt_shat(icountevts), m, xp, pass)
         if (.not. pass) xjac = -199
       end if
       if (pass) then
-        call compute_flux(shat, sqrtshat, m(1), m(2), xpswgt, xjac)
+        call compute_flux(event_shat(icountevts), event_sqrt_shat(icountevts), &
+                          m(1), m(2), xpswgt, xjac)
       end if
 !
-      call fill_FKS_commons(icountevts, tau, ycm, ycm_born, shat, sqrtshat, xbjrk, &
-        & xiimax, xinorm, xi_i_fks, xi_i_hat, p_i_fks, y_ij_fks, xp, p, xjac, jac)
-!
-      if (icountevts .eq. real_event) then
-        icountevts = soft_counterevent
-! skips counterevents when integrating over second fold for massive
-! j_fks
-        if (isolsign .eq. -1) icountevts = skipped_counterevents
-      else
-        icountevts = icountevts + 1
-      end if
-      if ((icountevts .le. last_counterevent .and. &
-           m_j_fks .eq. 0.d0 .and. (.not. nbody)) .or. &
-        & (icountevts .eq. soft_counterevent .and. &
-           m_j_fks .eq. 0.d0 .and. nbody) .or. &
-        & (icountevts .eq. soft_counterevent .and. &
-           m_j_fks .ne. 0.d0)) then
-        cycle counterevent_loop
-      end if
-      exit counterevent_loop
+      call store_FKS_event(icountevts, xiimax, xinorm, &
+        & xi_i_fks, xi_i_hat, p_i_fks, y_ij_fks, xp, p, xjac, jac)
+      if (icountevts .eq. real_event .and. isolsign .eq. -1) &
+        skip_counterevents = .true.
     end do counterevent_loop
 
-    if (icountevts .eq. skipped_counterevents) then
-! icountevts=5 only when integrating over the second fold with j_fks
-! massive. The counterevents have been skipped, so make sure their
+    if (skip_counterevents) then
+! When integrating over the second fold with massive j_fks, the
+! counterevents have been skipped, so make sure their
 ! momenta are unphysical. Born are physical if event was generated, and
 ! must stay so for the computation of enhancement factors.
       do i = first_counterevent, last_counterevent
@@ -333,12 +333,12 @@ contains
     return
   end subroutine compute_flux
 
-  subroutine fill_FKS_commons(icountevts, tau, ycm, ycm_born, shat, sqrtshat, xbjrk, &
-    & xiimax, xinorm, xi_i_fks, xi_i_hat, p_i_fks, y_ij_fks, xp, p, xjac, jac)
+  subroutine store_FKS_event(icountevts, xiimax, xinorm, &
+    & xi_i_fks, xi_i_hat, p_i_fks, y_ij_fks, xp, p, xjac, jac)
 
     implicit none
     integer icountevts
-    double precision tau, ycm, ycm_born, shat, sqrtshat, xbjrk(2), xiimax, xinorm, &
+    double precision xiimax, xinorm, &
       & xi_i_fks, xi_i_hat, p_i_fks(0:3), y_ij_fks, xp(0:3, nexternal), p(0:3, nexternal), &
       & xjac, jac
 
@@ -353,19 +353,9 @@ contains
 !
 ! Fill shared FKS state.
     if (icountevts < soft_counterevent .or. icountevts > real_event) then
-      write (*, *) 'Invalid event index in fill_FKS_commons:', icountevts
+      write (*, *) 'Invalid event index in store_FKS_event:', icountevts
       stop 1
     end if
-! Special fix in the case the soft counter-events are not generated but
-! the Born and real are. (This can happen if ptj>0 in the
-! run_card). This fix is needed for set_cms_stuff to work properly.
-    if (icountevts .eq. soft_counterevent) ycm = ycm_born
-
-    event_ycm(icountevts) = ycm
-    event_shat(icountevts) = shat
-    event_sqrt_shat(icountevts) = sqrtshat
-    event_bjorken_x(1, icountevts) = xbjrk(1)
-    event_bjorken_x(2, icountevts) = xbjrk(2)
     event_xi_max(icountevts) = xiimax
     event_xi_norm(icountevts) = xinorm
     event_xi(icountevts) = xi_i_fks
@@ -391,7 +381,7 @@ contains
     end if
 
     return
-  end subroutine fill_FKS_commons
+  end subroutine store_FKS_event
 
   subroutine generate_momenta_massless_final(icountevts, i_fks, j_fks &
     & , p_born_imother, shat, sqrtshat, x, xmrec2, xp, phi_i_fks, xiimax &
@@ -958,7 +948,7 @@ contains
 
   subroutine generate_momenta_initial(icountevts, i_fks, j_fks, &
     & xbjrk_born, tau_born, ycm_born, ycmhat, shat_born, phi_i_fks, xp, x &
-    & , shat, stot, sqrtshat, tau, ycm, xbjrk, p_i_fks, xiimax, xinorm &
+    & , shat, stot, sqrtshat, cm_boost, xbjrk, p_i_fks, xiimax, xinorm &
     & , xi_i_fks, y_ij_fks, xi_i_hat, xpswgt, xjac, pass)
     implicit none
 ! arguments
@@ -966,7 +956,7 @@ contains
     double precision xbjrk_born(2), tau_born, ycm_born, ycmhat, shat_born &
       & , phi_i_fks, xpswgt, xjac, xiimax, xinorm, xp(0:3, nexternal), stot &
       & , x(2), y_ij_fks, xi_i_hat
-    double precision shat, sqrtshat, tau, ycm, xbjrk(2), p_i_fks(0:3)
+    double precision shat, sqrtshat, cm_boost, xbjrk(2), p_i_fks(0:3)
     logical pass
 ! local
     integer i, j, idir
@@ -974,7 +964,7 @@ contains
       & , ximaxtmp, omega, bstfact, shy_tbst, chy_tbst, chy_tbstmo &
       & , xdir_t(3), cosphi_i_fks, sinphi_i_fks, shy_lbst, chy_lbst &
       & , encmso2, E_i_fks, sinth_i_fks, xpifksred(0:3), xi_i_fks &
-      & , xiimin, yij_upp, yij_low, y_ij_fks_upp, y_ij_fks_low
+      & , xiimin, yij_upp, yij_low, y_ij_fks_upp, y_ij_fks_low, tau
     complex(kind=kind(0d0)) resAoR0
 
     double precision omx1bar2, omx2bar2
@@ -1253,14 +1243,14 @@ contains
       & (2 - xi_i_fks*(1 - yijdir)))
     if (icountevts .ne. soft_counterevent) then
       tau = tau_born/(1 - xi_i_fks)
-      ycm = ycm_born - log(omega)
+      cm_boost = (ycm_born - log(omega)) - ycm_born
       shat = tau*stot
       sqrtshat = sqrt(shat)
       xbjrk(1) = xbjrk_born(1)/(sqrt(1 - xi_i_fks)*omega)
       xbjrk(2) = xbjrk_born(2)*omega/sqrt(1 - xi_i_fks)
     else
       tau = tau_born
-      ycm = ycm_born
+      cm_boost = 0d0
       shat = shat_born
       sqrtshat = sqrt(shat)
       xbjrk(1) = xbjrk_born(1)

@@ -217,7 +217,6 @@ class TestMadEventCmd(unittest.TestCase):
             subprocess_dir, 'genps_born.f90')))
         for physics_module in [
                 'phase_space_kinematics.f90',
-                'fks_event_kinematics.f90',
                 'fks_qcd_splitting.f90',
                 'fks_soft_kernels.f90',
                 'fks_channel_map.f90',
@@ -251,6 +250,15 @@ class TestMadEventCmd(unittest.TestCase):
                     'ickkw', 'xqcut', 'xmtc', 'ktscheme', 'chcluster',
                     'pdfwgt', 'to_cluster', 'to_specxpt']:
                 self.assertNotIn(matching_name, source)
+            self.assertNotIn('xbk', source)
+
+        with open(pjoin(
+                madgraph.MG5DIR, 'madgraph', 'iolibs', 'template_files',
+                'parton_lum_n_fnlo.inc')) as stream:
+            luminosity_template = stream.read().lower()
+        self.assertIn('dlum_%(n_me)d(lum,bjorken_x)',
+                      luminosity_template)
+        self.assertNotIn('xbk', luminosity_template)
 
         with open(pjoin(subprocess_dir, 'fks_singular.f90')) as stream:
             fks_singular = stream.read()
@@ -260,6 +268,8 @@ class TestMadEventCmd(unittest.TestCase):
         self.assertNotIn('subroutine AP_reduced', fks_singular)
         self.assertNotIn('subroutine eikonal_Ireg', fks_singular)
         self.assertNotIn('subroutine set_cms_stuff', fks_singular)
+        self.assertFalse(os.path.exists(pjoin(
+            subprocess_dir, 'fks_event_kinematics.f90')))
 
         with open(pjoin(subprocess_dir, 'genps_born.f90')) as stream:
             genps_born = stream.read().lower()
@@ -276,7 +286,14 @@ class TestMadEventCmd(unittest.TestCase):
         self.assertNotIn('subroutine generate_tau', genps_fks)
         self.assertNotIn('fks_as_is', genps_fks)
         self.assertNotIn('-2:2', genps_fks)
-        self.assertIn('counterevent_loop: do', genps_fks)
+        self.assertIn('event_generation_order', genps_fks)
+        self.assertIn('counterevent_loop: do event_position', genps_fks)
+        self.assertIn('if (skip_counterevents) exit counterevent_loop',
+                      genps_fks)
+        self.assertNotIn('skipped_counterevents', genps_fks)
+        self.assertNotIn('event_ycm', genps_fks)
+        self.assertNotIn('fill_fks_commons', genps_fks)
+        self.assertIn('store_fks_event', genps_fks)
         self.assertNotIn('goto 111', genps_fks)
         self.assertNotIn('111 continue', genps_fks)
         self.assertNotIn('use fks_singular_module', genps_born)
@@ -288,6 +305,14 @@ class TestMadEventCmd(unittest.TestCase):
         self.assertIn('event_momenta(0:3,nexternal,', process_common)
         self.assertIn('event_jacobian(soft_counterevent:real_event)',
                       process_common)
+        self.assertIn(
+            'ybst_til_tolab(soft_counterevent:real_event)',
+            process_common)
+        self.assertIn(
+            'ybst_til_tocm(soft_counterevent:real_event)',
+            process_common)
+        self.assertNotIn('event_ycm', process_common)
+        self.assertNotIn('parton_cms_stuff', process_common)
         for split_event_state in [
                 'p_ev', 'p1_cnt', 'wgt_cnt', 'pswgt_cnt', 'jac_cnt',
                 'xi_i_fks_ev', 'xi_i_fks_cnt', 'p_i_fks_ev',

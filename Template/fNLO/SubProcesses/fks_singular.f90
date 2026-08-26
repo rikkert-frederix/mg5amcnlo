@@ -18,7 +18,6 @@ module fks_singular_module
                                 Qterms_reduced_timelike, &
                                 Qterms_reduced_spacelike
   use fks_random_module, only: random_unit_interval
-  use fks_event_kinematics, only: set_cms_stuff
   use fks_soft_kernels, only: eikonal_reduced, eikonal_Ireg
   use fks_sij_module, only: initialize_fks_sij_module, &
                             set_fks_sij_partition_state, fks_sij_impl
@@ -26,13 +25,15 @@ module fks_singular_module
   use chooser_functions_module, only: get_mother_colour_impl, set_pdg_impl
   use madfks_plot_module, only: initplot_impl, outfun_impl
   use fnlo_process_common, only: nfksprocess, i_fks, j_fks, &
-                                 ybst_til_tolab, ybst_til_tocm, &
-                                 sqrtshat, shat, soft_counterevent, &
+                                 soft_counterevent, &
                                  collinear_counterevent, &
                                  soft_collinear_counterevent, real_event, &
                                  event_xi, event_y, event_xi_hat, &
                                  event_fks_momentum, event_xi_max, &
-                                 event_xi_norm, f_b, f_nb, f_r, f_s, f_c, &
+                                 event_xi_norm, event_bjorken_x, &
+                                 event_sqrt_shat, event_shat, &
+                                 ybst_til_tolab, ybst_til_tocm, &
+                                 f_b, f_nb, f_r, f_s, f_c, &
                                  f_dc, f_sc, f_dsc, f_pdfsch_d, &
                                  f_pdfsch_p, f_pdfsch_l, xiscut_used, &
                                  xibsvcut_used, delta_used, xicut_used, &
@@ -149,6 +150,13 @@ module fks_singular_module
   logical, save :: setfks_firsttime = .true.
   logical, save :: fks_singular_state_initialized = .false.
 
+  interface
+    double precision function dlum(bjorken_x)
+      implicit none
+      double precision, intent(in) :: bjorken_x(2)
+    end function dlum
+  end interface
+
   public :: compute_born
   public :: compute_nbody_noborn, compute_real_emission
   public :: compute_soft_counter_term, compute_collinear_counter_term
@@ -167,18 +175,21 @@ module fks_singular_module
 
 contains
 
-  double precision function evaluate_fks_sij(p, ii_fks, jj_fks, &
-                                             xi_i_fks, y_ij_fks)
+  double precision function evaluate_fks_sij(event_slot, p, ii_fks, &
+                                             jj_fks, xi_i_fks, y_ij_fks)
     implicit none
     double precision, intent(in) :: p(0:3, nexternal)
     double precision, intent(in) :: xi_i_fks, y_ij_fks
-    integer, intent(in) :: ii_fks, jj_fks
+    integer, intent(in) :: event_slot, ii_fks, jj_fks
 
     call require_fks_singular_state()
     call initialize_fks_sij_module(nexternal, nincoming, fks_a, fks_b, &
                                    a_h_damp, one_h_damp, useenergy, usebeta)
     call set_fks_sij_partition_state(fks_j_from_i, particle_type, is_aorg, &
-                                     i_fks, j_fks, ybst_til_tocm, sqrtshat, shat, &
+                                     i_fks, j_fks, &
+                                     ybst_til_tocm(event_slot), &
+                                     event_sqrt_shat(event_slot), &
+                                     event_shat(event_slot), &
                                      event_fks_momentum(:, &
                                        soft_counterevent:soft_collinear_counterevent), &
                                      external_masses)
@@ -467,7 +478,7 @@ contains
       orders_tag = get_orders_tag(orders)
       amp_pos = iamp
       wgt1 = amp_split(iamp)*f_b/g**(qcd_power)
-      call add_wgt(2, orders, wgt1, 0d0, 0d0)
+      call add_wgt(soft_counterevent, 2, orders, wgt1, 0d0, 0d0)
     end do
 
     call cpu_time(tAfter)
@@ -490,7 +501,8 @@ contains
     if (f_nb .eq. 0d0) return
     if (event_xi_hat(real_event)*event_xi_max(soft_counterevent) .gt. &
         xiBSVcut_used) return
-    call bornsoftvirtual(stored_event_momenta(:, :, soft_counterevent), &
+    call bornsoftvirtual(soft_counterevent, &
+                         stored_event_momenta(:, :, soft_counterevent), &
                          bsv_wgt, virt_wgt, born_wgt)
     do iamp = 1, amp_split_size
       if (amp_split_wgtnstmp(iamp) .eq. 0d0 .and. &
@@ -506,8 +518,8 @@ contains
       wgt2 = amp_split_wgtwnstmpmur(iamp)*f_nb/g22
       wgt3 = amp_split_wgtwnstmpmuf(iamp)*f_nb/g22
       wgt4 = amp_split_avv(iamp)*f_nb/g22
-      call add_wgt(3, orders, wgt1, wgt2, wgt3)
-      call add_wgt(15, orders, wgt4, 0d0, 0d0)
+      call add_wgt(soft_counterevent, 3, orders, wgt1, wgt2, wgt3)
+      call add_wgt(soft_counterevent, 15, orders, wgt4, 0d0, 0d0)
     end do
 ! Special for the soft-virtual needed for the virt-tricks. The
 ! *_wgt_mint variable should be directly passed to the mint-integrator
@@ -524,7 +536,7 @@ contains
       virt_wgt_mint(iamp) = virt_wgt_mint(iamp) + wgt1
       born_wgt_mint(iamp) = born_wgt_mint(iamp) + amp_split_born_for_virt(iamp)*f_nb
       wgt1 = wgt1/g**(QCD_power)
-      call add_wgt(14, orders, wgt1, 0d0, 0d0)
+      call add_wgt(soft_counterevent, 14, orders, wgt1, 0d0, 0d0)
     end do
 
     call cpu_time(tAfter)
@@ -543,10 +555,11 @@ contains
     double precision s_ev, p(0:3, nexternal), wgt1, fx_ev
     call cpu_time(tBefore)
     if (f_r .eq. 0d0) return
-    s_ev = evaluate_fks_sij(p, i_fks, j_fks, &
+    s_ev = evaluate_fks_sij(real_event, p, i_fks, j_fks, &
                             event_xi(real_event), event_y(real_event))
     if (s_ev .le. 0.d0) return
-    call sreal(p, event_xi(real_event), event_y(real_event), fx_ev)
+    call sreal(real_event, p, event_xi(real_event), &
+               event_y(real_event), fx_ev)
     do iamp = 1, amp_split_size
       if (amp_split(iamp) .eq. 0d0) cycle
       call amp_split_pos_to_orders(iamp, orders)
@@ -554,7 +567,7 @@ contains
       orders_tag = get_orders_tag(orders)
       amp_pos = iamp
       wgt1 = amp_split(iamp)*s_ev*f_r/g**(qcd_power)
-      call add_wgt(1, orders, wgt1, 0d0, 0d0)
+      call add_wgt(real_event, 1, orders, wgt1, 0d0, 0d0)
     end do
     call cpu_time(tAfter)
     tReal = tReal + (tAfter - tBefore)
@@ -575,11 +588,12 @@ contains
     if (f_s .eq. 0d0) return
     if (event_xi_hat(real_event)*event_xi_max(soft_counterevent) .gt. &
         xiScut_used) return
-    s_s = evaluate_fks_sij( &
+    s_s = evaluate_fks_sij(soft_counterevent, &
             stored_event_momenta(:, :, soft_counterevent), &
             i_fks, j_fks, zero, event_y(real_event))
     if (s_s .le. 0d0) return
-    call sreal(stored_event_momenta(:, :, soft_counterevent), &
+    call sreal(soft_counterevent, &
+               stored_event_momenta(:, :, soft_counterevent), &
                0d0, event_y(real_event), fx_s)
 
     do iamp = 1, amp_split_size
@@ -593,7 +607,8 @@ contains
       if (event_xi(real_event) .le. xiScut_used) then
         wgt1 = -amp_split(iamp)*s_s*f_s/g22
       end if
-      if (wgt1 .ne. 0d0) call add_wgt(4, orders, wgt1, 0d0, 0d0)
+      if (wgt1 .ne. 0d0) &
+        call add_wgt(soft_counterevent, 4, orders, wgt1, 0d0, 0d0)
     end do
 
     call cpu_time(tAfter)
@@ -618,15 +633,17 @@ contains
     if (f_c .eq. 0d0 .and. f_dc .eq. 0d0) return
     if (event_y(real_event) .le. 1d0 - deltaS .or. &
         pmass(j_fks) .ne. 0.d0) return
-    s_c = evaluate_fks_sij( &
+    s_c = evaluate_fks_sij(collinear_counterevent, &
             stored_event_momenta(:, :, collinear_counterevent), &
             i_fks, j_fks, event_xi(collinear_counterevent), one)
     if (s_c .le. 0d0) return
 ! sreal_deg should be called **BEFORE** sreal
 ! in order not to overwrtie the amp_split array
-    call sreal_deg(stored_event_momenta(:, :, collinear_counterevent), &
+    call sreal_deg(collinear_counterevent, &
+                   stored_event_momenta(:, :, collinear_counterevent), &
                    event_xi(collinear_counterevent), deg_xi_c, deg_lxi_c)
-    call sreal(stored_event_momenta(:, :, collinear_counterevent), &
+    call sreal(collinear_counterevent, &
+               stored_event_momenta(:, :, collinear_counterevent), &
                event_xi(collinear_counterevent), one, fx_c)
 
     do iamp = 1, amp_split_size
@@ -649,7 +666,8 @@ contains
                       amp_split_wgtpsch_l(iamp))* &
                      log(event_xi(collinear_counterevent)))*f_dc/g22
       wgt3 = amp_split_wgtdegrem_muF(iamp)*f_dc/g22
-      if (wgt1 .ne. 0d0 .or. wgt3 .ne. 0d0) call add_wgt(5, orders, wgt1, 0d0, wgt3)
+      if (wgt1 .ne. 0d0 .or. wgt3 .ne. 0d0) &
+        call add_wgt(collinear_counterevent, 5, orders, wgt1, 0d0, wgt3)
     end do
 
     call cpu_time(tAfter)
@@ -676,16 +694,17 @@ contains
     if (event_xi_hat(real_event)*event_xi_max(collinear_counterevent) &
         .ge. xiScut_used .or. event_y(real_event) .le. 1d0 - deltaS &
         .or. pmass(j_fks) .ne. 0.d0) return
-    s_sc = evaluate_fks_sij( &
+    s_sc = evaluate_fks_sij(soft_collinear_counterevent, &
              stored_event_momenta(:, :, soft_collinear_counterevent), &
              i_fks, j_fks, zero, one)
     if (s_sc .le. 0d0) return
 ! sreal_deg should be called **BEFORE** sreal
 ! in order not to overwrtie the amp_split array
-    call sreal_deg( &
+    call sreal_deg(soft_collinear_counterevent, &
       stored_event_momenta(:, :, soft_collinear_counterevent), &
       zero, deg_xi_sc, deg_lxi_sc)
-    call sreal(stored_event_momenta(:, :, soft_collinear_counterevent), &
+    call sreal(soft_collinear_counterevent, &
+               stored_event_momenta(:, :, soft_collinear_counterevent), &
                zero, one, fx_sc)
 
     do iamp = 1, amp_split_size
@@ -715,7 +734,8 @@ contains
                + amp_split_wgtpsch_l(iamp)*f_pdfsch_l)/g22
         wgt3 = -amp_split_wgtdegrem_muF(iamp)*f_dsc(4)/g22
       end if
-      if (wgt1 .ne. 0d0 .or. wgt3 .ne. 0d0) call add_wgt(6, orders, wgt1, 0d0, wgt3)
+      if (wgt1 .ne. 0d0 .or. wgt3 .ne. 0d0) &
+        call add_wgt(soft_collinear_counterevent, 6, orders, wgt1, 0d0, wgt3)
     end do
 
     call cpu_time(tAfter)
@@ -837,12 +857,12 @@ contains
       if (fixed_order) call initplot_impl()
       firsttime = .false.
     end if
-    call set_cms_stuff(soft_counterevent)
 ! f_* multiplication factors for Born and nbody
     f_b = stored_event_jacobian(soft_counterevent)* &
           event_xi_norm(real_event)/ &
           (min(event_xi_max(real_event), xiBSVcut_used)* &
-           shat/(16*pi**2))*fkssymmetryfactorBorn*vegas_wgt
+           event_shat(soft_counterevent)/(16*pi**2))* &
+          fkssymmetryfactorBorn*vegas_wgt
     f_nb = f_b
     call cpu_time(tAfter)
     tf_nb = tf_nb + (tAfter - tBefore)
@@ -1005,7 +1025,6 @@ contains
         f_c = (prefact_c + prefact_coll)* &
               stored_event_jacobian(collinear_counterevent)* &
               fkssymmetryfactor*vegas_wgt
-        call set_cms_stuff(collinear_counterevent)
         prefact_deg = event_xi_norm(collinear_counterevent)/ &
                       event_xi(collinear_counterevent)/deltaS
         prefact_cnt_ssc_c = event_xi_norm(collinear_counterevent)/ &
@@ -1023,12 +1042,12 @@ contains
                                   xiScut_used)) &
                          *log(delta_used/deltaS)/deltaS
         f_dc = stored_event_jacobian(collinear_counterevent)*prefact_deg/ &
-               (shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
+               (event_shat(collinear_counterevent)/(32*pi**2))* &
+               fkssymmetryfactorDeg*vegas_wgt
         f_sc = (prefact_c + prefact_coll + prefact_cnt_ssc_c + &
                 prefact_coll_c)* &
                stored_event_jacobian(soft_collinear_counterevent)* &
                fkssymmetryfactorDeg*vegas_wgt
-        call set_cms_stuff(soft_collinear_counterevent)
         prefact_deg_sxi = event_xi_norm(collinear_counterevent)/ &
                           min(event_xi_max(collinear_counterevent), &
                               xiScut_used)* &
@@ -1044,32 +1063,39 @@ contains
                            /(2.d0*deltaS)
         f_dsc(1) = prefact_deg* &
                    stored_event_jacobian(soft_collinear_counterevent)/ &
-                   (shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
+                   (event_shat(soft_collinear_counterevent)/(32*pi**2))* &
+                   fkssymmetryfactorDeg*vegas_wgt
         f_dsc(2) = prefact_deg_sxi* &
                    stored_event_jacobian(soft_collinear_counterevent)/ &
-                   (shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
+                   (event_shat(soft_collinear_counterevent)/(32*pi**2))* &
+                   fkssymmetryfactorDeg*vegas_wgt
         f_dsc(3) = prefact_deg_slxi* &
                    stored_event_jacobian(soft_collinear_counterevent)/ &
-                   (shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
+                   (event_shat(soft_collinear_counterevent)/(32*pi**2))* &
+                   fkssymmetryfactorDeg*vegas_wgt
         f_dsc(4) = (prefact_deg + prefact_deg_sxi)* &
                    stored_event_jacobian(soft_collinear_counterevent)/ &
-                   (shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
+                   (event_shat(soft_collinear_counterevent)/(32*pi**2))* &
+                   fkssymmetryfactorDeg*vegas_wgt
 ! prefactor for the PDF scheme
         prefact_pdfsch_d = event_xi_norm(collinear_counterevent)/ &
                            xiScut_used/deltaS
         f_pdfsch_d = prefact_pdfsch_d* &
                      stored_event_jacobian(soft_collinear_counterevent)/ &
-                     (shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
+                     (event_shat(soft_collinear_counterevent)/(32*pi**2))* &
+                     fkssymmetryfactorDeg*vegas_wgt
         prefact_pdfsch_p = event_xi_norm(collinear_counterevent)* &
                            dlog(xiScut_used)/xiScut_used/deltaS
         f_pdfsch_p = prefact_pdfsch_p* &
                      stored_event_jacobian(soft_collinear_counterevent)/ &
-                     (shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
+                     (event_shat(soft_collinear_counterevent)/(32*pi**2))* &
+                     fkssymmetryfactorDeg*vegas_wgt
         prefact_pdfsch_l = event_xi_norm(collinear_counterevent)* &
                            dlog(xiScut_used)**2/2d0/xiScut_used/deltaS
         f_pdfsch_l = prefact_pdfsch_l* &
                      stored_event_jacobian(soft_collinear_counterevent)/ &
-                     (shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
+                     (event_shat(soft_collinear_counterevent)/(32*pi**2))* &
+                     fkssymmetryfactorDeg*vegas_wgt
       else
         f_c = 0d0
         f_dc = 0d0
@@ -1092,7 +1118,7 @@ contains
     return
   end subroutine compute_prefactors_n1body
 
-  subroutine add_wgt(type, orders, wgt1, wgt2, wgt3)
+  subroutine add_wgt(event_slot, type, orders, wgt1, wgt2, wgt3)
 ! Adds a contribution to the list in weight_lines. 'type' sets the type
 ! of the contribution and wgt1..wgt3 are the coefficients multiplying
 ! the logs. The arguments are:
@@ -1173,7 +1199,7 @@ contains
     use extra_weights
     use FKSParams
     implicit none
-    integer type, i, j
+    integer event_slot, type, i, j
     logical foundIt, foundOrders
     double precision wgt1, wgt2, wgt3
     integer orders(nsplitorders)
@@ -1234,14 +1260,14 @@ contains
     wgt(2, icontr) = wgt2
     wgt(3, icontr) = wgt3
 
-    bjx(1, icontr) = xbk(1)
-    bjx(2, icontr) = xbk(2)
+    bjx(1, icontr) = event_bjorken_x(1, event_slot)
+    bjx(2, icontr) = event_bjorken_x(2, event_slot)
     scales2(1, icontr) = QES2
     scales2(2, icontr) = scale**2
     scales2(3, icontr) = q2fact(1)
     g_strong(icontr) = g
     nFKS(icontr) = nFKSprocess
-    y_bst(icontr) = ybst_til_tolab
+    y_bst(icontr) = ybst_til_tolab(event_slot)
     ifold_cnt(icontr) = ifold_counter
     qcdpower(icontr) = QCD_power
     orderstag(icontr) = orders_tag
@@ -1318,8 +1344,7 @@ contains
     integer orders(nsplitorders)
     integer i, j, iamp, icontr_orig
     logical virt_found
-    double precision xlum, dlum, mu2_r, mu2_f, mu2_q, wgt_wo_pdf, conv
-    external dlum
+    double precision xlum, mu2_r, mu2_f, mu2_q, wgt_wo_pdf, conv
     parameter(conv=389379660d0) ! conversion to picobarns
     call cpu_time(tBefore)
     if (icontr .eq. 0) return
@@ -1331,15 +1356,13 @@ contains
     do while (i .lt. icontr)
       i = i + 1
       nFKSprocess = nFKS(i)
-      xbk(1) = bjx(1, i)
-      xbk(2) = bjx(2, i)
       mu2_q = scales2(1, i)
       mu2_r = scales2(2, i)
       mu2_f = scales2(3, i)
       q2fact(1) = mu2_f
       q2fact(2) = mu2_f
 ! call the PDFs
-      xlum = dlum()
+      xlum = dlum(bjx(:, i))
 ! iwgt=1 is the central value (i.e. no scale/PDF reweighting).
       iwgt = 1
       call weight_lines_allocated(nexternal, max_contr, iwgt, subproc_iproc)
@@ -1511,9 +1534,8 @@ contains
     implicit none
     real :: tBefore, tAfter
     integer i, kr, kf, iwgt_save, dd
-    double precision xlum(maxscales), dlum, pi, mu2_r(maxscales), c_mu2_r, c_mu2_f, mu2_f(maxscales), mu2_q, g(maxscales), conv
+    double precision xlum(maxscales), pi, mu2_r(maxscales), c_mu2_r, c_mu2_f, mu2_f(maxscales), mu2_q, g(maxscales), conv
     parameter(pi=3.1415926535897932385d0)
-    external dlum
     parameter(conv=389379660d0) ! conversion to picobarns
     call cpu_time(tBefore)
     if (icontr .eq. 0) return
@@ -1523,8 +1545,6 @@ contains
     do i = 1, icontr
       iwgt = iwgt_save
       nFKSprocess = nFKS(i)
-      xbk(1) = bjx(1, i)
-      xbk(2) = bjx(2, i)
       mu2_q = scales2(1, i)
 ! Loop over the dynamical_scale_choices
       do dd = 1, dyn_scale(0)
@@ -1542,7 +1562,7 @@ contains
           mu2_f(kf) = c_mu2_f*scalevarF(kf)**2
           q2fact(1) = mu2_f(kf)
           q2fact(2) = mu2_f(kf)
-          xlum(kf) = dlum()
+          xlum(kf) = dlum(bjx(:, i))
           if (separate_flavour_configs .and. ipr(i) .ne. 0) then
             if (nincoming .eq. 2) then
               xlum(kf) = subproc_pd(ipr(i))*conv
@@ -1581,9 +1601,8 @@ contains
     implicit none
     real :: tBefore, tAfter
     integer n, i, nn
-    double precision xlum, dlum, pi, mu2_r, mu2_f, mu2_q, g, conv
+    double precision xlum, pi, mu2_r, mu2_f, mu2_q, g, conv
     parameter(pi=3.1415926535897932385d0)
-    external dlum
     parameter(conv=389379660d0) ! conversion to picobarns
     call cpu_time(tBefore)
     if (icontr .eq. 0) return
@@ -1597,15 +1616,13 @@ contains
         call InitPDFm(nn, n)
         do i = 1, icontr
           nFKSprocess = nFKS(i)
-          xbk(1) = bjx(1, i)
-          xbk(2) = bjx(2, i)
           mu2_q = scales2(1, i)
           mu2_r = scales2(2, i)
           mu2_f = scales2(3, i)
           q2fact(1) = mu2_f
           q2fact(2) = mu2_f
 ! Compute the luminosity
-          xlum = dlum()
+          xlum = dlum(bjx(:, i))
           if (separate_flavour_configs .and. ipr(i) .ne. 0) then
             if (nincoming .eq. 2) then
               xlum = subproc_pd(ipr(i))*conv
@@ -1891,12 +1908,13 @@ contains
   end subroutine fill_mint_function
 
 
-  subroutine sreal(pp, xi_i_fks, y_ij_fks, wgt)
+  subroutine sreal(event_slot, pp, xi_i_fks, y_ij_fks, wgt)
 ! Wrapper for the n+1 contribution. Returns the n+1 matrix element
 ! squared reduced by the FKS damping factor xi**2*(1-y).
 ! Close to the soft or collinear limits it calls the corresponding
 ! Born and multiplies with the AP splitting function or eikonal factors.
     implicit none
+    integer, intent(in) :: event_slot
     double precision pp(0:3, nexternal), wgt
     double precision xi_i_fks, y_ij_fks
 
@@ -1922,24 +1940,24 @@ contains
       return
     end if
 
-! Consistency check -- call to set_cms_stuff() must be done prior to
-! entering this function
+! Check that the requested event slot matches the supplied momenta.
     if (nincoming .eq. 2) then
       shattmp = 2d0*dot(pp(0, 1), pp(0, 2))
     else
       shattmp = pp(0, 1)**2
     end if
-    if (abs(shattmp/shat - 1.d0) .gt. 1.d-5) then
+    if (abs(shattmp/event_shat(event_slot) - 1.d0) .gt. 1.d-5) then
       write (*, *) 'Error in sreal: inconsistent shat'
-      write (*, *) shattmp, shat
+      write (*, *) shattmp, event_shat(event_slot)
       stop
     end if
 
     if (1d0 - y_ij_fks .lt. tiny) then
       if (pmass(j_fks) .eq. zero .and. j_fks .le. nincoming) then
-        call sborncol_isr(pp, xi_i_fks, y_ij_fks, wgt)
+        call sborncol_isr(pp, xi_i_fks, y_ij_fks, &
+                          event_shat(event_slot), wgt)
       elseif (pmass(j_fks) .eq. zero .and. j_fks .ge. nincoming + 1) then
-        call sborncol_fsr(pp, y_ij_fks, wgt)
+        call sborncol_fsr(pp, y_ij_fks, event_shat(event_slot), wgt)
       else
         wgt = 0d0
         amp_split(1:amp_split_size) = 0d0
@@ -1947,7 +1965,8 @@ contains
     elseif (xi_i_fks .lt. tiny) then
       if (need_color_links) then
 ! has soft singularities
-        call sbornsoft(pp, xi_i_fks, y_ij_fks, wgt)
+        call sbornsoft(pp, xi_i_fks, y_ij_fks, &
+                       event_sqrt_shat(event_slot), wgt)
       else
         wgt = 0d0
         amp_split(1:amp_split_size) = 0d0
@@ -1961,10 +1980,10 @@ contains
     return
   end subroutine sreal
 
-  subroutine sborncol_fsr(p, y_ij_fks, wgt)
+  subroutine sborncol_fsr(p, y_ij_fks, partonic_shat, wgt)
     implicit none
     double precision p(0:3, nexternal), wgt
-    double precision y_ij_fks
+    double precision y_ij_fks, partonic_shat
 !
     integer i, imother_fks, iord
     double precision t, z, ap(2), E_j_fks, E_i_fks, Q(2), cphi_mother, sphi_mother, pi(0:3), pj(0:3), wgt_born
@@ -1996,7 +2015,7 @@ contains
     E_j_fks = p(0, j_fks)
     E_i_fks = p(0, i_fks)
     z = 1d0 - E_i_fks/(E_i_fks + E_j_fks)
-    t = z*shat/4d0
+    t = z*partonic_shat/4d0
     call sborn(p_born, wgt_born)
     if (iextra_cnt .gt. 0) call extra_cnt(p_born, iextra_cnt, ans_extra_cnt)
     call AP_reduced(j_type, i_type, t, z, g, ap)
@@ -2072,10 +2091,10 @@ contains
     return
   end subroutine sborncol_fsr
 
-  subroutine sborncol_isr(p, xi_i_fks, y_ij_fks, wgt)
+  subroutine sborncol_isr(p, xi_i_fks, y_ij_fks, partonic_shat, wgt)
     implicit none
     double precision p(0:3, nexternal), wgt
-    double precision xi_i_fks, y_ij_fks
+    double precision xi_i_fks, y_ij_fks, partonic_shat
 !
 
     double precision p_born_used(0:3, nexternal - 1)
@@ -2120,7 +2139,7 @@ contains
 ! sreal return {\cal M} of FKS except for the partonic flux 1/(2*s).
 ! Thus, an extra factor z (implicit in the flux of the reduced Born
 ! in FKS) has to be inserted here
-    t = z*shat/4d0
+    t = z*partonic_shat/4d0
     call AP_reduced(m_type, i_type, t, z, g, ap)
     call Qterms_reduced_spacelike(m_type, i_type, t, z, g, Q)
     wgt = 0d0
@@ -2201,12 +2220,13 @@ contains
   end subroutine sborncol_isr
 
 
-  subroutine sbornsoft(pp, xi_i_fks, y_ij_fks, wgt)
+  subroutine sbornsoft(pp, xi_i_fks, y_ij_fks, partonic_sqrt_shat, wgt)
     implicit none
 !      include "fks.inc"
     integer m, n
 
-    double precision softcontr, pp(0:3, nexternal), wgt, eik, xi_i_fks, y_ij_fks
+    double precision softcontr, pp(0:3, nexternal), wgt, eik
+    double precision xi_i_fks, y_ij_fks, partonic_sqrt_shat
     double precision wgt1
     integer i, j
 
@@ -2239,7 +2259,7 @@ contains
               pp, m, n, i_fks, j_fks, xi_i_fks, y_ij_fks, &
               event_fks_momentum(:, &
                 soft_counterevent:soft_collinear_counterevent), &
-              external_masses, sqrtshat, eik)
+              external_masses, partonic_sqrt_shat, eik)
             softcontr = softcontr + wgt*eik*iden_comp
 ! update the amp_split array
             amp_split(1:amp_split_size) = amp_split(1:amp_split_size) - 2d0*eik*amp_split_soft(1:amp_split_size)*iden_comp
@@ -2256,10 +2276,10 @@ contains
   end subroutine sbornsoft
 
 
-  subroutine sreal_deg(p, xi_i_fks, collrem_xi, collrem_lxi)
+  subroutine sreal_deg(event_slot, p, xi_i_fks, collrem_xi, collrem_lxi)
     use extra_weights
     implicit none
-    integer iord, iap
+    integer event_slot, iord, iap
     double precision p(0:3, nexternal), collrem_xi, collrem_lxi
     double precision xi_i_fks
     double precision collrem_xi_tmp, collrem_lxi_tmp
@@ -2339,16 +2359,15 @@ contains
       return
     end if
 
-! Consistency check -- call to set_cms_stuff() must be done prior to
-! entering this function
+! Check that the requested event slot matches the supplied momenta.
     if (nincoming .eq. 2) then
       shattmp = 2d0*dot(p(0, 1), p(0, 2))
     else
       shattmp = p(0, 1)**2
     end if
-    if (abs(shattmp/shat - 1.d0) .gt. 1.d-5) then
+    if (abs(shattmp/event_shat(event_slot) - 1.d0) .gt. 1.d-5) then
       write (*, *) 'Error in sreal: inconsistent shat'
-      write (*, *) shattmp, shat
+      write (*, *) shattmp, event_shat(event_slot)
       stop
     end if
 
@@ -2397,7 +2416,9 @@ contains
       wgt1(2) = ans_cnt(2, iord)
     end if
 
-    collrem_xi_tmp = ap(iap)*log(shat*delta_used/(2*q2fact(j_fks))) - apprime(iap)
+    collrem_xi_tmp = ap(iap)*log( &
+                       event_shat(event_slot)*delta_used/ &
+                       (2*q2fact(j_fks))) - apprime(iap)
     collrem_lxi_tmp = 2*ap(iap)
 
 ! The partonic flux 1/(2*s) is inserted in genps. Thus, an extra
@@ -2417,7 +2438,9 @@ contains
       dble(amp_split_cnt(1:amp_split_size, 1, iord))*oo2pi &
       *collrem_lxi_tmp*xnorm
 
-    prefact_xi = ap(iap)*log(shat*delta_used/(2*QES2)) - apprime(iap)
+    prefact_xi = ap(iap)*log( &
+                   event_shat(event_slot)*delta_used/(2*QES2)) - &
+                 apprime(iap)
     amp_split_wgtdegrem_xi(1:amp_split_size) = &
       amp_split_wgtdegrem_xi(1:amp_split_size) + &
       oo2pi*dble(amp_split_cnt(1:amp_split_size, 1, iord)) &
@@ -2448,7 +2471,7 @@ contains
 
 
 
-  subroutine bornsoftvirtual(p, bsv_wgt, virt_wgt, born_wgt)
+  subroutine bornsoftvirtual(event_slot, p, bsv_wgt, virt_wgt, born_wgt)
     use extra_weights
     use mint_module
     implicit none
@@ -2459,7 +2482,7 @@ contains
     double precision Q, Ej, wgt, contr, eikIreg
     double precision aso2pi
     double precision shattmp
-    integer i, j, aj, m, n, k
+    integer event_slot, i, j, aj, m, n, k
 
 
 
@@ -2533,16 +2556,15 @@ contains
       goto 999
     end if
 
-! Consistency check -- call to set_cms_stuff() must be done prior to
-! entering this function
+! Check that the requested event slot matches the supplied momenta.
     if (nincoming .eq. 2) then
       shattmp = 2d0*dot(p(0, 1), p(0, 2))
     else
       shattmp = p(0, 1)**2
     end if
-    if (abs(shattmp/shat - 1.d0) .gt. 1.d-5) then
+    if (abs(shattmp/event_shat(event_slot) - 1.d0) .gt. 1.d-5) then
       write (*, *) 'Error in bornsoftvirtual: inconsistent shat'
-      write (*, *) shattmp, shat
+      write (*, *) shattmp, event_shat(event_slot)
       stop
     end if
 
@@ -2585,12 +2607,15 @@ contains
             if (abrv .ne. 'virt') then
 ! 1+2+3+4
               Q = Q + gammap_used &
-                  - dlog(shat*deltaO/2d0/QES2) &
+                  - dlog(event_shat(event_slot)*deltaO/2d0/QES2) &
                   *(gamma_used &
-                    - 2d0*c_used*dlog(2d0*Ej/xicut_used/sqrtshat)) &
-                  + 2d0*c_used*(dlog(2d0*Ej/sqrtshat)**2 &
+                    - 2d0*c_used*dlog( &
+                        2d0*Ej/xicut_used/event_sqrt_shat(event_slot))) &
+                  + 2d0*c_used*(dlog( &
+                        2d0*Ej/event_sqrt_shat(event_slot))**2 &
                                 - dlog(xicut_used)**2) &
-                  - 2d0*gamma_used*dlog(2d0*Ej/sqrtshat)
+                  - 2d0*gamma_used*dlog( &
+                      2d0*Ej/event_sqrt_shat(event_slot))
             else
               write (*, *) 'Error in bornsoftvirtual'
               write (*, *) 'abrv in Q:', abrv
@@ -2642,7 +2667,8 @@ contains
             call sborn_sf(p_born, m, n, wgt)
             if (wgt .ne. 0d0) then
               call eikonal_Ireg(p, m, n, xicut_used, external_masses, &
-                                 shat, qes2, abrv, eikIreg)
+                                 event_shat(event_slot), qes2, abrv, &
+                                 eikIreg)
               contr = contr + wgt*eikIreg
               do k = 1, amp_split_size
                 amp_split_bsv(k) = amp_split_bsv(k) - 2d0*eikIreg*oneo8pi2*amp_split_soft(k)

@@ -43,7 +43,7 @@ endif
 FILES= fnlo_process_common.o process_dimensions.o			\
 	 process_dimensions_bridge.o					\
 	 fks_metadata.o fks_metadata_bridge.o				\
-	 phase_space_kinematics.o fks_event_kinematics.o		\
+	 phase_space_kinematics.o					\
 	 fks_diagnostics.o fks_qcd_splitting.o fks_soft_kernels.o	\
 	 fks_channel_map.o fks_random.o				\
 	 $(patsubst %.f,%.o,$(wildcard parton_lum_*.f)) 			\
@@ -104,7 +104,7 @@ FNLO_PROCESS_COMMON_USERS = \
 	BinothLHA_user_bridge.o check_poles.o check_poles_bridge.o \
 	chooser_functions_bridge.o cuts_bridge.o \
 	driver_mintFO.o driver_mintFO_bridge.o \
-	fks_diagnostics.o fks_event_kinematics.o \
+	fks_diagnostics.o \
 	fks_singular.o fks_singular_bridge.o \
 	genps_born.o genps_fks.o genps_fks_bridge.o \
 	iproc_map_bridge.o madfks_plot.o madfks_plot_bridge.o \
@@ -207,7 +207,6 @@ fks_metadata.o: process_dimensions.o
 fks_metadata_bridge.o: fks_metadata.o
 phase_space_kinematics.o: process_dimensions.o \
 	$(LIBDIR)kin_functions_module.mod
-fks_event_kinematics.o: fnlo_process_common.o $(LIBDIR)run_state.mod
 fks_diagnostics.o: process_dimensions.o fnlo_process_common.o
 fks_soft_kernels.o: process_dimensions.o $(LIBDIR)kin_functions_module.mod
 fks_channel_map.o: process_dimensions.o fks_metadata.o
@@ -219,7 +218,7 @@ setscales_bridge.o: setscales.o
 fks_Sij.o: process_dimensions.o $(LIBDIR)kin_functions_module.mod
 splitorders_stuff_bridge.o: splitorders_stuff.o process_dimensions.o
 pineappl_interface_dummy_bridge.o: pineappl_interface_dummy.o
-iproc_map_bridge.o: iproc_map.o $(LIBDIR)fnlo_runtime_common.mod
+iproc_map_bridge.o: iproc_map.o
 FKSParams.o: process_dimensions.o
 analysis_dummy.o: process_dimensions.o
 analysis_dummy_bridge.o: analysis_dummy.o process_dimensions.o
@@ -244,7 +243,7 @@ BinothLHA_bridge.o: BinothLHA.o
 fks_singular.o: process_dimensions.o fks_metadata.o weight_lines.o \
 	mint_module.o FKSParams.o setscales.o splitorders_stuff.o fks_Sij.o \
 	cuts.o chooser_functions.o madfks_plot.o phase_space_kinematics.o \
-	fks_event_kinematics.o fks_qcd_splitting.o fks_soft_kernels.o \
+	fks_qcd_splitting.o fks_soft_kernels.o \
 	fks_random.o \
 	$(LIBDIR)run_state.mod \
 	$(LIBDIR)timing_state.mod $(LIBDIR)extra_weights.mod \
@@ -254,7 +253,7 @@ fks_singular_bridge.o: fks_singular.o process_dimensions_bridge.o \
 	fks_metadata_bridge.o
 fks_random_bridge.o: fks_random.o mint_module.o
 driver_mintFO.o: process_dimensions.o fks_metadata.o fks_channel_map.o \
-	fks_random.o fks_event_kinematics.o genps_fks.o \
+	fks_random.o genps_fks.o \
 	weight_lines.o mint_module.o FKSParams.o MC_integer.o setscales.o \
 	splitorders_stuff.o cuts.o fks_singular.o madfks_plot.o \
 	$(LIBDIR)run_state.mod $(LIBDIR)timing_state.mod \
@@ -274,7 +273,7 @@ genps_fks.o: genps_born.o process_dimensions.o boostwdir2.o FKSParams.o \
 	$(LIBDIR)kin_functions_module.mod
 genps_fks_bridge.o: genps_born.o genps_fks.o
 symmetry_fks_v3.o: process_dimensions.o fks_metadata.o genps_fks.o \
-	mint_module.o fks_random.o fks_event_kinematics.o setscales.o cuts.o \
+	mint_module.o fks_random.o setscales.o cuts.o \
 	write_ajob.o fks_singular.o \
 	$(LIBDIR)run_state.mod $(LIBDIR)run_printout_module.mod \
 	$(LIBDIR)kin_functions_module.mod
@@ -282,7 +281,6 @@ symmetry_fks_v3_bridge.o: symmetry_fks_v3.o \
 	process_dimensions_bridge.o fks_metadata_bridge.o genps_fks_bridge.o
 test_soft_col_limits.o: process_dimensions.o fks_metadata.o \
 	splitorders_stuff.o genps_fks.o fks_diagnostics.o fks_random.o \
-	fks_event_kinematics.o \
 	mint_module.o fks_singular.o $(LIBDIR)run_state.mod
 test_soft_col_limits_bridge.o: test_soft_col_limits.o \
 	process_dimensions_bridge.o fks_metadata_bridge.o genps_fks_bridge.o \

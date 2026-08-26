@@ -19,7 +19,6 @@ module driver_mintfo_module
                              fks_channel_configuration, &
                              print_fks_channel_map, get_born_fks_process
   use fks_random_module, only: random_unit_interval
-  use fks_event_kinematics, only: set_cms_stuff
   use run_state, only: lpp, fixed_fac_scale, muf1_over_ref, &
                        muf2_over_ref, muf1_ref_fixed, muf2_ref_fixed, pineappl, &
                        do_rwgt_scale, do_rwgt_pdf
@@ -43,7 +42,8 @@ module driver_mintfo_module
   use madfks_plot_module, only: topout_impl
   use fnlo_process_common, only: nfksprocess, soft_counterevent, &
                                  collinear_counterevent, &
-                                 soft_collinear_counterevent, real_event
+                                 soft_collinear_counterevent, real_event, &
+                                 ybst_til_tolab
   implicit none
   private
 
@@ -402,9 +402,9 @@ contains
                             momentum)
       if (p_born(0, 1) >= 0d0) then
         call compute_prefactors_nbody(vegas_wgt)
-        call set_cms_stuff(soft_counterevent)
         passcuts_nbody = passcuts( &
-                           event_momenta(0, 1, soft_counterevent), reweight)
+                           event_momenta(0, 1, soft_counterevent), reweight, &
+                           ybst_til_tolab(soft_counterevent))
         if (passcuts_nbody) then
           pass_cuts_check = .true.
           call set_alphas( &
@@ -448,36 +448,33 @@ contains
         if (p_born(0, 1) < 0d0) cycle
 
         call compute_prefactors_n1body(vegas_wgt, jacobian)
-        call set_cms_stuff(soft_counterevent)
         passcuts_nbody = passcuts( &
-                         event_momenta(0, 1, soft_counterevent), reweight)
-        call set_cms_stuff(collinear_counterevent)
+                         event_momenta(0, 1, soft_counterevent), reweight, &
+                         ybst_til_tolab(soft_counterevent))
         passcuts_coll = (use_evpr .and. passcuts_nbody) .or. &
                         passcuts( &
                           event_momenta(0, 1, collinear_counterevent), &
-                          reweight)
-        call set_cms_stuff(real_event)
-        passcuts_n1body = passcuts(momentum, reweight)
+                          reweight, &
+                          ybst_til_tolab(collinear_counterevent))
+        passcuts_n1body = passcuts( &
+                             momentum, reweight, &
+                             ybst_til_tolab(real_event))
 
         if (passcuts_nbody .and. abrv /= 'real') then
           pass_cuts_check = .true.
-          call set_cms_stuff(soft_counterevent)
           call set_alphas( &
             event_momenta(0:3, 1:nexternal, soft_counterevent))
           call include_multichannel_enhance(3)
           call compute_soft_counter_term()
-          call set_cms_stuff(soft_collinear_counterevent)
           call compute_soft_collinear_ct_impl()
         end if
         if (passcuts_coll .and. abrv /= 'real') then
           call set_alphas( &
             event_momenta(0:3, 1:nexternal, collinear_counterevent))
-          call set_cms_stuff(collinear_counterevent)
           call compute_collinear_counter_term()
         end if
         if (passcuts_n1body) then
           pass_cuts_check = .true.
-          call set_cms_stuff(real_event)
           call set_alphas(momentum)
           call include_multichannel_enhance(2)
           call compute_real_emission(momentum)

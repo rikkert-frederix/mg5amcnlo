@@ -1,6 +1,6 @@
 module run_state
   use fnlo_runtime_common, only: run_seed_kind, max_lhe_processes, &
-                                 lpp, ebeam, xbk, q2fact, lhaid, pdfscheme, pdlabel, asmz, nloop, &
+                                 lpp, ebeam, q2fact, lhaid, pdfscheme, pdlabel, asmz, nloop, &
                                  iseed, pineappl, idbmup, ebmup, pdfgup, pdfsup, idwtup, nprup, &
                                  xsecup, xerrup, xmaxup, lprup
   implicit none
@@ -15,7 +15,7 @@ module run_state
   public :: qes_over_ref, mur_ref_fixed
   public :: muf1_ref_fixed, muf2_ref_fixed, qes_ref_fixed
   public :: mur2_current, muf12_current, muf22_current, qes2_current
-  public :: lpp, ebeam, xbk, q2fact, bwcutoff
+  public :: lpp, ebeam, q2fact, bwcutoff
   public :: do_rwgt_scale, do_rwgt_pdf
   public :: pdg_cut, ptmin4pdg, ptmax4pdg, mxxmin4pdg
   public :: mxxpart_antipart
@@ -106,7 +106,6 @@ contains
     qes2_current = 0d0
     lpp = 0
     ebeam = 0d0
-    xbk = 0d0
     q2fact = 0d0
     bwcutoff = 0d0
     do_rwgt_scale = .false.

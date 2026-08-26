@@ -24,12 +24,10 @@ c Event slots used by real-emission and FKS subtraction kinematics.
       integer soft_counterevent,collinear_counterevent
       integer soft_collinear_counterevent,real_event
       integer first_counterevent,last_counterevent
-      integer skipped_counterevents
       parameter (soft_counterevent=0,collinear_counterevent=1)
       parameter (soft_collinear_counterevent=2,real_event=3)
       parameter (first_counterevent=soft_counterevent)
       parameter (last_counterevent=soft_collinear_counterevent)
-      parameter (skipped_counterevents=5)
 
 c Selected subprocess and generated process records.
       integer nfksprocess
@@ -151,11 +149,8 @@ c The real event and its three FKS counterevents share one layout.
      $     soft_counterevent:real_event)
       double precision event_sqrt_shat(soft_counterevent:real_event)
       double precision event_shat(soft_counterevent:real_event)
-      double precision event_ycm(soft_counterevent:real_event)
-
-      double precision ybst_til_tolab,ybst_til_tocm,sqrtshat,shat
-      common /parton_cms_stuff/ybst_til_tolab,ybst_til_tocm,
-     $     sqrtshat,shat
+      double precision ybst_til_tolab(soft_counterevent:real_event)
+      double precision ybst_til_tocm(soft_counterevent:real_event)
 
       double precision veckn_ev,veckbarn_ev,xp0jfks
       common /cgenps_fks/veckn_ev,veckbarn_ev,xp0jfks

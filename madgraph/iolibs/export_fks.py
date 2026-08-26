@@ -919,7 +919,6 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               'fks_metadata.f90',
                               'fks_metadata_bridge.f',
                               'phase_space_kinematics.f90',
-                              'fks_event_kinematics.f90',
                               'fks_diagnostics.f90',
                               'fks_qcd_splitting.f90',
                               'fks_soft_kernels.f90',
@@ -2098,13 +2097,25 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             integer nfksprocess
             common/c_nfksprocess/nfksprocess
             """ 
-        # the pdf wrapper
-        text1 = \
-            """\n\ndouble precision function dlum()
-            implicit none
-            integer nfksprocess
-            common/c_nfksprocess/nfksprocess
-            """
+        # The reduced fixed-order template passes the Bjorken fractions
+        # explicitly; the full NLO template retains its generated ABI.
+        if self.opt.get('fks_template') == 'fNLO':
+            luminosity_argument = ', bjorken_x'
+            text1 = \
+                """\n\ndouble precision function dlum(bjorken_x)
+                implicit none
+                double precision bjorken_x(2)
+                integer nfksprocess
+                common/c_nfksprocess/nfksprocess
+                """
+        else:
+            luminosity_argument = ''
+            text1 = \
+                """\n\ndouble precision function dlum()
+                implicit none
+                integer nfksprocess
+                common/c_nfksprocess/nfksprocess
+                """
 
         if matrix_element.real_processes:
             for n, info in enumerate(matrix_element.get_fks_info_list()):
@@ -2114,8 +2125,11 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                     else""" % {'n': n + 1, 'n_me' : info['n_me']}
                 text1 += \
                     """if (nfksprocess.eq.%(n)d) then
-                    call dlum_%(n_me)d(dlum)
-                    else""" % {'n': n + 1, 'n_me' : info['n_me']}
+                    call dlum_%(n_me)d(dlum%(luminosity_argument)s)
+                    else""" % {
+                        'n': n + 1,
+                        'n_me': info['n_me'],
+                        'luminosity_argument': luminosity_argument}
 
             text += \
                 """
@@ -2137,10 +2151,10 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                 """
             text1 += \
                 """
-                call dlum_0(dlum)
+                call dlum_0(dlum%s)
                 return
                 end
-                """
+                """ % luminosity_argument
 
         # Write the file
         writer_me.writelines(text)
@@ -4093,8 +4107,11 @@ Parameters              %(params)s\n\
         replace_dict['pdf_lines'] = pdf_lines
 
         if self.opt.get('fks_template') == 'fNLO':
+            replace_dict['pdf_lines'] = pdf_lines.replace(
+                'XBK', 'BJORKEN_X')
             replace_dict['upc_definition'] = ''
             replace_dict['eepdf_definition'] = ''
+            luminosity_template = 'parton_lum_n_fnlo.inc'
         else:
             replace_dict['upc_definition'] = (
                 'C     STUFF FOR UPC\n'
@@ -4109,9 +4126,10 @@ Parameters              %(params)s\n\
                 eepdf_vars +
                 '      INTEGER I_EE\n'
                 "      INCLUDE '../../Source/PDF/pdf.inc'\n")
+            luminosity_template = 'parton_lum_n_fks.inc'
 
         file = open(os.path.join(_file_path, \
-                          'iolibs/template_files/parton_lum_n_fks.inc')).read()
+                          'iolibs/template_files', luminosity_template)).read()
         file = file % replace_dict
     
         # Write the file

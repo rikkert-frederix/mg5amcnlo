@@ -19,7 +19,6 @@ module cuts_module
   double precision, allocatable :: etmin(:), etmax(:), mxxmin(:,:)
   double precision, allocatable :: event_masses(:)
   integer, allocatable :: event_idup(:,:)
-  double precision :: ybst_til_tolab = 0d0
   logical :: cuts_runtime_initialized = .false.
   logical :: cuts_event_initialized = .false.
 
@@ -50,12 +49,10 @@ contains
   end subroutine initialize_cuts_runtime_state
 
 
-  subroutine initialize_cuts_event_state(event_masses_in, event_idup_in, &
-  & ybst_til_tolab_in)
+  subroutine initialize_cuts_event_state(event_masses_in, event_idup_in)
     implicit none
     double precision, intent(in) :: event_masses_in(:)
     integer, intent(in) :: event_idup_in(:,:)
-    double precision, intent(in) :: ybst_til_tolab_in
 
     call validate_process_dimensions()
     if (size(event_masses_in) /= nexternal) then
@@ -71,7 +68,6 @@ contains
     end if
     event_masses = event_masses_in
     event_idup = event_idup_in
-    ybst_til_tolab = ybst_til_tolab_in
   end subroutine initialize_cuts_event_state
 
 
@@ -697,10 +693,10 @@ contains
 ! NO NEED TO CHANGE ANY OF THE FUNCTIONS BELOW
 !***************************************************************
 !***************************************************************
-  logical function passcuts(p,rwgt)
+  logical function passcuts(p,rwgt,lab_boost)
   implicit none
   real tBefore,tAfter
-  double precision P(0:3,nexternal),rwgt
+  double precision P(0:3,nexternal),rwgt,lab_boost
   integer i,j,istatus(nexternal),iPDG(nexternal)
 ! For boosts
   double precision chybst,shybst,chybstmo
@@ -730,8 +726,8 @@ contains
 
   rwgt=1d0
 ! Boost the momenta p(0:3,nexternal) to the lab frame plab(0:3,nexternal)
-  chybst=cosh(ybst_til_tolab)
-  shybst=sinh(ybst_til_tolab)
+  chybst=cosh(lab_boost)
+  shybst=sinh(lab_boost)
   chybstmo=chybst-1.d0
   do i=1,nexternal
   call boostwdir2(chybst,shybst,chybstmo,xd, &

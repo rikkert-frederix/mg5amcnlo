@@ -5,7 +5,7 @@ module fnlo_runtime_common
   integer, parameter, public :: run_seed_kind = selected_int_kind(18)
   integer, parameter, public :: max_lhe_processes = 100
 
-  public :: lpp, ebeam, xbk, q2fact
+  public :: lpp, ebeam, q2fact
   public :: lhaid, pdfscheme, pdlabel
   public :: asmz, nloop, iseed, random_offset_split
   public :: pineappl
@@ -17,8 +17,8 @@ module fnlo_runtime_common
   public :: t_coupl
 
   integer, target :: lpp(2)
-  double precision, target :: ebeam(2), xbk(2), q2fact(2)
-  common/to_collider/ebeam, xbk, q2fact, lpp
+  double precision, target :: ebeam(2), q2fact(2)
+  common/to_collider/ebeam, q2fact, lpp
 
   integer, target :: lhaid, pdfscheme
   character(len=7), target :: pdlabel
