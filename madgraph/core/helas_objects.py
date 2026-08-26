@@ -641,6 +641,9 @@ class HelasWavefunction(base_objects.PhysicsObject):
         # should be onshell (True), as well as for forbidden s-channels (False).
         # Default is None
         self['onshell'] = None
+        # Nonzero only for a propagator introduced by an explicit decay
+        # chain.  The identifier is local to the combined matrix element.
+        self['decay_node_id'] = 0
         # conjugate_indices is a list [1,2,...] with fermion lines
         # that need conjugates. Default is "None"
         self['conjugate_indices'] = None
@@ -791,7 +794,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
             if not value in [-1, 1]:
                 raise self.PhysicsObjectError("%s is not a valid sign (must be -1 or 1)" % str(value))
 
-        elif name in ['number_external', 'number']:
+        elif name in ['number_external', 'number', 'decay_node_id']:
             if not isinstance(value, int):
                 raise self.PhysicsObjectError("%s is not a valid integer" % str(value) + \
                         " for wavefunction number")
@@ -931,7 +934,8 @@ class HelasWavefunction(base_objects.PhysicsObject):
         return ['particle', 'antiparticle', 'is_part',
                 'interaction_id', 'pdg_codes', 'orders', 'inter_color', 
                 'lorentz', 'coupling', 'color_key', 'state', 'number_external',
-                'number', 'fermionflow', 'mothers', 'is_loop']
+                'number', 'fermionflow', 'mothers', 'is_loop',
+                'decay_node_id']
 
     # Helper functions
 

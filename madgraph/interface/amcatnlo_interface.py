@@ -48,6 +48,7 @@ import madgraph.interface.loop_interface as Loop_interface
 import madgraph.fks.fks_common as fks_common
 import madgraph.fks.fks_base as fks_base
 import madgraph.fks.fks_helas_objects as fks_helas
+import madgraph.fks.fks_decay as fks_decay
 import madgraph.iolibs.export_fks as export_fks
 import madgraph.iolibs.export_v4 as export_v4
 import madgraph.iolibs.helas_call_writers as helas_call_writers
@@ -157,6 +158,13 @@ class CheckFKS(mg_interface.CheckValidForCmd):
         if not self._curr_model:
             text = 'No model found. Please import a model first and then retry.'
             raise self.InvalidCmd(text)
+
+        if (hasattr(self._fks_multi_proc, 'get') and
+                self._fks_multi_proc.get('has_nlo_decays') and
+                self._export_format != 'fNLO'):
+            raise self.InvalidCmd(
+                'NLO production processes with decay chains can only be '
+                'exported with "output fNLO"')
 
         if self._export_format == 'fNLO' and \
                 hasattr(self._fks_multi_proc, 'get'):
@@ -592,6 +600,11 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
 
         self.proc_validity(myprocdef,'aMCatNLO_%s'%proc_type[1])
 
+        decay_chains = myprocdef.get('decay_chains')
+        if decay_chains:
+            fks_decay.validate_decay_generation(
+                myprocdef, self.options, proc_type[2], self.ewsudakov)
+
         # set the orders
         # if some orders have been set by the user,
         # check that all the orders of the model have been specified
@@ -773,7 +786,17 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                        'nlo_mixed_expansion': self.options['nlo_mixed_expansion'],
                        'loop_filter':self._fks_multi_proc['loop_filter'] if hasattr(self, '_fks_multi_proc') else None}
 
-        fksproc =fks_base.FKSMultiProcess(myprocdef,fks_options)
+        fks_procdef = myprocdef
+        if decay_chains:
+            # FKS regions and all i/j/ij bookkeeping are generated from the
+            # undecayed production process.  The decay specification is kept
+            # separately and applied coherently only after HELAS generation.
+            fks_procdef = copy.copy(myprocdef)
+            fks_procdef.set('decay_chains',
+                            myprocdef['decay_chains'].__class__())
+            fks_options['decay_chains'] = decay_chains
+
+        fksproc =fks_base.FKSMultiProcess(fks_procdef,fks_options)
         try:
             self._fks_multi_proc.add(fksproc)
         except AttributeError: 

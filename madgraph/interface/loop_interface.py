@@ -242,7 +242,7 @@ class CommonLoopInterface(mg_interface.MadGraphCmd):
                   "When running ML5 standalone, multiparticle labels cannot be"+\
                   " employed.")
         
-        if proc['decay_chains']:
+        if proc['decay_chains'] and mode.startswith('ML5'):
             raise self.InvalidCmd(
                   "ML5 cannot yet decay a core process including loop corrections.")
         

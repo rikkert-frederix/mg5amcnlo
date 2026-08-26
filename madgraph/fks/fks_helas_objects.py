@@ -26,6 +26,7 @@ import madgraph.core.color_amp as color_amp
 import madgraph.core.color_algebra as color_algebra
 import madgraph.fks.fks_base as fks_base
 import madgraph.fks.fks_common as fks_common
+import madgraph.fks.fks_decay as fks_decay
 import madgraph.loop.loop_helas_objects as loop_helas_objects
 import madgraph.loop.loop_diagram_generation as loop_diagram_generation
 from madgraph import InvalidCmd
@@ -274,7 +275,13 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
         if not fksmulti['ncores_for_proc_gen']:
             # generate the real ME's if they are needed.
             # note that it may not be always the case, e.g. it the NLO_mode is LOonly
-            if fksmulti['real_amplitudes']:
+            if fksmulti['has_nlo_decays']:
+                # Decay-enabled real matrix elements are constructed afresh
+                # for every concrete assignment below.  Reusing the ordinary
+                # pre-coloured cache would share objects across assignments.
+                self['real_matrix_elements'] = \
+                    helas_objects.HelasMatrixElementList()
+            elif fksmulti['real_amplitudes']:
                 logger.info('Generating real emission matrix-elements...')
                 self['real_matrix_elements'] = self.generate_matrix_elements(
                         copy.copy(fksmulti['real_amplitudes']), combine_matrix_elements = False)
@@ -592,12 +599,38 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
               (proc.get_born_nice_string().\
                                     replace('Process', 'process'),
                         i + 1, len(fksprocs)))
-            matrix_element_list = [\
-                    FKSHelasProcess(proc, self['real_matrix_elements'],
-                    [amp for amp in fksmulti['real_amplitudes'] if amp['diagrams']],
-                    loop_optimized = self.loop_optimized,
-                    decay_ids=decay_ids,
-                    gen_color=False)]
+            real_amplitudes = [
+                amp for amp in fksmulti['real_amplitudes']
+                if amp['diagrams']]
+            if proc.decay_chains:
+                assignments = fks_decay.generate_decay_assignments(
+                    proc.decay_chains, proc.born_amp.get('process'))
+                proc_decay_ids = misc.make_unique(
+                    list(decay_ids) +
+                    fks_decay.get_root_decay_ids(proc.decay_chains))
+                matrix_element_list = []
+                for assignment in assignments:
+                    matrix_element = FKSHelasProcess(
+                        proc, [], [],
+                        loop_optimized=self.loop_optimized,
+                        decay_ids=proc_decay_ids, gen_color=False,
+                        defer_real_color=True)
+                    fks_decay.apply_decay_assignment(
+                        matrix_element, assignment)
+                    matrix_element_list.append(matrix_element)
+            else:
+                if fksmulti['has_nlo_decays']:
+                    # A mixed generate/add-process set can contain both
+                    # decayed and undecayed cores.  No shared real cache is
+                    # built in that case, so construct undecayed reals here.
+                    real_matrix_elements = []
+                    real_amplitudes = []
+                else:
+                    real_matrix_elements = self['real_matrix_elements']
+                matrix_element_list = [FKSHelasProcess(
+                    proc, real_matrix_elements, real_amplitudes,
+                    loop_optimized=self.loop_optimized,
+                    decay_ids=decay_ids, gen_color=False)]
 
             for matrix_element in matrix_element_list:
                 assert isinstance(matrix_element, FKSHelasProcess), \
@@ -616,7 +649,10 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
                        matrix_element.born_me.get('diagrams'):
                         matrix_elements.append(matrix_element)
 
-                        if not gen_color:
+                        # Decay insertion has already rebuilt the complete
+                        # tree/loop colour information after all insertions.
+                        if (matrix_element.decay_metadata is not None or
+                                not gen_color):
                             continue
 
                         # Always create an empty color basis, and the
@@ -687,6 +723,11 @@ class FKSHelasProcess(object):
         sets reals and color links. Real_me_list and real_amp_list are the lists of pre-genrated
         matrix elements in 1-1 correspondence with the amplitudes"""
         
+        self.decay_signature = ()
+        self.decay_metadata = None
+        self._decay_color_links_set = False
+        defer_real_color = opts.pop('defer_real_color', False)
+
         if fksproc != None:
             self.born_me = helas_objects.HelasMatrixElement(fksproc.born_amp, **opts)
 
@@ -697,13 +738,22 @@ class FKSHelasProcess(object):
             real_amps_new = []
 
             for extra_cnt in fksproc.extra_cnt_amp_list:
-                self.extra_cnt_me_list.append(helas_objects.HelasMatrixElement(extra_cnt,gen_color=True))
+                if fksproc.decay_chains:
+                    extra_matrix_element = \
+                        helas_objects.HelasMatrixElement(extra_cnt, **opts)
+                else:
+                    # Preserve the ordinary FKS construction exactly.
+                    extra_matrix_element = \
+                        helas_objects.HelasMatrixElement(
+                            extra_cnt, gen_color=True)
+                self.extra_cnt_me_list.append(extra_matrix_element)
 
             # combine for example u u~ > t t~ and c c~ > t t~
             if fksproc.ncores_for_proc_gen:
                 # new NLO (multicore) generation mode 
                 for real_me, proc in zip(real_me_list,fksproc.real_amps):
-                    fksreal_me = FKSHelasRealProcess(proc, real_me, **opts)
+                    fksreal_me = FKSHelasRealProcess(
+                        proc, real_me, defer_color=defer_real_color, **opts)
                     try:
                         other = self.real_processes[self.real_processes.index(fksreal_me)]
                         other.matrix_element.get('processes').extend(\
@@ -717,7 +767,9 @@ class FKSHelasProcess(object):
                 #old mode
                 for proc in fksproc.real_amps:
                     if proc.amplitude['diagrams']:
-                        fksreal_me = FKSHelasRealProcess(proc, real_me_list, real_amp_list, **opts)
+                        fksreal_me = FKSHelasRealProcess(
+                            proc, real_me_list, real_amp_list,
+                            defer_color=defer_real_color, **opts)
                         try:
                             other = self.real_processes[self.real_processes.index(fksreal_me)]
                             other.matrix_element.get('processes').extend(\
@@ -730,9 +782,19 @@ class FKSHelasProcess(object):
 
             fksproc.real_amps = real_amps_new
             if fksproc.virt_amp:
-                self.virt_matrix_element = \
-                  loop_helas_objects.LoopHelasMatrixElement(fksproc.virt_amp, 
-                          optimized_output = loop_optimized)
+                if fksproc.decay_chains:
+                    self.virt_matrix_element = \
+                        loop_helas_objects.LoopHelasMatrixElement(
+                            fksproc.virt_amp,
+                            optimized_output=loop_optimized,
+                            decay_ids=opts.get('decay_ids', []),
+                            gen_color=opts.get('gen_color', True))
+                else:
+                    # Preserve the ordinary FKS construction exactly.
+                    self.virt_matrix_element = \
+                        loop_helas_objects.LoopHelasMatrixElement(
+                            fksproc.virt_amp,
+                            optimized_output=loop_optimized)
             else: 
                 self.virt_matrix_element = None
 
@@ -767,6 +829,11 @@ class FKSHelasProcess(object):
     def set_color_links(self):
         """this function computes and returns the color links, it should be called
         after the initialization and the setting of the color basis"""
+        if self.decay_metadata is not None:
+            if not self._decay_color_links_set:
+                fks_decay.set_required_color_links(self)
+                self._decay_color_links_set = True
+            return
         if not self.color_links:
             legs = self.born_me.get('base_amplitude').get('process').get('legs')
             model = self.born_me.get('base_amplitude').get('process').get('model')
@@ -850,6 +917,8 @@ class FKSHelasProcess(object):
     def __eq__(self, other):
         """the equality between two FKSHelasProcesses is defined up to the 
         color links"""
+        if self.decay_signature != other.decay_signature:
+            return False
         #first compare the born
         selftag = helas_objects.IdentifyMETag.\
                         create_tag(self.born_me.get('base_amplitude'))
@@ -902,6 +971,10 @@ class FKSHelasProcess(object):
         corresponding real processes may not be in the same order. This is 
         taken care of by constructing the list of self_reals.
         """
+        if self.decay_signature != other.decay_signature:
+            raise fks_common.FKSProcessError(
+                'Cannot combine different decay assignments')
+
         # first add the born process
         #need to store pdg lists rather than processes in order to keep mirror processes different
         this_pdgs = [[leg['id'] for leg in proc['legs']] \
@@ -959,6 +1032,7 @@ class FKSHelasRealProcess(object): #test written
         real_me_list and real_amp_list are the lists of pre-generated matrix elements in 1-1 
         correspondance with the amplitudes"""
         
+        defer_color = opts.pop('defer_color', False)
         if fksrealproc != None:
             self.isfinite = False
             self.colors = fksrealproc.colors
@@ -994,12 +1068,15 @@ class FKSHelasRealProcess(object): #test written
                     logger.info('generating matrix element...')
                     self.matrix_element = helas_objects.HelasMatrixElement(
                                                       fksrealproc.amplitude, **opts)
-                    #generate the color for the real
-                    self.matrix_element.get('color_basis').build(
-                                        self.matrix_element.get('base_amplitude'))
-                    self.matrix_element.set('color_matrix',
-                                     color_amp.ColorMatrix(
-                                        self.matrix_element.get('color_basis')))
+                    if not defer_color:
+                        # Generate color immediately for the ordinary FKS
+                        # path.  Decay-enabled objects rebuild it only after
+                        # all insertions are complete.
+                        self.matrix_element.get('color_basis').build(
+                            self.matrix_element.get('base_amplitude'))
+                        self.matrix_element.set(
+                            'color_matrix', color_amp.ColorMatrix(
+                                self.matrix_element.get('color_basis')))
             #self.fks_j_from_i = fksrealproc.find_fks_j_from_i()
             self.fks_j_from_i = fksrealproc.fks_j_from_i
 
@@ -1034,5 +1111,3 @@ class FKSHelasRealProcess(object): #test written
         """Inequality operator:
         compare two FKSHelasRealProcesses by comparing their dictionaries"""
         return not self.__eq__(other)
-
-

@@ -54,6 +54,7 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
         self['pdgs'] = []
         self['born_processes'] = FKSProcessList()
         self['ewsudakov'] = False
+        self['has_nlo_decays'] = False
 
         if not 'OLP' in list(self.keys()):
             self['OLP'] = 'MadLoop'
@@ -66,7 +67,7 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
         keys = super(FKSMultiProcess, self).get_sorted_keys()
         keys += ['born_processes', 'real_amplitudes', 'real_pdgs', 'has_isr', 
                  'has_fsr', 'spltting_types', 'OLP', 'ncores_for_proc_gen', 'ewsudakov',
-                 'loop_filter']
+                 'loop_filter', 'has_nlo_decays']
         return keys
 
     def filter(self, name, value):
@@ -91,6 +92,12 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
         if name == 'ncores_for_proc_gen':
             if not isinstance(value,int):
                 raise self.PhysicsObjectError("%s is not a valid value for ncores_for_proc_gen " % str(value))
+
+        if name == 'has_nlo_decays':
+            if not isinstance(value, bool):
+                raise self.PhysicsObjectError(
+                    "%s is not a valid value for has_nlo_decays " %
+                    str(value))
                                                      
         return super(FKSMultiProcess,self).filter(name, value)
 
@@ -129,6 +136,9 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
         legs (stored in pdgs, so that they need to be generated only once and then reicycled
         """
 
+        options = copy.copy(options)
+        decay_chains = options.pop(
+            'decay_chains', MG.ProcessDefinitionList())
 
         if 'nlo_mixed_expansion' in options:
             self['nlo_mixed_expansion'] = options['nlo_mixed_expansion']
@@ -190,6 +200,7 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
         self['OLP'] = olp
         self['ewsudakov'] = ewsudakov 
         self['ncores_for_proc_gen'] = ncores_for_proc_gen
+        self['has_nlo_decays'] = bool(decay_chains)
 
         #check process definition(s):
         # a process such as g g > g g will lead to real emissions 
@@ -223,6 +234,13 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
 
         amps = self.get('amplitudes')
 
+        if decay_chains:
+            decay_ids = set(
+                pdg for decay in decay_chains
+                for pdg in decay.get('legs')[0].get('ids'))
+            for amp in amps:
+                amp.trim_diagrams(decay_ids)
+
         # get the list of leptons from the model, in order to discard 
         # lepton-initiated processes unless the init_lep_split flag is specified
         if self['process_definitions']:
@@ -253,6 +271,7 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
             born = FKSProcess(amp, ncores_for_proc_gen = self['ncores_for_proc_gen'], \
                                    init_lep_split=self['init_lep_split'], \
                                    ewsudakov = self['ewsudakov'])
+            born.decay_chains = decay_chains
             self['born_processes'].append(born)
 
             born.generate_reals(self['pdgs'], self['real_amplitudes'], combine = False)
@@ -314,6 +333,8 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
         self['OLP'] = other['OLP']
         self['ncores_for_proc_gen'] = other['ncores_for_proc_gen']
         self['ewsudakov'] = self['ewsudakov'] or other['ewsudakov']
+        self['has_nlo_decays'] = (self['has_nlo_decays'] or
+                                  other['has_nlo_decays'])
 
 
 
@@ -599,6 +620,7 @@ class FKSProcess(object):
         self.extra_cnt_amp_list = diagram_generation.AmplitudeList()
         self.ncores_for_proc_gen = ncores_for_proc_gen
         self.sudakov_amps = []
+        self.decay_chains = MG.ProcessDefinitionList()
 
         if not remove_reals in [True, False]:
             raise fks_common.FKSProcessError(\

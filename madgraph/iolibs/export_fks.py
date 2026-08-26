@@ -34,6 +34,7 @@ import madgraph.core.base_objects as base_objects
 import madgraph.fks.fks_helas_objects as fks_helas_objects
 import madgraph.fks.fks_base as fks
 import madgraph.fks.fks_common as fks_common
+import madgraph.fks.fks_decay as fks_decay
 import madgraph.iolibs.drawing_eps as draw
 import madgraph.iolibs.gen_infohtml as gen_infohtml
 import madgraph.iolibs.files as files
@@ -700,6 +701,11 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         os.mkdir(borndir)
         os.chdir(borndir)
         logger.info('Writing files in %s (%d / %d)' % (borndir, me_number + 1, me_ntot))
+
+        if (self.opt.get('fks_template') == 'fNLO' and
+                getattr(matrix_element, 'decay_metadata', None) is not None):
+            fks_decay.write_decay_chain_info(
+                os.getcwd(), matrix_element.decay_metadata)
 
 ## write the files corresponding to the born process in the P* directory
         self.generate_born_fks_files(matrix_element,
