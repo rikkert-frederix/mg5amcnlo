@@ -10,8 +10,8 @@ c objects as generated matrix elements, chooser, genps, and driver.
      $     initialize_fks_generated_state,
      $     validate_fks_singular_state
       use fnlo_process_common, only: nexternal,qes2,p_born,
-     $     p_born_coll,p_born_norad,p_ev,p1_cnt,wgt_cnt,pswgt_cnt,
-     $     jac_cnt,idup_common=>idup,mothup_common=>mothup,
+     $     p_born_coll,p_born_norad,event_momenta,event_jacobian,
+     $     idup_common=>idup,mothup_common=>mothup,
      $     icolup_common=>icolup,niprocs_common=>niprocs,idup_d,
      $     amp_split,amp_split_cnt,amp_split_virt,
      $     amp_split_born_for_virt,amp_split_avv,
@@ -48,7 +48,7 @@ c objects as generated matrix elements, chooser, genps, and driver.
 
       call initialize_fks_model_state(g,qes2,nf,pmass)
       call initialize_fks_phase_state(p_born,p_born_coll,
-     $     p_born_norad,p_ev,p1_cnt,wgt_cnt,pswgt_cnt,jac_cnt,
+     $     p_born_norad,event_momenta,event_jacobian,
      $     idup_common,mothup_common,icolup_common,niprocs_common,
      $     is_aorg,amp2,jamp2,subproc_pd,subproc_iproc,flavour_map,
      $     iproc_save,eto,etoi,maxproc_found)

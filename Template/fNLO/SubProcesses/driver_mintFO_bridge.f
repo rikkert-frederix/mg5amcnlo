@@ -24,14 +24,14 @@
       use driver_mintfo_module, only: sigint_impl
       use mint_module, only: ndimmax,nintegrals
       use fnlo_process_common, only: ini_fin_fks,nndim,nbody,
-     $     p1_cnt,p_born,virtual_over_born,calculated_born,abrv,
+     $     event_momenta,p_born,virtual_over_born,calculated_born,abrv,
      $     wgt_me_born,wgt_me_real,fold,use_evpr
       implicit none
       double precision xx(ndimmax),vegas_wgt,f(nintegrals)
       integer ifl
 
       sigint=sigint_impl(xx,vegas_wgt,ifl,f,ini_fin_fks,nndim,
-     $     nbody,p1_cnt,p_born,virtual_over_born,calculated_born,
+     $     nbody,event_momenta,p_born,virtual_over_born,calculated_born,
      $     abrv,wgt_me_born,wgt_me_real,fold,use_evpr)
       return
       end

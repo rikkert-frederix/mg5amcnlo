@@ -5,7 +5,9 @@ module test_soft_col_limits_module
   use fks_metadata, only: fks_i_d, pdg_type_d, validate_fks_metadata
   use run_state, only: lpp, ebeam, ptj, ptl, &
                        mll, mll_sf, ptgmin
-  use fnlo_process_common, only: is_a_j, is_a_lp, is_a_lm, is_a_ph
+  use fnlo_process_common, only: is_a_j, is_a_lp, is_a_lm, is_a_ph, &
+                                 soft_counterevent, collinear_counterevent, &
+                                 real_event
   use split_orders, only: amp_split_pos_to_orders
   use genps_fks, only: generate_momenta
   use fks_diagnostics, only: xprintout, checkres2
@@ -38,12 +40,11 @@ module test_soft_col_limits_module
   integer, allocatable, save :: orders(:), nerr(:)
   double precision, allocatable, save :: fail_frac(:)
 
-  double precision, allocatable, save :: p1_cnt(:, :, :)
-  double precision, allocatable, save :: jac_cnt(:)
+  double precision, allocatable, save :: event_momenta(:, :, :)
+  double precision, allocatable, save :: event_jacobian(:)
   double precision, allocatable, save :: p_born(:, :)
-  double precision, allocatable, save :: p_i_fks_ev(:)
-  double precision, allocatable, save :: p_i_fks_cnt(:, :)
-  double precision, allocatable, save :: xi_i_fks_cnt(:)
+  double precision, allocatable, save :: event_fks_momentum(:, :)
+  double precision, allocatable, save :: event_xi(:), event_y(:)
   double precision, allocatable, save :: etmin(:), etmax(:)
   double precision, allocatable, save :: mxxmin(:, :)
   double precision, allocatable, save :: amp_split(:)
@@ -76,18 +77,21 @@ module test_soft_col_limits_module
       logical, intent(in) :: calculated_born, soft_test, collinear_test
     end subroutine test_limits_set_controls_bridge
 
-    subroutine test_limits_sync_state_bridge(p1_counter, &
-                                             jac_counter, born_momenta, xi_event, y_event, p_i_event, &
-                                             p_i_counter, xi_counter)
+    subroutine test_limits_sync_state_bridge(event_momenta_out, &
+                                             event_jacobian_out, born_momenta, &
+                                             event_xi_out, event_y_out, &
+                                             event_fks_momentum_out)
       use process_dimensions, only: nexternal
+      use fnlo_process_common, only: real_event
       implicit none
-      double precision, intent(out) :: p1_counter(0:3, nexternal, 0:2)
-      double precision, intent(out) :: jac_counter(0:2)
+      double precision, intent(out) :: &
+        event_momenta_out(0:3, nexternal, 0:real_event)
+      double precision, intent(out) :: event_jacobian_out(0:real_event)
       double precision, intent(out) :: born_momenta(0:3, nexternal - 1)
-      double precision, intent(out) :: xi_event, y_event
-      double precision, intent(out) :: p_i_event(0:3)
-      double precision, intent(out) :: p_i_counter(0:3, 0:2)
-      double precision, intent(out) :: xi_counter(0:2)
+      double precision, intent(out) :: event_xi_out(0:real_event)
+      double precision, intent(out) :: event_y_out(0:real_event)
+      double precision, intent(out) :: &
+        event_fks_momentum_out(0:3, 0:real_event)
     end subroutine test_limits_sync_state_bridge
 
     subroutine test_limits_setcuts_bridge(etmin_out, etmax_out, mxxmin_out)
@@ -145,7 +149,6 @@ contains
     double precision :: wgt, fx, totmass
     double precision :: xi_i_fks_fix_save, y_ij_fks_fix_save
     double precision :: xi_i_fks_fix, y_ij_fks_fix
-    double precision :: xi_i_fks_ev, y_ij_fks_ev
     logical :: calculated_born, softtest, colltest
     complex(kind=kind(0d0)) :: wgt1(2)
 
@@ -274,7 +277,7 @@ contains
         new_point = .true.
         wgt = 1d0
         call generate_momenta(ndim, iconfig, wgt, x, p)
-        call sync_momentum_state(xi_i_fks_ev, y_ij_fks_ev)
+        call sync_momentum_state()
         calculated_born = .false.
         call test_limits_set_controls_bridge(xi_i_fks_fix, y_ij_fks_fix, &
                                              calculated_born, softtest, colltest)
@@ -286,7 +289,7 @@ contains
           new_point = .true.
           wgt = 1d0
           call generate_momenta(ndim, iconfig, wgt, x, p)
-          call sync_momentum_state(xi_i_fks_ev, y_ij_fks_ev)
+          call sync_momentum_state()
           calculated_born = .false.
           call test_limits_set_controls_bridge(xi_i_fks_fix, y_ij_fks_fix, &
                                                calculated_born, softtest, colltest)
@@ -338,7 +341,7 @@ contains
           end do
           new_point = .true.
           call generate_momenta(ndim, iconfig, wgt, x, p)
-          call sync_momentum_state(xi_i_fks_ev, y_ij_fks_ev)
+          call sync_momentum_state()
           do while ((wgt .lt. 0 .or. p(0, 1) .le. 0d0) .and. ntry .lt. 1000)
             wgt = 1d0
             do jj = 1, ndim
@@ -346,24 +349,28 @@ contains
             end do
             new_point = .true.
             call generate_momenta(ndim, iconfig, wgt, x, p)
-            call sync_momentum_state(xi_i_fks_ev, y_ij_fks_ev)
+            call sync_momentum_state()
             ntry = ntry + 1
           end do
           if (nsofttests .le. 10) write (*, *) 'ntry', ntry
           calculated_born = .false.
           call test_limits_set_controls_bridge(xi_i_fks_fix, y_ij_fks_fix, &
                                                calculated_born, softtest, colltest)
-          call set_cms_stuff(0)
-          call test_limits_sreal_bridge(p1_cnt(:, :, 0), zero, y_ij_fks_ev, &
+          call set_cms_stuff(soft_counterevent)
+          call test_limits_sreal_bridge( &
+            event_momenta(:, :, soft_counterevent), zero, &
+            event_y(real_event), &
                                         fx, amp_split)
           fxl(1) = fx*wgt
-          wfxl(1) = jac_cnt(0)
+          wfxl(1) = event_jacobian(soft_counterevent)
           do iamp = 1, amp_split_size
-            fxl_split(1, iamp) = amp_split(iamp)*jac_cnt(0)
-            wfxl_split(1, iamp) = jac_cnt(0)
+            fxl_split(1, iamp) = &
+              amp_split(iamp)*event_jacobian(soft_counterevent)
+            wfxl_split(1, iamp) = event_jacobian(soft_counterevent)
           end do
-          call set_cms_stuff(-100)
-          call test_limits_sreal_bridge(p, xi_i_fks_ev, y_ij_fks_ev, &
+          call set_cms_stuff(real_event)
+          call test_limits_sreal_bridge( &
+            p, event_xi(real_event), event_y(real_event), &
                                         fx, amp_split)
           limit(1) = fx*wgt
           wlimit(1) = wgt
@@ -374,13 +381,15 @@ contains
 
           do k = 1, nexternal
             do l = 0, 3
-              lxp(l, k) = p1_cnt(l, k, 0)
+              lxp(l, k) = event_momenta(l, k, soft_counterevent)
               xp(1, l, k) = p(l, k)
             end do
           end do
           do l = 0, 3
-            lxp(l, nexternal + 1) = p_i_fks_cnt(l, 0)
-            xp(1, l, nexternal + 1) = p_i_fks_ev(l)
+            lxp(l, nexternal + 1) = &
+              event_fks_momentum(l, soft_counterevent)
+            xp(1, l, nexternal + 1) = &
+              event_fks_momentum(l, real_event)
           end do
 
           do i = 2, imax
@@ -390,24 +399,27 @@ contains
                                                  y_ij_fks_fix, calculated_born, softtest, colltest)
             wgt = 1d0
             call generate_momenta(ndim, iconfig, wgt, x, p)
-            call sync_momentum_state(xi_i_fks_ev, y_ij_fks_ev)
+            call sync_momentum_state()
             calculated_born = .false.
             call test_limits_set_controls_bridge(xi_i_fks_fix, &
                                                  y_ij_fks_fix, calculated_born, softtest, colltest)
-            call set_cms_stuff(0)
-            call test_limits_sreal_bridge(p1_cnt(:, :, 0), zero, &
-                                          y_ij_fks_ev, fx, amp_split)
+            call set_cms_stuff(soft_counterevent)
+            call test_limits_sreal_bridge( &
+                                          event_momenta(:, :, soft_counterevent), zero, &
+                                          event_y(real_event), fx, amp_split)
             fxl(i) = fx*wgt
-            wfxl(i) = jac_cnt(0)
+            wfxl(i) = event_jacobian(soft_counterevent)
             do iamp = 1, amp_split_size
-              fxl_split(i, iamp) = amp_split(iamp)*jac_cnt(0)
-              wfxl_split(i, iamp) = jac_cnt(0)
+              fxl_split(i, iamp) = &
+                amp_split(iamp)*event_jacobian(soft_counterevent)
+              wfxl_split(i, iamp) = event_jacobian(soft_counterevent)
             end do
             calculated_born = .false.
             call test_limits_set_controls_bridge(xi_i_fks_fix, &
                                                  y_ij_fks_fix, calculated_born, softtest, colltest)
-            call set_cms_stuff(-100)
-            call test_limits_sreal_bridge(p, xi_i_fks_ev, y_ij_fks_ev, &
+            call set_cms_stuff(real_event)
+            call test_limits_sreal_bridge( &
+              p, event_xi(real_event), event_y(real_event), &
                                           fx, amp_split)
             limit(i) = fx*wgt
             wlimit(i) = wgt
@@ -421,7 +433,8 @@ contains
               end do
             end do
             do l = 0, 3
-              xp(i, l, nexternal + 1) = p_i_fks_ev(l)
+              xp(i, l, nexternal + 1) = &
+                event_fks_momentum(l, real_event)
             end do
           end do
 
@@ -552,7 +565,7 @@ contains
           end do
           new_point = .true.
           call generate_momenta(ndim, iconfig, wgt, x, p)
-          call sync_momentum_state(xi_i_fks_ev, y_ij_fks_ev)
+          call sync_momentum_state()
           do while ((wgt .lt. 0 .or. p(0, 1) .le. 0d0) .and. ntry .lt. 1000)
             wgt = 1d0
             do jj = 1, ndim
@@ -560,25 +573,29 @@ contains
             end do
             new_point = .true.
             call generate_momenta(ndim, iconfig, wgt, x, p)
-            call sync_momentum_state(xi_i_fks_ev, y_ij_fks_ev)
+            call sync_momentum_state()
             ntry = ntry + 1
           end do
           if (ncolltests .le. 10) write (*, *) 'ntry', ntry
           calculated_born = .false.
           call test_limits_set_controls_bridge(xi_i_fks_fix, y_ij_fks_fix, &
                                                calculated_born, softtest, colltest)
-          call set_cms_stuff(1)
-          call test_limits_sreal_bridge(p1_cnt(:, :, 1), xi_i_fks_cnt(1), &
+          call set_cms_stuff(collinear_counterevent)
+          call test_limits_sreal_bridge( &
+            event_momenta(:, :, collinear_counterevent), &
+            event_xi(collinear_counterevent), &
                                         one, fx, amp_split)
-          fxl(1) = fx*jac_cnt(1)
-          wfxl(1) = jac_cnt(1)
+          fxl(1) = fx*event_jacobian(collinear_counterevent)
+          wfxl(1) = event_jacobian(collinear_counterevent)
           do iamp = 1, amp_split_size
-            fxl_split(1, iamp) = amp_split(iamp)*jac_cnt(1)
-            wfxl_split(1, iamp) = jac_cnt(1)
+            fxl_split(1, iamp) = &
+              amp_split(iamp)*event_jacobian(collinear_counterevent)
+            wfxl_split(1, iamp) = event_jacobian(collinear_counterevent)
           end do
 
-          call set_cms_stuff(-100)
-          call test_limits_sreal_bridge(p, xi_i_fks_ev, y_ij_fks_ev, &
+          call set_cms_stuff(real_event)
+          call test_limits_sreal_bridge( &
+            p, event_xi(real_event), event_y(real_event), &
                                         fx, amp_split)
           limit(1) = fx*wgt
           wlimit(1) = wgt
@@ -589,13 +606,15 @@ contains
 
           do k = 1, nexternal
             do l = 0, 3
-              lxp(l, k) = p1_cnt(l, k, 1)
+              lxp(l, k) = event_momenta(l, k, collinear_counterevent)
               xp(1, l, k) = p(l, k)
             end do
           end do
           do l = 0, 3
-            lxp(l, nexternal + 1) = p_i_fks_cnt(l, 1)
-            xp(1, l, nexternal + 1) = p_i_fks_ev(l)
+            lxp(l, nexternal + 1) = &
+              event_fks_momentum(l, collinear_counterevent)
+            xp(1, l, nexternal + 1) = &
+              event_fks_momentum(l, real_event)
           end do
 
           do i = 2, imax
@@ -605,24 +624,27 @@ contains
                                                  y_ij_fks_fix, calculated_born, softtest, colltest)
             wgt = 1d0
             call generate_momenta(ndim, iconfig, wgt, x, p)
-            call sync_momentum_state(xi_i_fks_ev, y_ij_fks_ev)
+            call sync_momentum_state()
             calculated_born = .false.
             call test_limits_set_controls_bridge(xi_i_fks_fix, &
                                                  y_ij_fks_fix, calculated_born, softtest, colltest)
-            call set_cms_stuff(1)
-            call test_limits_sreal_bridge(p1_cnt(:, :, 1), &
-                                          xi_i_fks_cnt(1), one, fx, amp_split)
-            fxl(i) = fx*jac_cnt(1)
-            wfxl(i) = jac_cnt(1)
+            call set_cms_stuff(collinear_counterevent)
+            call test_limits_sreal_bridge( &
+              event_momenta(:, :, collinear_counterevent), &
+              event_xi(collinear_counterevent), one, fx, amp_split)
+            fxl(i) = fx*event_jacobian(collinear_counterevent)
+            wfxl(i) = event_jacobian(collinear_counterevent)
             do iamp = 1, amp_split_size
-              fxl_split(i, iamp) = amp_split(iamp)*jac_cnt(1)
-              wfxl_split(i, iamp) = jac_cnt(1)
+              fxl_split(i, iamp) = &
+                amp_split(iamp)*event_jacobian(collinear_counterevent)
+              wfxl_split(i, iamp) = event_jacobian(collinear_counterevent)
             end do
             calculated_born = .false.
             call test_limits_set_controls_bridge(xi_i_fks_fix, &
                                                  y_ij_fks_fix, calculated_born, softtest, colltest)
-            call set_cms_stuff(-100)
-            call test_limits_sreal_bridge(p, xi_i_fks_ev, y_ij_fks_ev, &
+            call set_cms_stuff(real_event)
+            call test_limits_sreal_bridge( &
+              p, event_xi(real_event), event_y(real_event), &
                                           fx, amp_split)
             limit(i) = fx*wgt
             wlimit(i) = wgt
@@ -636,7 +658,8 @@ contains
               end do
             end do
             do l = 0, 3
-              xp(i, l, nexternal + 1) = p_i_fks_ev(l)
+              xp(i, l, nexternal + 1) = &
+                event_fks_momentum(l, real_event)
             end do
           end do
           if (ncolltests .le. 10) then
@@ -782,9 +805,11 @@ contains
               wlimit_split(maximum_limit_points, amp_split_size), &
               orders(nsplitorders), nerr(0:amp_split_size), &
               fail_frac(0:amp_split_size), &
-              p1_cnt(0:3, nexternal, 0:2), jac_cnt(0:2), &
-              p_born(0:3, nexternal - 1), p_i_fks_ev(0:3), &
-              p_i_fks_cnt(0:3, 0:2), xi_i_fks_cnt(0:2), &
+              event_momenta(0:3, nexternal, 0:real_event), &
+              event_jacobian(0:real_event), &
+              p_born(0:3, nexternal - 1), &
+              event_fks_momentum(0:3, 0:real_event), &
+              event_xi(0:real_event), event_y(0:real_event), &
               etmin(nincoming + 1:nexternal - 1), &
               etmax(nincoming + 1:nexternal - 1), &
               mxxmin(nincoming + 1:nexternal - 1, nincoming + 1:nexternal - 1), &
@@ -808,12 +833,12 @@ contains
     orders = 0
     nerr = 0
     fail_frac = zero
-    p1_cnt = zero
-    jac_cnt = zero
+    event_momenta = zero
+    event_jacobian = zero
     p_born = zero
-    p_i_fks_ev = zero
-    p_i_fks_cnt = zero
-    xi_i_fks_cnt = zero
+    event_fks_momentum = zero
+    event_xi = zero
+    event_y = zero
     etmin = zero
     etmax = zero
     mxxmin = zero
@@ -821,13 +846,13 @@ contains
     work_state_initialized = .true.
   end subroutine initialize_work_state
 
-  subroutine sync_momentum_state(xi_event, y_event)
+  subroutine sync_momentum_state()
     implicit none
-    double precision, intent(out) :: xi_event, y_event
 
     call validate_work_state()
-    call test_limits_sync_state_bridge(p1_cnt, jac_cnt, p_born, &
-                                       xi_event, y_event, p_i_fks_ev, p_i_fks_cnt, xi_i_fks_cnt)
+    call test_limits_sync_state_bridge( &
+      event_momenta, event_jacobian, p_born, event_xi, event_y, &
+      event_fks_momentum)
   end subroutine sync_momentum_state
 
   subroutine validate_generated_data()
@@ -857,12 +882,16 @@ contains
       call fail_test_limits('limit-test work state was not initialized')
     end if
     if (.not. allocated(p) .or. .not. allocated(x) .or. &
-        .not. allocated(p1_cnt) .or. .not. allocated(amp_split)) then
+        .not. allocated(event_momenta) .or. &
+        .not. allocated(event_jacobian) .or. &
+        .not. allocated(amp_split)) then
       call fail_test_limits('limit-test work state is incomplete')
     end if
     if (size(p, 1) /= 4 .or. size(p, 2) /= nexternal .or. &
         size(x) /= random_vector_size .or. &
-        size(p1_cnt, 2) /= nexternal .or. size(p1_cnt, 3) /= 3 .or. &
+        size(event_momenta, 2) /= nexternal .or. &
+        size(event_momenta, 3) /= real_event + 1 .or. &
+        size(event_jacobian) /= real_event + 1 .or. &
         size(amp_split) /= amp_split_size) then
       call fail_test_limits('limit-test work state has invalid bounds')
     end if
@@ -890,12 +919,12 @@ contains
     if (allocated(orders)) deallocate (orders)
     if (allocated(nerr)) deallocate (nerr)
     if (allocated(fail_frac)) deallocate (fail_frac)
-    if (allocated(p1_cnt)) deallocate (p1_cnt)
-    if (allocated(jac_cnt)) deallocate (jac_cnt)
+    if (allocated(event_momenta)) deallocate (event_momenta)
+    if (allocated(event_jacobian)) deallocate (event_jacobian)
     if (allocated(p_born)) deallocate (p_born)
-    if (allocated(p_i_fks_ev)) deallocate (p_i_fks_ev)
-    if (allocated(p_i_fks_cnt)) deallocate (p_i_fks_cnt)
-    if (allocated(xi_i_fks_cnt)) deallocate (xi_i_fks_cnt)
+    if (allocated(event_fks_momentum)) deallocate (event_fks_momentum)
+    if (allocated(event_xi)) deallocate (event_xi)
+    if (allocated(event_y)) deallocate (event_y)
     if (allocated(etmin)) deallocate (etmin)
     if (allocated(etmax)) deallocate (etmax)
     if (allocated(mxxmin)) deallocate (mxxmin)

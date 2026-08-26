@@ -13,15 +13,16 @@ module genps_fks
   ! to the NLO template's compile-time arithmetic.
   use fnlo_process_common, only: nexternal, nincoming, max_particles, &
                                  max_branch, nocntevents, use_evpr, nbody, &
-                                 xi_i_hat_ev, xij_aor, &
+                                 soft_counterevent, collinear_counterevent, &
+                                 soft_collinear_counterevent, real_event, &
+                                 first_counterevent, last_counterevent, &
+                                 skipped_counterevents, xij_aor, &
                                  i_fks, j_fks, ybst_til_tolab, &
                                  ybst_til_tocm, sqrtshat, shat, &
-                                 xi_i_fks_ev, y_ij_fks_ev, p_i_fks_ev, &
-                                 p_i_fks_cnt, xi_i_fks_cnt, xiimax_ev, &
-                                 xiimax_cnt, xbjrk_ev, xbjrk_cnt, &
-                                 sqrtshat_ev, shat_ev, sqrtshat_cnt, &
-                                 shat_cnt, ycm_ev, ycm_cnt, &
-                                 xinorm_ev, xinorm_cnt, &
+                                 event_xi, event_y, event_xi_hat, &
+                                 event_fks_momentum, event_xi_max, &
+                                 event_xi_norm, event_bjorken_x, &
+                                 event_sqrt_shat, event_shat, event_ycm, &
                                  veckn_ev, veckbarn_ev, xp0jfks, &
                                  softtest, colltest, xi_i_fks_fix, &
                                  y_ij_fks_fix, tau_lower_bound
@@ -31,16 +32,13 @@ module genps_fks
   public :: initialize_genps_fks_state
 
 ! fnlo_process_common owns the process-sized storage. The fixed-form bridge
-! gives the radiation module access only to event and counterevent state.
-  double precision, pointer :: cnt_momenta(:, :, :) => null()
-  double precision, pointer :: cnt_weight(:) => null()
-  double precision, pointer :: cnt_psweight(:) => null()
-  double precision, pointer :: cnt_jacobian(:) => null()
+! binds the unified real-event and counterevent arrays.
+  double precision, pointer :: stored_event_momenta(:, :, :) => null()
+  double precision, pointer :: stored_event_jacobian(:) => null()
 
   double precision, pointer :: born_lab_momenta(:, :) => null()
   double precision, pointer :: born_coll_momenta(:, :) => null()
   double precision, pointer :: born_norad_momenta(:, :) => null()
-  double precision, pointer :: event_momenta(:, :) => null()
   double precision, pointer :: particle_masses(:) => null()
 
   double precision :: massive_xjac_cache = 1d0
@@ -48,31 +46,23 @@ module genps_fks
 
 contains
 
-  subroutine initialize_genps_fks_state(cnt_momenta_in, cnt_weight_in, &
-                                        cnt_psweight_in, cnt_jacobian_in, &
+  subroutine initialize_genps_fks_state(event_momenta_in, event_jacobian_in, &
                                         born_lab_momenta_in, born_coll_momenta_in, &
-                                        born_norad_momenta_in, event_momenta_in, &
-                                        particle_masses_in)
+                                        born_norad_momenta_in, particle_masses_in)
     implicit none
-    double precision, target, intent(inout) :: cnt_momenta_in(0:, 1:, 0:)
-    double precision, target, intent(inout) :: cnt_weight_in(0:)
-    double precision, target, intent(inout) :: cnt_psweight_in(0:)
-    double precision, target, intent(inout) :: cnt_jacobian_in(0:)
+    double precision, target, intent(inout) :: event_momenta_in(0:, 1:, 0:)
+    double precision, target, intent(inout) :: event_jacobian_in(0:)
     double precision, target, intent(inout) :: born_lab_momenta_in(0:, 1:)
     double precision, target, intent(inout) :: born_coll_momenta_in(0:, 1:)
     double precision, target, intent(inout) :: born_norad_momenta_in(0:, 1:)
-    double precision, target, intent(inout) :: event_momenta_in(0:, 1:)
     double precision, target, intent(inout) :: particle_masses_in(1:)
 
     call validate_process_dimensions()
-    cnt_momenta => cnt_momenta_in
-    cnt_weight => cnt_weight_in
-    cnt_psweight => cnt_psweight_in
-    cnt_jacobian => cnt_jacobian_in
+    stored_event_momenta => event_momenta_in
+    stored_event_jacobian => event_jacobian_in
     born_lab_momenta => born_lab_momenta_in
     born_coll_momenta => born_coll_momenta_in
     born_norad_momenta => born_norad_momenta_in
-    event_momenta => event_momenta_in
     particle_masses => particle_masses_in
 
     call validate_bound_genps_state()
@@ -107,22 +97,20 @@ contains
 
     if (.not. pass .or. born%xjac < 0d0) then
       jac = -222d0
-      cnt_jacobian(0) = -222d0
-      cnt_jacobian(1) = -222d0
-      cnt_jacobian(2) = -222d0
+      stored_event_jacobian = -222d0
       p(0, 1) = -99d0
-      do i = 0, 2
-        cnt_momenta(0, 1, i) = -99d0
+      do i = first_counterevent, real_event
+        stored_event_momenta(0, 1, i) = -99d0
       end do
       call invalidate_born_phase_space()
       nocntevents = .true.
     end if
 
 ! Apply any incoming integration weight to the event and counterevents.
-    do i = 0, 2
-      cnt_jacobian(i) = cnt_jacobian(i)*wgt
+    do i = first_counterevent, real_event
+      stored_event_jacobian(i) = stored_event_jacobian(i)*wgt
     end do
-    wgt = wgt*jac
+    wgt = stored_event_jacobian(real_event)
 
     call cpu_time(tAfter)
     tGenPS = tGenPS + (tAfter - tBefore)
@@ -160,19 +148,18 @@ contains
 !
 ! Here we start with the FKS Stuff
 !
-! icountevts=-100 is the event; 0, 1, and 2 are the counterevents.
-! The value 5 skips counterevents for the second massive-emission fold;
+! The real event occupies slot 3; slots 0, 1, and 2 are its soft,
+! collinear, and soft-collinear counterevents.  The value 5 skips
+! counterevents for the second massive-emission fold;
 ! it is assigned only after the event has been stored and never indexes
-! a counterevent array.
-    icountevts = -100
+! event storage.
+    icountevts = real_event
 ! Event/counterevent values stay negative until their ordinary context is
 ! generated.  This also forces a failure if a skipped context is consumed.
-    p_i_fks_ev(0) = -1.d0
-    xiimax_ev = -1.d0
-    do i = 0, 2
-      p_i_fks_cnt(0, i) = -1.d0
-      xiimax_cnt(i) = -1.d0
-      cnt_jacobian(i) = -1.d0
+    do i = first_counterevent, real_event
+      event_fks_momentum(0, i) = -1.d0
+      event_xi_max(i) = -1.d0
+      stored_event_jacobian(i) = -1.d0
     end do
 ! set cm stuff to values to make the program crash if not set elsewhere
     ybst_til_tolab = 1.d14
@@ -203,116 +190,116 @@ contains
 ! Here is the beginning of the loop over the momenta for the event and
 ! counter-events. This will fill the xp momenta with the event and
 ! counter-event momenta.
-111 continue
-    xjac = xjac0
-    xpswgt = xpswgt0
+    counterevent_loop: do
+      xjac = xjac0
+      xpswgt = xpswgt0
 !
 ! Put the Born momenta in the xp momenta, making sure that the mapping
 ! is correct; put i_fks momenta equal to zero.
-    if (i_fks .gt. 1) then
-      xp(:, 1:i_fks - 1) = born_lab_momenta(:, 1:i_fks - 1)
-      m(1:i_fks - 1) = m_born(1:i_fks - 1)
-    end if
-    xp(:, i_fks) = 0d0
-    m(i_fks) = 0d0
-    if (i_fks .lt. nexternal) then
-      xp(:, i_fks + 1:nexternal) = born_lab_momenta(:, i_fks:nexternal - 1)
-      m(i_fks + 1:nexternal) = m_born(i_fks:nexternal - 1)
-    end if
+      if (i_fks .gt. 1) then
+        xp(:, 1:i_fks - 1) = born_lab_momenta(:, 1:i_fks - 1)
+        m(1:i_fks - 1) = m_born(1:i_fks - 1)
+      end if
+      xp(:, i_fks) = 0d0
+      m(i_fks) = 0d0
+      if (i_fks .lt. nexternal) then
+        xp(:, i_fks + 1:nexternal) = born_lab_momenta(:, i_fks:nexternal - 1)
+        m(i_fks + 1:nexternal) = m_born(i_fks:nexternal - 1)
+      end if
 !
 ! set-up phi_i_fks
 !
-    phi_i_fks = 2d0*pi*x(ixpi)
-    xjac = xjac*2d0*pi
+      phi_i_fks = 2d0*pi*x(ixpi)
+      xjac = xjac*2d0*pi
 ! To keep track of the special phase-space region with massive j_fks
-    isolsign = 0
+      isolsign = 0
 !
 ! consider the three cases:
 ! case 1: j_fks is massless final state
 ! case 2: j_fks is massive final state
 ! case 3: j_fks is initial state
-    if (j_fks .gt. nincoming) then
-      shat = shat_born
-      sqrtshat = sqrtshat_born
-      tau = tau_born
-      ycm = ycm_born
-      xbjrk(1) = xbjrk_born(1)
-      xbjrk(2) = xbjrk_born(2)
-      if (m_j_fks .eq. 0d0) then
+      if (j_fks .gt. nincoming) then
+        shat = shat_born
+        sqrtshat = sqrtshat_born
+        tau = tau_born
+        ycm = ycm_born
+        xbjrk(1) = xbjrk_born(1)
+        xbjrk(2) = xbjrk_born(2)
+        if (m_j_fks .eq. 0d0) then
+          isolsign = 1
+          call generate_momenta_massless_final(icountevts, i_fks, j_fks &
+            & , born_lab_momenta(0:3, imother), shat, sqrtshat, x(ixEi), xmrec2, xp &
+            & , phi_i_fks, xiimax, xinorm, xi_i_fks, y_ij_fks, xi_i_hat &
+            & , p_i_fks, xjac, xpswgt, pass)
+        elseif (m_j_fks .gt. 0d0) then
+          call generate_momenta_massive_final(icountevts, isolsign &
+            & , rat_xi, i_fks, j_fks, born_lab_momenta(0:3, imother) &
+            & , shat, sqrtshat, m_j_fks, x(ixEi), xmrec2, xp, phi_i_fks &
+            & , xiimax, xinorm, xi_i_fks, y_ij_fks, xi_i_hat, p_i_fks, xjac &
+            & , xpswgt, pass)
+        end if
+      elseif (j_fks .le. nincoming) then
         isolsign = 1
-        call generate_momenta_massless_final(icountevts, i_fks, j_fks &
-          & , born_lab_momenta(0:3, imother), shat, sqrtshat, x(ixEi), xmrec2, xp &
-          & , phi_i_fks, xiimax, xinorm, xi_i_fks, y_ij_fks, xi_i_hat &
-          & , p_i_fks, xjac, xpswgt, pass)
-        if (.not. pass) goto 112
-      elseif (m_j_fks .gt. 0d0) then
-        call generate_momenta_massive_final(icountevts, isolsign &
-          & , rat_xi, i_fks, j_fks, born_lab_momenta(0:3, imother) &
-          & , shat, sqrtshat, m_j_fks, x(ixEi), xmrec2, xp, phi_i_fks &
-          & , xiimax, xinorm, xi_i_fks, y_ij_fks, xi_i_hat, p_i_fks, xjac &
-          & , xpswgt, pass)
-        if (.not. pass) goto 112
+        call generate_momenta_initial(icountevts, i_fks, j_fks, xbjrk_born &
+          & , tau_born, ycm_born, ycmhat, shat_born, phi_i_fks, xp, x(ixEi) &
+          & , shat, stot, sqrtshat, tau, ycm, xbjrk, p_i_fks, xiimax, xinorm &
+          & , xi_i_fks, y_ij_fks, xi_i_hat, xpswgt, xjac, pass)
+      else
+        write (*, *) 'Error #2 in genps_fks.f', j_fks
+        stop
       end if
-    elseif (j_fks .le. nincoming) then
-      isolsign = 1
-      call generate_momenta_initial(icountevts, i_fks, j_fks, xbjrk_born &
-        & , tau_born, ycm_born, ycmhat, shat_born, phi_i_fks, xp, x(ixEi) &
-        & , shat, stot, sqrtshat, tau, ycm, xbjrk, p_i_fks, xiimax, xinorm &
-        & , xi_i_fks, y_ij_fks, xi_i_hat, xpswgt, xjac, pass)
-      if (.not. pass) goto 112
-    else
-      write (*, *) 'Error #2 in genps_fks.f', j_fks
-      stop
-    end if
 ! At this point, the phase space lacks a factor xi_i_fks, which need be
 ! excluded in an NLO computation according to FKS, being taken into
 ! account elsewhere
 !$$$      xpswgt=xpswgt*xi_i_fks
 !
 ! All done, so check four-momentum conservation
-    if (xjac .gt. 0.d0) then
-      call phspncheck_nocms(nexternal, sqrtshat, m, xp, pass)
-      if (.not. pass) then
-        xjac = -199
-        goto 112
+      if (pass .and. xjac .gt. 0.d0) then
+        call phspncheck_nocms(nexternal, sqrtshat, m, xp, pass)
+        if (.not. pass) xjac = -199
       end if
-    end if
-
-    call compute_flux(shat, sqrtshat, m(1), m(2), xpswgt, xjac)
+      if (pass) then
+        call compute_flux(shat, sqrtshat, m(1), m(2), xpswgt, xjac)
+      end if
 !
-112 continue
-
-    call fill_FKS_commons(icountevts, tau, ycm, ycm_born, shat, sqrtshat, xbjrk, &
-      & xiimax, xinorm, xi_i_fks, xi_i_hat, p_i_fks, y_ij_fks, xp, p, xjac, jac)
+      call fill_FKS_commons(icountevts, tau, ycm, ycm_born, shat, sqrtshat, xbjrk, &
+        & xiimax, xinorm, xi_i_fks, xi_i_hat, p_i_fks, y_ij_fks, xp, p, xjac, jac)
 !
-    if (icountevts .eq. -100) then
-      icountevts = 0
+      if (icountevts .eq. real_event) then
+        icountevts = soft_counterevent
 ! skips counterevents when integrating over second fold for massive
 ! j_fks
-      if (isolsign .eq. -1) icountevts = 5
-    else
-      icountevts = icountevts + 1
-    end if
-    if ((icountevts .le. 2 .and. m_j_fks .eq. 0.d0 .and. (.not. nbody)) .or. &
-      & (icountevts .eq. 0 .and. m_j_fks .eq. 0.d0 .and. nbody) .or. &
-      & (icountevts .eq. 0 .and. m_j_fks .ne. 0.d0)) then
-      goto 111 ! back to the top of the loop
+        if (isolsign .eq. -1) icountevts = skipped_counterevents
+      else
+        icountevts = icountevts + 1
+      end if
+      if ((icountevts .le. last_counterevent .and. &
+           m_j_fks .eq. 0.d0 .and. (.not. nbody)) .or. &
+        & (icountevts .eq. soft_counterevent .and. &
+           m_j_fks .eq. 0.d0 .and. nbody) .or. &
+        & (icountevts .eq. soft_counterevent .and. &
+           m_j_fks .ne. 0.d0)) then
+        cycle counterevent_loop
+      end if
+      exit counterevent_loop
+    end do counterevent_loop
 
-    elseif (icountevts .eq. 5) then
+    if (icountevts .eq. skipped_counterevents) then
 ! icountevts=5 only when integrating over the second fold with j_fks
 ! massive. The counterevents have been skipped, so make sure their
 ! momenta are unphysical. Born are physical if event was generated, and
 ! must stay so for the computation of enhancement factors.
-      do i = 0, 2
-        cnt_jacobian(i) = -299
-        cnt_momenta(0, 1, i) = -99
+      do i = first_counterevent, last_counterevent
+        stored_event_jacobian(i) = -299
+        stored_event_momenta(0, 1, i) = -99
       end do
     end if
 
-    nocntevents = (cnt_jacobian(0) .le. 0.d0) .and. &
-      & (cnt_jacobian(1) .le. 0.d0) .and. &
-      & (cnt_jacobian(2) .le. 0.d0)
-    call xmom_compare(i_fks, j_fks, cnt_jacobian, cnt_momenta, &
+    nocntevents = all(stored_event_jacobian( &
+                        first_counterevent:last_counterevent) .le. 0.d0)
+    call xmom_compare(i_fks, j_fks, &
+                      stored_event_jacobian(first_counterevent:last_counterevent), &
+                      stored_event_momenta(:, :, first_counterevent:last_counterevent), &
                       particle_masses, pass)
 !
     return
@@ -359,64 +346,48 @@ contains
 
 ! Catch the points for which there is no viable phase-space generation
 ! (still fill the shared state with some information that is needed
-! (e.g. ycm_cnt)).
+! (e.g. the counterevent rapidity)).
     if (xjac .le. 0d0) then
       xp(0, 1) = -99d0
     end if
 !
-! Fill shared FKS state
-    if (icountevts .eq. -100) then
-      ycm_ev = ycm
-      shat_ev = shat
-      sqrtshat_ev = sqrtshat
-      xbjrk_ev(1) = xbjrk(1)
-      xbjrk_ev(2) = xbjrk(2)
-      xiimax_ev = xiimax
-      xinorm_ev = xinorm
-      xi_i_fks_ev = xi_i_fks
-      xi_i_hat_ev = xi_i_hat
-      do i = 0, 3
-        p_i_fks_ev(i) = p_i_fks(i)
-      end do
-      y_ij_fks_ev = y_ij_fks
-      do i = 1, nexternal
-        do j = 0, 3
-          p(j, i) = xp(j, i)
-          event_momenta(j, i) = xp(j, i)
-        end do
-      end do
-      jac = xjac
-    elseif (icountevts .ge. 0 .and. icountevts .le. 2) then
+! Fill shared FKS state.
+    if (icountevts < soft_counterevent .or. icountevts > real_event) then
+      write (*, *) 'Invalid event index in fill_FKS_commons:', icountevts
+      stop 1
+    end if
 ! Special fix in the case the soft counter-events are not generated but
 ! the Born and real are. (This can happen if ptj>0 in the
 ! run_card). This fix is needed for set_cms_stuff to work properly.
-      if (icountevts .eq. 0) then
-        ycm = ycm_born
-      end if
-      ycm_cnt(icountevts) = ycm
-      shat_cnt(icountevts) = shat
-      sqrtshat_cnt(icountevts) = sqrtshat
-      xbjrk_cnt(1, icountevts) = xbjrk(1)
-      xbjrk_cnt(2, icountevts) = xbjrk(2)
-      xiimax_cnt(icountevts) = xiimax
-      xinorm_cnt(icountevts) = xinorm
-      xi_i_fks_cnt(icountevts) = xi_i_fks
-      do i = 0, 3
-        p_i_fks_cnt(i, icountevts) = p_i_fks(i)
+    if (icountevts .eq. soft_counterevent) ycm = ycm_born
+
+    event_ycm(icountevts) = ycm
+    event_shat(icountevts) = shat
+    event_sqrt_shat(icountevts) = sqrtshat
+    event_bjorken_x(1, icountevts) = xbjrk(1)
+    event_bjorken_x(2, icountevts) = xbjrk(2)
+    event_xi_max(icountevts) = xiimax
+    event_xi_norm(icountevts) = xinorm
+    event_xi(icountevts) = xi_i_fks
+    event_xi_hat(icountevts) = xi_i_hat
+    event_y(icountevts) = y_ij_fks
+    do i = 0, 3
+      event_fks_momentum(i, icountevts) = p_i_fks(i)
+    end do
+    do i = 1, nexternal
+      do j = 0, 3
+        stored_event_momenta(j, i, icountevts) = xp(j, i)
       end do
+    end do
+    stored_event_jacobian(icountevts) = xjac
+
+    if (icountevts .eq. real_event) then
       do i = 1, nexternal
         do j = 0, 3
-          cnt_momenta(j, i, icountevts) = xp(j, i)
+          p(j, i) = xp(j, i)
         end do
       end do
-      cnt_jacobian(icountevts) = xjac
-! The following two are obsolete, but remain part of the generated ABI:
-! so give some non-physical values
-      cnt_weight(icountevts) = -1d99
-      cnt_psweight(icountevts) = -1d99
-    else
-      write (*, *) 'Invalid counterevent index in fill_FKS_commons:', icountevts
-      stop 1
+      jac = xjac
     end if
 
     return
@@ -468,18 +439,21 @@ contains
 !
 ! set-up y_ij_fks
 !
-    if ((icountevts .eq. -100 .or. icountevts .eq. 0) .and. &
+    if ((icountevts .eq. real_event .or. &
+         icountevts .eq. soft_counterevent) .and. &
       & ((.not. softtest) .or. &
       & (softtest .and. y_ij_fks_fix .eq. -2.d0)) .and. &
       & (.not. colltest)) then
 ! importance sampling towards collinear singularity
 ! insert here further importance sampling towards y_ij_fks->1
       y_ij_fks = -2d0*(cctiny + (1 - cctiny)*x(2)**2) + 1d0
-    elseif ((icountevts .eq. -100 .or. icountevts .eq. 0) .and. &
+    elseif ((icountevts .eq. real_event .or. &
+             icountevts .eq. soft_counterevent) .and. &
       & ((softtest .and. y_ij_fks_fix .ne. -2.d0) .or. &
       & colltest)) then
       y_ij_fks = y_ij_fks_fix
-    elseif (icountevts .eq. 1 .or. icountevts .eq. 2) then
+    elseif (icountevts .eq. collinear_counterevent .or. &
+            icountevts .eq. soft_collinear_counterevent) then
       y_ij_fks = 1d0
     else
       write (*, *) 'Error #3 in genps_fks.f', icountevts
@@ -498,18 +472,20 @@ contains
 !
 ! Define xi_i_fks
 !
-    if ((icountevts .eq. -100 .or. icountevts .eq. 1) .and. &
+    if ((icountevts .eq. real_event .or. &
+         icountevts .eq. collinear_counterevent) .and. &
       & ((.not. colltest) .or. &
       & (colltest .and. xi_i_fks_fix .eq. -2.d0)) .and. &
       & (.not. softtest)) then
-      if (icountevts .eq. -100) then
+      if (icountevts .eq. real_event) then
 ! importance sampling towards soft singularity
 ! insert here further importance sampling towards xi_i_hat->0
         xi_i_hat = sstiny + (1 - sstiny)*x(1)**2
       end if
 ! in the case of counter events, xi_i_hat is an input to this function
       xi_i_fks = xi_i_hat*xiimax
-    elseif ((icountevts .eq. -100 .or. icountevts .eq. 1) .and. &
+    elseif ((icountevts .eq. real_event .or. &
+             icountevts .eq. collinear_counterevent) .and. &
       & (colltest .and. xi_i_fks_fix .ne. -2.d0) .and. &
       & (.not. softtest)) then
 ! This is to keep xi_i_hat, rather than xi_i, fixed in the tests.
@@ -518,7 +494,8 @@ contains
       else
         xi_i_fks = xi_i_fks_fix*xiimax
       end if
-    elseif ((icountevts .eq. -100 .or. icountevts .eq. 1) .and. &
+    elseif ((icountevts .eq. real_event .or. &
+             icountevts .eq. collinear_counterevent) .and. &
       & softtest) then
       if (xi_i_fks_fix .lt. 1d0) then
         xi_i_fks = xi_i_fks_fix*xiimax
@@ -527,7 +504,8 @@ contains
         pass = .false.
         return
       end if
-    elseif (icountevts .eq. 2 .or. icountevts .eq. 0) then
+    elseif (icountevts .eq. soft_collinear_counterevent .or. &
+            icountevts .eq. soft_counterevent) then
       xi_i_fks = 0d0
     else
       write (*, *) 'Error #4 in genps_fks.f', icountevts
@@ -538,13 +516,15 @@ contains
     xjac = xjac*2d0*x(1)
 
 ! Check that xii is in the allowed range
-    if (icountevts .eq. -100 .or. icountevts .eq. 1) then
+    if (icountevts .eq. real_event .or. &
+        icountevts .eq. collinear_counterevent) then
       if (xi_i_fks .gt. (1 - xmrec2/shat)) then
         xjac = -101
         pass = .false.
         return
       end if
-    elseif (icountevts .eq. 0 .or. icountevts .eq. 2) then
+    elseif (icountevts .eq. soft_counterevent .or. &
+            icountevts .eq. soft_collinear_counterevent) then
 ! May insert here a check on whether xii<xicut, rather than doing it
 ! in the cross sections
       continue
@@ -641,8 +621,9 @@ contains
     end do
 !
 ! Collinear limit of <ij>/[ij]. See innerp3.m.
-    if ((icountevts .eq. -100 .or. &
-      & (icountevts .eq. 1 .and. xij_aor .eq. 0))) then
+    if ((icountevts .eq. real_event .or. &
+      & (icountevts .eq. collinear_counterevent .and. &
+         xij_aor .eq. 0))) then
       resAoR0 = -exp(2*ximag*(phi_mother_fks + phi_i_fks))
 ! The term O(srt(1-y)) is formally correct but may be numerically large
 ! Set it to zero
@@ -658,7 +639,7 @@ contains
     veckbarn = rho(p_born_imother)
 !
 ! Store event-kinematics quantities.
-    if (icountevts .eq. -100) then
+    if (icountevts .eq. real_event) then
       veckn_ev = veckn
       veckbarn_ev = veckbarn
       xp0jfks = xp(0, j_fks)
@@ -702,7 +683,8 @@ contains
     parameter(ctiny=5d-7)
 !
     if (colltest .or. &
-      & icountevts .eq. 1 .or. icountevts .eq. 2) then
+      & icountevts .eq. collinear_counterevent .or. &
+      & icountevts .eq. soft_collinear_counterevent) then
       write (*, *) 'Error #5 in genps_fks.f:'
       write (*, *) &
         & 'This parametrization cannot be used in FS coll limits'
@@ -723,14 +705,16 @@ contains
 !
 ! set-up y_ij_fks
 !
-    if ((icountevts .eq. -100 .or. icountevts .eq. 0) .and. &
+    if ((icountevts .eq. real_event .or. &
+         icountevts .eq. soft_counterevent) .and. &
       & ((.not. softtest) .or. &
       & (softtest .and. y_ij_fks_fix .eq. -2.d0)) .and. &
       & (.not. colltest)) then
 ! importance sampling towards collinear singularity
 ! insert here further importance sampling towards y_ij_fks->1
       y_ij_fks = -2d0*(cctiny + (1 - cctiny)*x(2)**2) + 1d0
-    elseif ((icountevts .eq. -100 .or. icountevts .eq. 0) .and. &
+    elseif ((icountevts .eq. real_event .or. &
+             icountevts .eq. soft_counterevent) .and. &
       & ((softtest .and. y_ij_fks_fix .ne. -2.d0) .or. &
       & colltest)) then
       y_ij_fks = y_ij_fks_fix
@@ -778,7 +762,7 @@ contains
 !
 ! Generate xi_i_fks
 !
-    if (icountevts .eq. -100 .and. &
+    if (icountevts .eq. real_event .and. &
       & ((.not. colltest) .or. &
       & (colltest .and. xi_i_fks_fix .eq. -2.d0)) .and. &
       & (.not. softtest)) then
@@ -804,7 +788,7 @@ contains
         xi_i_fks = -xinorm*xi_i_hat + 2*xiimax
         isolsign = -1
       end if
-    elseif (icountevts .eq. -100 .and. &
+    elseif (icountevts .eq. real_event .and. &
       & (colltest .and. xi_i_fks_fix .ne. -2.d0) .and. &
       & (.not. softtest)) then
       massive_xjac_cache = 1.d0
@@ -814,7 +798,7 @@ contains
         xi_i_fks = xi_i_fks_fix*xiimax
       end if
       isolsign = 1
-    elseif ((icountevts .eq. -100) .and. &
+    elseif ((icountevts .eq. real_event) .and. &
       & softtest) then
       massive_xjac_cache = 1.d0
       if (xi_i_fks_fix .lt. xiimax) then
@@ -825,7 +809,7 @@ contains
         return
       end if
       isolsign = 1
-    elseif (icountevts .eq. 0) then
+    elseif (icountevts .eq. soft_counterevent) then
 ! Keep the event Jacobian cache here for the matching counterevent.
 ! used for the (real-emission) event
       xi_i_fks = 0d0
@@ -960,7 +944,7 @@ contains
     veckbarn = rho(p_born_imother)
 !
 ! Store event-kinematics quantities.
-    if (icountevts .eq. -100) then
+    if (icountevts .eq. real_event) then
       veckn_ev = veckn
       veckbarn_ev = veckbarn
       xp0jfks = xp(0, j_fks)
@@ -1077,7 +1061,8 @@ contains
     else
       cctiny = ctiny
     end if
-    if ((icountevts .eq. -100 .or. icountevts .eq. 0) .and. &
+    if ((icountevts .eq. real_event .or. &
+         icountevts .eq. soft_counterevent) .and. &
       & ((.not. softtest) .or. &
       & (softtest .and. y_ij_fks_fix .eq. -2.d0)) .and. &
       & (.not. colltest)) then
@@ -1085,7 +1070,8 @@ contains
 ! insert here further importance sampling towards y_ij_fks->1
       y_ij_fks = y_ij_fks_upp - &
         & (y_ij_fks_upp - y_ij_fks_low)*(cctiny + (1 - cctiny)*x(2)**2)
-    elseif ((icountevts .eq. -100 .or. icountevts .eq. 0) .and. &
+    elseif ((icountevts .eq. real_event .or. &
+             icountevts .eq. soft_counterevent) .and. &
       & ((softtest .and. y_ij_fks_fix .ne. -2.d0) .or. &
       & colltest)) then
       y_ij_fks = y_ij_fks_fix
@@ -1095,7 +1081,8 @@ contains
         pass = .false.
         return
       end if
-    elseif (icountevts .eq. 2 .or. icountevts .eq. 1) then
+    elseif (icountevts .eq. soft_collinear_counterevent .or. &
+            icountevts .eq. collinear_counterevent) then
       y_ij_fks = 1d0
 ! Check that y_ij_fks is in the allowed range. If not, counter events
 ! cannot be generated
@@ -1198,7 +1185,8 @@ contains
     end if
 
     xinorm = xiimax - xiimin
-    if (icountevts .ge. 1 .and. &
+    if (icountevts .ge. collinear_counterevent .and. &
+        icountevts .le. last_counterevent .and. &
       & ((idir .eq. 1 .and. &
       & abs(ximaxtmp - (1 - xbjrk_born(1))) .gt. 1.d-5) .or. &
       & (idir .eq. -1 .and. &
@@ -1210,17 +1198,19 @@ contains
 !
 ! Define xi_i_fks
 !
-    if ((icountevts .eq. -100 .or. icountevts .eq. 1) .and. &
+    if ((icountevts .eq. real_event .or. &
+         icountevts .eq. collinear_counterevent) .and. &
       & ((.not. colltest) .or. &
       & (colltest .and. xi_i_fks_fix .eq. -2.d0)) .and. &
       & (.not. softtest)) then
-      if (icountevts .eq. -100) then
+      if (icountevts .eq. real_event) then
 ! importance sampling towards soft singularity
 ! insert here further importance sampling towards xi_i_hat->0
         xi_i_hat = sstiny + (1 - sstiny)*x(1)**2
       end if
       xi_i_fks = xiimin + (xiimax - xiimin)*xi_i_hat
-    elseif ((icountevts .eq. -100 .or. icountevts .eq. 1) .and. &
+    elseif ((icountevts .eq. real_event .or. &
+             icountevts .eq. collinear_counterevent) .and. &
       & (colltest .and. xi_i_fks_fix .ne. -2.d0) .and. &
       & (.not. softtest)) then
       if (xi_i_fks_fix .lt. xiimax) then
@@ -1228,7 +1218,8 @@ contains
       else
         xi_i_fks = xi_i_fks_fix*xiimax
       end if
-    elseif ((icountevts .eq. -100 .or. icountevts .eq. 1) .and. &
+    elseif ((icountevts .eq. real_event .or. &
+             icountevts .eq. collinear_counterevent) .and. &
       & softtest) then
       if (xi_i_fks_fix .lt. xiimax) then
         xi_i_fks = xi_i_fks_fix
@@ -1237,7 +1228,8 @@ contains
         pass = .false.
         return
       end if
-    elseif (icountevts .eq. 2 .or. icountevts .eq. 0) then
+    elseif (icountevts .eq. soft_collinear_counterevent .or. &
+            icountevts .eq. soft_counterevent) then
       xi_i_fks = 0d0
 ! Check that xi_i_fks is in the allowed range. If not, counter events
 ! cannot be generated
@@ -1259,7 +1251,7 @@ contains
 !
     omega = sqrt((2 - xi_i_fks*(1 + yijdir))/ &
       & (2 - xi_i_fks*(1 - yijdir)))
-    if (icountevts .ne. 0) then
+    if (icountevts .ne. soft_counterevent) then
       tau = tau_born/(1 - xi_i_fks)
       ycm = ycm_born - log(omega)
       shat = tau*stot
@@ -1323,8 +1315,9 @@ contains
     end do
 !
 ! Collinear limit of <ij>/[ij]. See innerpin.m.
-    if (icountevts .eq. -100 .or. &
-      & (icountevts .eq. 1 .and. xij_aor .eq. 0)) then
+    if (icountevts .eq. real_event .or. &
+      & (icountevts .eq. collinear_counterevent .and. &
+         xij_aor .eq. 0)) then
       resAoR0 = -exp(2*idir*ximag*phi_i_fks)
       xij_aor = resAoR0
     end if
@@ -1405,23 +1398,19 @@ contains
   subroutine validate_bound_genps_state()
     implicit none
 
-    if (size(cnt_momenta, 1) /= 4 .or. &
-        size(cnt_momenta, 2) /= nexternal .or. &
-        size(cnt_momenta, 3) /= 3) then
-      call fail_genps_state('counterevent momenta have inconsistent bounds')
+    if (size(stored_event_momenta, 1) /= 4 .or. &
+        size(stored_event_momenta, 2) /= nexternal .or. &
+        size(stored_event_momenta, 3) /= real_event + 1) then
+      call fail_genps_state('event momenta have inconsistent bounds')
     end if
-    if (size(cnt_weight) /= 3 .or. size(cnt_psweight) /= 3 .or. &
-        size(cnt_jacobian) /= 3) then
-      call fail_genps_state('counterevent weights have inconsistent bounds')
+    if (size(stored_event_jacobian) /= real_event + 1) then
+      call fail_genps_state('event Jacobians have inconsistent bounds')
     end if
     if (size(born_lab_momenta, 1) /= 4 .or. &
         size(born_lab_momenta, 2) /= nexternal - 1 .or. &
         any(shape(born_coll_momenta) /= shape(born_lab_momenta)) .or. &
         any(shape(born_norad_momenta) /= shape(born_lab_momenta))) then
       call fail_genps_state('Born radiation momenta have inconsistent bounds')
-    end if
-    if (size(event_momenta, 1) /= 4 .or. size(event_momenta, 2) /= nexternal) then
-      call fail_genps_state('event momenta have inconsistent bounds')
     end if
     if (size(particle_masses) /= nexternal) then
       call fail_genps_state('particle masses have inconsistent bounds')
@@ -1434,14 +1423,11 @@ contains
     if (.not. genps_state_initialized) then
       call fail_genps_state('module state has not been initialized')
     end if
-    if (.not. associated(cnt_momenta) .or. &
-        .not. associated(cnt_weight) .or. &
-        .not. associated(cnt_psweight) .or. &
-        .not. associated(cnt_jacobian) .or. &
+    if (.not. associated(stored_event_momenta) .or. &
+        .not. associated(stored_event_jacobian) .or. &
         .not. associated(born_lab_momenta) .or. &
         .not. associated(born_coll_momenta) .or. &
         .not. associated(born_norad_momenta) .or. &
-        .not. associated(event_momenta) .or. &
         .not. associated(particle_masses)) then
       call fail_genps_state('module state is incomplete')
     end if

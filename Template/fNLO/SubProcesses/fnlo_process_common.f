@@ -20,6 +20,17 @@ c Generated compile-time dimensions and split-order storage.
       integer fnlo_maxchannels
       parameter (fnlo_maxchannels=20)
 
+c Event slots used by real-emission and FKS subtraction kinematics.
+      integer soft_counterevent,collinear_counterevent
+      integer soft_collinear_counterevent,real_event
+      integer first_counterevent,last_counterevent
+      integer skipped_counterevents
+      parameter (soft_counterevent=0,collinear_counterevent=1)
+      parameter (soft_collinear_counterevent=2,real_event=3)
+      parameter (first_counterevent=soft_counterevent)
+      parameter (last_counterevent=soft_collinear_counterevent)
+      parameter (skipped_counterevents=5)
+
 c Selected subprocess and generated process records.
       integer nfksprocess
       common /c_nfksprocess/nfksprocess
@@ -115,47 +126,32 @@ c Generated phase-space configurations.
       common /to_mass/particle_masses
       common /to_phase_space_s_channel/schannel_masses
 
-c Event, Born, and counterevent momenta.
+c Born and event momenta.
       double precision p_born(0:3,nexternal-1)
       double precision p_born_l(0:3,nexternal-1)
       double precision p_born_coll(0:3,nexternal-1)
       double precision p_born_norad(0:3,nexternal-1)
-      double precision p_ev(0:3,nexternal)
       common /pborn/p_born
       common /pborn_l/p_born_l
       common /pborn_coll/p_born_coll
       common /pborn_norad/p_born_norad
-      common /pev/p_ev
 
-      double precision p1_cnt(0:3,nexternal,0:2)
-      double precision wgt_cnt(0:2),pswgt_cnt(0:2),jac_cnt(0:2)
-      common /counterevnts/p1_cnt,wgt_cnt,pswgt_cnt,jac_cnt
-
-      double precision xi_i_fks_ev,y_ij_fks_ev
-      double precision p_i_fks_ev(0:3),p_i_fks_cnt(0:3,0:2)
-      common /fksvariables/xi_i_fks_ev,y_ij_fks_ev,
-     $     p_i_fks_ev,p_i_fks_cnt
-
-      double precision xi_i_fks_cnt(0:2)
-      double precision xi_i_hat_ev
-      double precision xiimax_ev,xiimax_cnt(0:2)
-      double precision xinorm_ev,xinorm_cnt(0:2)
-      common /cxiifkscnt/xi_i_fks_cnt
-      common /cxi_i_hat/xi_i_hat_ev
-      common /cxiimaxev/xiimax_ev
-      common /cxiimaxcnt/xiimax_cnt
-      common /cxinormev/xinorm_ev
-      common /cxinormcnt/xinorm_cnt
-
-      double precision xbjrk_ev(2),xbjrk_cnt(2,0:2)
-      double precision sqrtshat_ev,shat_ev
-      double precision sqrtshat_cnt(0:2),shat_cnt(0:2)
-      double precision ycm_ev,ycm_cnt(0:2)
-      common /cbjorkenx/xbjrk_ev,xbjrk_cnt
-      common /parton_cms_ev/sqrtshat_ev,shat_ev
-      common /parton_cms_cnt/sqrtshat_cnt,shat_cnt
-      common /cbjrk12_ev/ycm_ev
-      common /cbjrk12_cnt/ycm_cnt
+c The real event and its three FKS counterevents share one layout.
+      double precision event_momenta(0:3,nexternal,
+     $     soft_counterevent:real_event)
+      double precision event_jacobian(soft_counterevent:real_event)
+      double precision event_xi(soft_counterevent:real_event)
+      double precision event_y(soft_counterevent:real_event)
+      double precision event_xi_hat(soft_counterevent:real_event)
+      double precision event_fks_momentum(0:3,
+     $     soft_counterevent:real_event)
+      double precision event_xi_max(soft_counterevent:real_event)
+      double precision event_xi_norm(soft_counterevent:real_event)
+      double precision event_bjorken_x(2,
+     $     soft_counterevent:real_event)
+      double precision event_sqrt_shat(soft_counterevent:real_event)
+      double precision event_shat(soft_counterevent:real_event)
+      double precision event_ycm(soft_counterevent:real_event)
 
       double precision ybst_til_tolab,ybst_til_tocm,sqrtshat,shat
       common /parton_cms_stuff/ybst_til_tolab,ybst_til_tocm,
@@ -377,8 +373,8 @@ c PineAPPL interface storage.
 
 c Pointer-binding bridges require TARGET on their actual arguments.
       target amp_split,amp_split_cnt,idup_d
-      target qes2,p_born,p_born_coll,p_born_norad,p_ev
-      target p1_cnt,wgt_cnt,pswgt_cnt,jac_cnt
+      target qes2,p_born,p_born_coll,p_born_norad
+      target event_momenta,event_jacobian
       target idup,mothup,icolup,niprocs,is_aorg,amp2,jamp2
       target fks_j_from_i,particle_type,pdg_type,split_type,ans_cnt
       target split_type_used,subproc_pd,subproc_iproc

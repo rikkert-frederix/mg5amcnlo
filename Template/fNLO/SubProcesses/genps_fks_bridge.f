@@ -8,12 +8,11 @@ c private, process-sized caches.
       use fnlo_process_common, only: config_mass,config_width,
      $     config_forest,config_tree,config_index,born_tree,born_ns,
      $     born_nt,born_onebody,born_nbranch,born_one_body,
-     $     cnt_momenta=>p1_cnt,cnt_weight=>wgt_cnt,
-     $     cnt_psweight=>pswgt_cnt,cnt_jacobian=>jac_cnt,
+     $     event_momenta,event_jacobian,
      $     born_momenta=>p_born,born_lab_momenta=>p_born_l,
      $     born_coll_momenta=>p_born_coll,
      $     born_norad_momenta=>p_born_norad,
-     $     event_momenta=>p_ev,cbw_mass,cbw_width,cbw_level_max,
+     $     cbw_mass,cbw_width,cbw_level_max,
      $     cbw,cbw_level,particle_masses,schannel_masses
       implicit none
       logical initialized
@@ -26,9 +25,8 @@ c private, process-sized caches.
      $     born_momenta,born_lab_momenta,cbw_mass,cbw_width,
      $     cbw_level_max,cbw,cbw_level,particle_masses,
      $     schannel_masses)
-      call initialize_genps_fks_state(cnt_momenta,cnt_weight,
-     $     cnt_psweight,cnt_jacobian,born_lab_momenta,
-     $     born_coll_momenta,born_norad_momenta,event_momenta,
+      call initialize_genps_fks_state(event_momenta,event_jacobian,
+     $     born_lab_momenta,born_coll_momenta,born_norad_momenta,
      $     particle_masses)
       initialized=.true.
       return

@@ -13,6 +13,7 @@ module symmetry_fks_module
   use run_printout_module, only: write_run_summary
   use ajob_file_module, only: open_bash_file, close_bash_file
   use fks_singular_module, only: fill_configurations_common, setfksfactor
+  use fnlo_process_common, only: real_event
   implicit none
   private
 
@@ -171,7 +172,7 @@ contains
     new_point = .true.
     wgt = 1d0
     call generate_momenta(ndim, iconfig, wgt, x, p)
-    call set_cms_stuff(-100)
+    call set_cms_stuff(real_event)
     do while ((.not. passcuts(p, rwgt) .or. wgt < 0d0 .or. &
          p(0, 1) <= 0d0 .or. p_born(0, 1) <= 0d0) .and. &
          ntry < 10000)
@@ -181,7 +182,7 @@ contains
       new_point = .true.
       wgt = 1d0
       call generate_momenta(ndim, iconfig, wgt, x, p)
-      call set_cms_stuff(-100)
+      call set_cms_stuff(real_event)
       ntry = ntry + 1
     end do
     write (*,*) 'ntry', ntry

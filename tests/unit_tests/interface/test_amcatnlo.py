@@ -276,8 +276,23 @@ class TestMadEventCmd(unittest.TestCase):
         self.assertNotIn('subroutine generate_tau', genps_fks)
         self.assertNotIn('fks_as_is', genps_fks)
         self.assertNotIn('-2:2', genps_fks)
+        self.assertIn('counterevent_loop: do', genps_fks)
+        self.assertNotIn('goto 111', genps_fks)
+        self.assertNotIn('111 continue', genps_fks)
         self.assertNotIn('use fks_singular_module', genps_born)
         self.assertNotIn('use fks_singular_module', genps_fks)
+
+        with open(pjoin(subprocess_dir, 'fnlo_process_common.f')) as stream:
+            process_common = stream.read().lower()
+        self.assertIn('real_event=3', process_common)
+        self.assertIn('event_momenta(0:3,nexternal,', process_common)
+        self.assertIn('event_jacobian(soft_counterevent:real_event)',
+                      process_common)
+        for split_event_state in [
+                'p_ev', 'p1_cnt', 'wgt_cnt', 'pswgt_cnt', 'jac_cnt',
+                'xi_i_fks_ev', 'xi_i_fks_cnt', 'p_i_fks_ev',
+                'p_i_fks_cnt']:
+            self.assertNotIn(split_event_state, process_common)
 
         for counterevent_source in [
                 'driver_mintFO.f90', 'fks_Sij.f90',

@@ -27,11 +27,12 @@ module fks_singular_module
   use madfks_plot_module, only: initplot_impl, outfun_impl
   use fnlo_process_common, only: nfksprocess, i_fks, j_fks, &
                                  ybst_til_tolab, ybst_til_tocm, &
-                                 sqrtshat, shat, xi_i_fks_ev, &
-                                 y_ij_fks_ev, p_i_fks_ev, p_i_fks_cnt, &
-                                 xi_i_fks_cnt, xi_i_hat_ev, &
-                                 xiimax_ev, xiimax_cnt, xinorm_ev, &
-                                 xinorm_cnt, f_b, f_nb, f_r, f_s, f_c, &
+                                 sqrtshat, shat, soft_counterevent, &
+                                 collinear_counterevent, &
+                                 soft_collinear_counterevent, real_event, &
+                                 event_xi, event_y, event_xi_hat, &
+                                 event_fks_momentum, event_xi_max, &
+                                 event_xi_norm, f_b, f_nb, f_r, f_s, f_c, &
                                  f_dc, f_sc, f_dsc, f_pdfsch_d, &
                                  f_pdfsch_p, f_pdfsch_l, xiscut_used, &
                                  xibsvcut_used, delta_used, xicut_used, &
@@ -49,10 +50,8 @@ module fks_singular_module
                                  need_color_links, xij_aor, &
                                  i_type, j_type, m_type, &
                                  iextra_cnt, isplitorder_born, &
-                                 isplitorder_cnt, iden_comp, sqrtshat_ev, &
-                                 shat_ev, sqrtshat_cnt, shat_cnt, &
-                                 ycm_ev, ycm_cnt, xbjrk_ev, &
-                                 xbjrk_cnt, i_momcmp_count, xratmax, c, &
+                                 isplitorder_cnt, iden_comp, &
+                                 i_momcmp_count, xratmax, c, &
                                  gamma, gammap, beta0, abrv, &
                                  multi_channel, nbody
   implicit none
@@ -74,10 +73,8 @@ module fks_singular_module
   double precision, pointer :: p_born(:, :) => null()
   double precision, pointer :: p_born_coll(:, :) => null()
   double precision, pointer :: p_born_norad(:, :) => null()
-  double precision, pointer :: p_ev(:, :) => null()
-  double precision, pointer :: p1_cnt(:, :, :) => null()
-  double precision, pointer :: wgt_cnt(:) => null(), pswgt_cnt(:) => null()
-  double precision, pointer :: jac_cnt(:) => null()
+  double precision, pointer :: stored_event_momenta(:, :, :) => null()
+  double precision, pointer :: stored_event_jacobian(:) => null()
   integer, pointer :: idup(:, :) => null(), mothup(:, :, :) => null()
   integer, pointer :: icolup(:, :, :) => null(), niprocs => null()
   integer, pointer :: idup_d(:, :, :) => null()
@@ -182,7 +179,9 @@ contains
                                    a_h_damp, one_h_damp, useenergy, usebeta)
     call set_fks_sij_partition_state(fks_j_from_i, particle_type, is_aorg, &
                                      i_fks, j_fks, ybst_til_tocm, sqrtshat, shat, &
-                                     p_i_fks_cnt, external_masses)
+                                     event_fks_momentum(:, &
+                                       soft_counterevent:soft_collinear_counterevent), &
+                                     external_masses)
     evaluate_fks_sij = fks_sij_impl(p, ii_fks, jj_fks, xi_i_fks, y_ij_fks)
   end function evaluate_fks_sij
 
@@ -204,19 +203,16 @@ contains
   end subroutine initialize_fks_model_state
 
   subroutine initialize_fks_phase_state(p_born_in, p_born_coll_in, &
-                                        p_born_norad_in, p_ev_in, p1_cnt_in, wgt_cnt_in, pswgt_cnt_in, &
-                                        jac_cnt_in, idup_in, mothup_in, icolup_in, niprocs_in, &
+                                        p_born_norad_in, event_momenta_in, &
+                                        event_jacobian_in, idup_in, mothup_in, icolup_in, niprocs_in, &
                                         is_aorg_in, amp2_in, jamp2_in, subproc_pd_in, subproc_iproc_in, flavour_map_in, &
                                         iproc_save_in, eto_in, etoi_in, maxproc_found_in)
     implicit none
     double precision, target, intent(inout) :: p_born_in(0:, 1:)
     double precision, target, intent(inout) :: p_born_coll_in(0:, 1:)
     double precision, target, intent(inout) :: p_born_norad_in(0:, 1:)
-    double precision, target, intent(inout) :: p_ev_in(0:, 1:)
-    double precision, target, intent(inout) :: p1_cnt_in(0:, 1:, 0:)
-    double precision, target, intent(inout) :: wgt_cnt_in(0:)
-    double precision, target, intent(inout) :: pswgt_cnt_in(0:)
-    double precision, target, intent(inout) :: jac_cnt_in(0:)
+    double precision, target, intent(inout) :: event_momenta_in(0:, 1:, 0:)
+    double precision, target, intent(inout) :: event_jacobian_in(0:)
     integer, target, intent(inout) :: idup_in(1:, 1:), mothup_in(1:, 1:, 1:)
     integer, target, intent(inout) :: icolup_in(1:, 1:, 1:), niprocs_in
     logical, target, intent(inout) :: is_aorg_in(1:)
@@ -227,22 +223,17 @@ contains
     integer, target, intent(inout) :: eto_in(1:, 1:), etoi_in(1:, 1:)
     integer, target, intent(inout) :: maxproc_found_in
     call validate_process_dimensions()
-    if (size(p1_cnt_in, 1) /= 4 .or. &
-        size(p1_cnt_in, 2) /= nexternal .or. &
-        size(p1_cnt_in, 3) /= 3 .or. &
-        size(wgt_cnt_in) /= 3 .or. &
-        size(pswgt_cnt_in) /= 3 .or. &
-        size(jac_cnt_in) /= 3) then
-      call fail_fks_singular_state('invalid counterevent storage shape')
+    if (size(event_momenta_in, 1) /= 4 .or. &
+        size(event_momenta_in, 2) /= nexternal .or. &
+        size(event_momenta_in, 3) /= real_event + 1 .or. &
+        size(event_jacobian_in) /= real_event + 1) then
+      call fail_fks_singular_state('invalid event storage shape')
     end if
     p_born => p_born_in
     p_born_coll => p_born_coll_in
     p_born_norad => p_born_norad_in
-    p_ev => p_ev_in
-    p1_cnt => p1_cnt_in
-    wgt_cnt => wgt_cnt_in
-    pswgt_cnt => pswgt_cnt_in
-    jac_cnt => jac_cnt_in
+    stored_event_momenta => event_momenta_in
+    stored_event_jacobian => event_jacobian_in
     idup => idup_in
     mothup => mothup_in
     icolup => icolup_in
@@ -426,7 +417,9 @@ contains
         .not. associated(amp_split_cnt)) then
       call fail_fks_singular_state('model/amplitude state is not bound')
     end if
-    if (.not. associated(p_born) .or. .not. associated(p1_cnt) .or. &
+    if (.not. associated(p_born) .or. &
+        .not. associated(stored_event_momenta) .or. &
+        .not. associated(stored_event_jacobian) .or. &
         .not. associated(config_mass) .or. .not. associated(fks_j_from_i) .or. &
         .not. associated(is_aorg)) then
       call fail_fks_singular_state('phase-space state is not bound')
@@ -464,7 +457,8 @@ contains
     double precision wgt1
     call cpu_time(tBefore)
     if (f_b .eq. 0d0) return
-    if (xi_i_hat_ev*xiimax_cnt(0) .gt. xiBSVcut_used) return
+    if (event_xi_hat(real_event)*event_xi_max(soft_counterevent) .gt. &
+        xiBSVcut_used) return
     call sborn(p_born, wgt_c)
     do iamp = 1, amp_split_size
       if (amp_split(iamp) .eq. 0d0) cycle
@@ -494,8 +488,10 @@ contains
     double precision wgt1, wgt2, wgt3, bsv_wgt, virt_wgt, born_wgt, g22, wgt4
     call cpu_time(tBefore)
     if (f_nb .eq. 0d0) return
-    if (xi_i_hat_ev*xiimax_cnt(0) .gt. xiBSVcut_used) return
-    call bornsoftvirtual(p1_cnt(:, :, 0), bsv_wgt, virt_wgt, born_wgt)
+    if (event_xi_hat(real_event)*event_xi_max(soft_counterevent) .gt. &
+        xiBSVcut_used) return
+    call bornsoftvirtual(stored_event_momenta(:, :, soft_counterevent), &
+                         bsv_wgt, virt_wgt, born_wgt)
     do iamp = 1, amp_split_size
       if (amp_split_wgtnstmp(iamp) .eq. 0d0 .and. &
           amp_split_wgtwnstmpmur(iamp) .eq. 0d0 .and. &
@@ -547,9 +543,10 @@ contains
     double precision s_ev, p(0:3, nexternal), wgt1, fx_ev
     call cpu_time(tBefore)
     if (f_r .eq. 0d0) return
-    s_ev = evaluate_fks_sij(p, i_fks, j_fks, xi_i_fks_ev, y_ij_fks_ev)
+    s_ev = evaluate_fks_sij(p, i_fks, j_fks, &
+                            event_xi(real_event), event_y(real_event))
     if (s_ev .le. 0.d0) return
-    call sreal(p, xi_i_fks_ev, y_ij_fks_ev, fx_ev)
+    call sreal(p, event_xi(real_event), event_y(real_event), fx_ev)
     do iamp = 1, amp_split_size
       if (amp_split(iamp) .eq. 0d0) cycle
       call amp_split_pos_to_orders(iamp, orders)
@@ -576,10 +573,14 @@ contains
     parameter(zero=0d0)
     call cpu_time(tBefore)
     if (f_s .eq. 0d0) return
-    if (xi_i_hat_ev*xiimax_cnt(0) .gt. xiScut_used) return
-    s_s = evaluate_fks_sij(p1_cnt(:, :, 0), i_fks, j_fks, zero, y_ij_fks_ev)
+    if (event_xi_hat(real_event)*event_xi_max(soft_counterevent) .gt. &
+        xiScut_used) return
+    s_s = evaluate_fks_sij( &
+            stored_event_momenta(:, :, soft_counterevent), &
+            i_fks, j_fks, zero, event_y(real_event))
     if (s_s .le. 0d0) return
-    call sreal(p1_cnt(:, :, 0), 0d0, y_ij_fks_ev, fx_s)
+    call sreal(stored_event_momenta(:, :, soft_counterevent), &
+               0d0, event_y(real_event), fx_s)
 
     do iamp = 1, amp_split_size
       if (amp_split(iamp) .eq. 0d0) cycle
@@ -589,7 +590,7 @@ contains
       amp_pos = iamp
       g22 = g**(QCD_power)
       wgt1 = 0d0
-      if (xi_i_fks_ev .le. xiScut_used) then
+      if (event_xi(real_event) .le. xiScut_used) then
         wgt1 = -amp_split(iamp)*s_s*f_s/g22
       end if
       if (wgt1 .ne. 0d0) call add_wgt(4, orders, wgt1, 0d0, 0d0)
@@ -615,13 +616,18 @@ contains
     call cpu_time(tBefore)
     pmass = external_masses
     if (f_c .eq. 0d0 .and. f_dc .eq. 0d0) return
-    if (y_ij_fks_ev .le. 1d0 - deltaS .or. pmass(j_fks) .ne. 0.d0) return
-    s_c = evaluate_fks_sij(p1_cnt(:, :, 1), i_fks, j_fks, xi_i_fks_cnt(1), one)
+    if (event_y(real_event) .le. 1d0 - deltaS .or. &
+        pmass(j_fks) .ne. 0.d0) return
+    s_c = evaluate_fks_sij( &
+            stored_event_momenta(:, :, collinear_counterevent), &
+            i_fks, j_fks, event_xi(collinear_counterevent), one)
     if (s_c .le. 0d0) return
 ! sreal_deg should be called **BEFORE** sreal
 ! in order not to overwrtie the amp_split array
-    call sreal_deg(p1_cnt(:, :, 1), xi_i_fks_cnt(1), deg_xi_c, deg_lxi_c)
-    call sreal(p1_cnt(:, :, 1), xi_i_fks_cnt(1), one, fx_c)
+    call sreal_deg(stored_event_momenta(:, :, collinear_counterevent), &
+                   event_xi(collinear_counterevent), deg_xi_c, deg_lxi_c)
+    call sreal(stored_event_momenta(:, :, collinear_counterevent), &
+               event_xi(collinear_counterevent), one, fx_c)
 
     do iamp = 1, amp_split_size
       if (amp_split(iamp) .eq. 0d0 .and. &
@@ -640,7 +646,8 @@ contains
       wgt1 = wgt1 + (amp_split_wgtdegrem_xi(iamp) + &
                      amp_split_wgtpsch_p(iamp) + &
                      (amp_split_wgtdegrem_lxi(iamp) + &
-                      amp_split_wgtpsch_l(iamp))*log(xi_i_fks_cnt(1)))*f_dc/g22
+                      amp_split_wgtpsch_l(iamp))* &
+                     log(event_xi(collinear_counterevent)))*f_dc/g22
       wgt3 = amp_split_wgtdegrem_muF(iamp)*f_dc/g22
       if (wgt1 .ne. 0d0 .or. wgt3 .ne. 0d0) call add_wgt(5, orders, wgt1, 0d0, wgt3)
     end do
@@ -666,13 +673,20 @@ contains
     pmass = external_masses
     call cpu_time(tBefore)
     if (f_sc .eq. 0d0 .and. f_dsc(1) .eq. 0d0 .and. f_dsc(2) .eq. 0d0 .and. f_dsc(3) .eq. 0d0 .and. f_dsc(4) .eq. 0d0) return
-    if (xi_i_hat_ev*xiimax_cnt(1) .ge. xiScut_used .or. y_ij_fks_ev .le. 1d0 - deltaS .or. pmass(j_fks) .ne. 0.d0) return
-    s_sc = evaluate_fks_sij(p1_cnt(:, :, 2), i_fks, j_fks, zero, one)
+    if (event_xi_hat(real_event)*event_xi_max(collinear_counterevent) &
+        .ge. xiScut_used .or. event_y(real_event) .le. 1d0 - deltaS &
+        .or. pmass(j_fks) .ne. 0.d0) return
+    s_sc = evaluate_fks_sij( &
+             stored_event_momenta(:, :, soft_collinear_counterevent), &
+             i_fks, j_fks, zero, one)
     if (s_sc .le. 0d0) return
 ! sreal_deg should be called **BEFORE** sreal
 ! in order not to overwrtie the amp_split array
-    call sreal_deg(p1_cnt(:, :, 2), zero, deg_xi_sc, deg_lxi_sc)
-    call sreal(p1_cnt(:, :, 2), zero, one, fx_sc)
+    call sreal_deg( &
+      stored_event_momenta(:, :, soft_collinear_counterevent), &
+      zero, deg_xi_sc, deg_lxi_sc)
+    call sreal(stored_event_momenta(:, :, soft_collinear_counterevent), &
+               zero, one, fx_sc)
 
     do iamp = 1, amp_split_size
       if (amp_split(iamp) .eq. 0d0 .and. &
@@ -688,12 +702,12 @@ contains
       g22 = g**(QCD_power)
       wgt1 = 0d0
       wgt3 = 0d0
-      if (xi_i_fks_cnt(1) .lt. xiScut_used) then
+      if (event_xi(collinear_counterevent) .lt. xiScut_used) then
         wgt1 = amp_split(iamp)*s_sc*f_sc/g22
         wgt1 = wgt1 + ( &
                -(amp_split_wgtdegrem_xi(iamp) + amp_split_wgtpsch_p(iamp) + &
                  (amp_split_wgtdegrem_lxi(iamp) + amp_split_wgtpsch_l(iamp))* &
-                 log(xi_i_fks_cnt(1)))*f_dsc(1) &
+                 log(event_xi(collinear_counterevent)))*f_dsc(1) &
                - (amp_split_wgtdegrem_xi(iamp)*f_dsc(2) + &
                   amp_split_wgtdegrem_lxi(iamp)*f_dsc(3)) &
                + amp_split_wgtpsch_d(iamp)*f_pdfsch_d &
@@ -823,9 +837,12 @@ contains
       if (fixed_order) call initplot_impl()
       firsttime = .false.
     end if
-    call set_cms_stuff(0)
+    call set_cms_stuff(soft_counterevent)
 ! f_* multiplication factors for Born and nbody
-    f_b = jac_cnt(0)*xinorm_ev/(min(xiimax_ev, xiBSVcut_used)*shat/(16*pi**2))*fkssymmetryfactorBorn*vegas_wgt
+    f_b = stored_event_jacobian(soft_counterevent)* &
+          event_xi_norm(real_event)/ &
+          (min(event_xi_max(real_event), xiBSVcut_used)* &
+           shat/(16*pi**2))*fkssymmetryfactorBorn*vegas_wgt
     f_nb = f_b
     call cpu_time(tAfter)
     tf_nb = tf_nb + (tAfter - tBefore)
@@ -885,7 +902,7 @@ contains
         pas(0:3, 1:nexternal - 1) = p_born_used(0:3, 1:nexternal - 1)
         call set_alphas(pas)
         call sborn(p_born_used, wgt_c)
-        call set_alphas(p_ev)
+        call set_alphas(stored_event_momenta(:, :, real_event))
         calculatedBorn = .false.
       elseif (p_born_used(0, 1) .lt. 0d0) then
         if (enhance .ne. 0d0) then
@@ -964,44 +981,95 @@ contains
     call cpu_time(tBefore)
 
 ! f_* multiplication factors for real-emission, soft counter, ... etc.
-    prefact = xinorm_ev/xi_i_fks_ev/(1 - y_ij_fks_ev)
+    prefact = event_xi_norm(real_event)/event_xi(real_event)/ &
+              (1 - event_y(real_event))
     f_r = prefact*jac_ev*fkssymmetryfactor*vegas_wgt
     if (.not. nocntevents) then
-      prefact_cnt_ssc = xinorm_ev/min(xiimax_ev, xiScut_used)*log(xicut_used/min(xiimax_ev, xiScut_used))/(1 - y_ij_fks_ev)
-      f_s = (prefact + prefact_cnt_ssc)*jac_cnt(0)*fkssymmetryfactor*vegas_wgt
+      prefact_cnt_ssc = event_xi_norm(real_event)/ &
+                        min(event_xi_max(real_event), xiScut_used)* &
+                        log(xicut_used/min(event_xi_max(real_event), &
+                                          xiScut_used))/ &
+                        (1 - event_y(real_event))
+      f_s = (prefact + prefact_cnt_ssc)* &
+            stored_event_jacobian(soft_counterevent)* &
+            fkssymmetryfactor*vegas_wgt
       if (pmass(j_fks) .eq. 0d0) then
 ! For the soft-collinear, these should be itwo. But they are always
 ! equal to ione, so no need to define separate factors.
-        prefact_c = xinorm_cnt(1)/xi_i_fks_cnt(1)/(1 - y_ij_fks_ev)
-        prefact_coll = xinorm_cnt(1)/xi_i_fks_cnt(1)*log(delta_used/deltaS)/deltaS
-        f_c = (prefact_c + prefact_coll)*jac_cnt(1)*fkssymmetryfactor*vegas_wgt
-        call set_cms_stuff(1)
-        prefact_deg = xinorm_cnt(1)/xi_i_fks_cnt(1)/deltaS
-        prefact_cnt_ssc_c = xinorm_cnt(1)/min(xiimax_cnt(1), xiScut_used) &
-                            *log(xicut_used/min(xiimax_cnt(1), xiScut_used)) &
-                            /(1 - y_ij_fks_ev)
-        prefact_coll_c = xinorm_cnt(1)/min(xiimax_cnt(1), xiScut_used) &
-                         *log(xicut_used/min(xiimax_cnt(1), xiScut_used)) &
+        prefact_c = event_xi_norm(collinear_counterevent)/ &
+                    event_xi(collinear_counterevent)/ &
+                    (1 - event_y(real_event))
+        prefact_coll = event_xi_norm(collinear_counterevent)/ &
+                       event_xi(collinear_counterevent)* &
+                       log(delta_used/deltaS)/deltaS
+        f_c = (prefact_c + prefact_coll)* &
+              stored_event_jacobian(collinear_counterevent)* &
+              fkssymmetryfactor*vegas_wgt
+        call set_cms_stuff(collinear_counterevent)
+        prefact_deg = event_xi_norm(collinear_counterevent)/ &
+                      event_xi(collinear_counterevent)/deltaS
+        prefact_cnt_ssc_c = event_xi_norm(collinear_counterevent)/ &
+                            min(event_xi_max(collinear_counterevent), &
+                                xiScut_used) &
+                            *log(xicut_used/ &
+                                 min(event_xi_max(collinear_counterevent), &
+                                     xiScut_used)) &
+                            /(1 - event_y(real_event))
+        prefact_coll_c = event_xi_norm(collinear_counterevent)/ &
+                         min(event_xi_max(collinear_counterevent), &
+                             xiScut_used) &
+                         *log(xicut_used/ &
+                              min(event_xi_max(collinear_counterevent), &
+                                  xiScut_used)) &
                          *log(delta_used/deltaS)/deltaS
-        f_dc = jac_cnt(1)*prefact_deg/(shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
-        f_sc = (prefact_c + prefact_coll + prefact_cnt_ssc_c + prefact_coll_c)*jac_cnt(2)*fkssymmetryfactorDeg*vegas_wgt
-        call set_cms_stuff(2)
-        prefact_deg_sxi = xinorm_cnt(1)/min(xiimax_cnt(1), xiScut_used)*log(xicut_used/min(xiimax_cnt(1), xiScut_used))*1/deltaS
-        prefact_deg_slxi = xinorm_cnt(1)/min(xiimax_cnt(1), xiScut_used) &
+        f_dc = stored_event_jacobian(collinear_counterevent)*prefact_deg/ &
+               (shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
+        f_sc = (prefact_c + prefact_coll + prefact_cnt_ssc_c + &
+                prefact_coll_c)* &
+               stored_event_jacobian(soft_collinear_counterevent)* &
+               fkssymmetryfactorDeg*vegas_wgt
+        call set_cms_stuff(soft_collinear_counterevent)
+        prefact_deg_sxi = event_xi_norm(collinear_counterevent)/ &
+                          min(event_xi_max(collinear_counterevent), &
+                              xiScut_used)* &
+                          log(xicut_used/ &
+                              min(event_xi_max(collinear_counterevent), &
+                                  xiScut_used))*1/deltaS
+        prefact_deg_slxi = event_xi_norm(collinear_counterevent)/ &
+                           min(event_xi_max(collinear_counterevent), &
+                               xiScut_used) &
                            *(log(xicut_used)**2 &
-                             - log(min(xiimax_cnt(1), xiScut_used))**2) &
+                             - log(min(event_xi_max(collinear_counterevent), &
+                                       xiScut_used))**2) &
                            /(2.d0*deltaS)
-        f_dsc(1) = prefact_deg*jac_cnt(2)/(shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
-        f_dsc(2) = prefact_deg_sxi*jac_cnt(2)/(shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
-        f_dsc(3) = prefact_deg_slxi*jac_cnt(2)/(shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
-        f_dsc(4) = (prefact_deg + prefact_deg_sxi)*jac_cnt(2)/(shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
+        f_dsc(1) = prefact_deg* &
+                   stored_event_jacobian(soft_collinear_counterevent)/ &
+                   (shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
+        f_dsc(2) = prefact_deg_sxi* &
+                   stored_event_jacobian(soft_collinear_counterevent)/ &
+                   (shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
+        f_dsc(3) = prefact_deg_slxi* &
+                   stored_event_jacobian(soft_collinear_counterevent)/ &
+                   (shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
+        f_dsc(4) = (prefact_deg + prefact_deg_sxi)* &
+                   stored_event_jacobian(soft_collinear_counterevent)/ &
+                   (shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
 ! prefactor for the PDF scheme
-        prefact_pdfsch_d = xinorm_cnt(1)/xiScut_used/deltaS
-        f_pdfsch_d = prefact_pdfsch_d*jac_cnt(2)/(shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
-        prefact_pdfsch_p = xinorm_cnt(1)*dlog(xiScut_used)/xiScut_used/deltaS
-        f_pdfsch_p = prefact_pdfsch_p*jac_cnt(2)/(shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
-        prefact_pdfsch_l = xinorm_cnt(1)*dlog(xiScut_used)**2/2d0/xiScut_used/deltaS
-        f_pdfsch_l = prefact_pdfsch_l*jac_cnt(2)/(shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
+        prefact_pdfsch_d = event_xi_norm(collinear_counterevent)/ &
+                           xiScut_used/deltaS
+        f_pdfsch_d = prefact_pdfsch_d* &
+                     stored_event_jacobian(soft_collinear_counterevent)/ &
+                     (shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
+        prefact_pdfsch_p = event_xi_norm(collinear_counterevent)* &
+                           dlog(xiScut_used)/xiScut_used/deltaS
+        f_pdfsch_p = prefact_pdfsch_p* &
+                     stored_event_jacobian(soft_collinear_counterevent)/ &
+                     (shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
+        prefact_pdfsch_l = event_xi_norm(collinear_counterevent)* &
+                           dlog(xiScut_used)**2/2d0/xiScut_used/deltaS
+        f_pdfsch_l = prefact_pdfsch_l* &
+                     stored_event_jacobian(soft_collinear_counterevent)/ &
+                     (shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
       else
         f_c = 0d0
         f_dc = 0d0
@@ -1188,12 +1256,18 @@ contains
     wgt_ME_tree(2, icontr) = wgt_me_real
     do i = 1, nexternal
       do j = 0, 3
-        if (p1_cnt(0, 1, 0) .gt. 0d0 .and. type .ne. 5) then
-          momenta_m(j, i, 1, icontr) = p1_cnt(j, i, 0)
-        elseif (p1_cnt(0, 1, 1) .gt. 0d0) then
-          momenta_m(j, i, 1, icontr) = p1_cnt(j, i, 1)
-        elseif (p1_cnt(0, 1, 2) .gt. 0d0) then
-          momenta_m(j, i, 1, icontr) = p1_cnt(j, i, 2)
+        if (stored_event_momenta(0, 1, soft_counterevent) .gt. 0d0 &
+            .and. type .ne. 5) then
+          momenta_m(j, i, 1, icontr) = &
+            stored_event_momenta(j, i, soft_counterevent)
+        elseif (stored_event_momenta(0, 1, collinear_counterevent) &
+                .gt. 0d0) then
+          momenta_m(j, i, 1, icontr) = &
+            stored_event_momenta(j, i, collinear_counterevent)
+        elseif (stored_event_momenta(0, 1, soft_collinear_counterevent) &
+                .gt. 0d0) then
+          momenta_m(j, i, 1, icontr) = &
+            stored_event_momenta(j, i, soft_collinear_counterevent)
         else
           if (i .lt. fks_i_d(nFKSprocess)) then
             momenta_m(j, i, 1, icontr) = p_born(j, i)
@@ -1203,7 +1277,8 @@ contains
             momenta_m(j, i, 1, icontr) = p_born(j, i - 1)
           end if
         end if
-        momenta_m(j, i, 2, icontr) = p_ev(j, i)
+        momenta_m(j, i, 2, icontr) = &
+          stored_event_momenta(j, i, real_event)
       end do
     end do
 
@@ -1961,7 +2036,7 @@ contains
         azifact = xij_aor
       else
         do i = 0, 3
-          pi(i) = p_i_fks_ev(i)
+          pi(i) = event_fks_momentum(i, real_event)
           pj(i) = p(i, j_fks)
         end do
         call IXXXSO(pi, ZERO, +1, +1, W1)
@@ -2084,7 +2159,7 @@ contains
         azifact = xij_aor
       else
         do i = 0, 3
-          pi(i) = p_i_fks_ev(i)
+          pi(i) = event_fks_momentum(i, real_event)
           pj(i) = p(i, j_fks)
         end do
         if (j_fks .eq. 2 .and. nincoming .eq. 2) then
@@ -2160,9 +2235,11 @@ contains
 ! wgt includes the gs/w^2
           call sborn_sf(p_born, m, n, wgt)
           if (wgt .ne. 0d0) then
-            call eikonal_reduced(pp, m, n, i_fks, j_fks, xi_i_fks, &
-                                  y_ij_fks, p_i_fks_cnt, external_masses, &
-                                  sqrtshat, eik)
+            call eikonal_reduced( &
+              pp, m, n, i_fks, j_fks, xi_i_fks, y_ij_fks, &
+              event_fks_momentum(:, &
+                soft_counterevent:soft_collinear_counterevent), &
+              external_masses, sqrtshat, eik)
             softcontr = softcontr + wgt*eik*iden_comp
 ! update the amp_split array
             amp_split(1:amp_split_size) = amp_split(1:amp_split_size) - 2d0*eik*amp_split_soft(1:amp_split_size)*iden_comp

@@ -9,12 +9,12 @@ module fks_soft_kernels
 contains
 
   subroutine eikonal_reduced(pp, m, n, i_fks, j_fks, xi_i_fks, &
-                               y_ij_fks, p_i_fks_cnt, pmass, &
-                               sqrtshat, eik)
+                             y_ij_fks, counterevent_fks_momentum, &
+                             pmass, sqrtshat, eik)
 !     Returns the eikonal factor
     implicit none
     double precision eik, pp(0:3, nexternal), xi_i_fks, y_ij_fks
-    double precision, intent(in) :: p_i_fks_cnt(0:3, 0:2)
+    double precision, intent(in) :: counterevent_fks_momentum(0:3, 0:2)
     double precision, intent(in) :: pmass(nexternal), sqrtshat
     double precision dotnm, dotni, dotmi, fact
     integer n, m, i_fks, j_fks, i
@@ -29,7 +29,7 @@ contains
 ! Define the reduced momentum for i_fks
     softcol = 0
     if (1d0 - y_ij_fks .lt. tiny) softcol = 2
-    if (p_i_fks_cnt(0, softcol) .lt. 0d0) then
+    if (counterevent_fks_momentum(0, softcol) .lt. 0d0) then
       if (xi_i_fks .eq. 0.d0) then
         write (*, *) 'Error #1 in eikonal_reduced', softcol, xi_i_fks, y_ij_fks
         stop
@@ -45,7 +45,7 @@ contains
       end if
     else
       do i = 0, 3
-        phat_i_fks(i) = p_i_fks_cnt(i, softcol)
+        phat_i_fks(i) = counterevent_fks_momentum(i, softcol)
       end do
     end if
 ! Calculate the eikonal factor

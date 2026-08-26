@@ -8,10 +8,12 @@ module fks_diagnostics
 
 contains
 
-  subroutine xmom_compare(i_fks, j_fks, jac_cnt, p1_cnt, pmass, pass)
+  subroutine xmom_compare(i_fks, j_fks, counter_jacobian, &
+                          counter_momenta, pmass, pass)
     implicit none
-    double precision, intent(in) :: p1_cnt(0:3, nexternal, 0:2)
-    double precision, intent(in) :: jac_cnt(0:2), pmass(nexternal)
+    double precision, intent(in) :: counter_momenta(0:3, nexternal, 0:2)
+    double precision, intent(in) :: counter_jacobian(0:2)
+    double precision, intent(in) :: pmass(nexternal)
     integer i_fks, j_fks
     integer izero, ione, itwo, iunit, isum
     logical verbose, pass, pass0
@@ -22,9 +24,9 @@ contains
     parameter(verbose=.false.)
 !
     isum = 0
-    if (jac_cnt(0) .gt. 0.d0) isum = isum + 1
-    if (jac_cnt(1) .gt. 0.d0) isum = isum + 2
-    if (jac_cnt(2) .gt. 0.d0) isum = isum + 4
+    if (counter_jacobian(0) .gt. 0.d0) isum = isum + 1
+    if (counter_jacobian(1) .gt. 0.d0) isum = isum + 2
+    if (counter_jacobian(2) .gt. 0.d0) isum = isum + 4
     pass = .true.
 !
     if (isum .eq. 0 .or. isum .eq. 1 .or. isum .eq. 2 .or. isum .eq. 4) then
@@ -38,13 +40,15 @@ contains
           write (iunit, *) '    '
           write (iunit, *) 'C/S'
         end if
-        call xmcompare(verbose, pass0, ione, izero, i_fks, j_fks, p1_cnt, pmass)
+        call xmcompare(verbose, pass0, ione, izero, i_fks, j_fks, &
+                       counter_momenta, pmass)
         pass = pass .and. pass0
         if (verbose) then
           write (iunit, *) '    '
           write (iunit, *) 'SC/S'
         end if
-        call xmcompare(verbose, pass0, itwo, izero, i_fks, j_fks, p1_cnt, pmass)
+        call xmcompare(verbose, pass0, itwo, izero, i_fks, j_fks, &
+                       counter_momenta, pmass)
         pass = pass .and. pass0
       elseif (isum .eq. 3) then
         if (verbose) then
@@ -52,7 +56,8 @@ contains
           write (iunit, *) '    '
           write (iunit, *) 'C/S'
         end if
-        call xmcompare(verbose, pass0, ione, izero, i_fks, j_fks, p1_cnt, pmass)
+        call xmcompare(verbose, pass0, ione, izero, i_fks, j_fks, &
+                       counter_momenta, pmass)
         pass = pass .and. pass0
       elseif (isum .eq. 5) then
         if (verbose) then
@@ -60,7 +65,8 @@ contains
           write (iunit, *) '    '
           write (iunit, *) 'SC/S'
         end if
-        call xmcompare(verbose, pass0, itwo, izero, i_fks, j_fks, p1_cnt, pmass)
+        call xmcompare(verbose, pass0, itwo, izero, i_fks, j_fks, &
+                       counter_momenta, pmass)
         pass = pass .and. pass0
       end if
     elseif (isum .eq. 6) then
@@ -70,7 +76,8 @@ contains
         write (iunit, *) '    '
         write (iunit, *) 'SC/C'
       end if
-      call xmcompare(verbose, pass0, itwo, ione, i_fks, j_fks, p1_cnt, pmass)
+      call xmcompare(verbose, pass0, itwo, ione, i_fks, j_fks, &
+                     counter_momenta, pmass)
       pass = pass .and. pass0
     else
       write (6, *) 'Fatal error in xmom_compare', isum
@@ -81,9 +88,10 @@ contains
     return
   end subroutine xmom_compare
 
-  subroutine xmcompare(verbose, pass0, inum, iden, i_fks, j_fks, p1_cnt, pmass)
+  subroutine xmcompare(verbose, pass0, inum, iden, i_fks, j_fks, &
+                       counter_momenta, pmass)
     implicit none
-    double precision, intent(in) :: p1_cnt(0:3, nexternal, 0:2)
+    double precision, intent(in) :: counter_momenta(0:3, nexternal, 0:2)
     double precision, intent(in) :: pmass(nexternal)
     logical verbose, pass0
     integer inum, iden, i_fks, j_fks, iunit, ipart, i, j, k
@@ -95,8 +103,8 @@ contains
     pass0 = .true.
     do ipart = 1, nexternal
       do i = 0, 3
-        xnum = p1_cnt(i, ipart, inum)
-        xden = p1_cnt(i, ipart, iden)
+        xnum = counter_momenta(i, ipart, inum)
+        xden = counter_momenta(i, ipart, iden)
         if (verbose) then
           if (i .eq. 0) then
             write (iunit, *) ' '
@@ -120,10 +128,10 @@ contains
               write (*, *) 'is different. Particle:', ipart
               write (*, *) xrat, xnum, xden
               do j = 1, nexternal
-                write (*, *) j, (p1_cnt(k, j, inum), k=0, 3)
+                write (*, *) j, (counter_momenta(k, j, inum), k=0, 3)
               end do
               do j = 1, nexternal
-                write (*, *) j, (p1_cnt(k, j, iden), k=0, 3)
+                write (*, *) j, (counter_momenta(k, j, iden), k=0, 3)
               end do
               xratmax = max(xratmax, xrat)
               pass0 = .false.
@@ -134,11 +142,15 @@ contains
     end do
     do i = 0, 3
       if (j_fks .gt. nincoming) then
-        xnum = p1_cnt(i, i_fks, inum) + p1_cnt(i, j_fks, inum)
-        xden = p1_cnt(i, i_fks, iden) + p1_cnt(i, j_fks, iden)
+        xnum = counter_momenta(i, i_fks, inum) + &
+               counter_momenta(i, j_fks, inum)
+        xden = counter_momenta(i, i_fks, iden) + &
+               counter_momenta(i, j_fks, iden)
       else
-        xnum = -p1_cnt(i, i_fks, inum) + p1_cnt(i, j_fks, inum)
-        xden = -p1_cnt(i, i_fks, iden) + p1_cnt(i, j_fks, iden)
+        xnum = -counter_momenta(i, i_fks, inum) + &
+                counter_momenta(i, j_fks, inum)
+        xden = -counter_momenta(i, i_fks, iden) + &
+                counter_momenta(i, j_fks, iden)
       end if
       if (verbose) then
         if (i .eq. 0) then

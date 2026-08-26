@@ -41,7 +41,9 @@ module driver_mintfo_module
                                  get_wgt_no_nbody, fill_plots, fill_mint_function, &
                                  fill_configurations_common, setfksfactor
   use madfks_plot_module, only: topout_impl
-  use fnlo_process_common, only: nfksprocess
+  use fnlo_process_common, only: nfksprocess, soft_counterevent, &
+                                 collinear_counterevent, &
+                                 soft_collinear_counterevent, real_event
   implicit none
   private
 
@@ -329,7 +331,7 @@ contains
   end subroutine run_mintfo_driver
 
   double precision function sigint_impl(xx, vegas_wgt, ifl, f, &
-                                        ini_fin_fks, nndim, nbody, p1_cnt, p_born, virtual_over_born, &
+                                        ini_fin_fks, nndim, nbody, event_momenta, p_born, virtual_over_born, &
                                         calculated_born, abrv, wgt_me_born, wgt_me_real, fold, &
                                         use_evpr)
     implicit none
@@ -337,7 +339,8 @@ contains
     integer, intent(in) :: ifl, ini_fin_fks(maxchannels), nndim
     double precision, intent(out) :: f(nintegrals)
     logical, intent(inout) :: nbody, calculated_born
-    double precision, intent(inout) :: p1_cnt(0:3, nexternal, 0:2)
+    double precision, intent(inout) :: &
+      event_momenta(0:3, nexternal, soft_counterevent:real_event)
     double precision, intent(inout) :: p_born(0:3, nexternal - 1)
     double precision, intent(inout) :: virtual_over_born
     character(len=4), intent(in) :: abrv
@@ -351,10 +354,6 @@ contains
     integer :: amplitude_order, picked_integer, position
     logical :: passcuts_nbody, passcuts_n1body, passcuts_coll
     logical :: skip_nplusone
-    integer, parameter :: ordinary_event = 0
-    integer, parameter :: collinear_event = 1
-    integer, parameter :: soft_collinear_event = 2
-    integer, parameter :: real_event = -100
 
     if (new_point .and. ifl /= 2) pass_cuts_check = .false.
     call print_fks_channel_map()
@@ -403,11 +402,13 @@ contains
                             momentum)
       if (p_born(0, 1) >= 0d0) then
         call compute_prefactors_nbody(vegas_wgt)
-        call set_cms_stuff(ordinary_event)
-        passcuts_nbody = passcuts(p1_cnt(0, 1, ordinary_event), reweight)
+        call set_cms_stuff(soft_counterevent)
+        passcuts_nbody = passcuts( &
+                           event_momenta(0, 1, soft_counterevent), reweight)
         if (passcuts_nbody) then
           pass_cuts_check = .true.
-          call set_alphas(p1_cnt(0:3, 1:nexternal, ordinary_event))
+          call set_alphas( &
+            event_momenta(0:3, 1:nexternal, soft_counterevent))
           call include_multichannel_enhance(1)
           if (abrv(1:2) /= 'vi') then
             call compute_born()
@@ -447,27 +448,31 @@ contains
         if (p_born(0, 1) < 0d0) cycle
 
         call compute_prefactors_n1body(vegas_wgt, jacobian)
-        call set_cms_stuff(ordinary_event)
+        call set_cms_stuff(soft_counterevent)
         passcuts_nbody = passcuts( &
-                         p1_cnt(0, 1, ordinary_event), reweight)
-        call set_cms_stuff(collinear_event)
+                         event_momenta(0, 1, soft_counterevent), reweight)
+        call set_cms_stuff(collinear_counterevent)
         passcuts_coll = (use_evpr .and. passcuts_nbody) .or. &
-                        passcuts(p1_cnt(0, 1, collinear_event), reweight)
+                        passcuts( &
+                          event_momenta(0, 1, collinear_counterevent), &
+                          reweight)
         call set_cms_stuff(real_event)
         passcuts_n1body = passcuts(momentum, reweight)
 
         if (passcuts_nbody .and. abrv /= 'real') then
           pass_cuts_check = .true.
-          call set_cms_stuff(ordinary_event)
-          call set_alphas(p1_cnt(0:3, 1:nexternal, ordinary_event))
+          call set_cms_stuff(soft_counterevent)
+          call set_alphas( &
+            event_momenta(0:3, 1:nexternal, soft_counterevent))
           call include_multichannel_enhance(3)
           call compute_soft_counter_term()
-          call set_cms_stuff(soft_collinear_event)
+          call set_cms_stuff(soft_collinear_counterevent)
           call compute_soft_collinear_ct_impl()
         end if
         if (passcuts_coll .and. abrv /= 'real') then
-          call set_alphas(p1_cnt(0:3, 1:nexternal, collinear_event))
-          call set_cms_stuff(collinear_event)
+          call set_alphas( &
+            event_momenta(0:3, 1:nexternal, collinear_counterevent))
+          call set_cms_stuff(collinear_counterevent)
           call compute_collinear_counter_term()
         end if
         if (passcuts_n1body) then

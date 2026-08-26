@@ -99,32 +99,28 @@ c-----------------------------------------------------------------------
       end
 
 
-      subroutine test_limits_sync_state_bridge(p1_out,
-     $     jac_out,p_born_out,xi_event_out,y_event_out,p_i_event_out,
-     $     p_i_counter_out,xi_counter_out)
+      subroutine test_limits_sync_state_bridge(event_momenta_out,
+     $     event_jacobian_out,p_born_out,event_xi_out,event_y_out,
+     $     event_fks_momentum_out)
 c-----------------------------------------------------------------------
-c     Snapshot the state produced by GENPS_FKS.  Weight-only counterevent
-c     arrays are deliberately omitted because this test never reads them.
+c     Snapshot the unified event state produced by GENPS_FKS.
 c-----------------------------------------------------------------------
-      use fnlo_process_common, only: nexternal,p1_cnt,jac_cnt,
-     $     p_born,xi_i_fks_ev,y_ij_fks_ev,p_i_fks_ev,p_i_fks_cnt,
-     $     xi_i_fks_cnt
+      use fnlo_process_common, only: nexternal,real_event,
+     $     event_momenta,event_jacobian,p_born,event_xi,event_y,
+     $     event_fks_momentum
       implicit none
-      double precision p1_out(0:3,nexternal,0:2)
-      double precision jac_out(0:2)
+      double precision event_momenta_out(0:3,nexternal,0:real_event)
+      double precision event_jacobian_out(0:real_event)
       double precision p_born_out(0:3,nexternal-1)
-      double precision xi_event_out,y_event_out
-      double precision p_i_event_out(0:3)
-      double precision p_i_counter_out(0:3,0:2)
-      double precision xi_counter_out(0:2)
-      p1_out=p1_cnt
-      jac_out=jac_cnt
+      double precision event_xi_out(0:real_event)
+      double precision event_y_out(0:real_event)
+      double precision event_fks_momentum_out(0:3,0:real_event)
+      event_momenta_out=event_momenta
+      event_jacobian_out=event_jacobian
       p_born_out=p_born
-      xi_event_out=xi_i_fks_ev
-      y_event_out=y_ij_fks_ev
-      p_i_event_out=p_i_fks_ev
-      p_i_counter_out=p_i_fks_cnt
-      xi_counter_out=xi_i_fks_cnt
+      event_xi_out=event_xi
+      event_y_out=event_y
+      event_fks_momentum_out=event_fks_momentum
       return
       end
 
