@@ -13,14 +13,11 @@ c-----------------------------------------------------------------------
          end subroutine init_born_dimensions_bridge
          subroutine init_fks_metadata_bridge()
          end subroutine init_fks_metadata_bridge
-         subroutine init_genps_fks_bridge()
-         end subroutine init_genps_fks_bridge
       end interface
 
       call init_process_dimensions_bridge()
       call init_born_dimensions_bridge()
       call init_fks_metadata_bridge()
-      call init_genps_fks_bridge()
       call run_test_soft_col_limits()
       call finalize_test_soft_col_limits()
       end

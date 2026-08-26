@@ -42,7 +42,7 @@
 !
 
 module mint_module
-  use fnlo_process_common, only: fixed_order, iappl, fnlo_maxchannels
+  use fnlo_process_common, only: fnlo_maxchannels
   use FKSParams ! contains use_poly_virtual
   use mc_integer_module, only: regrid_MC_integer, empty_MC_integer, &
                                reset_MC_grid
@@ -57,7 +57,6 @@ module mint_module
   integer, parameter, private :: nintervals_virt = 8! max number of intervals in the grids for the approx virtual
   integer, parameter, private :: min_inter = 4      ! minimal number of intervals
   integer, parameter, private :: min_it0 = 4        ! minimal number of iterations in the mint step 0 phase
-  integer, parameter :: max_fold = 512     ! 8*8*8 is max folding for the three variables
 ! Maximum points to try per iteration when too few non-zero points are found.
   integer, parameter, private :: max_points = 100000
   integer, parameter, public  :: maxchannels = fnlo_maxchannels
@@ -71,15 +70,14 @@ module mint_module
   !
 
 ! public variables
-  integer, public :: ncalls0, ndim, itmax, imode, n_ord_virt, nchans, iconfig, ichan, ifold_energy, ifold_yij, ifold_phi
-  integer, dimension(ndimmax), public :: ifold
+  integer, public :: ncalls0, ndim, itmax, imode, n_ord_virt, nchans, iconfig, ichan
   integer, dimension(maxchannels), public :: iconfigs
   double precision, public :: accuracy, min_virt_fraction_mint, wgt_mult
   double precision, dimension(0:n_ave_virt, maxchannels), public :: average_virtual
   double precision, dimension(0:n_ave_virt), public :: virt_wgt_mint, born_wgt_mint, polyfit
   double precision, dimension(maxchannels), public :: virtual_fraction
   double precision, dimension(nintegrals, 0:maxchannels), public :: ans, unc
-  logical, public :: only_virt, new_point, pass_cuts_check
+  logical, public :: new_point, pass_cuts_check
 
 ! private variables
   character(len=13), parameter, dimension(nintegrals), private :: title = (/ &
@@ -134,8 +132,6 @@ module mint_module
   double precision, private :: even_dng = 0d0
   integer, private :: even_current_dim = 0
   integer, allocatable, private :: even_iii(:), even_kkk(:)
-
-  public :: fixed_order
 
 ! functions and subroutines:
   public :: mint
@@ -346,9 +342,7 @@ contains
     if (reset) return ! iteration was not accurate enough: do not include it
     call combine_iterations
     call combine_final_three_iterations
-    if (fixed_order) then
-      call HwU_accum_iter(.true., ntotcalls(1), HwU_values)
-    end if
+    call HwU_accum_iter(.true., ntotcalls(1), HwU_values)
     if (imode .eq. 0) then
       call update_virtual_fraction
       call update_integration_grids
@@ -555,9 +549,9 @@ contains
     double precision, dimension(nintegrals) :: efrac
 ! If there was a large fluctation in this iteration, be careful with
 ! including it in the accumalated results and plots.
-    if (efrac(1) .gt. 0.3d0 .and. iappl .eq. 0 .and. nit .gt. 3) then
+    if (efrac(1) .gt. 0.3d0 .and. nit .gt. 3) then
 ! Do not include the results in the plots
-      if (fixed_order) call HwU_accum_iter(.false., ntotcalls(1), HwU_values)
+      call HwU_accum_iter(.false., ntotcalls(1), HwU_values)
 ! Do not include the results in the updating of the grids.
       write (*, *) 'Large fluctuation ( >30 % ). Not including iteration in results.'
 ! empty the accumulated results in the MC over integers
@@ -579,7 +573,7 @@ contains
         end if
         call reset_mint_grids
         call reset_MC_grid  ! reset the grid for the integers
-        if (fixed_order) call initplot  ! Also reset all the plots
+        call initplot  ! Also reset all the plots
         call setup_common
         bad_iteration = .false.
       else

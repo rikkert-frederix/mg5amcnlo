@@ -11,7 +11,6 @@
       call init_process_dimensions_bridge()
       call init_born_dimensions_bridge()
       call init_fks_metadata_bridge()
-      call init_genps_fks_bridge()
       call initialize_symmetry_data(mapconfig)
 
       narg=command_argument_count()

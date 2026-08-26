@@ -9804,6 +9804,17 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                     to_keep[opt] = self.options[opt]
             self.do_save('options %s' % filename.replace(' ', r'\ '), check=False, \
                     to_keep = to_keep)
+            if self._export_format == 'fNLO':
+                # PineAPPL is deliberately not part of the fixed-order-only
+                # template.  ``do_save`` preserves comments for every global
+                # option, so remove its otherwise misleading configuration
+                # stanza from generated fNLO outputs as well.
+                with open(filename) as config_file:
+                    config_lines = config_file.readlines()
+                with open(filename, 'w') as config_file:
+                    config_file.writelines(
+                        line for line in config_lines
+                        if 'pineappl' not in line.lower())
 
         elif self._export_format in ['madevent', 'madweight']:          
             # Create configuration file [path to executable] for madevent

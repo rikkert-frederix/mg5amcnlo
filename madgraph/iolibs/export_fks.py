@@ -520,6 +520,9 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
     def write_maxproc_files(self, nmaxpdf, subproc_path):
         """write the c++ and fortran header files with the max number of pdf pairs
         """
+        if self.opt.get('fks_template') == 'fNLO':
+            return
+
         # fortran
         content = "      integer mxpdflumi\n      integer max_nproc\n      parameter(mxpdflumi=%d,max_nproc=%d)\n" \
                 % (nmaxpdf, nmaxpdf)
@@ -541,6 +544,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
     def write_init_map(self, file_pos, initial_states):
         """ Write an initial state process map. Each possible PDF
         combination gets an unique identifier."""
+        if self.opt.get('fks_template') == 'fNLO':
+            return max(len(initial_states), 1)
         
         text=''
         i=0
@@ -896,12 +901,9 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 'fks_singular.f': 'fks_singular.f90',
                 'genps_fks.f': 'genps_fks.f90',
                 'HwU_dummy.f': 'HwU_dummy.f90',
-                'iproc_map.f': 'iproc_map.f90',
                 'madfks_plot.f': 'madfks_plot.f90',
                 'MC_integer.f': 'MC_integer.f90',
                 'open_output_files.f': 'open_output_files.f90',
-                'pineappl_interface_dummy.f':
-                    'pineappl_interface_dummy.f90',
                 'polfit.f': 'polfit.f90',
                 'setcuts.f': 'setcuts.f90',
                 'setscales.f': 'setscales.f90',
@@ -922,6 +924,9 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               'fks_diagnostics.f90',
                               'fks_qcd_splitting.f90',
                               'fks_soft_kernels.f90',
+                              'fks_model_state.f90',
+                              'fks_weights.f90',
+                              'fks_contributions.f90',
                               'fks_channel_map.f90',
                               'fks_random.f90',
                               'fks_random_bridge.f',
@@ -930,20 +935,16 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               'BinothLHADummy_bridge.f',
                               'fks_singular_bridge.f',
                               'HwU_dummy_bridge.f',
-                              'pineappl_interface_dummy_bridge.f',
                               'splitorders_stuff_bridge.f',
                               'setcuts_bridge.f',
                               'setscales_bridge.f',
                               'chooser_functions_bridge.f',
                               'check_poles_bridge.f',
-                              'cuts_bridge.f',
-                              'genps_fks_bridge.f',
                               'symmetry_fks_v3_bridge.f',
                               'test_soft_col_limits_bridge.f',
                               'driver_mintFO_bridge.f',
-                              'iproc_map_bridge.f',
                               'madfks_plot_bridge.f',
-                              'open_output_files_bridge.f'])
+                              ])
             fixed_order_excluded_sources = {
                 'MCmasses_HERWIG6.inc',
                 'MCmasses_HERWIGPP.inc',
@@ -963,11 +964,17 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 'fill_MC_mshell.f',
                 'handling_lhe_events.f',
                 'hep_event_streams.inc',
+                'initial_states_map.dat',
+                'iproc_map.f',
                 'madfks_mcatnlo.inc',
                 'momentum_reshuffling.f',
                 'open_output_files_dummy.f',
                 'orderstags_glob.f',
                 'pineappl_common.inc',
+                'pineappl_interface.cc',
+                'pineappl_interface_dummy.f',
+                'pineappl_maxproc.h',
+                'pineappl_maxproc.inc',
                 'pythia_unlops.f',
                 'pythia8_control.inc',
                 'pythia8_control_setup.inc',

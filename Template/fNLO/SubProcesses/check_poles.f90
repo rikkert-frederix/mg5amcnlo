@@ -81,9 +81,6 @@ module check_poles_module
     subroutine setcuts()
     end subroutine setcuts
 
-    subroutine sync_cuts_bridge_state()
-    end subroutine sync_cuts_bridge_state
-
     subroutine printout()
     end subroutine printout
 
@@ -186,7 +183,6 @@ contains
     call setpara('param_card.dat')
     call init_fks_singular_bridge()
     call setcuts()
-    call sync_cuts_bridge_state()
     call printout()
     call write_run_summary()
     call init_check_poles_data_bridge()

@@ -13,7 +13,6 @@ contains
     implicit none
 
     integer :: i
-    integer :: idum
     double precision :: strong_coupling
 
     interface
@@ -73,10 +72,6 @@ contains
            nloop
     end if
 
-    if (pineappl) then
-      call fill_lhe_initial_state(idum)
-    end if
-
     ! Fill the number of PDF error members using LHAPDF.
     if (lpdfvar(1) .and. (lpp(1) /= 0 .or. lpp(2) /= 0)) then
       call numberPDFm(1, nmemPDF(1))
@@ -88,84 +83,5 @@ contains
       nmemPDF(1) = 0
     end if
   end subroutine complete_setrun
-
-
-  subroutine fill_lhe_initial_state(idum)
-    implicit none
-
-    integer, intent(out) :: idum
-    integer :: i
-    integer :: read_status
-
-    idum = 0
-    do i = 1, 2
-      if (lpp(i) == 1) then
-        idbmup(i) = 2212
-      else if (lpp(i) == -1) then
-        idbmup(i) = -2212
-      else if (lpp(i) == 0) then
-        open(unit=71, status='old', file='initial_states_map.dat')
-        read(71, *, iostat=read_status) idum, idum, idbmup(1), idbmup(2)
-        if (read_status /= 0) then
-          write(*, *) '"initial_states_map.dat" not found (or incorrect' // &
-               ' format) by "Source/setrun"'
-          stop 1
-        end if
-        close(71)
-      else
-        write(*, *) 'Unsupported fNLO beam type:', lpp(i)
-        stop 1
-      end if
-      ebmup(i) = ebeam(i)
-    end do
-
-    if (abs(lpp(1)) == 1 .or. abs(lpp(2)) == 1) then
-      call get_pdfup(pdlabel, pdfgup, pdfsup, lhaid)
-    end if
-  end subroutine fill_lhe_initial_state
-
-
-  subroutine get_pdfup(pdfin, output_pdf_groups, output_pdf_sets, &
-                       input_lhaid)
-    implicit none
-
-    character(len=*), intent(in) :: pdfin
-    integer, intent(out) :: output_pdf_groups(2)
-    integer, intent(out) :: output_pdf_sets(2)
-    integer, intent(in) :: input_lhaid
-
-    integer, parameter :: number_of_pdfs = 4
-    character(len=7), parameter :: pdf_labels(number_of_pdfs) = (/ &
-         'none   ', 'nn23lo ', 'nn23lo1', 'nn23nlo' /)
-    integer, parameter :: pdf_numbers(number_of_pdfs) = (/ &
-         0, 246800, 247000, 244800 /)
-
-    integer :: i
-    integer :: matched_pdf
-
-    if (pdfin == 'lhapdf') then
-      write(*, *) 'using LHAPDF'
-      output_pdf_groups = -1
-      output_pdf_sets = input_lhaid
-      return
-    end if
-
-    matched_pdf = -1
-    do i = 1, number_of_pdfs
-      if (trim(pdfin) == trim(pdf_labels(i))) then
-        matched_pdf = pdf_numbers(i)
-      end if
-    end do
-
-    if (matched_pdf == -1) then
-      write(*, *) 'ERROR: pdf ', pdfin, ' not implemented in get_pdfup.'
-      write(*, *) 'known pdfs are'
-      write(*, *) pdf_labels
-      stop 1
-    end if
-
-    output_pdf_groups = -1
-    output_pdf_sets = matched_pdf
-  end subroutine get_pdfup
 
 end module setrun_module

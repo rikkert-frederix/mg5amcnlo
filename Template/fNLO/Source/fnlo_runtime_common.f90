@@ -3,14 +3,9 @@ module fnlo_runtime_common
   private
 
   integer, parameter, public :: run_seed_kind = selected_int_kind(18)
-  integer, parameter, public :: max_lhe_processes = 100
-
   public :: lpp, ebeam, q2fact
   public :: lhaid, pdfscheme, pdlabel
   public :: asmz, nloop, iseed, random_offset_split
-  public :: pineappl
-  public :: idbmup, ebmup, pdfgup, pdfsup, idwtup, nprup
-  public :: xsecup, xerrup, xmaxup, lprup
   public :: cmass, bmass
   public :: tBorn, tIS, tReal, tCount, tf_nb, tf_all, t_as
   public :: tr_s, tr_pdf, t_plot, t_cuts, t_isum, tOLP, tGenPS
@@ -33,18 +28,6 @@ module fnlo_runtime_common
 
   integer, target :: random_offset_split
   common/c_random_offset_split/random_offset_split
-
-  logical, target :: pineappl
-  common/for_pineappl/pineappl
-
-  integer, target :: idbmup(2), pdfgup(2), pdfsup(2)
-  integer, target :: idwtup, nprup, lprup(max_lhe_processes)
-  double precision, target :: ebmup(2)
-  double precision, target :: xsecup(max_lhe_processes)
-  double precision, target :: xerrup(max_lhe_processes)
-  double precision, target :: xmaxup(max_lhe_processes)
-  common/heprup/idbmup, ebmup, pdfgup, pdfsup, idwtup, nprup, &
-    xsecup, xerrup, xmaxup, lprup
 
   double precision, target :: cmass, bmass
   common/qmass/cmass, bmass

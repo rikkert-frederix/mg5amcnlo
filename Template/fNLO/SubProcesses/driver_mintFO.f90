@@ -3,10 +3,10 @@ module driver_mintfo_module
   use extra_weights, only: doreweight
   use mint_module, only: maxchannels, n_ave_virt, average_virtual, &
                          virtual_fraction, min_virt_fraction_mint, n_ord_virt, ncalls0, &
-                         itmax, imode, ndim, ndimmax, nintegrals, nchans, only_virt, &
-                         ifold, ifold_energy, ifold_yij, ifold_phi, iconfig, ichan, &
+                         itmax, imode, ndim, ndimmax, nintegrals, nchans, &
+                         iconfig, ichan, &
                          iconfigs, accuracy, wgt_mult, new_point, pass_cuts_check, &
-                         virt_wgt_mint, born_wgt_mint, fixed_order, mint
+                         virt_wgt_mint, born_wgt_mint, mint
   use mint_module, only: ans_result => ans, unc_result => unc
   use FKSParams, only: paramFileName, min_virt_fraction, virt_fraction, &
                        FKSParamReader
@@ -20,7 +20,7 @@ module driver_mintfo_module
                              print_fks_channel_map, get_born_fks_process
   use fks_random_module, only: random_unit_interval
   use run_state, only: lpp, fixed_fac_scale, muf1_over_ref, &
-                       muf2_over_ref, muf1_ref_fixed, muf2_ref_fixed, pineappl, &
+                       muf2_over_ref, muf1_ref_fixed, muf2_ref_fixed, &
                        do_rwgt_scale, do_rwgt_pdf
   use genps_fks, only: generate_momenta
   use setscales_module, only: set_alphas
@@ -30,26 +30,24 @@ module driver_mintfo_module
   use timing_state, only: reset_timing_state, tBorn, tIS, tReal, &
                           tCount, tf_nb, tf_all, t_as, tr_s, tr_pdf, t_plot, &
                           t_cuts, t_isum, tOLP, tGenPS, t_coupl
-  use fks_singular_module, only: compute_prefactors_nbody, &
-                                 compute_prefactors_n1body, &
-                                 include_multichannel_enhance, compute_born, &
-                                 compute_nbody_noborn, compute_soft_counter_term, &
-                                 compute_soft_collinear_ct_impl, compute_collinear_counter_term, &
-                                 compute_real_emission, include_pdf_and_alphas, reweight_scale, &
-                                 reweight_pdf, fill_pineappl_weights, get_wgt_nbody, &
-                                 get_wgt_no_nbody, fill_plots, fill_mint_function, &
-                                 fill_configurations_common, setfksfactor
+  use fks_contributions_module, only: compute_prefactors_nbody, &
+       compute_prefactors_n1body, include_multichannel_enhance, &
+       compute_born, compute_nbody_noborn, compute_soft_counter_term, &
+       compute_soft_collinear_ct_impl, compute_collinear_counter_term, &
+       compute_real_emission
+  use fks_weights_module, only: include_pdf_and_alphas, reweight_scale, &
+       reweight_pdf, get_wgt_no_nbody, fill_plots, fill_mint_function
+  use fks_singular_module, only: fill_configurations_common, setfksfactor
   use madfks_plot_module, only: topout_impl
   use fnlo_process_common, only: nfksprocess, soft_counterevent, &
                                  collinear_counterevent, &
-                                 soft_collinear_counterevent, real_event, &
+                                 real_event, &
                                  ybst_til_tolab
   implicit none
   private
 
   integer, allocatable, save :: generated_mapconfig(:, :)
   logical, save :: generated_data_initialized = .false.
-  logical, save :: sum_fks_directories = .false.
   public :: run_mintfo_driver
   public :: init_driver_generated_data
   public :: sigint_impl
@@ -64,9 +62,6 @@ module driver_mintfo_module
 
     subroutine init_fks_metadata_bridge()
     end subroutine init_fks_metadata_bridge
-
-    subroutine init_genps_fks_bridge()
-    end subroutine init_genps_fks_bridge
 
     subroutine init_fks_singular_bridge()
     end subroutine init_fks_singular_bridge
@@ -84,21 +79,12 @@ module driver_mintfo_module
     subroutine setcuts()
     end subroutine setcuts
 
-    subroutine sync_cuts_bridge_state()
-    end subroutine sync_cuts_bridge_state
-
     subroutine printout()
     end subroutine printout
 
     subroutine get_user_params(ncall, nitmax, irestart)
       integer, intent(out) :: ncall, nitmax, irestart
     end subroutine get_user_params
-
-    subroutine setup_flavourmap()
-    end subroutine setup_flavourmap
-
-    subroutine find_iproc_map()
-    end subroutine find_iproc_map
 
     double precision function sigint(xx, vegas_wgt, ifl, f)
       use mint_module, only: ndimmax, nintegrals
@@ -140,13 +126,12 @@ contains
   end subroutine init_driver_generated_data
 
   subroutine run_mintfo_driver(nndim, flat_grid, momcmp_count, &
-                               xratmax, abrv, ntot, nsun, nsps, nups, neps, n100, nddp, nqdp, &
-                               nini, n10, n1, useitmax)
+                               xratmax, ntot, nsun, nsps, nups, neps, n100, nddp, nqdp, &
+                               nini, n10, n1)
     implicit none
     integer, intent(inout) :: nndim, momcmp_count
-    logical, intent(inout) :: flat_grid, useitmax
+    logical, intent(inout) :: flat_grid
     double precision, intent(inout) :: xratmax
-    character(len=4), intent(inout) :: abrv
     integer, intent(inout) :: ntot, nsun, nsps, nups, neps, n100
     integer, intent(inout) :: nddp, nqdp, nini, n10, n1(0:9)
     integer :: i, j, kchan
@@ -161,10 +146,8 @@ contains
     call validate_fks_metadata()
 
     write (*, *) drv_getpid()
-    useitmax = .false.
     call reset_timing_state()
     call cpu_time(time_before)
-    fixed_order = .true.
 
     call FKSParamReader(paramFileName, .true., .false.)
     min_virt_fraction_mint = min_virt_fraction
@@ -192,11 +175,9 @@ contains
     call setpara('param_card.dat')
     call init_fks_singular_bridge()
     call setcuts()
-    call sync_cuts_bridge_state()
     call printout()
     call write_run_summary()
     call fill_configurations_common()
-    call init_genps_fks_bridge()
     call check_amp_split()
 
     write (*, *) 'getting user params'
@@ -223,26 +204,6 @@ contains
     end if
 
     write (*, *) 'about to integrate ', ndim, ncalls0, itmax
-    if (imode == 0) pineappl = .false.
-    if (pineappl) then
-      write (6, *) 'Initializing PineAPPL ...'
-      call setup_flavourmap()
-      call find_iproc_map()
-      write (6, *) '   ... done.'
-    end if
-
-    only_virt = abrv(1:4) == 'virt'
-    do j = 1, ndimmax
-      if (j <= ndim) then
-        ifold(j) = 1
-      else
-        ifold(j) = 0
-      end if
-    end do
-    ifold_energy = ndim - 2
-    ifold_yij = ndim - 1
-    ifold_phi = ndim
-
     momcmp_count = 0
     xratmax = 0d0
     if (imode == -1 .or. imode == 0) then
@@ -332,8 +293,7 @@ contains
 
   double precision function sigint_impl(xx, vegas_wgt, ifl, f, &
                                         ini_fin_fks, nndim, nbody, event_momenta, p_born, virtual_over_born, &
-                                        calculated_born, abrv, wgt_me_born, wgt_me_real, fold, &
-                                        use_evpr)
+                                        calculated_born, abrv, wgt_me_born, wgt_me_real)
     implicit none
     double precision, intent(in) :: xx(ndimmax), vegas_wgt
     integer, intent(in) :: ifl, ini_fin_fks(maxchannels), nndim
@@ -345,8 +305,6 @@ contains
     double precision, intent(inout) :: virtual_over_born
     character(len=4), intent(in) :: abrv
     double precision, intent(inout) :: wgt_me_born, wgt_me_real
-    integer, intent(inout) :: fold
-    logical, intent(in) :: use_evpr
     double precision :: jacobian, momentum(0:3, nexternal)
     double precision :: reweight, volume, sampled_weight
     double precision :: vegas_variables(99), mc_integer_weight
@@ -361,15 +319,6 @@ contains
       write (*, *) 'ERROR ifl not equal to zero in sigint', ifl
       stop 1
     end if
-    fold = ifl
-
-    if (pineappl .and. sum_fks_directories) then
-      write (*, *) 'WARNING: PineAPPL only possible '// &
-        'with MC over FKS directories', pineappl, sum_fks_directories
-      write (*, *) 'Switching to MC over FKS directories'
-      sum_fks_directories = .false.
-    end if
-
     sigint_impl = 0d0
     icontr = 0
     do amplitude_order = 0, amp_split_size
@@ -426,15 +375,9 @@ contains
         abrv(1:2) /= 'vi' .and. &
         .not. skip_nplusone) then
       nbody = .false.
-      if (sum_fks_directories) then
-        nfks_min = 1
-        nfks_max = fks_channel_count(ini_fin_fks(ichan))
-        mc_integer_weight = 1d0
-      else
-        nfks_min = picked_integer
-        nfks_max = picked_integer
-        mc_integer_weight = 1d0/volume
-      end if
+      nfks_min = picked_integer
+      nfks_max = picked_integer
+      mc_integer_weight = 1d0/volume
 
       do position = nfks_min, nfks_max
         ifks = fks_channel_configuration(ini_fin_fks(ichan), position)
@@ -451,11 +394,13 @@ contains
         passcuts_nbody = passcuts( &
                          event_momenta(0, 1, soft_counterevent), reweight, &
                          ybst_til_tolab(soft_counterevent))
-        passcuts_coll = (use_evpr .and. passcuts_nbody) .or. &
-                        passcuts( &
-                          event_momenta(0, 1, collinear_counterevent), &
-                          reweight, &
-                          ybst_til_tolab(collinear_counterevent))
+        passcuts_coll = passcuts_nbody
+        if (.not. passcuts_coll) then
+          passcuts_coll = passcuts( &
+                            event_momenta(0, 1, collinear_counterevent), &
+                            reweight, &
+                            ybst_til_tolab(collinear_counterevent))
+        end if
         passcuts_n1body = passcuts( &
                              momentum, reweight, &
                              ybst_til_tolab(real_event))
@@ -488,25 +433,9 @@ contains
       if (do_rwgt_pdf) call reweight_pdf()
     end if
 
-    if (pineappl) then
-      if (sum_fks_directories) then
-        write (*, *) 'ERROR: PineAPPL only possible '// &
-          'with MC over FKS directories', pineappl, &
-          sum_fks_directories
-        stop 1
-      end if
-      call fill_pineappl_weights(vegas_wgt)
-    end if
-
-    if (sum_fks_directories) then
-      call get_wgt_nbody(sampled_weight)
-      call fill_mc_integer(max(ini_fin_fks(ichan), 1), picked_integer, &
-                           abs(sampled_weight))
-    else
-      call get_wgt_no_nbody(sampled_weight)
-      call fill_mc_integer(max(ini_fin_fks(ichan), 1), picked_integer, &
-                           abs(sampled_weight)*volume)
-    end if
+    call get_wgt_no_nbody(sampled_weight)
+    call fill_mc_integer(max(ini_fin_fks(ichan), 1), picked_integer, &
+                         abs(sampled_weight)*volume)
 
     call fill_plots()
     call fill_mint_function(f)
@@ -520,7 +449,6 @@ contains
     call fks_inc_chooser()
     call leshouche_inc_chooser()
     call setcuts()
-    call sync_cuts_bridge_state()
     call setfksfactor()
   end subroutine update_fks_dir_impl
 
@@ -550,13 +478,13 @@ contains
   end subroutine update_vegas_x_impl
 
   subroutine get_user_params_impl(ncall, nitmax, restart_mode, &
-                                  ini_fin_fks, isum_hel, multi_channel, use_cut, lbw, abrv, nbody, &
+                                  ini_fin_fks, isum_hel, multi_channel, abrv, nbody, &
                                   mc_hel, random_offset_split)
     implicit none
     integer, intent(out) :: ncall, nitmax, restart_mode
     integer, intent(inout) :: ini_fin_fks(maxchannels), isum_hel
     logical, intent(inout) :: multi_channel
-    integer, intent(inout) :: use_cut, lbw(0:), mc_hel
+    integer, intent(inout) :: mc_hel
     character(len=4), intent(inout) :: abrv
     logical, intent(inout) :: nbody
     integer, intent(inout) :: random_offset_split
@@ -588,8 +516,8 @@ contains
         read (buffer(11:), *) accuracy
         write (*, *) 'Desired accuracy is:', accuracy
       else if (buffer(1:10) == 'ADAPT_GRID') then
-        read (buffer(13:), *) use_cut
-        write (*, *) 'Using adaptive grids:', use_cut
+        read (buffer(13:), *) parsed_integer
+        write (*, *) 'Using adaptive grids:', parsed_integer
       else if (buffer(1:12) == 'MULTICHANNEL') then
         read (buffer(15:), *) parsed_integer
         if (parsed_integer == 1) then
@@ -706,7 +634,6 @@ contains
         end if
       end if
     end if
-    lbw(0) = 0
   end subroutine get_user_params_impl
 
   subroutine fail_driver(message)

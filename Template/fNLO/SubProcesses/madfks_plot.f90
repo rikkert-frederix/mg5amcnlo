@@ -5,16 +5,12 @@ module madfks_plot_module
   use mint_module, only: itmax, ncalls0
   use process_dimensions, only: nexternal, nincoming, &
        validate_process_dimensions
-  use run_state, only: do_rwgt_pdf, do_rwgt_scale, pineappl
-  use fnlo_process_common, only: useitmax, xsecScale_acc, xsecPDFr_acc
+  use run_state, only: do_rwgt_pdf, do_rwgt_scale
+  use fnlo_process_common, only: xsecScale_acc, xsecPDFr_acc
   implicit none
   private
 
   public :: initplot_impl, topout_impl, outfun_impl
-
-  integer, parameter :: pine_reset_action = 1
-  integer, parameter :: pine_norm_action = 2
-  integer, parameter :: pine_event_action = 3
 
   interface
     subroutine analysis_begin(nwgt, weights_info)
@@ -33,9 +29,6 @@ module madfks_plot_module
       integer, intent(in) :: ibody
     end subroutine analysis_fill
 
-    subroutine APPL_delete_itype()
-    end subroutine APPL_delete_itype
-
     subroutine initpdfsetbynamem(iset, setname)
       integer, intent(in) :: iset
       character(len=*), intent(in) :: setname
@@ -50,10 +43,6 @@ module madfks_plot_module
       integer, intent(in) :: iset, imem
     end subroutine InitPDFm
 
-    subroutine plot_pine_bridge(action, norm, ibody, itype, www)
-      integer, intent(in) :: action, ibody, itype
-      double precision, intent(in) :: norm, www
-    end subroutine plot_pine_bridge
   end interface
 
 contains
@@ -164,7 +153,6 @@ contains
       end do
     end if
 
-    call plot_pine_bridge(pine_reset_action, 0d0, 0, 0, 0d0)
     call analysis_begin(nwgt, weights_info)
 
     ! Keep track of accumulated scale and PDF results.
@@ -198,15 +186,10 @@ contains
     integer :: ii, jj, kk, n, nn
 
     xnorm = 1d0/float(ncalls0)
-    if (useitmax) xnorm = xnorm/float(itmax)
-
-    ! Normalization factor for the PineAPPL grids.
-    call plot_pine_bridge(pine_norm_action, &
-         1d0/(dble(ncalls0)*dble(itmax)), 0, 0, 0d0)
     call analysis_end()
 
     open (unit=34, file='scale_pdf_dependence.dat', status='unknown')
-    if (.not. useitmax) xnorm = xnorm/float(itmax)
+    xnorm = xnorm/float(itmax)
 
     if (do_rwgt_scale) then
       write (34, *) 'scale variations:'
@@ -293,13 +276,7 @@ contains
       p(4, i) = pmass(i)
     end do
 
-    call plot_pine_bridge(pine_event_action, 0d0, ibody, itype, www(1))
     call analysis_fill(p, istatus, ipdg, www, ibody)
-    if (pineappl) then
-      ! PineAPPL combines contributions with identical kinematics while
-      ! histograms are filled contribution by contribution.
-      call APPL_delete_itype()
-    end if
 
     i_wgt = 1
     if (do_rwgt_scale) then

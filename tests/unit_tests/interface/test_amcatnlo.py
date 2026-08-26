@@ -219,6 +219,10 @@ class TestMadEventCmd(unittest.TestCase):
                 'phase_space_kinematics.f90',
                 'fks_qcd_splitting.f90',
                 'fks_soft_kernels.f90',
+                'fks_model_state.f90',
+                'fks_singular.f90',
+                'fks_contributions.f90',
+                'fks_weights.f90',
                 'fks_channel_map.f90',
                 'fks_diagnostics.f90',
                 'fks_random.f90']:
@@ -234,6 +238,12 @@ class TestMadEventCmd(unittest.TestCase):
             subprocess_dir, 'montecarlocounter_alt.f')))
         for removed_source in [
                 'cluster.f90', 'cluster_bridge.f', 'recmom.f90',
+                'cuts_bridge.f', 'genps_fks_bridge.f',
+                'iproc_map.f90', 'iproc_map_bridge.f',
+                'open_output_files_bridge.f',
+                'pineappl_interface.cc',
+                'pineappl_interface_dummy.f90',
+                'pineappl_interface_dummy_bridge.f',
                 'ewsudakov_functions.f90',
                 'ewsudakov_functions_dummy.f90', 'sa_ewsudakov.f90',
                 'sub_f2py_ewsudakov.f90']:

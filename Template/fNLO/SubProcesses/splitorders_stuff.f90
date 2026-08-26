@@ -1,6 +1,5 @@
 module split_orders
-  use process_dimensions, only: nsplitorders, qcd_pos, &
-       amp_split_size, amp_split_size_born, order_names, &
+  use process_dimensions, only: nsplitorders, amp_split_size, order_names, &
        amp_split_orders, validate_process_dimensions
   implicit none
   private
@@ -12,8 +11,6 @@ module split_orders
   public :: get_orders_tag
   public :: orders_to_amp_split_pos
   public :: amp_split_pos_to_orders
-  public :: lo_qcd_to_amp_pos
-  public :: nlo_qcd_to_amp_pos
   public :: check_amp_split
 
 contains
@@ -134,40 +131,6 @@ contains
   end subroutine amp_split_pos_to_orders
 
 
-  integer function lo_qcd_to_amp_pos(qcdpower)
-    implicit none
-    integer, intent(in) :: qcdpower
-    integer :: position
-    integer, allocatable :: orders(:)
-
-    call ensure_qcd_order_available()
-    allocate(orders(nsplitorders))
-    do position = 1, amp_split_size_born
-      call amp_split_pos_to_orders(position, orders)
-      if (orders(qcd_pos) == qcdpower) exit
-    end do
-    lo_qcd_to_amp_pos = position
-    deallocate(orders)
-  end function lo_qcd_to_amp_pos
-
-
-  integer function nlo_qcd_to_amp_pos(qcdpower)
-    implicit none
-    integer, intent(in) :: qcdpower
-    integer :: position
-    integer, allocatable :: orders(:)
-
-    call ensure_qcd_order_available()
-    allocate(orders(nsplitorders))
-    do position = amp_split_size_born + 1, amp_split_size
-      call amp_split_pos_to_orders(position, orders)
-      if (orders(qcd_pos) == qcdpower) exit
-    end do
-    nlo_qcd_to_amp_pos = position
-    deallocate(orders)
-  end function nlo_qcd_to_amp_pos
-
-
   subroutine check_amp_split()
     implicit none
     integer :: i
@@ -206,16 +169,6 @@ contains
 
     if (.not. split_orders_initialized) call initialize_split_orders()
   end subroutine ensure_split_orders_initialized
-
-
-  subroutine ensure_qcd_order_available()
-    implicit none
-
-    call ensure_split_orders_initialized()
-    if (qcd_pos < 1 .or. qcd_pos > nsplitorders) then
-      call fail_split_orders('the process has no QCD split order')
-    end if
-  end subroutine ensure_qcd_order_available
 
 
   subroutine validate_order_vector(orders)

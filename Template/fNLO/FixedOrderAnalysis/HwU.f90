@@ -1,7 +1,7 @@
 ! Histograms with uncertainties (HwU).
 !
-! The histogram implementation is kept in modules.  External entry points and
-! process-generated PineAPPL declarations are isolated in HwU_bridge.f.
+! The histogram implementation is kept in modules. External entry points used
+! by the integrator are isolated in HwU_bridge.f.
 
 module HwU_module
   implicit none
@@ -30,25 +30,6 @@ module HwU_module
   double precision, allocatable :: step(:)
   double precision, allocatable :: p_wgts(:, :)
 
-  interface
-    subroutine hwu_pineappl_inithist()
-      implicit none
-    end subroutine hwu_pineappl_inithist
-
-    subroutine hwu_pineappl_book(label, title_l, nbin_l, xmin, xmax)
-      implicit none
-      integer, intent(in) :: label, nbin_l
-      character(len=*), intent(in) :: title_l
-      double precision, intent(in) :: xmin, xmax
-    end subroutine hwu_pineappl_book
-
-    subroutine hwu_pineappl_fill(label, x)
-      implicit none
-      integer, intent(in) :: label
-      double precision, intent(in) :: x
-    end subroutine hwu_pineappl_fill
-  end interface
-
   public :: HwU_inithist
   public :: HwU_book
   public :: HwU_fill
@@ -63,7 +44,6 @@ contains
     character(len=*), intent(in) :: wgt_info(*)
     integer :: i
 
-    call hwu_pineappl_inithist()
     call HwU_deallocate_all()
 
     max_plots = 0
@@ -85,7 +65,6 @@ contains
     double precision, intent(in) :: xmax
     integer :: i, j
 
-    call hwu_pineappl_book(label, title_l, nbin_l, xmin, xmax)
     call HwU_allocate_histo(label, nbin_l)
 
     booked(label) = .true.
@@ -111,8 +90,6 @@ contains
     double precision, intent(in) :: x
     double precision, intent(in) :: wgts(*)
     integer :: i, j, bin
-
-    call hwu_pineappl_fill(label, x)
 
     if (wgts(1) == 0d0) return
     if (x < histxl(label, 1) .or. x > histxm(label, nbin(label))) return

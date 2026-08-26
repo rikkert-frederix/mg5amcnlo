@@ -1,6 +1,5 @@
 module cuts_module
-  use process_dimensions, only: nexternal, nincoming, maxproc, &
-       validate_process_dimensions
+  use process_dimensions, only: nexternal, nincoming
   use run_state, only: gamma_is_j, maxjetflavor, ptgmin, etagamma, isoem, &
        r0gamma, xn, epsgamma, ptl, etal, drll, drll_sf, mll, mll_sf, &
        ptj, jetalgo, jetradius, etaj
@@ -10,109 +9,15 @@ module cuts_module
   use timing_state, only: t_cuts
   use fastjet_timing_wrapper, only: fastjet_etamax_timed
   use fixed_order_user_hooks, only: accept_dummy_cuts
+  use fnlo_process_common, only: etmin, etmax, mxxmin, &
+       event_masses => particle_masses, event_idup => idup
   implicit none
   private
 
-  public :: initialize_cuts_runtime_state, initialize_cuts_event_state
   public :: passcuts
   public :: chi_gamma_iso, sortzv, iso_getdrv40
-  double precision, allocatable :: etmin(:), etmax(:), mxxmin(:,:)
-  double precision, allocatable :: event_masses(:)
-  integer, allocatable :: event_idup(:,:)
-  logical :: cuts_runtime_initialized = .false.
-  logical :: cuts_event_initialized = .false.
 
 contains
-
-  subroutine initialize_cuts_runtime_state(etmin_in, etmax_in, mxxmin_in)
-    implicit none
-    double precision, intent(in) :: etmin_in(nincoming + 1:)
-    double precision, intent(in) :: etmax_in(nincoming + 1:)
-    double precision, intent(in) :: mxxmin_in(nincoming + 1:, &
-    & nincoming + 1:)
-
-    call validate_process_dimensions()
-    call validate_runtime_shapes(etmin_in, etmax_in, mxxmin_in)
-
-    if (.not. cuts_runtime_initialized) then
-      allocate(etmin(nincoming + 1:nexternal - 1))
-      allocate(etmax(nincoming + 1:nexternal - 1))
-      allocate(mxxmin(nincoming + 1:nexternal - 1, &
-      & nincoming + 1:nexternal - 1))
-      cuts_runtime_initialized = .true.
-    end if
-
-    etmin = etmin_in
-    etmax = etmax_in
-    mxxmin = mxxmin_in
-
-  end subroutine initialize_cuts_runtime_state
-
-
-  subroutine initialize_cuts_event_state(event_masses_in, event_idup_in)
-    implicit none
-    double precision, intent(in) :: event_masses_in(:)
-    integer, intent(in) :: event_idup_in(:,:)
-
-    call validate_process_dimensions()
-    if (size(event_masses_in) /= nexternal) then
-      call fail_cuts('event-mass array has the wrong shape')
-    end if
-    if (size(event_idup_in, 1) /= nexternal .or. &
-    & size(event_idup_in, 2) /= maxproc) then
-      call fail_cuts('Les Houches ID array has the wrong shape')
-    end if
-    if (.not. cuts_event_initialized) then
-      allocate(event_masses(nexternal), event_idup(nexternal, maxproc))
-      cuts_event_initialized = .true.
-    end if
-    event_masses = event_masses_in
-    event_idup = event_idup_in
-  end subroutine initialize_cuts_event_state
-
-
-  subroutine validate_runtime_shapes(etmin_in, etmax_in, mxxmin_in)
-    implicit none
-    double precision, intent(in) :: etmin_in(nincoming + 1:)
-    double precision, intent(in) :: etmax_in(nincoming + 1:)
-    double precision, intent(in) :: mxxmin_in(nincoming + 1:, &
-    & nincoming + 1:)
-    integer :: final_slots
-
-    final_slots = max(0, nexternal - nincoming - 1)
-    if (size(etmin_in) /= final_slots .or. &
-    & size(etmax_in) /= final_slots .or. &
-    & size(mxxmin_in, 1) /= final_slots .or. &
-    & size(mxxmin_in, 2) /= final_slots) then
-      call fail_cuts('PDG-cut state has the wrong shape')
-    end if
-  end subroutine validate_runtime_shapes
-
-
-  subroutine require_cuts_runtime_state()
-    implicit none
-    if (.not. cuts_runtime_initialized) then
-      call fail_cuts('runtime state has not been initialized by the bridge')
-    end if
-  end subroutine require_cuts_runtime_state
-
-
-  subroutine require_cuts_event_state()
-    implicit none
-    if (.not. cuts_event_initialized) then
-      call fail_cuts('event state has not been initialized by the bridge')
-    end if
-  end subroutine require_cuts_event_state
-
-
-
-
-  subroutine fail_cuts(message)
-    implicit none
-    character(len=*), intent(in) :: message
-    write (*, '(a)') 'cuts_module: ' // trim(message)
-    stop 1
-  end subroutine fail_cuts
 
 !
 ! This file contains the default cuts (as defined in the run_card.dat)
@@ -160,7 +65,6 @@ contains
   logical is_a_lp(nexternal),is_a_lm(nexternal),is_a_j(nexternal)
   logical is_nextph_iso(nexternal)
   logical is_a_lp_reco(nexternal),is_a_lm_reco(nexternal)
-  call require_cuts_runtime_state()
   passcuts_user=.true. ! event is okay; otherwise it is changed
 
 !***************************************************************
@@ -296,7 +200,6 @@ contains
 
   integer n_needed_photons
 
-  call require_cuts_runtime_state()
   passcuts_photons = .true.
 
 !
@@ -454,7 +357,6 @@ contains
   double precision pQCD(0:3,nexternal)
   logical is_iso(nexternal)
   integer i, j
-  call require_cuts_runtime_state()
 
 !
 ! JET CUTS
@@ -657,7 +559,6 @@ contains
   double precision tmpvar
   integer i,j
 
-  call require_cuts_runtime_state()
   passcuts_pdgs = .true.
 
 
@@ -706,8 +607,6 @@ contains
   double precision plab(0:3, nexternal),pp(0:4, nexternal)
 ! Masses of external particles
 ! PDG codes and masses are synchronized by the generated-state bridge.
-  call require_cuts_runtime_state()
-  call require_cuts_event_state()
   call cpu_time(tBefore)
 ! Make sure have reasonable 4-momenta
   if (p(0,1) .le. 0d0) then

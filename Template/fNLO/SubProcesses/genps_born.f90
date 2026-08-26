@@ -8,13 +8,25 @@ module genps_born
   use fnlo_process_common, only: i_fks, j_fks, iconfig0, this_config, &
                                  softtest, colltest, &
                                  tau_born_lower_bound, &
-                                 tau_lower_bound_resonance
+                                 tau_lower_bound_resonance, &
+                                 config_mass, config_width, config_forest, &
+                                 config_tree, config_index, born_tree, &
+                                 born_ns_channel => born_ns, &
+                                 born_nt_channel => born_nt, &
+                                 born_onebody_index => born_onebody, &
+                                 born_nbranch, born_one_body, &
+                                 born_momenta => p_born, &
+                                 born_lab_momenta => p_born_l, &
+                                 cbw_mass_state => cbw_mass, &
+                                 cbw_width_state => cbw_width, &
+                                 cbw_state => cbw, &
+                                 cbw_level_state => cbw_level, &
+                                 particle_masses, schannel_masses
   implicit none
   private
 
   public :: born_phase_space
   public :: generate_born_phase_space
-  public :: initialize_genps_born_state
   public :: invalidate_born_phase_space
 
   type :: born_phase_space
@@ -32,34 +44,6 @@ module genps_born
     double precision, pointer :: external_masses(:) => null()
   end type born_phase_space
 
-! Python writes the dimensions of this shared process state for each
-! subprocess. fnlo_process_common owns the storage; the fixed-form bridge
-! binds these pointers to the same live objects.
-  double precision, pointer :: config_mass(:, :, :) => null()
-  double precision, pointer :: config_width(:, :, :) => null()
-  integer, pointer :: config_forest(:, :, :, :) => null()
-  integer, pointer :: config_tree(:, :) => null()
-  integer, pointer :: config_index => null()
-
-  integer, pointer :: born_tree(:, :) => null()
-  integer, pointer :: born_ns_channel => null()
-  integer, pointer :: born_nt_channel => null()
-  integer, pointer :: born_onebody_index => null()
-  integer, pointer :: born_nbranch => null()
-  logical, pointer :: born_one_body => null()
-
-  double precision, pointer :: born_momenta(:, :) => null()
-  double precision, pointer :: born_lab_momenta(:, :) => null()
-
-  double precision, pointer :: cbw_mass_state(:, :) => null()
-  double precision, pointer :: cbw_width_state(:, :) => null()
-  integer, pointer :: cbw_level_max_state => null()
-  integer, pointer :: cbw_state(:) => null()
-  integer, pointer :: cbw_level_state(:) => null()
-
-  double precision, pointer :: particle_masses(:) => null()
-  double precision, pointer :: schannel_masses(:) => null()
-
   double precision, allocatable, target :: saved_particle_masses(:)
   double precision, allocatable, target :: saved_external_masses(:)
   integer :: saved_configuration = 0
@@ -67,60 +51,14 @@ module genps_born
   double precision :: saved_stot = 0d0
   double precision :: saved_initial_mass = 0d0
   double precision :: saved_final_mass = 0d0
-  logical :: born_state_initialized = .false.
+  logical :: born_cache_initialized = .false.
 
 contains
 
-  subroutine initialize_genps_born_state(config_mass_in, config_width_in, &
-                                         config_forest_in, config_tree_in, config_index_in, &
-                                         born_tree_in, born_ns_in, born_nt_in, &
-                                         born_onebody_in, born_nbranch_in, born_one_body_in, &
-                                         born_momenta_in, born_lab_momenta_in, &
-                                         cbw_mass_in, cbw_width_in, cbw_level_max_in, &
-                                         cbw_in, cbw_level_in, particle_masses_in, &
-                                         schannel_masses_in)
+  subroutine initialize_born_cache()
     implicit none
-    double precision, target, intent(inout) :: config_mass_in(-nexternal:, 1:, 0:)
-    double precision, target, intent(inout) :: config_width_in(-nexternal:, 1:, 0:)
-    integer, target, intent(inout) :: config_forest_in(1:, -max_branch:, 1:, 0:)
-    integer, target, intent(inout) :: config_tree_in(1:, -max_branch:)
-    integer, target, intent(inout) :: config_index_in
-    integer, target, intent(inout) :: born_tree_in(1:, -max_branch:)
-    integer, target, intent(inout) :: born_ns_in, born_nt_in
-    integer, target, intent(inout) :: born_onebody_in, born_nbranch_in
-    logical, target, intent(inout) :: born_one_body_in
-    double precision, target, intent(inout) :: born_momenta_in(0:, 1:)
-    double precision, target, intent(inout) :: born_lab_momenta_in(0:, 1:)
-    double precision, target, intent(inout) :: cbw_mass_in(-1:, -nexternal:)
-    double precision, target, intent(inout) :: cbw_width_in(-1:, -nexternal:)
-    integer, target, intent(inout) :: cbw_level_max_in
-    integer, target, intent(inout) :: cbw_in(-nexternal:)
-    integer, target, intent(inout) :: cbw_level_in(-nexternal:)
-    double precision, target, intent(inout) :: particle_masses_in(1:)
-    double precision, target, intent(inout) :: schannel_masses_in(-nexternal:)
-
+    if (born_cache_initialized) return
     call validate_process_dimensions()
-    config_mass => config_mass_in
-    config_width => config_width_in
-    config_forest => config_forest_in
-    config_tree => config_tree_in
-    config_index => config_index_in
-    born_tree => born_tree_in
-    born_ns_channel => born_ns_in
-    born_nt_channel => born_nt_in
-    born_onebody_index => born_onebody_in
-    born_nbranch => born_nbranch_in
-    born_one_body => born_one_body_in
-    born_momenta => born_momenta_in
-    born_lab_momenta => born_lab_momenta_in
-    cbw_mass_state => cbw_mass_in
-    cbw_width_state => cbw_width_in
-    cbw_level_max_state => cbw_level_max_in
-    cbw_state => cbw_in
-    cbw_level_state => cbw_level_in
-    particle_masses => particle_masses_in
-    schannel_masses => schannel_masses_in
-
     call validate_bound_born_state()
 
     if (.not. allocated(saved_particle_masses)) then
@@ -134,8 +72,8 @@ contains
     else if (size(saved_external_masses) /= nexternal - 1) then
       call fail_born_state('saved external mass storage has inconsistent bounds')
     end if
-    born_state_initialized = .true.
-  end subroutine initialize_genps_born_state
+    born_cache_initialized = .true.
+  end subroutine initialize_born_cache
 
   subroutine generate_born_phase_space(ndim, iconfig, x, point)
     implicit none
@@ -147,7 +85,7 @@ contains
     double precision :: s(-max_branch:max_particles)
     integer :: i, j
 
-    call require_born_state()
+    call initialize_born_cache()
 
     point%valid = .false.
     point%xjac = 1d0
@@ -238,9 +176,6 @@ contains
   subroutine invalidate_born_phase_space()
     implicit none
 
-    if (.not. associated(born_momenta)) then
-      call fail_born_state('Born momenta are not bound')
-    end if
     born_momenta(0, 1) = -99d0
   end subroutine invalidate_born_phase_space
 
@@ -1248,38 +1183,6 @@ contains
       call fail_born_state('s-channel masses have inconsistent bounds')
     end if
   end subroutine validate_bound_born_state
-
-  subroutine require_born_state()
-    implicit none
-
-    if (.not. born_state_initialized) then
-      call fail_born_state('module state has not been initialized')
-    end if
-    if (.not. associated(config_mass) .or. &
-        .not. associated(config_width) .or. &
-        .not. associated(config_forest) .or. &
-        .not. associated(config_tree) .or. &
-        .not. associated(config_index) .or. &
-        .not. associated(born_tree) .or. &
-        .not. associated(born_ns_channel) .or. &
-        .not. associated(born_nt_channel) .or. &
-        .not. associated(born_onebody_index) .or. &
-        .not. associated(born_nbranch) .or. &
-        .not. associated(born_one_body) .or. &
-        .not. associated(born_momenta) .or. &
-        .not. associated(born_lab_momenta) .or. &
-        .not. associated(cbw_mass_state) .or. &
-        .not. associated(cbw_width_state) .or. &
-        .not. associated(cbw_level_max_state) .or. &
-        .not. associated(cbw_state) .or. &
-        .not. associated(cbw_level_state) .or. &
-        .not. associated(particle_masses) .or. &
-        .not. associated(schannel_masses) .or. &
-        .not. allocated(saved_particle_masses) .or. &
-        .not. allocated(saved_external_masses)) then
-      call fail_born_state('module state is incomplete')
-    end if
-  end subroutine require_born_state
 
   subroutine fail_born_state(message)
     implicit none

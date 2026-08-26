@@ -121,16 +121,6 @@ endif
 
 
 
-# Option PineAPPL
-ifneq ($(pineappl),)
-  APPLLIBS=$(shell pkg-config pineappl_capi --libs)
-  CXXFLAGS+=$(shell pkg-config pineappl_capi --cflags)
-  pineappl_interface=pineappl_interface.o
-else
-  APPLLIBS=
-  pineappl_interface=pineappl_interface_dummy.o
-endif
-
 # Madloop
 ifdef madloop
   ifneq ("$(wildcard */loop_matrix.f)","") # this is to skip ML for LOonly

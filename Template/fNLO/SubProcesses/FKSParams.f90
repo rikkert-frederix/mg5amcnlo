@@ -10,13 +10,12 @@ module FKSParams
   implicit none
   private
 
-  public :: paramFileName, maxContribsSelected, maxCouplingsSelected
-  public :: maxContribType, IRPoleCheckThreshold, Virt_fraction
+  public :: paramFileName, IRPoleCheckThreshold, Virt_fraction
   public :: PrecisionVirtualAtRunTime, Min_virt_fraction
   public :: NHelForMCoverHels, VetoedContributionTypes
   public :: SelectedContributionTypes
   public :: SelectedCouplingOrders, QCD_squared_selected
-  public :: separate_flavour_configs, IncludeBornContributions
+  public :: separate_flavour_configs
   public :: use_poly_virtual, FKSParamReader
   character(len=64), parameter ::  paramFileName='FKS_params.dat'
   integer,parameter :: maxContribsSelected=100, &
@@ -28,7 +27,7 @@ module FKSParams
               SelectedContributionTypes(0:maxContribsSelected), &
               QCD_squared_selected
   integer, allocatable :: SelectedCouplingOrders(:,:)
-  logical :: separate_flavour_configs,IncludeBornContributions,use_poly_virtual
+  logical :: separate_flavour_configs,use_poly_virtual
   logical :: HasReadOnce=.False.,paramPrinted=.false.
 
 contains
@@ -83,7 +82,7 @@ contains
              endif
           elseif (buff .eq. '#PrecisionVirtualAtRunTime') then
              read(68,*,end=999) PrecisionVirtualAtRunTime
-             if (IRPoleCheckThreshold .lt. -1.01d0 ) then
+             if (PrecisionVirtualAtRunTime .lt. -1.01d0 ) then
                 stop 'PrecisionVirtualAtRunTime must be >= -1.0d0.'
              endif
           else if (buff .eq. '#NHelForMCoverHels') then
@@ -249,7 +248,6 @@ contains
     Min_virt_fraction=0.005d0
     separate_flavour_configs=.false.
     use_poly_virtual=.true.
-    IncludeBornContributions=.true.
     SelectedContributionTypes(0)=0
     VetoedContributionTypes(0)=0
     do i=1, maxContribsSelected

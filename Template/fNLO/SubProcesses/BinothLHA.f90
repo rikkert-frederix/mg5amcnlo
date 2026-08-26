@@ -7,9 +7,9 @@ module binoth_lha_madloop_backend
   use fks_singular_module, only: getpoles
   use fnlo_process_common, only: qes2, ntot, nsun, nsps, nups, &
                                  neps, n100, nddp, nqdp, nini, n10, n1, &
-                                 volh, mc_hel, ihel, fillh, &
+                                 volh, mc_hel, ihel, &
                                  force_polecheck, polecheck_passed, &
-                                 ret_code_common, cs_run
+                                 ret_code_common
   implicit none
   private
 
@@ -173,7 +173,6 @@ contains
         end do
       else if (mc_hel == 1) then
         call PickHelicityMC(p, goodhel, hel, ihel, volh)
-        fillh = .false.
         call sloopmatrixhel_thres(p, hel(ihel), virt_wgts_hel, &
              tolerance, accuracies, ret_code)
         hel_fact = dble(goodhel(ihel))/volh/4d0
@@ -205,11 +204,6 @@ contains
              ' or pure MC over helicities', mc_hel
         stop
       end if
-    end if
-
-    if (cs_run) then
-      print *, 'I am skipping checkpoles'
-      return
     end if
 
     ! MadLoop already returns CDR virtuals, so no scheme conversion is applied.

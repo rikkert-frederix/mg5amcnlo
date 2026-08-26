@@ -1,5 +1,5 @@
 module genps_fks
-  use boostwdir2_module, only: boostwdir2, boostwdir2_in_place
+  use boostwdir2_module, only: boostwdir2_in_place
   use process_dimensions, only: validate_process_dimensions
   use run_state
   use timing_state, only: tGenPS
@@ -12,7 +12,7 @@ module genps_fks
   ! Generated parameters keep the phase-space normalization bit-identical
   ! to the NLO template's compile-time arithmetic.
   use fnlo_process_common, only: nexternal, nincoming, max_particles, &
-                                 max_branch, nocntevents, use_evpr, nbody, &
+                                 max_branch, nocntevents, nbody, &
                                  soft_counterevent, collinear_counterevent, &
                                  soft_collinear_counterevent, real_event, &
                                  first_counterevent, last_counterevent, &
@@ -22,51 +22,19 @@ module genps_fks
                                  event_xi_norm, event_bjorken_x, &
                                  event_sqrt_shat, event_shat, &
                                  ybst_til_tolab, ybst_til_tocm, &
-                                 veckn_ev, veckbarn_ev, xp0jfks, &
                                  softtest, colltest, xi_i_fks_fix, &
-                                 y_ij_fks_fix, tau_lower_bound
+                                 y_ij_fks_fix, tau_lower_bound, &
+                                 stored_event_momenta => event_momenta, &
+                                 stored_event_jacobian => event_jacobian, &
+                                 born_lab_momenta => p_born_l, &
+                                 particle_masses
   implicit none
   private
   public :: generate_momenta
-  public :: initialize_genps_fks_state
-
-! fnlo_process_common owns the process-sized storage. The fixed-form bridge
-! binds the unified real-event and counterevent arrays.
-  double precision, pointer :: stored_event_momenta(:, :, :) => null()
-  double precision, pointer :: stored_event_jacobian(:) => null()
-
-  double precision, pointer :: born_lab_momenta(:, :) => null()
-  double precision, pointer :: born_coll_momenta(:, :) => null()
-  double precision, pointer :: born_norad_momenta(:, :) => null()
-  double precision, pointer :: particle_masses(:) => null()
 
   double precision :: massive_xjac_cache = 1d0
-  logical :: genps_state_initialized = .false.
 
 contains
-
-  subroutine initialize_genps_fks_state(event_momenta_in, event_jacobian_in, &
-                                        born_lab_momenta_in, born_coll_momenta_in, &
-                                        born_norad_momenta_in, particle_masses_in)
-    implicit none
-    double precision, target, intent(inout) :: event_momenta_in(0:, 1:, 0:)
-    double precision, target, intent(inout) :: event_jacobian_in(0:)
-    double precision, target, intent(inout) :: born_lab_momenta_in(0:, 1:)
-    double precision, target, intent(inout) :: born_coll_momenta_in(0:, 1:)
-    double precision, target, intent(inout) :: born_norad_momenta_in(0:, 1:)
-    double precision, target, intent(inout) :: particle_masses_in(1:)
-
-    call validate_process_dimensions()
-    stored_event_momenta => event_momenta_in
-    stored_event_jacobian => event_jacobian_in
-    born_lab_momenta => born_lab_momenta_in
-    born_coll_momenta => born_coll_momenta_in
-    born_norad_momenta => born_norad_momenta_in
-    particle_masses => particle_masses_in
-
-    call validate_bound_genps_state()
-    genps_state_initialized = .true.
-  end subroutine initialize_genps_fks_state
 
   subroutine generate_momenta(ndim, iconfig, wgt, x, p)
     implicit none
@@ -79,11 +47,9 @@ contains
     double precision :: jac
     integer :: i
     logical :: pass
-    call require_genps_state()
+    call validate_process_dimensions()
     call cpu_time(tBefore)
 
-! fNLO supports only the standard event-projection mapping.
-    use_evpr = .true.
     call generate_born_phase_space(ndim, iconfig, x, born)
 
     pass = born%valid
@@ -628,13 +594,6 @@ contains
     veckn = rho(xp(0, j_fks))
     veckbarn = rho(p_born_imother)
 !
-! Store event-kinematics quantities.
-    if (icountevts .eq. real_event) then
-      veckn_ev = veckn
-      veckbarn_ev = veckbarn
-      xp0jfks = xp(0, j_fks)
-    end if
-!
     xpswgt = xpswgt*2*shat/(4*pi)**3*veckn/veckbarn/ &
       & (2 - xi_i_fks*(1 - xp(0, j_fks)/veckn*y_ij_fks))
     xpswgt = abs(xpswgt)
@@ -932,13 +891,6 @@ contains
 ! Phase-space factor for (xii,yij,phii)
     veckn = rho(xp(0, j_fks))
     veckbarn = rho(p_born_imother)
-!
-! Store event-kinematics quantities.
-    if (icountevts .eq. real_event) then
-      veckn_ev = veckn
-      veckbarn_ev = veckbarn
-      xp0jfks = xp(0, j_fks)
-    end if
 !
     xpswgt = xpswgt*2*shat/(4*pi)**3*veckn/veckbarn/ &
       & (2 - xi_i_fks*(1 - xp(0, j_fks)/veckn*y_ij_fks))
@@ -1384,51 +1336,5 @@ contains
     end if
     return
   end subroutine get_recoil
-
-  subroutine validate_bound_genps_state()
-    implicit none
-
-    if (size(stored_event_momenta, 1) /= 4 .or. &
-        size(stored_event_momenta, 2) /= nexternal .or. &
-        size(stored_event_momenta, 3) /= real_event + 1) then
-      call fail_genps_state('event momenta have inconsistent bounds')
-    end if
-    if (size(stored_event_jacobian) /= real_event + 1) then
-      call fail_genps_state('event Jacobians have inconsistent bounds')
-    end if
-    if (size(born_lab_momenta, 1) /= 4 .or. &
-        size(born_lab_momenta, 2) /= nexternal - 1 .or. &
-        any(shape(born_coll_momenta) /= shape(born_lab_momenta)) .or. &
-        any(shape(born_norad_momenta) /= shape(born_lab_momenta))) then
-      call fail_genps_state('Born radiation momenta have inconsistent bounds')
-    end if
-    if (size(particle_masses) /= nexternal) then
-      call fail_genps_state('particle masses have inconsistent bounds')
-    end if
-  end subroutine validate_bound_genps_state
-
-  subroutine require_genps_state()
-    implicit none
-
-    if (.not. genps_state_initialized) then
-      call fail_genps_state('module state has not been initialized')
-    end if
-    if (.not. associated(stored_event_momenta) .or. &
-        .not. associated(stored_event_jacobian) .or. &
-        .not. associated(born_lab_momenta) .or. &
-        .not. associated(born_coll_momenta) .or. &
-        .not. associated(born_norad_momenta) .or. &
-        .not. associated(particle_masses)) then
-      call fail_genps_state('module state is incomplete')
-    end if
-  end subroutine require_genps_state
-
-  subroutine fail_genps_state(message)
-    implicit none
-    character(len=*), intent(in) :: message
-
-    write (*, *) 'genps_fks: ', trim(message)
-    stop 1
-  end subroutine fail_genps_state
 
 end module genps_fks

@@ -33,12 +33,6 @@ ifneq ("$(wildcard ../../Source/RUNNING)","")
     LIBS += $(LIBDIR)librunning.$(libext) 
 endif
 
-ifeq ($(strip $(pineappl_interface)),pineappl_interface_dummy.o)
-pineappl_interface_bridge = pineappl_interface_dummy_bridge.o
-endif
-
-
-
 # Files for all executables
 FILES= fnlo_process_common.o process_dimensions.o			\
 	 process_dimensions_bridge.o					\
@@ -50,7 +44,7 @@ FILES= fnlo_process_common.o process_dimensions.o			\
 	 $(patsubst %.f,%.o,$(wildcard matrix_*.f)) 			\
 	 FKSParams.o real_me_chooser.o chooser_functions.o		\
 	 chooser_functions_bridge.o					\
-	 genps_born.o genps_fks.o genps_fks_bridge.o			\
+	 genps_born.o genps_fks.o				\
 	 setcuts.o						\
 	 setcuts_bridge.o						\
 	 setscales.o setscales_bridge.o				\
@@ -58,13 +52,12 @@ FILES= fnlo_process_common.o process_dimensions.o			\
 	 born.o sborn_sf.o extra_cnt_wrapper.o				\
 	 $(patsubst %.f,%.o,$(wildcard born_cnt_*.f))			\
 	 fks_Sij.o $(fastjetfortran_madfks)				\
-	 fks_singular.o fks_singular_bridge.o fks_random_bridge.o	\
+	 fks_model_state.o fks_singular.o fks_weights.o		\
+	 fks_contributions.o fks_singular_bridge.o fks_random_bridge.o	\
 	 boostwdir2.o       					\
 	 splitorders_stuff.o					\
 	 splitorders_stuff_bridge.o					\
-	 get_color.o iproc_map.o iproc_map_bridge.o			\
-	 MC_integer.o						\
-	 $(pineappl_interface) $(pineappl_interface_bridge) weight_lines.o \
+	 get_color.o MC_integer.o weight_lines.o			\
 	 mint_module.o polfit.o
 
 # Every shipped analysis is a module plus one external-ABI bridge.  Derive the
@@ -102,13 +95,14 @@ FNLO_PROCESS_COMMON_USERS = \
 	BinothLHA.o BinothLHA_bridge.o \
 	BinothLHA_OLP.o BinothLHA_OLP_bridge.o \
 	BinothLHA_user_bridge.o check_poles.o check_poles_bridge.o \
-	chooser_functions_bridge.o cuts_bridge.o \
+	chooser_functions_bridge.o \
 	driver_mintFO.o driver_mintFO_bridge.o \
 	fks_diagnostics.o \
-	fks_singular.o fks_singular_bridge.o \
-	genps_born.o genps_fks.o genps_fks_bridge.o \
-	iproc_map_bridge.o madfks_plot.o madfks_plot_bridge.o \
-	MC_integer.o mint_module.o open_output_files_bridge.o \
+	fks_singular.o fks_weights.o fks_contributions.o \
+	fks_singular_bridge.o \
+	genps_born.o genps_fks.o \
+	madfks_plot.o madfks_plot_bridge.o \
+	MC_integer.o mint_module.o \
 	process_dimensions_bridge.o setcuts_bridge.o \
 	setscales.o setscales_bridge.o symmetry_fks_v3_bridge.o \
 	test_soft_col_limits_bridge.o
@@ -131,9 +125,9 @@ endif
 # Files needed for mintFO
 RUN= $(FO_ANALYSE) $(FNLO_AUTO_ANALYSIS_BRIDGES) \
 	$(FNLO_AUTO_DUMMY_ANALYSIS_BRIDGES) $(FILES) \
-	cuts.o cuts_bridge.o			\
+	cuts.o					\
 	dummy_fct.o						\
-	born_hel.o open_output_files.o open_output_files_bridge.o	\
+	born_hel.o open_output_files.o				\
 	madfks_plot.o madfks_plot_bridge.o
 
 # Files for mintFO
@@ -175,12 +169,12 @@ SYM= $(RUN) BinothLHADummy.o BinothLHADummy_bridge.o \
 	$(CXX) $(CXXFLAGS) -c -I. -I$(ANADIR) $(FO_INCLUDEPATHS) $^
 
 gensym: $(SYM)
-	$(FC) $(LDFLAGS) -o gensym $(SYM) $(APPLLIBS) $(LINKLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(FJLIBS)
+	$(FC) $(LDFLAGS) -o gensym $(SYM) $(LINKLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(FJLIBS)
 	rm fks_singular.o
 	strip gensym
 
 test_soft_col_limits: $(TEST) mint_module.o
-	$(FC) $(LDFLAGS) -o test_soft_col_limits $(TEST) $(APPLLIBS) $(LINKLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(FJLIBS)
+	$(FC) $(LDFLAGS) -o test_soft_col_limits $(TEST) $(LINKLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(FJLIBS)
 	rm test_soft_col_limits.o
 	strip test_soft_col_limits
 
@@ -190,11 +184,11 @@ $(LIBDIR)/libmodel.$(dylibext):
 	$(MAKE) -C "$(LIBDIR)/../Source/MODEL" shared
 
 check_poles: $(POLES) $(libmadloop)
-	$(FC) -o check_poles $(POLES) $(NLOLIBS) $(APPLLIBS) $(LINKLIBS) $(FJLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(LDFLAGS)
+	$(FC) -o check_poles $(POLES) $(NLOLIBS) $(LINKLIBS) $(FJLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(LDFLAGS)
 	strip check_poles
 
 madevent_mintFO: $(MINTFO) $(libmadloop) makefile $(LIBS)
-	$(FC) -o madevent_mintFO $(MINTFO) $(NLOLIBS) $(APPLLIBS) $(LINKLIBS) $(FJLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(LDFLAGS)
+	$(FC) -o madevent_mintFO $(MINTFO) $(NLOLIBS) $(LINKLIBS) $(FJLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(LDFLAGS)
 	strip madevent_mintFO
 
 libMadLoop.a:
@@ -217,15 +211,12 @@ setscales.o: process_dimensions.o \
 setscales_bridge.o: setscales.o
 fks_Sij.o: process_dimensions.o $(LIBDIR)kin_functions_module.mod
 splitorders_stuff_bridge.o: splitorders_stuff.o process_dimensions.o
-pineappl_interface_dummy_bridge.o: pineappl_interface_dummy.o
-iproc_map_bridge.o: iproc_map.o
 FKSParams.o: process_dimensions.o
 analysis_dummy.o: process_dimensions.o
 analysis_dummy_bridge.o: analysis_dummy.o process_dimensions.o
 HwU_dummy_bridge.o: HwU_dummy.o
 BinothLHADummy.o: process_dimensions.o
 BinothLHADummy_bridge.o: BinothLHADummy.o process_dimensions.o
-open_output_files_bridge.o: open_output_files.o
 HwU_bridge.o: HwU.o
 $(FNLO_MODULE_ANALYSES): process_dimensions.o HwU.o open_output_files.o
 $(FNLO_MODULE_ANALYSIS_BRIDGES): %_bridge.o: %.o process_dimensions.o
@@ -240,22 +231,32 @@ BinothLHA_OLP.o: process_dimensions.o FKSParams.o fks_singular.o
 BinothLHA.o: process_dimensions.o FKSParams.o splitorders_stuff.o cuts.o \
 	fks_singular.o
 BinothLHA_bridge.o: BinothLHA.o
-fks_singular.o: process_dimensions.o fks_metadata.o weight_lines.o \
-	mint_module.o FKSParams.o setscales.o splitorders_stuff.o fks_Sij.o \
-	cuts.o chooser_functions.o madfks_plot.o phase_space_kinematics.o \
+fks_model_state.o: process_dimensions.o
+fks_singular.o: process_dimensions.o fks_model_state.o fks_metadata.o \
+	mint_module.o FKSParams.o splitorders_stuff.o fks_Sij.o \
+	chooser_functions.o phase_space_kinematics.o \
 	fks_qcd_splitting.o fks_soft_kernels.o \
 	fks_random.o \
 	$(LIBDIR)run_state.mod \
-	$(LIBDIR)timing_state.mod $(LIBDIR)extra_weights.mod \
-	$(LIBDIR)alfas_functions_module.mod \
+	$(LIBDIR)timing_state.mod \
 	$(LIBDIR)kin_functions_module.mod
-fks_singular_bridge.o: fks_singular.o process_dimensions_bridge.o \
+fks_weights.o: process_dimensions.o fks_model_state.o fks_metadata.o \
+	weight_lines.o mint_module.o FKSParams.o setscales.o \
+	splitorders_stuff.o chooser_functions.o madfks_plot.o \
+	$(LIBDIR)run_state.mod $(LIBDIR)timing_state.mod \
+	$(LIBDIR)extra_weights.mod $(LIBDIR)alfas_functions_module.mod
+fks_contributions.o: process_dimensions.o fks_model_state.o \
+	fks_singular.o fks_weights.o mint_module.o splitorders_stuff.o \
+	madfks_plot.o $(LIBDIR)timing_state.mod $(LIBDIR)extra_weights.mod
+fks_singular_bridge.o: fks_model_state.o fks_singular.o \
+	process_dimensions_bridge.o \
 	fks_metadata_bridge.o
 fks_random_bridge.o: fks_random.o mint_module.o
 driver_mintFO.o: process_dimensions.o fks_metadata.o fks_channel_map.o \
 	fks_random.o genps_fks.o \
 	weight_lines.o mint_module.o FKSParams.o MC_integer.o setscales.o \
-	splitorders_stuff.o cuts.o fks_singular.o madfks_plot.o \
+	splitorders_stuff.o cuts.o fks_singular.o fks_weights.o \
+	fks_contributions.o madfks_plot.o \
 	$(LIBDIR)run_state.mod $(LIBDIR)timing_state.mod \
 	$(LIBDIR)extra_weights.mod $(LIBDIR)run_printout_module.mod
 driver_mintFO_bridge.o: driver_mintFO.o \
@@ -271,19 +272,18 @@ genps_fks.o: genps_born.o process_dimensions.o boostwdir2.o FKSParams.o \
 	phase_space_kinematics.o fks_diagnostics.o \
 	$(LIBDIR)run_state.mod $(LIBDIR)timing_state.mod \
 	$(LIBDIR)kin_functions_module.mod
-genps_fks_bridge.o: genps_born.o genps_fks.o
 symmetry_fks_v3.o: process_dimensions.o fks_metadata.o genps_fks.o \
 	mint_module.o fks_random.o setscales.o cuts.o \
 	write_ajob.o fks_singular.o \
 	$(LIBDIR)run_state.mod $(LIBDIR)run_printout_module.mod \
 	$(LIBDIR)kin_functions_module.mod
 symmetry_fks_v3_bridge.o: symmetry_fks_v3.o \
-	process_dimensions_bridge.o fks_metadata_bridge.o genps_fks_bridge.o
+	process_dimensions_bridge.o fks_metadata_bridge.o
 test_soft_col_limits.o: process_dimensions.o fks_metadata.o \
 	splitorders_stuff.o genps_fks.o fks_diagnostics.o fks_random.o \
 	mint_module.o fks_singular.o $(LIBDIR)run_state.mod
 test_soft_col_limits_bridge.o: test_soft_col_limits.o \
-	process_dimensions_bridge.o fks_metadata_bridge.o genps_fks_bridge.o \
+	process_dimensions_bridge.o fks_metadata_bridge.o \
 	fks_singular.o
 madfks_plot.o: boostwdir2.o mint_module.o process_dimensions.o
 madfks_plot_bridge.o: madfks_plot.o
@@ -295,7 +295,6 @@ cuts.o: process_dimensions.o boostwdir2.o \
 	dummy_fct.o fastjet_wrapper.o \
 	$(LIBDIR)run_state.mod $(LIBDIR)timing_state.mod \
 	$(LIBDIR)kin_functions_module.mod
-cuts_bridge.o: cuts.o
 analysis_HwU_pp_hjj.o: boostwdir2.o
 analysis_HwU_general.o: cuts.o \
 	$(LIBDIR)kin_functions_module.mod

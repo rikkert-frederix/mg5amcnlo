@@ -153,7 +153,7 @@ FNLO_UNSUPPORTED_RUN_CARD_PARAMETERS = frozenset({
     'mass_ion1', 'mass_ion2', 'pdlabel1', 'pdlabel2',
     'nevents', 'event_norm', 'flavour_bias', 'fo_lhe_weight_ratio',
     'store_rwgt_info', 'fixed_couplings', 'fixed_extra_scale',
-    'mue_ref_fixed', 'mue_over_ref'})
+    'mue_ref_fixed', 'mue_over_ref', 'pineappl'})
 
 # RunCardNLO keeps these compatibility aliases in sync with the live fNLO
 # parameters.  The aliases themselves must not become Fortran assignments.
@@ -3481,8 +3481,8 @@ RESTART = %(mint_mode)s
             files.mv(res_file,pjoin(self.me_dir, 'Events', self.run_name))
         # Collect the plots and put them in the Events/run* folder
         self.combine_plots_FO(folder_name,jobs)
-        # If PineAPPL is linked, combine the grid to be put inside Events/run_XX
-        if self.run_card['pineappl']:
+        # PineAPPL remains available to the full NLO template only.
+        if not self.fixed_order_only and self.run_card['pineappl']:
             cross=self.cross_sect_dict['xsect']
             error=self.cross_sect_dict['errt']
             self.pineappl_combine(cross,error,jobs)
@@ -5856,8 +5856,8 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
         # create param_card.inc and run_card.inc
         self.do_treatcards('', amcatnlo=True, mode=mode)
 
-        # read the run_card to find if PineAPPL is used or not
-        if self.run_card['pineappl']:
+        # PineAPPL remains available to the full NLO template only.
+        if not fixed_order_only and self.run_card['pineappl']:
             self.make_opts_var['pineappl'] = 'True'
             # check validity of the PineAPPL installation
             for code in ['pineappl']:
@@ -5868,7 +5868,7 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
                     raise aMCatNLOError(('No valid %s installation found. \n' + \
                        'Please set the path to %s-config by using \n' + \
                        'MG5_aMC> set <absolute-path-to-%s>/bin/%s \n') % (code,code,code,code))
-        else:
+        elif not fixed_order_only:
             self.make_opts_var['pineappl'] = ""
 
         if 'fastjet' in list(self.options.keys()) and self.options['fastjet']:

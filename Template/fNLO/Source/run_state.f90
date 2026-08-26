@@ -1,12 +1,11 @@
 module run_state
-  use fnlo_runtime_common, only: run_seed_kind, max_lhe_processes, &
+  use fnlo_runtime_common, only: run_seed_kind, &
                                  lpp, ebeam, q2fact, lhaid, pdfscheme, pdlabel, asmz, nloop, &
-                                 iseed, pineappl, idbmup, ebmup, pdfgup, pdfsup, idwtup, nprup, &
-                                 xsecup, xerrup, xmaxup, lprup
+                                 iseed
   implicit none
   private
 
-  public :: run_seed_kind, max_lhe_processes
+  public :: run_seed_kind
 
   public :: reset_run_state
   public :: scale, fixed_ren_scale, fixed_fac_scale
@@ -23,9 +22,7 @@ module run_state
   public :: mll, mll_sf, gamma_is_j, ptgmin, r0gamma, xn, epsgamma
   public :: etagamma, isoem, maxjetflavor
   public :: lhaid, pdfscheme, pdlabel
-  public :: asmz, nloop, iseed, pineappl
-  public :: idbmup, ebmup, pdfgup, pdfsup, idwtup, nprup
-  public :: xsecup, xerrup, xmaxup, lprup
+  public :: asmz, nloop, iseed
 
   double precision :: scale
   logical :: fixed_ren_scale
@@ -139,17 +136,6 @@ contains
     asmz = 0d0
     nloop = 0
     iseed = 0_run_seed_kind
-    pineappl = .false.
-    idbmup = 0
-    ebmup = 0d0
-    pdfgup = 0
-    pdfsup = 0
-    idwtup = 0
-    nprup = 0
-    xsecup = 0d0
-    xerrup = 0d0
-    xmaxup = 0d0
-    lprup = 0
   end subroutine reset_run_state
 
 end module run_state

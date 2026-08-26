@@ -85,7 +85,6 @@ TAGTAGTAGTAGTAGTAGTAG for i in 1 ; do
     link1up leshouche_info.dat
     link1up OLE_order.olc
     link1up param_card.dat
-    link1up initial_states_map.dat
     
     
     T="$(date +%s)"
