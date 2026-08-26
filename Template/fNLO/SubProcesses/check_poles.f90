@@ -5,9 +5,10 @@ module check_poles_module
   use fks_metadata, only: fks_i_d, pdg_type_d, validate_fks_metadata
   use run_state, only: lpp, ebeam
   use mint_module, only: iconfig, ichan, iconfigs
+  use fks_random_module, only: random_unit_interval
   use FKSParams, only: paramFileName, IRPoleCheckThreshold, &
        FKSParamReader
-  use fks_singular_module, only: setfksfactor, ran2
+  use fks_singular_module, only: setfksfactor
   use fnlo_process_common, only: calculatedborn => calculated_born, &
                                  nfksprocess, qes2, force_polecheck, &
                                  polecheck_passed, &
@@ -599,7 +600,7 @@ contains
     implicit none
     double precision, intent(out) :: random_value
 
-    random_value = ran2()
+    random_value = random_unit_interval(iconfig)
   end subroutine rans_impl
 
 

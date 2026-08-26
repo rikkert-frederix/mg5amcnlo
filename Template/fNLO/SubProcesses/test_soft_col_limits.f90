@@ -5,13 +5,14 @@ module test_soft_col_limits_module
   use fks_metadata, only: fks_i_d, pdg_type_d, validate_fks_metadata
   use run_state, only: lpp, ebeam, ptj, ptl, &
                        mll, mll_sf, ptgmin
-  use kinematic_runtime_state, only: is_a_j, is_a_lp, is_a_lm, &
-                                     is_a_ph, validate_kinematic_state
+  use fnlo_process_common, only: is_a_j, is_a_lp, is_a_lm, is_a_ph
   use split_orders, only: amp_split_pos_to_orders
   use genps_fks, only: generate_momenta
+  use fks_diagnostics, only: xprintout, checkres2
   use mint_module, only: ndim, iconfig, ichan, iconfigs, new_point
-  use fks_singular_module, only: fill_configurations_common, &
-                                 setfksfactor, set_cms_stuff, xprintout, checkres2, ran2
+  use fks_random_module, only: random_unit_interval
+  use fks_event_kinematics, only: set_cms_stuff
+  use fks_singular_module, only: fill_configurations_common, setfksfactor
   implicit none
   private
 
@@ -205,7 +206,6 @@ contains
       call test_limits_set_nndim_bridge(ndim)
 
       call test_limits_setcuts_bridge(etmin, etmax, mxxmin)
-      call validate_kinematic_state()
 ! When doing hadron-hadron collision reduce the effect collision energy.
 ! Note that tests are always performed at fixed energy with Bjorken x=1.
       totmass = 0.0d0
@@ -258,7 +258,6 @@ contains
         iconfigs(1) = iconfig
         call setfksfactor
         call test_limits_setcuts_bridge(etmin, etmax, mxxmin)
-        call validate_kinematic_state()
         ntry = 1
 
         softtest = .false.
@@ -270,7 +269,7 @@ contains
                                              calculated_born, softtest, colltest)
 
         do jj = 1, ndim
-          x(jj) = ran2()
+          x(jj) = random_unit_interval(iconfig)
         end do
         new_point = .true.
         wgt = 1d0
@@ -282,7 +281,7 @@ contains
         do while ((wgt .lt. 0 .or. p(0, 1) .le. 0d0 .or. p_born(0, 1) .le. 0d0 &
        &         ) .and. ntry .lt. 1000)
           do jj = 1, ndim
-            x(jj) = ran2()
+            x(jj) = random_unit_interval(iconfig)
           end do
           new_point = .true.
           wgt = 1d0
@@ -335,7 +334,7 @@ contains
           ntry = 1
           wgt = 1d0
           do jj = 1, ndim
-            x(jj) = ran2()
+            x(jj) = random_unit_interval(iconfig)
           end do
           new_point = .true.
           call generate_momenta(ndim, iconfig, wgt, x, p)
@@ -343,7 +342,7 @@ contains
           do while ((wgt .lt. 0 .or. p(0, 1) .le. 0d0) .and. ntry .lt. 1000)
             wgt = 1d0
             do jj = 1, ndim
-              x(jj) = ran2()
+              x(jj) = random_unit_interval(iconfig)
             end do
             new_point = .true.
             call generate_momenta(ndim, iconfig, wgt, x, p)
@@ -549,7 +548,7 @@ contains
           ntry = 1
           wgt = 1d0
           do jj = 1, ndim
-            x(jj) = ran2()
+            x(jj) = random_unit_interval(iconfig)
           end do
           new_point = .true.
           call generate_momenta(ndim, iconfig, wgt, x, p)
@@ -557,7 +556,7 @@ contains
           do while ((wgt .lt. 0 .or. p(0, 1) .le. 0d0) .and. ntry .lt. 1000)
             wgt = 1d0
             do jj = 1, ndim
-              x(jj) = ran2()
+              x(jj) = random_unit_interval(iconfig)
             end do
             new_point = .true.
             call generate_momenta(ndim, iconfig, wgt, x, p)

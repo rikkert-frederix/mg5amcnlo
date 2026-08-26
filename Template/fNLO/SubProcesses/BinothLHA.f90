@@ -65,7 +65,6 @@ contains
     integer :: amp_orders(nsplitorders), split_amp_orders(nsplitorders)
     logical :: cpol
     integer, external :: getordpowfromindex_ml5
-    double precision, external :: ran2
     ioerr_counter = 0
     order_name_width = maxval(len_trim(order_names))
     call binoth_lha_update_couplings(mu_r_value, alpha_s)

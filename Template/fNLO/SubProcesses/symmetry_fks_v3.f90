@@ -5,13 +5,14 @@ module symmetry_fks_module
   use genps_fks, only: generate_momenta
   use kin_functions_module, only: switchmom => switchmom_impl
   use mint_module, only: ndim, iconfig, ichan, iconfigs, new_point
+  use fks_random_module, only: random_unit_interval
+  use fks_event_kinematics, only: set_cms_stuff
   use run_state, only: lpp
   use setscales_module, only: set_alphas
   use cuts_module, only: passcuts
   use run_printout_module, only: write_run_summary
   use ajob_file_module, only: open_bash_file, close_bash_file
-  use fks_singular_module, only: fill_configurations_common, &
-       setfksfactor, set_cms_stuff, ran2
+  use fks_singular_module, only: fill_configurations_common, setfksfactor
   implicit none
   private
 
@@ -165,7 +166,7 @@ contains
 
     ntry = 1
     do j = 1, ndim
-      x(j) = ran2()
+      x(j) = random_unit_interval(iconfig)
     end do
     new_point = .true.
     wgt = 1d0
@@ -175,7 +176,7 @@ contains
          p(0, 1) <= 0d0 .or. p_born(0, 1) <= 0d0) .and. &
          ntry < 10000)
       do j = 1, ndim
-        x(j) = ran2()
+        x(j) = random_unit_interval(iconfig)
       end do
       new_point = .true.
       wgt = 1d0

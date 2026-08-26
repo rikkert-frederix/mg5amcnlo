@@ -23,12 +23,10 @@ c Only immutable dimensions and order data cross into the dynamic module.
       implicit none
       include 'born_nhel.inc'
       include 'born_maxamps.inc'
-      include 'nsquaredSO.inc'
-      include 'nsqso_born.inc'
 
 c Born MAXPROC and MAXFLOW need not match the real-emission values in
 c genps.inc, so they are stored separately by the module.
       call initialize_born_dimensions(max_bhel,max_bcol,maxamps,
-     &     maxflow,maxproc,maxsproc,nsquaredso,nsqso_born)
+     &     maxflow,maxproc,maxsproc)
       return
       end

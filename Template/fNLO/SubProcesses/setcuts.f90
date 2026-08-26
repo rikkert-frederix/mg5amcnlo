@@ -5,9 +5,8 @@ module setcuts_module
   use run_state, only: lpp, ebeam, maxjetflavor, gamma_is_j, pdg_cut, &
        ptmin4pdg, ptmax4pdg, mxxmin4pdg, mxxpart_antipart, ptj, &
        ptgmin, ptl, mll, mll_sf
-  use mint_module, only: maxchannels, ichan, new_point
-  use kinematic_runtime_state, only: is_a_j, is_a_lp, is_a_lm, &
-       is_a_ph, init_kinematic_state, validate_kinematic_state
+  use mint_module, only: maxchannels, ichan, iconfig, new_point
+  use fks_random_module, only: random_unit_interval
   implicit none
   private
 
@@ -29,12 +28,6 @@ module setcuts_module
 
   public :: setcuts_impl, set_tau_min_impl, schan_order_impl
 
-  interface
-    double precision function ran2()
-      implicit none
-    end function ran2
-  end interface
-
 contains
 
   subroutine setcuts_impl(nf, pmass, idup, etmin, etmax, mxxmin, &
@@ -54,7 +47,6 @@ contains
     call validate_process_dimensions()
     call validate_setcuts_inputs(pmass, idup, etmin, etmax, mxxmin, &
          is_a_j_compat, is_a_lp_compat, is_a_lm_compat, is_a_ph_compat)
-    call init_kinematic_state()
 
     if (nincoming == 1) then
       lpp(1) = 0
@@ -71,29 +63,25 @@ contains
       maxjetflavor = int(nf)
     end if
 
-    is_a_j = is_a_j_compat
-    is_a_lp = is_a_lp_compat
-    is_a_lm = is_a_lm_compat
-    is_a_ph = is_a_ph_compat
     do i = nincoming + 1, nexternal
-      is_a_j(i) = .false.
-      is_a_lp(i) = .false.
-      is_a_lm(i) = .false.
-      is_a_ph(i) = .false.
-      if (abs(idup(i, 1)) <= maxjetflavor) is_a_j(i) = .true.
-      if (abs(idup(i, 1)) == 21) is_a_j(i) = .true.
+      is_a_j_compat(i) = .false.
+      is_a_lp_compat(i) = .false.
+      is_a_lm_compat(i) = .false.
+      is_a_ph_compat(i) = .false.
+      if (abs(idup(i, 1)) <= maxjetflavor) is_a_j_compat(i) = .true.
+      if (abs(idup(i, 1)) == 21) is_a_j_compat(i) = .true.
 
-      if (idup(i, 1) == 11) is_a_lm(i) = .true.
-      if (idup(i, 1) == 13) is_a_lm(i) = .true.
-      if (idup(i, 1) == 15) is_a_lm(i) = .true.
-      if (idup(i, 1) == -11) is_a_lp(i) = .true.
-      if (idup(i, 1) == -13) is_a_lp(i) = .true.
-      if (idup(i, 1) == -15) is_a_lp(i) = .true.
+      if (idup(i, 1) == 11) is_a_lm_compat(i) = .true.
+      if (idup(i, 1) == 13) is_a_lm_compat(i) = .true.
+      if (idup(i, 1) == 15) is_a_lm_compat(i) = .true.
+      if (idup(i, 1) == -11) is_a_lp_compat(i) = .true.
+      if (idup(i, 1) == -13) is_a_lp_compat(i) = .true.
+      if (idup(i, 1) == -15) is_a_lp_compat(i) = .true.
 
       if (idup(i, 1) == 22 .and. .not. gamma_is_j) then
-        is_a_ph(i) = .true.
+        is_a_ph_compat(i) = .true.
       end if
-      if (idup(i, 1) == 22 .and. gamma_is_j) is_a_j(i) = .true.
+      if (idup(i, 1) == 22 .and. gamma_is_j) is_a_j_compat(i) = .true.
     end do
 
     do i = nincoming + 1, nexternal - 1
@@ -113,8 +101,8 @@ contains
             write(*, *) 'For NLO process, only massive particle can be included'
             stop 1
           end if
-          if (is_a_lp(i) .or. is_a_lm(i) .or. is_a_j(i) .or. &
-              is_a_ph(i)) then
+          if (is_a_lp_compat(i) .or. is_a_lm_compat(i) .or. &
+              is_a_j_compat(i) .or. is_a_ph_compat(i)) then
             write(*, *) 'Illegal use of pdg specific cut.'
             write(*, *) 'This can not be used for jet/lepton/photon/gluon'
             stop 1
@@ -138,10 +126,6 @@ contains
       end do
     end if
 
-    is_a_j_compat = is_a_j
-    is_a_lp_compat = is_a_lp
-    is_a_lm_compat = is_a_lm
-    is_a_ph_compat = is_a_ph
   end subroutine setcuts_impl
 
 
@@ -186,17 +170,11 @@ integer nb_iden_pdg
 
 call validate_process_dimensions()
 call validate_fks_metadata()
-call init_kinematic_state()
 call initialize_setcuts_state()
 call validate_tau_inputs(pmass, pwidth, itree, iconf, nfksprocess, &
      idup, emass, etmin, etmax, mxxmin, is_a_j_compat, is_a_lp_compat, &
      is_a_lm_compat, is_a_ph_compat, cbw_mass, cbw_width, cbw, &
      cbw_level, s_mass)
-is_a_j = is_a_j_compat
-is_a_lp = is_a_lp_compat
-is_a_lm = is_a_lm_compat
-is_a_ph = is_a_ph_compat
-call validate_kinematic_state()
 
 ! The following assumes that light QCD particles are at the end of the
 ! list. Exclude one of them (i_fks) to set tau bound at the Born level
@@ -225,7 +203,7 @@ if (firsttime_chans(ichan)) then
 ! Skip i_fks
          if (i.eq.i_fks) cycle
 ! Add the minimal jet pTs to tau
-         if(IS_A_J(i)) then
+         if (is_a_j_compat(i)) then
             if  (j_fks.gt.nincoming .and. j_fks.lt.nexternal) then
                taumin(iFKS,ichan)=taumin(iFKS,ichan)+dsqrt(ptj**2 +emass(i)**2)
                taumin_s(iFKS,ichan)=taumin_s(iFKS,ichan)+dsqrt(ptj**2 +emass(i)**2)
@@ -246,7 +224,7 @@ if (firsttime_chans(ichan)) then
             endif
             xm(i)=emass(i)+ptj
 ! Add the minimal photon pTs to tau
-         elseif(IS_A_PH(i))then
+         elseif (is_a_ph_compat(i)) then
             if (abs(emass(i)).gt.vtiny) then
                write (*,*) 'Error in set_tau_min in setcuts.f:'
                write (*,*) 'mass of a photon should be zero',i &
@@ -258,7 +236,7 @@ if (firsttime_chans(ichan)) then
             taumin_s(iFKS,ichan)=taumin_s(iFKS,ichan)+ptgmin
             taumin_j(iFKS,ichan)=taumin_j(iFKS,ichan)+ptgmin
             xm(i)=emass(i)+ptgmin
-         elseif (is_a_lp(i)) then
+         elseif (is_a_lp_compat(i)) then
 ! Add the postively charged lepton pTs to tau
             if (j_fks.gt.nincoming) then
                taumin(iFKS,ichan)=taumin(iFKS,ichan)+dsqrt(ptl**2+emass(i)**2)
@@ -273,7 +251,7 @@ if (firsttime_chans(ichan)) then
 ! contributing from this lepton'). Remove possible overcounting with the
 ! lepton pT
             do j=nincoming+1,nexternal
-               if (is_a_lm(j) .and. idup(i,1).eq.-idup(j,1) .and. &
+               if (is_a_lm_compat(j) .and. idup(i,1).eq.-idup(j,1) .and. &
   &                     (mll_sf.ne.0d0 .or. mll.ne.0d0) ) then
                   if (j_fks.gt.nincoming) &
   &                        taumin(iFKS,ichan) = taumin(iFKS,ichan)-dsqrt(ptl**2+emass(i)**2) + &
@@ -285,7 +263,7 @@ if (firsttime_chans(ichan)) then
                   xm(i)=xm(i)-ptl-emass(i)+max(mll/2d0,mll_sf/2d0 &
   &                        ,ptl+emass(i))
                   exit
-               elseif (is_a_lm(j) .and. mll.ne.0d0) then
+               elseif (is_a_lm_compat(j) .and. mll.ne.0d0) then
                   if (j_fks.gt.nincoming) &
   &                        taumin(iFKS,ichan)= taumin(iFKS,ichan)-dsqrt(ptl**2+emass(i)**2) + &
   &                                      max(mll/2d0,dsqrt(ptl**2+emass(i)**2))
@@ -298,7 +276,7 @@ if (firsttime_chans(ichan)) then
                   exit
                endif
             enddo
-         elseif (is_a_lm(i)) then
+         elseif (is_a_lm_compat(i)) then
 ! Add the negatively charged lepton pTs to tau
             if (j_fks.gt.nincoming) then
                taumin(iFKS,ichan)=taumin(iFKS,ichan)+dsqrt(ptl**2+emass(i)**2)
@@ -313,7 +291,7 @@ if (firsttime_chans(ichan)) then
 ! contributing from this lepton'). Remove possible overcounting with the
 ! lepton pT
             do j=nincoming+1,nexternal
-               if (is_a_lp(j) .and. idup(i,1).eq.-idup(j,1) .and. &
+               if (is_a_lp_compat(j) .and. idup(i,1).eq.-idup(j,1) .and. &
   &                     (mll_sf.ne.0d0 .or. mll.ne.0d0) ) then
                   if (j_fks.gt.nincoming) &
   &                        taumin(iFKS,ichan) = taumin(iFKS,ichan)-dsqrt(ptl**2+emass(i)**2) + &
@@ -325,7 +303,7 @@ if (firsttime_chans(ichan)) then
                   xm(i)=xm(i)-ptl-emass(i)+max(mll/2d0,mll_sf/2d0 &
   &                        ,ptl+emass(i))
                   exit
-               elseif (is_a_lp(j) .and. mll.ne.0d0) then
+               elseif (is_a_lp_compat(j) .and. mll.ne.0d0) then
                   if (j_fks.gt.nincoming) &
   &                        taumin(iFKS,ichan) = taumin(iFKS,ichan)-dsqrt(ptl**2+emass(i)**2) + &
   &                                       max(mll/2d0,dsqrt(ptl**2+emass(i)**2))
@@ -623,7 +601,7 @@ do j=-1,-ns_channel,-1
       endif
    enddo
    if (npos.gt.1) then
-      rnd=ran2()
+      rnd = random_unit_interval(iconfig)
       ipos=min(int(rnd*npos)+1,npos)
       saved_schan_order(j)=pos(ipos)
       done(pos(ipos))=.true.

@@ -14,8 +14,12 @@ module driver_mintfo_module
   use process_dimensions, only: nexternal, nincoming, fks_configs, &
                                 amp_split_size, amp_split_size_born, lmaxconfigs, &
                                 validate_process_dimensions
-  use fks_metadata, only: fks_i_d, fks_j_d, pdg_type_d, &
-                          need_color_links_d, validate_fks_metadata
+  use fks_metadata, only: fks_i_d, pdg_type_d, validate_fks_metadata
+  use fks_channel_map, only: fks_channel_count, &
+                             fks_channel_configuration, &
+                             print_fks_channel_map, get_born_fks_process
+  use fks_random_module, only: random_unit_interval
+  use fks_event_kinematics, only: set_cms_stuff
   use run_state, only: lpp, fixed_fac_scale, muf1_over_ref, &
                        muf2_over_ref, muf1_ref_fixed, muf2_ref_fixed, pineappl, &
                        do_rwgt_scale, do_rwgt_pdf
@@ -28,25 +32,21 @@ module driver_mintfo_module
                           tCount, tf_nb, tf_all, t_as, tr_s, tr_pdf, t_plot, &
                           t_cuts, t_isum, tOLP, tGenPS, t_coupl
   use fks_singular_module, only: compute_prefactors_nbody, &
-                                 compute_prefactors_n1body, set_cms_stuff, &
+                                 compute_prefactors_n1body, &
                                  include_multichannel_enhance, compute_born, &
                                  compute_nbody_noborn, compute_soft_counter_term, &
                                  compute_soft_collinear_ct_impl, compute_collinear_counter_term, &
                                  compute_real_emission, include_pdf_and_alphas, reweight_scale, &
                                  reweight_pdf, fill_pineappl_weights, get_wgt_nbody, &
                                  get_wgt_no_nbody, fill_plots, fill_mint_function, &
-                                 fill_configurations_common, setfksfactor, ran2
+                                 fill_configurations_common, setfksfactor
   use madfks_plot_module, only: topout_impl
   use fnlo_process_common, only: nfksprocess
   implicit none
   private
 
   integer, allocatable, save :: generated_mapconfig(:, :)
-  integer, allocatable, save :: initial_final_fks_map(:, :)
-  integer, allocatable, save :: born_fks_process_map(:)
   logical, save :: generated_data_initialized = .false.
-  logical, save :: sigint_first_time = .true.
-  logical, save :: born_map_first_time = .true.
   logical, save :: sum_fks_directories = .false.
   public :: run_mintfo_driver
   public :: init_driver_generated_data
@@ -357,14 +357,7 @@ contains
     integer, parameter :: real_event = -100
 
     if (new_point .and. ifl /= 2) pass_cuts_check = .false.
-    call ensure_initial_final_map()
-    if (sigint_first_time) then
-      sigint_first_time = .false.
-      write (*, *) 'initial-final FKS maps:'
-      write (*, *) 0, ':', initial_final_fks_map(0, :)
-      write (*, *) 1, ':', initial_final_fks_map(1, :)
-      write (*, *) 2, ':', initial_final_fks_map(2, :)
-    end if
+    call print_fks_channel_map()
     if (ifl /= 0) then
       write (*, *) 'ERROR ifl not equal to zero in sigint', ifl
       stop 1
@@ -391,15 +384,15 @@ contains
 
     call update_vegas_x_impl(xx, vegas_variables, nndim, abrv)
     call get_mc_integer(max(ini_fin_fks(ichan), 1), &
-                        initial_final_fks_map(ini_fin_fks(ichan), 0), picked_integer, &
+                        fks_channel_count(ini_fin_fks(ichan)), picked_integer, &
                         volume)
-    nfks_picked = &
-      initial_final_fks_map(ini_fin_fks(ichan), picked_integer)
+    nfks_picked = fks_channel_configuration(ini_fin_fks(ichan), &
+                                            picked_integer)
 
     if (abrv /= 'real') then
       nbody = .true.
       calculated_born = .false.
-      call get_born_nfksprocess_impl(nfks_picked, nfks_born)
+      call get_born_fks_process(nfks_picked, nfks_born)
       call update_fks_dir_impl(nfks_born)
       if (ini_fin_fks(ichan) == 0) then
         jacobian = 1d0
@@ -434,7 +427,7 @@ contains
       nbody = .false.
       if (sum_fks_directories) then
         nfks_min = 1
-        nfks_max = initial_final_fks_map(ini_fin_fks(ichan), 0)
+        nfks_max = fks_channel_count(ini_fin_fks(ichan))
         mc_integer_weight = 1d0
       else
         nfks_min = picked_integer
@@ -443,7 +436,7 @@ contains
       end if
 
       do position = nfks_min, nfks_max
-        ifks = initial_final_fks_map(ini_fin_fks(ichan), position)
+        ifks = fks_channel_configuration(ini_fin_fks(ichan), position)
         calculated_born = .false.
         wgt_me_born = 0d0
         wgt_me_real = 0d0
@@ -529,107 +522,6 @@ contains
     call setfksfactor()
   end subroutine update_fks_dir_impl
 
-  subroutine ensure_initial_final_map()
-    implicit none
-    integer :: ifks, emitter_position
-
-    if (allocated(initial_final_fks_map)) return
-    call validate_process_dimensions()
-    call validate_fks_metadata()
-    allocate (initial_final_fks_map(0:2, 0:fks_configs))
-    initial_final_fks_map = 0
-    do ifks = 1, fks_configs
-      initial_final_fks_map(0, 0) = initial_final_fks_map(0, 0) + 1
-      emitter_position = initial_final_fks_map(0, 0)
-      initial_final_fks_map(0, emitter_position) = ifks
-      if (fks_j_d(ifks) <= nincoming .and. fks_j_d(ifks) > 0) then
-        initial_final_fks_map(2, 0) = initial_final_fks_map(2, 0) + 1
-        emitter_position = initial_final_fks_map(2, 0)
-        initial_final_fks_map(2, emitter_position) = ifks
-      else if (fks_j_d(ifks) > nincoming .and. &
-               fks_j_d(ifks) <= nexternal) then
-        initial_final_fks_map(1, 0) = initial_final_fks_map(1, 0) + 1
-        emitter_position = initial_final_fks_map(1, 0)
-        initial_final_fks_map(1, emitter_position) = ifks
-      else
-        write (*, *) 'ERROR in setup_ini_fin_FKS_map', fks_j_d(ifks), &
-          nincoming, ifks
-        stop 1
-      end if
-    end do
-  end subroutine ensure_initial_final_map
-
-  subroutine ensure_born_fks_map()
-    implicit none
-    integer :: ifks, candidate
-
-    if (allocated(born_fks_process_map)) return
-    call validate_process_dimensions()
-    call validate_fks_metadata()
-    allocate (born_fks_process_map(fks_configs))
-    born_fks_process_map = 0
-
-    do ifks = 1, fks_configs
-      if (need_color_links_d(ifks)) then
-        born_fks_process_map(ifks) = ifks
-      end if
-      if (born_fks_process_map(ifks) == 0) then
-        do candidate = 1, fks_configs
-          if (need_color_links_d(candidate) .and. &
-              fks_j_d(ifks) == fks_j_d(candidate)) then
-            born_fks_process_map(ifks) = candidate
-            exit
-          end if
-        end do
-      end if
-      if (born_fks_process_map(ifks) == 0) then
-        do candidate = 1, fks_configs
-          if (need_color_links_d(candidate)) then
-            if (fks_j_d(candidate) <= nincoming .and. &
-                fks_j_d(ifks) <= nincoming) then
-              born_fks_process_map(ifks) = candidate
-              exit
-            else if (fks_j_d(candidate) > nincoming .and. &
-                     fks_j_d(ifks) > nincoming) then
-              born_fks_process_map(ifks) = candidate
-              exit
-            end if
-          end if
-        end do
-      end if
-      if (born_fks_process_map(ifks) == 0) then
-        do candidate = 1, fks_configs
-          if (need_color_links_d(candidate)) then
-            born_fks_process_map(ifks) = candidate
-          end if
-        end do
-      end if
-      if (born_fks_process_map(ifks) == 0) then
-        born_fks_process_map(ifks) = ifks
-      end if
-    end do
-  end subroutine ensure_born_fks_map
-
-  subroutine get_born_nfksprocess_impl(nfks_in, nfks_out)
-    implicit none
-    integer, intent(in) :: nfks_in
-    integer, intent(out) :: nfks_out
-
-    call ensure_born_fks_map()
-    if (born_map_first_time) then
-      born_map_first_time = .false.
-      write (*, *) 'Total number of FKS directories is', fks_configs
-      write (*, *) 'For the Born we use nFKSprocesses:'
-      write (*, *) born_fks_process_map
-    end if
-    if (born_fks_process_map(nfks_in) == 0) then
-      write (*, *) 'Could not find the correct map to Born '// &
-        'FKS configuration for the NLO FKS '// &
-        'configuration', nfks_in
-      stop 1
-    end if
-    nfks_out = born_fks_process_map(nfks_in)
-  end subroutine get_born_nfksprocess_impl
 
   subroutine update_vegas_x_impl(xx, x, nndim, abrv)
     implicit none
@@ -646,7 +538,7 @@ contains
         x(i) = xx(i)
       end do
       do i = max(1, nndim - 2), min(nndim, 99)
-        x(i) = ran2()
+        x(i) = random_unit_interval(iconfig)
       end do
     else
       do i = 1, copied_dimensions

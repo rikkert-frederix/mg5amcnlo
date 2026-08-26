@@ -8,7 +8,6 @@ module cuts_module
   use kin_functions_module, only: pt => pt_impl, eta => eta_impl, &
        delta_phi => delta_phi_impl, theta => theta_impl, dot => dot_impl
   use timing_state, only: t_cuts
-  use kinematic_runtime_state, only: sync_kinematic_state
   use fastjet_timing_wrapper, only: fastjet_etamax_timed
   use fixed_order_user_hooks, only: accept_dummy_cuts
   implicit none
@@ -26,19 +25,15 @@ module cuts_module
 
 contains
 
-  subroutine initialize_cuts_runtime_state(etmin_in, etmax_in, &
-  & mxxmin_in, is_a_j_in, is_a_lp_in, is_a_lm_in, is_a_ph_in)
+  subroutine initialize_cuts_runtime_state(etmin_in, etmax_in, mxxmin_in)
     implicit none
     double precision, intent(in) :: etmin_in(nincoming + 1:)
     double precision, intent(in) :: etmax_in(nincoming + 1:)
     double precision, intent(in) :: mxxmin_in(nincoming + 1:, &
     & nincoming + 1:)
-    logical, intent(in) :: is_a_j_in(:), is_a_lp_in(:)
-    logical, intent(in) :: is_a_lm_in(:), is_a_ph_in(:)
 
     call validate_process_dimensions()
-    call validate_runtime_shapes(etmin_in, etmax_in, mxxmin_in, &
-    & is_a_j_in, is_a_lp_in, is_a_lm_in, is_a_ph_in)
+    call validate_runtime_shapes(etmin_in, etmax_in, mxxmin_in)
 
     if (.not. cuts_runtime_initialized) then
       allocate(etmin(nincoming + 1:nexternal - 1))
@@ -52,8 +47,6 @@ contains
     etmax = etmax_in
     mxxmin = mxxmin_in
 
-    call sync_kinematic_state(is_a_j_in, is_a_lp_in, is_a_lm_in, &
-    & is_a_ph_in)
   end subroutine initialize_cuts_runtime_state
 
 
@@ -82,15 +75,12 @@ contains
   end subroutine initialize_cuts_event_state
 
 
-  subroutine validate_runtime_shapes(etmin_in, etmax_in, mxxmin_in, &
-  & is_a_j_in, is_a_lp_in, is_a_lm_in, is_a_ph_in)
+  subroutine validate_runtime_shapes(etmin_in, etmax_in, mxxmin_in)
     implicit none
     double precision, intent(in) :: etmin_in(nincoming + 1:)
     double precision, intent(in) :: etmax_in(nincoming + 1:)
     double precision, intent(in) :: mxxmin_in(nincoming + 1:, &
     & nincoming + 1:)
-    logical, intent(in) :: is_a_j_in(:), is_a_lp_in(:)
-    logical, intent(in) :: is_a_lm_in(:), is_a_ph_in(:)
     integer :: final_slots
 
     final_slots = max(0, nexternal - nincoming - 1)
@@ -99,12 +89,6 @@ contains
     & size(mxxmin_in, 1) /= final_slots .or. &
     & size(mxxmin_in, 2) /= final_slots) then
       call fail_cuts('PDG-cut state has the wrong shape')
-    end if
-    if (size(is_a_j_in) /= nexternal .or. &
-    & size(is_a_lp_in) /= nexternal .or. &
-    & size(is_a_lm_in) /= nexternal .or. &
-    & size(is_a_ph_in) /= nexternal) then
-      call fail_cuts('particle-classification state has the wrong shape')
     end if
   end subroutine validate_runtime_shapes
 

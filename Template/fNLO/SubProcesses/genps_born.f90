@@ -4,7 +4,7 @@ module genps_born
                                 validate_process_dimensions
   use run_state
   use kin_functions_module, only: dot => dot_impl
-  use fks_singular_module, only: phspncheck_born
+  use phase_space_kinematics, only: phspncheck_born, phase_space_lambda
   use fnlo_process_common, only: i_fks, j_fks, iconfig0, this_config, &
                                  softtest, colltest, &
                                  tau_born_lower_bound, &
@@ -16,7 +16,6 @@ module genps_born
   public :: generate_born_phase_space
   public :: initialize_genps_born_state
   public :: invalidate_born_phase_space
-  public :: phase_space_lambda
 
   type :: born_phase_space
     logical :: valid = .false.
@@ -538,32 +537,6 @@ contains
     end do
   end subroutine gentcms
 
-  double precision function phase_space_lambda(S, MA2, MB2)
-    implicit none
-!****************************************************************************
-!     THIS IS THE phase_space_lambda FUNCTION FROM VERNONS BOOK COLLIDER PHYSICS P 662
-!     MA2 AND MB2 ARE THE MASS SQUARED OF THE FINAL STATE PARTICLES
-!     2-D PHASE SPACE = .5*PI*SQRT(1.,MA2/S^2,MB2/S^2)*(D(OMEGA)/4PI)
-!****************************************************************************
-    double precision MA2, MB2, S, tiny, tmp, rat
-    parameter(tiny=1.d-8)
-!
-    tmp = S**2 + MA2**2 + MB2**2 - 2d0*S*MA2 - 2d0*MA2*MB2 - 2d0*S*MB2
-    if (tmp .le. 0.d0) then
-      if (ma2 .lt. 0.d0 .or. mb2 .lt. 0.d0) then
-        write (6, *) 'Error #1 in function phase_space_lambda:', s, ma2, mb2
-        stop
-      end if
-      rat = 1 - (sqrt(ma2) + sqrt(mb2))/s
-      if (rat .gt. -tiny) then
-        tmp = 0.d0
-      else
-        write (6, *) 'Error #2 in function phase_space_lambda:', s, ma2, mb2, rat
-      end if
-    end if
-    phase_space_lambda = tmp
-    return
-  end function phase_space_lambda
 
   subroutine YMINMAX(X, Z, U, V, W, YMIN, YMAX)
 !**************************************************************************

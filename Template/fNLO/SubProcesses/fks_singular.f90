@@ -11,7 +11,15 @@ module fks_singular_module
   use setscales_module, only: set_alphas, set_ren_scale, set_fac_scale
   use split_orders, only: get_orders_tag, amp_split_pos_to_orders, &
                           lo_qcd_to_amp_pos, nlo_qcd_to_amp_pos
-  use kin_functions_module, only: dot => dot_impl, rho => rho_impl
+  use kin_functions_module, only: dot => dot_impl
+  use phase_space_kinematics, only: getaziangles
+  use fks_qcd_splitting, only: xkplus, xklog, xkdelta, AP_reduced, &
+                                AP_reduced_prime, &
+                                Qterms_reduced_timelike, &
+                                Qterms_reduced_spacelike
+  use fks_random_module, only: random_unit_interval
+  use fks_event_kinematics, only: set_cms_stuff
+  use fks_soft_kernels, only: eikonal_reduced, eikonal_Ireg
   use fks_sij_module, only: initialize_fks_sij_module, &
                             set_fks_sij_partition_state, fks_sij_impl
   use FKSParams, only: use_poly_virtual
@@ -153,9 +161,8 @@ module fks_singular_module
   public :: reweight_scale
   public :: reweight_pdf, fill_pineappl_weights, get_wgt_nbody
   public :: get_wgt_no_nbody, fill_plots, fill_mint_function
-  public :: rotate_invar, phspncheck_born, phspncheck_nocms
-  public :: sreal, set_cms_stuff, xmom_compare, xprintout, checkres2
-  public :: getpoles, setfksfactor, ran2, fill_configurations_common
+  public :: sreal
+  public :: getpoles, setfksfactor, fill_configurations_common
   public :: initialize_fks_model_state, initialize_fks_phase_state
   public :: initialize_fks_amplitude_state, initialize_fks_config_state
   public :: initialize_fks_pineappl_state, initialize_fks_generated_state
@@ -799,7 +806,7 @@ contains
 ! not change between events, counter events and n-body contributions.
     if (needrndec) then
       do i = 1, 10
-        rndec(i) = ran2()
+        rndec(i) = random_unit_interval(iconfig)
       end do
     end if
     if (firsttime) then
@@ -1808,203 +1815,6 @@ contains
     return
   end subroutine fill_mint_function
 
-  subroutine rotate_invar(pin, pout, cth, sth, cphi, sphi)
-! Given the four momentum pin, returns the four momentum pout (in the same
-! Lorentz frame) by performing a three-rotation of an angle theta
-! (cos(theta)=cth) around the y axis, followed by a three-rotation of an
-! angle phi (cos(phi)=cphi) along the z axis. The components of pin
-! and pout are given along these axes
-    implicit none
-    double precision cth, sth, cphi, sphi, pin(0:3), pout(0:3)
-    double precision q1, q2, q3
-!
-    q1 = pin(1)
-    q2 = pin(2)
-    q3 = pin(3)
-    pout(1) = q1*cphi*cth - q2*sphi + q3*cphi*sth
-    pout(2) = q1*sphi*cth + q2*cphi + q3*sphi*sth
-    pout(3) = -q1*sth + q3*cth
-    pout(0) = pin(0)
-    return
-  end subroutine rotate_invar
-
-  subroutine getaziangles(p, cphi, sphi)
-    implicit none
-    double precision p(0:3), cphi, sphi
-    double precision xlength, cth, sth
-!
-    xlength = rho(p)
-    if (xlength .ne. 0.d0) then
-      cth = p(3)/xlength
-      sth = sqrt(1 - cth**2)
-      if (sth .ne. 0.d0) then
-        cphi = p(1)/(xlength*sth)
-        sphi = p(2)/(xlength*sth)
-      else
-        cphi = 1.d0
-        sphi = 0.d0
-      end if
-    else
-      cphi = 1.d0
-      sphi = 0.d0
-    end if
-    return
-  end subroutine getaziangles
-
-  subroutine phspncheck_born(ecm, xmass, xmom, pass)
-! Checks four-momentum conservation.
-! WARNING: works only in the partonic c.m. frame
-    implicit none
-    double precision ecm, xmass(nexternal - 1), xmom(0:3, nexternal - 1)
-    double precision tiny, xm, xsum(0:3), xsuma(0:3), xrat(0:3), ptmp(0:3)
-    parameter(tiny=5.d-3)
-    integer jflag, npart, i, j, jj
-    logical pass
-!
-    pass = .true.
-    jflag = 0
-    npart = nexternal - 1
-    do i = 0, 3
-      xsum(i) = 0.d0
-      xsuma(i) = 0.d0
-      do j = nincoming + 1, npart
-        xsum(i) = xsum(i) + xmom(i, j)
-        xsuma(i) = xsuma(i) + abs(xmom(i, j))
-      end do
-      if (i .eq. 0) xsum(i) = xsum(i) - ecm
-      if (xsuma(i) .lt. 1.d0) then
-        xrat(i) = abs(xsum(i))
-      else
-        xrat(i) = abs(xsum(i))/xsuma(i)
-      end if
-      if (xrat(i) .gt. tiny .and. jflag .eq. 0) then
-        write (*, *) 'Momentum is not conserved'
-        write (*, *) 'i=', i
-        do j = 1, npart
-          write (*, '(4(d14.8,1x))') (xmom(jj, j), jj=0, 3)
-        end do
-        jflag = 1
-      end if
-    end do
-    if (jflag .eq. 1) then
-      write (*, '(4(d14.8,1x))') (xsum(jj), jj=0, 3)
-      write (*, '(4(d14.8,1x))') (xrat(jj), jj=0, 3)
-      pass = .false.
-      return
-    end if
-!
-    do j = 1, npart
-      do i = 0, 3
-        ptmp(i) = xmom(i, j)
-      end do
-      xm = xlen4(ptmp)
-      if (abs(xm - xmass(j))/ptmp(0) .gt. tiny .and. abs(xm - xmass(j)) .gt. tiny) then
-        write (*, *) 'Mass shell violation'
-        write (*, *) 'j=', j
-        write (*, *) 'mass=', xmass(j)
-        write (*, *) 'mass computed=', xm
-        write (*, '(4(d14.8,1x))') (xmom(jj, j), jj=0, 3)
-        pass = .false.
-        return
-      end if
-    end do
-    return
-  end subroutine phspncheck_born
-
-  subroutine phspncheck_nocms(npart, ecm, xmass, xmom, pass)
-! Checks four-momentum conservation. Derived from phspncheck;
-! works in any frame
-    implicit none
-    integer npart
-    double precision ecm, xmass(-max_branch:max_particles), xmom(0:3, nexternal)
-    double precision tiny, vtiny, xm, den, ecmtmp, xsum(0:3), xsuma(0:3), xrat(0:3), ptmp(0:3)
-    parameter(tiny=5.d-3)
-    parameter(vtiny=1.d-6)
-    integer jflag, i, j, jj
-    logical pass
-!
-    pass = .true.
-    jflag = 0
-    do i = 0, 3
-      if (nincoming .eq. 2) then
-        xsum(i) = -xmom(i, 1) - xmom(i, 2)
-        xsuma(i) = abs(xmom(i, 1)) + abs(xmom(i, 2))
-      elseif (nincoming .eq. 1) then
-        xsum(i) = -xmom(i, 1)
-        xsuma(i) = abs(xmom(i, 1))
-      end if
-      do j = nincoming + 1, npart
-        xsum(i) = xsum(i) + xmom(i, j)
-        xsuma(i) = xsuma(i) + abs(xmom(i, j))
-      end do
-      if (xsuma(i) .lt. 1.d0) then
-        xrat(i) = abs(xsum(i))
-      else
-        xrat(i) = abs(xsum(i))/xsuma(i)
-      end if
-      if (xrat(i) .gt. tiny .and. jflag .eq. 0) then
-        write (*, *) 'Momentum is not conserved (/nocms/)'
-        write (*, *) 'i=', i
-        do j = 1, npart
-          write (*, '(i2,1x,4(d14.8,1x))') j, (xmom(jj, j), jj=0, 3)
-        end do
-        jflag = 1
-      end if
-    end do
-    if (jflag .eq. 1) then
-      write (*, '(a3,1x,4(d14.8,1x))') 'sum', (xsum(jj), jj=0, 3)
-      write (*, '(a3,1x,4(d14.8,1x))') 'rat', (xrat(jj), jj=0, 3)
-      pass = .false.
-      return
-    end if
-!
-    do j = 1, npart
-      do i = 0, 3
-        ptmp(i) = xmom(i, j)
-      end do
-      xm = xlen4(ptmp)
-      if (ptmp(0) .ge. 1.d0) then
-        den = ptmp(0)
-      else
-        den = 1.d0
-      end if
-      if (abs(xm - xmass(j))/den .gt. tiny .and. abs(xm - xmass(j)) .gt. tiny) then
-        write (*, *) 'Mass shell violation (/nocms/)'
-        write (*, *) 'j=', j
-        write (*, *) 'mass=', xmass(j)
-        write (*, *) 'mass computed=', xm
-        write (*, '(4(d14.8,1x))') (xmom(jj, j), jj=0, 3)
-        pass = .false.
-        return
-      end if
-    end do
-!
-    if (nincoming .eq. 2) then
-      ecmtmp = sqrt(2d0*dot(xmom(0, 1), xmom(0, 2)))
-    elseif (nincoming .eq. 1) then
-      ecmtmp = xmom(0, 1)
-    end if
-    if (abs(ecm - ecmtmp) .gt. vtiny) then
-      write (*, *) 'Inconsistent shat (/nocms/)'
-      write (*, *) 'ecm given=   ', ecm
-      write (*, *) 'ecm computed=', ecmtmp
-      write (*, '(4(d14.8,1x))') (xmom(jj, 1), jj=0, 3)
-      write (*, '(4(d14.8,1x))') (xmom(jj, 2), jj=0, 3)
-      pass = .false.
-      return
-    end if
-
-    return
-  end subroutine phspncheck_nocms
-
-  function xlen4(v)
-    implicit none
-    double precision xlen4, tmp, v(0:3)
-!
-    tmp = v(0)**2 - v(1)**2 - v(2)**2 - v(3)**2
-    xlen4 = sign(1.d0, tmp)*sqrt(abs(tmp))
-    return
-  end function xlen4
 
   subroutine sreal(pp, xi_i_fks, y_ij_fks, wgt)
 ! Wrapper for the n+1 contribution. Returns the n+1 matrix element
@@ -2081,13 +1891,6 @@ contains
     double precision p(0:3, nexternal), wgt
     double precision y_ij_fks
 !
-
-
-
-
-    complex(kind=kind(0d0)) xij_aor
-
-
     integer i, imother_fks, iord
     double precision t, z, ap(2), E_j_fks, E_i_fks, Q(2), cphi_mother, sphi_mother, pi(0:3), pj(0:3), wgt_born
     complex(kind=kind(0d0)) W1(6), W2(6), W3(6), W4(6), Wij_angle, Wij_recta
@@ -2121,8 +1924,8 @@ contains
     t = z*shat/4d0
     call sborn(p_born, wgt_born)
     if (iextra_cnt .gt. 0) call extra_cnt(p_born, iextra_cnt, ans_extra_cnt)
-    call AP_reduced(j_type, i_type, t, z, ap)
-    call Qterms_reduced_timelike(j_type, i_type, t, z, Q)
+    call AP_reduced(j_type, i_type, t, z, g, ap)
+    call Qterms_reduced_timelike(j_type, i_type, t, z, g, Q)
     wgt = 0d0
     iord = qcd_pos
     if (.not. split_type(iord)) then
@@ -2201,12 +2004,6 @@ contains
 !
 
     double precision p_born_used(0:3, nexternal - 1)
-
-
-
-
-    complex(kind=kind(0d0)) xij_aor
-
 ! Colour representations of i_fks, j_fks and the FKS mother
 
     integer i, iord
@@ -2249,8 +2046,8 @@ contains
 ! Thus, an extra factor z (implicit in the flux of the reduced Born
 ! in FKS) has to be inserted here
     t = z*shat/4d0
-    call AP_reduced(m_type, i_type, t, z, ap)
-    call Qterms_reduced_spacelike(m_type, i_type, t, z, Q)
+    call AP_reduced(m_type, i_type, t, z, g, ap)
+    call Qterms_reduced_spacelike(m_type, i_type, t, z, g, Q)
     wgt = 0d0
     iord = qcd_pos
     if (.not. split_type(iord)) then
@@ -2328,275 +2125,6 @@ contains
     return
   end subroutine sborncol_isr
 
-  subroutine xkplus(PDFscheme, col1, col2, x, xkk)
-! This function returns the quantity K^{(+)}_{ab}(x), relevant for
-! the MS --> DIS (or any other) scheme change in the factorization scheme.
-! It also includes regular terms, multiplied by (1-x).
-! There's NO multiplicative (1-x) factor like in the previous functions.
-    implicit none
-    integer PDFscheme, col1, col2
-    double precision x, xkk(2)
-
-    double precision vcf, vtf
-    parameter(vcf=4.d0/3.d0)
-    parameter(vtf=1.d0/2.d0)
-
-!
-    xkk(2) = 0d0
-    if (PDFscheme .eq. 0) then
-! MSbar, all terms are zero
-      xkk(:) = 0d0
-    else if (PDFscheme .eq. 1) then
-! DIS scheme
-      if (col1 .eq. 8 .and. col2 .eq. 8) then ! gg
-        xkk(1) = -2*nf*vtf*(1 - x)*(-(x**2 + (1 - x)**2)*log(x) + 8*x*(1 - x) - 1)
-        xkk(2) = 0d0
-      elseif (abs(col1) .eq. 3 .and. abs(col2) .eq. 3) then ! qq
-        xkk(1) = vtf*(1 - x)*(-(x**2 + (1 - x)**2)*log(x) + 8*x*(1 - x) - 1)
-      elseif (col1 .eq. 8 .and. abs(col2) .eq. 3) then ! gq
-        xkk(1) = -vcf*(-3.d0/2.d0 - (1 + x**2)*log(x) + (1 - x)*(3 + 2*x))
-      elseif (abs(col1) .eq. 3 .and. col2 .eq. 8) then ! qg
-        xkk(1) = vcf*(-3.d0/2.d0 - (1 + x**2)*log(x) + (1 - x)*(3 + 2*x))
-      else
-        write (6, *) 'Error in xkplus: wrong colour values', col1, col2
-        stop
-      end if
-    else
-      write (6, *) 'Error in xkplus: wrong PDF scheme', PDFscheme
-      stop
-    end if
-    xkk(1) = xkk(1)*g**2
-    return
-  end subroutine xkplus
-
-  subroutine xklog(PDFscheme, col1, col2, x, xkk)
-! This function returns the quantity K^{(l)}_{ab}(x), relevant for
-! the MS --> DIS (or any other) scheme change in the factorization scheme.
-! There's NO multiplicative (1-x) factor like in the previous functions.
-    implicit none
-    integer PDFscheme, col1, col2
-    double precision x, xkk(2)
-
-    double precision vcf, vtf
-    parameter(vcf=4.d0/3.d0)
-    parameter(vtf=1.d0/2.d0)
-!
-    xkk(2) = 0d0
-    if (PDFscheme .eq. 0) then
-! MSbar, all terms are zero
-      xkk(:) = 0d0
-    else if (PDFscheme .eq. 1) then
-! DIS scheme
-      if (col1 .eq. 8 .and. col2 .eq. 8) then ! gg
-        xkk(1) = -2*nf*vtf*(1 - x)*(x**2 + (1 - x)**2)
-        xkk(2) = 0d0
-      elseif (abs(col1) .eq. 3 .and. abs(col2) .eq. 3) then ! qq
-        xkk(1) = vtf*(1 - x)*(x**2 + (1 - x)**2)
-      elseif (col1 .eq. 8 .and. abs(col2) .eq. 3) then ! gq
-        xkk(1) = -vcf*(1 + x**2)
-      elseif (abs(col1) .eq. 3 .and. col2 .eq. 8) then ! qg
-        xkk(1) = vcf*(1 + x**2)
-      else
-        write (6, *) 'Error in xklog: wrong colour values', col1, col2
-        stop
-      end if
-    else
-      write (6, *) 'Error in xklog: wrong PDF scheme', PDFscheme
-      stop
-    end if
-    xkk(1) = xkk(1)*g**2
-    return
-  end subroutine xklog
-
-  subroutine xkdelta(PDFscheme, col1, col2, xkk)
-! This function returns the quantity K^{(d)}_{ab}, relevant for
-! the MS --> DIS (or any other) scheme change in the factorization scheme.
-    implicit none
-    integer PDFscheme, col1, col2
-    double precision xkk(2)
-
-    double precision pi, vcf
-    parameter(pi=3.14159265358979312d0)
-    parameter(vcf=4.d0/3.d0)
-!
-    xkk(2) = 0d0
-    if (PDFscheme .eq. 0) then
-! MSbar, all terms are zero
-      xkk(:) = 0d0
-    else if (PDFscheme .eq. 1) then
-! DIS scheme
-      if (col1 .eq. 8 .and. col2 .eq. 8) then ! gg
-        xkk(1) = 0.d0
-        xkk(2) = 0.d0
-      elseif (abs(col1) .eq. 3 .and. abs(col2) .eq. 3) then ! qq
-        xkk(1) = 0.d0
-      elseif (col1 .eq. 8 .and. abs(col2) .eq. 3) then ! gq
-        xkk(1) = vcf*(9.d0/2.d0 + pi**2/3.d0)
-      elseif (abs(col1) .eq. 3 .and. col2 .eq. 8) then ! qg
-        xkk(1) = -vcf*(9.d0/2.d0 + pi**2/3.d0)
-      else
-        write (6, *) 'Error in xkdelta: wrong colour values', col1, col2
-        stop
-      end if
-    else
-      write (6, *) 'Error in xkdelta: wrong PDF scheme', PDFscheme
-      stop
-    end if
-    xkk(1) = xkk(1)*g**2
-    return
-  end subroutine xkdelta
-
-  subroutine AP_reduced(col1, col2, t, z, ap)
-! Returns Altarelli-Parisi splitting function summed/averaged over helicities
-! times prefactors such that |M_n+1|^2 = ap * |M_n|^2. This means
-!    AP_reduced = (1-z) P_{S(part1,part2)->part1+part2}(z) * g^2/t
-! Therefore, the labeling conventions for particle IDs are not as in FKS:
-! part1 and part2 are the two particles emerging from the branching.
-! part1 and part2 can be either gluon (8) or (anti-)quark (+-3). z is the
-! fraction of the energy of part1 and t is the invariant mass of the mother.
-    implicit none
-
-    integer col1, col2
-    double precision z, ap(2), t
-
-    double precision CA, TR, CF
-    parameter(CA=3d0, TR=1d0/2d0, CF=4d0/3d0)
-    ap(2) = 0d0
-
-    if (col1 .eq. 8 .and. col2 .eq. 8) then
-! g->gg splitting
-      ap(1) = 2d0*CA*((1d0 - z)**2/z + z + z*(1d0 - z)**2)
-      ap(2) = 0d0
-
-    elseif (abs(col1) .eq. 3 .and. abs(col2) .eq. 3) then
-! g->qqbar splitting
-      ap(1) = TR*(z**2 + (1d0 - z)**2)*(1d0 - z)
-
-    elseif (abs(col1) .eq. 3 .and. col2 .eq. 8) then
-! q->qg splitting
-      ap(1) = CF*(1d0 + z**2)
-
-    elseif (col1 .eq. 8 .and. abs(col2) .eq. 3) then
-! q->gq splitting
-      ap(1) = CF*(1d0 + (1d0 - z)**2)*(1d0 - z)/z
-
-    else
-      write (*, *) 'Fatal Error in AP_reduced', col1, col2
-      stop
-    end if
-
-    ap(1) = ap(1)*g**2/t
-    return
-  end subroutine AP_reduced
-
-  subroutine AP_reduced_prime(col1, col2, t, z, apprime)
-! Returns (1-z)*P^\prime * gS^2/t, with the same conventions as AP_reduced
-    implicit none
-
-    integer col1, col2
-    double precision z, apprime(2), t
-
-    double precision TR, CF
-    parameter(TR=1d0/2d0, CF=4d0/3d0)
-    apprime(2) = 0d0
-    if (col1 .eq. 8 .and. col2 .eq. 8) then
-! g->gg splitting
-      apprime(1) = 0d0
-      apprime(2) = 0d0
-
-    elseif (abs(col1) .eq. 3 .and. abs(col2) .eq. 3) then
-! g->qqbar splitting
-      apprime(1) = -2*TR*z*(1d0 - z)**2
-
-    elseif (abs(col1) .eq. 3 .and. col2 .eq. 8) then
-! q->qg splitting
-      apprime(1) = -CF*(1d0 - z)**2
-
-    elseif (col1 .eq. 8 .and. abs(col2) .eq. 3) then
-! q->gq splitting
-      apprime(1) = -CF*z*(1d0 - z)
-    else
-      write (*, *) 'Fatal error in AP_reduced_prime', col1, col2
-      stop
-    end if
-
-    apprime(1) = apprime(1)*g**2/t
-    return
-  end subroutine AP_reduced_prime
-
-  subroutine Qterms_reduced_timelike(col1, col2, t, z, Qterms)
-! Eq's B.31 to B.34 of FKS paper, times (1-z)*g^2/t. The labeling
-! conventions for particle IDs are the same as those in AP_reduced
-    implicit none
-
-    integer col1, col2
-    double precision z, Qterms(2), t
-
-    double precision CA, TR
-    parameter(CA=3d0, TR=1d0/2d0)
-    Qterms(2) = 0d0
-    if (col1 .eq. 8 .and. col2 .eq. 8) then
-! g->gg splitting
-      Qterms(1) = -4d0*CA*z*(1d0 - z)**2
-      Qterms(2) = 0d0
-
-    elseif (abs(col1) .eq. 3 .and. abs(col2) .eq. 3) then
-! g->qqbar splitting
-      Qterms(1) = 4d0*TR*z*(1d0 - z)**2
-
-    elseif (abs(col1) .eq. 3 .and. col2 .eq. 8) then
-! q->qg splitting
-      Qterms(1) = 0d0
-
-    elseif (col1 .eq. 8 .and. abs(col2) .eq. 3) then
-! q->gq splitting
-      Qterms(1) = 0d0
-    else
-      write (*, *) 'Fatal error in Qterms_reduced_timelike', col1, col2
-      stop
-    end if
-
-    Qterms(1) = Qterms(1)*g**2/t
-    return
-  end subroutine Qterms_reduced_timelike
-
-  subroutine Qterms_reduced_spacelike(col1, col2, t, z, Qterms)
-! Eq's B.42 to B.45 of FKS paper, times (1-z)*gS^2/t. The labeling
-! conventions for particle IDs are the same as those in AP_reduced.
-! Thus, part1 has momentum fraction z, and it is the one off-shell
-! (see (FKS.B.41))
-    implicit none
-
-    integer col1, col2
-    double precision z, Qterms(2), t
-
-    double precision CA, CF
-    parameter(CA=3d0, CF=4d0/3d0)
-    Qterms(2) = 0d0
-    if (col1 .eq. 8 .and. col2 .eq. 8) then
-! g->gg splitting
-      Qterms(1) = -4d0*CA*(1d0 - z)**2/z
-      Qterms(2) = 0d0
-
-    elseif (abs(col1) .eq. 3 .and. abs(col2) .eq. 3) then
-! g->qqbar splitting
-      Qterms(1) = 0d0
-
-    elseif (abs(col1) .eq. 3 .and. col2 .eq. 8) then
-! q->qg splitting
-      Qterms(1) = 0d0
-
-    elseif (col1 .eq. 8 .and. abs(col2) .eq. 3) then
-! q->gq splitting
-      Qterms(1) = -4d0*CF*(1d0 - z)**2/z
-    else
-      write (*, *) 'Fatal error in Qterms_reduced_spacelike', col1, col2
-      stop
-    end if
-
-    Qterms(1) = Qterms(1)*g**2/t
-    return
-  end subroutine Qterms_reduced_spacelike
 
   subroutine sbornsoft(pp, xi_i_fks, y_ij_fks, wgt)
     implicit none
@@ -2632,7 +2160,9 @@ contains
 ! wgt includes the gs/w^2
           call sborn_sf(p_born, m, n, wgt)
           if (wgt .ne. 0d0) then
-            call eikonal_reduced(pp, m, n, i_fks, j_fks, xi_i_fks, y_ij_fks, eik)
+            call eikonal_reduced(pp, m, n, i_fks, j_fks, xi_i_fks, &
+                                  y_ij_fks, p_i_fks_cnt, external_masses, &
+                                  sqrtshat, eik)
             softcontr = softcontr + wgt*eik*iden_comp
 ! update the amp_split array
             amp_split(1:amp_split_size) = amp_split(1:amp_split_size) - 2d0*eik*amp_split_soft(1:amp_split_size)*iden_comp
@@ -2648,65 +2178,6 @@ contains
     return
   end subroutine sbornsoft
 
-  subroutine eikonal_reduced(pp, m, n, i_fks, j_fks, xi_i_fks, y_ij_fks, eik)
-!     Returns the eikonal factor
-    implicit none
-    double precision eik, pp(0:3, nexternal), xi_i_fks, y_ij_fks
-    double precision dotnm, dotni, dotmi, fact
-    integer n, m, i_fks, j_fks, i
-    integer softcol
-
-
-    double precision phat_i_fks(0:3)
-
-    double precision zero, pmass(nexternal), tiny
-    parameter(zero=0d0)
-    parameter(tiny=1d-6)
-    pmass = external_masses
-! Define the reduced momentum for i_fks
-    softcol = 0
-    if (1d0 - y_ij_fks .lt. tiny) softcol = 2
-    if (p_i_fks_cnt(0, softcol) .lt. 0d0) then
-      if (xi_i_fks .eq. 0.d0) then
-        write (*, *) 'Error #1 in eikonal_reduced', softcol, xi_i_fks, y_ij_fks
-        stop
-      end if
-      if (pp(0, i_fks) .ne. 0.d0) then
-        write (*, *) 'WARNING in eikonal_reduced: no cnt momenta', softcol, xi_i_fks, y_ij_fks
-        do i = 0, 3
-          phat_i_fks(i) = pp(i, i_fks)/xi_i_fks
-        end do
-      else
-        write (*, *) 'Error #2 in eikonal_reduced', softcol, xi_i_fks, y_ij_fks
-        stop
-      end if
-    else
-      do i = 0, 3
-        phat_i_fks(i) = p_i_fks_cnt(i, softcol)
-      end do
-    end if
-! Calculate the eikonal factor
-    dotnm = dot(pp(0, n), pp(0, m))
-    if ((m .ne. j_fks .and. n .ne. j_fks) .or. pmass(j_fks) .ne. ZERO) then
-      dotmi = dot(pp(0, m), phat_i_fks)
-      dotni = dot(pp(0, n), phat_i_fks)
-      fact = 1d0 - y_ij_fks
-    elseif (m .eq. j_fks .and. n .ne. j_fks .and. pmass(j_fks) .eq. ZERO) then
-      dotni = dot(pp(0, n), phat_i_fks)
-      dotmi = sqrtshat/2d0*pp(0, j_fks)
-      fact = 1d0
-    elseif (m .ne. j_fks .and. n .eq. j_fks .and. pmass(j_fks) .eq. ZERO) then
-      dotni = sqrtshat/2d0*pp(0, j_fks)
-      dotmi = dot(pp(0, m), phat_i_fks)
-      fact = 1d0
-    else
-      write (*, *) 'Error #3 in eikonal_reduced'
-      stop
-    end if
-
-    eik = dotnm/(dotni*dotmi)*fact
-    return
-  end subroutine eikonal_reduced
 
   subroutine sreal_deg(p, xi_i_fks, collrem_xi, collrem_lxi)
     use extra_weights
@@ -2809,16 +2280,16 @@ contains
 
     z = 1d0 - xi_i_fks
     t = one
-    call AP_reduced(m_type, i_type, t, z, ap)
-    call AP_reduced_prime(m_type, i_type, t, z, apprime)
+    call AP_reduced(m_type, i_type, t, z, g, ap)
+    call AP_reduced_prime(m_type, i_type, t, z, g, apprime)
 
 ! call the PDF-scheme kernels here
 !   p-> (/1/(1-z)/)_+
 !   l-> (/log(1-z)/(1-z)/)_+
 !   d-> delta(1-z)
-    call xkplus(PDFscheme, m_type, i_type, z, xkkernp)
-    call xkdelta(PDFscheme, m_type, i_type, xkkernd)
-    call xklog(PDFscheme, m_type, i_type, z, xkkernl)
+    call xkplus(PDFscheme, m_type, i_type, z, g, nf, xkkernp)
+    call xkdelta(PDFscheme, m_type, i_type, g, xkkernd)
+    call xklog(PDFscheme, m_type, i_type, z, g, nf, xkkernl)
 
     collrem_xi = 0.d0
     collrem_lxi = 0.d0
@@ -2898,346 +2369,7 @@ contains
     return
   end subroutine sreal_deg
 
-  subroutine set_cms_stuff(icountevts)
-    implicit none
-    integer icountevts
 
-
-
-
-
-
-
-! rapidity of boost from \tilde{k}_1+\tilde{k}_2 c.m. frame to lab frame --
-! same for event and counterevents
-! This is the rapidity that enters in the arguments of the sinh() and
-! cosh() of the boost, in such a way that
-!       y(k)_lab = y(k)_tilde - ybst_til_tolab
-! where y(k)_lab and y(k)_tilde are the rapidities computed with a generic
-! four-momentum k, in the lab frame and in the \tilde{k}_1+\tilde{k}_2
-! c.m. frame respectively
-    ybst_til_tolab = -ycm_cnt(0) - 0.5d0*log(ebeam(1)/ebeam(2))
-    if (icountevts .eq. -100) then
-! set Bjorken x's in run.inc for the computation of PDFs in auto_dsig
-      xbk(1) = xbjrk_ev(1)
-      xbk(2) = xbjrk_ev(2)
-! shat=2*k1.k2 -- consistency of this assignment with momenta checked
-! in phspncheck_nocms
-      shat = shat_ev
-      sqrtshat = sqrtshat_ev
-! rapidity of boost from \tilde{k}_1+\tilde{k}_2 c.m. frame to
-! k_1+k_2 c.m. frame
-      ybst_til_tocm = ycm_ev - ycm_cnt(0)
-    else
-! do the same as above for the counterevents
-      xbk(1) = xbjrk_cnt(1, icountevts)
-      xbk(2) = xbjrk_cnt(2, icountevts)
-      shat = shat_cnt(icountevts)
-      sqrtshat = sqrtshat_cnt(icountevts)
-      ybst_til_tocm = ycm_cnt(icountevts) - ycm_cnt(0)
-    end if
-    return
-  end subroutine set_cms_stuff
-
-  subroutine xmom_compare(i_fks, j_fks, jac_cnt, p1_cnt, pass)
-    implicit none
-    double precision p1_cnt(0:3, nexternal, 0:2), jac_cnt(0:2)
-    integer i_fks, j_fks
-    integer izero, ione, itwo, iunit, isum
-    logical verbose, pass, pass0
-    parameter(izero=0)
-    parameter(ione=1)
-    parameter(itwo=2)
-    parameter(iunit=6)
-    parameter(verbose=.false.)
-!
-    isum = 0
-    if (jac_cnt(0) .gt. 0.d0) isum = isum + 1
-    if (jac_cnt(1) .gt. 0.d0) isum = isum + 2
-    if (jac_cnt(2) .gt. 0.d0) isum = isum + 4
-    pass = .true.
-!
-    if (isum .eq. 0 .or. isum .eq. 1 .or. isum .eq. 2 .or. isum .eq. 4) then
-! Nothing to be done: 0 or 1 configurations computed
-      if (verbose) write (iunit, *) 'none'
-    elseif (isum .eq. 3 .or. isum .eq. 5 .or. isum .eq. 7) then
-! Soft is taken as reference
-      if (isum .eq. 7) then
-        if (verbose) then
-          write (iunit, *) 'all'
-          write (iunit, *) '    '
-          write (iunit, *) 'C/S'
-        end if
-        call xmcompare(verbose, pass0, ione, izero, i_fks, j_fks, p1_cnt)
-        pass = pass .and. pass0
-        if (verbose) then
-          write (iunit, *) '    '
-          write (iunit, *) 'SC/S'
-        end if
-        call xmcompare(verbose, pass0, itwo, izero, i_fks, j_fks, p1_cnt)
-        pass = pass .and. pass0
-      elseif (isum .eq. 3) then
-        if (verbose) then
-          write (iunit, *) 'C+S'
-          write (iunit, *) '    '
-          write (iunit, *) 'C/S'
-        end if
-        call xmcompare(verbose, pass0, ione, izero, i_fks, j_fks, p1_cnt)
-        pass = pass .and. pass0
-      elseif (isum .eq. 5) then
-        if (verbose) then
-          write (iunit, *) 'SC+S'
-          write (iunit, *) '    '
-          write (iunit, *) 'SC/S'
-        end if
-        call xmcompare(verbose, pass0, itwo, izero, i_fks, j_fks, p1_cnt)
-        pass = pass .and. pass0
-      end if
-    elseif (isum .eq. 6) then
-! Collinear is taken as reference
-      if (verbose) then
-        write (iunit, *) 'SC+C'
-        write (iunit, *) '    '
-        write (iunit, *) 'SC/C'
-      end if
-      call xmcompare(verbose, pass0, itwo, ione, i_fks, j_fks, p1_cnt)
-      pass = pass .and. pass0
-    else
-      write (6, *) 'Fatal error in xmom_compare', isum
-      stop
-    end if
-    if (.not. pass) i_momcmp_count = i_momcmp_count + 1
-!
-    return
-  end subroutine xmom_compare
-
-  subroutine xmcompare(verbose, pass0, inum, iden, i_fks, j_fks, p1_cnt)
-    implicit none
-    double precision p1_cnt(0:3, nexternal, 0:2)
-    logical verbose, pass0
-    integer inum, iden, i_fks, j_fks, iunit, ipart, i, j, k
-    double precision tiny, vtiny, xnum, xden, xrat
-    parameter(iunit=6)
-    parameter(tiny=1.d-4)
-    parameter(vtiny=1.d-10)
-    double precision pmass(nexternal)
-    pmass = external_masses
-!
-    pass0 = .true.
-    do ipart = 1, nexternal
-      do i = 0, 3
-        xnum = p1_cnt(i, ipart, inum)
-        xden = p1_cnt(i, ipart, iden)
-        if (verbose) then
-          if (i .eq. 0) then
-            write (iunit, *) ' '
-            write (iunit, *) 'part=', ipart
-          end if
-          call xprintout(iunit, xnum, xden)
-        else
-          if (ipart .ne. i_fks .and. ipart .ne. j_fks) then
-            if (xden .ne. 0.d0) then
-              xrat = abs(1 - xnum/xden)
-            else
-              xrat = abs(xnum)
-            end if
-            if (abs(xnum) .eq. 0d0 .and. abs(xden) .le. vtiny) xrat = 0d0
-! The following line solves some problem as well, but before putting
-! it as the standard, one should think a bit about it
-            if (abs(xnum) .le. vtiny .and. abs(xden) .le. vtiny) xrat = 0d0
-            if (xrat .gt. tiny .and. (pmass(ipart) .eq. 0d0 .or. xnum/pmass(ipart) .gt. vtiny)) then
-              write (*, *) 'Kinematics of counterevents'
-              write (*, *) inum, iden
-              write (*, *) 'is different. Particle:', ipart
-              write (*, *) xrat, xnum, xden
-              do j = 1, nexternal
-                write (*, *) j, (p1_cnt(k, j, inum), k=0, 3)
-              end do
-              do j = 1, nexternal
-                write (*, *) j, (p1_cnt(k, j, iden), k=0, 3)
-              end do
-              xratmax = max(xratmax, xrat)
-              pass0 = .false.
-            end if
-          end if
-        end if
-      end do
-    end do
-    do i = 0, 3
-      if (j_fks .gt. nincoming) then
-        xnum = p1_cnt(i, i_fks, inum) + p1_cnt(i, j_fks, inum)
-        xden = p1_cnt(i, i_fks, iden) + p1_cnt(i, j_fks, iden)
-      else
-        xnum = -p1_cnt(i, i_fks, inum) + p1_cnt(i, j_fks, inum)
-        xden = -p1_cnt(i, i_fks, iden) + p1_cnt(i, j_fks, iden)
-      end if
-      if (verbose) then
-        if (i .eq. 0) then
-          write (iunit, *) ' '
-          write (iunit, *) 'part=i+j'
-        end if
-        call xprintout(iunit, xnum, xden)
-      else
-        if (xden .ne. 0.d0) then
-          xrat = abs(1 - xnum/xden)
-        else
-          xrat = abs(xnum)
-        end if
-        if (xrat .gt. tiny) then
-          write (*, *) 'Kinematics of counterevents'
-          write (*, *) inum, iden
-          write (*, *) 'is different. Particle i+j'
-          xratmax = max(xratmax, xrat)
-          pass0 = .false.
-        end if
-      end if
-    end do
-    return
-  end subroutine xmcompare
-
-  subroutine xprintout(iunit, xv, xlim)
-    implicit none
-    integer iunit
-    double precision xv, xlim
-!
-    if (abs(xlim) .gt. 1.d-30) then
-      write (iunit, *) xv/xlim, xv, xlim
-    else
-      write (iunit, *) xv, xlim
-    end if
-    return
-  end subroutine xprintout
-
-! The following has been derived with minor modifications from the
-! analogous routine written for VBF
-
-! The following has been derived with minor modifications from the
-! analogous routine written for VBF
-  subroutine checkres2(xsecvc, xseclvc, wgt, wgtl, xp, lxp, iflag, imax, iev, i_fks, j_fks, iret)
-!     same as checkres, but also limits are arrays.
-    implicit none
-    double precision xsecvc(15), xseclvc(15), wgt(15), wgtl(15), lxp(0:3, nexternal + 1), xp(15, 0:3, nexternal + 1)
-    double precision ckc(15), rckc(15), rat
-    integer iflag, imax, iev, i_fks, j_fks, iret, ithrs, istop, iwrite, i, k, l, imin, icount
-    parameter(ithrs=3)
-    parameter(istop=0)
-    parameter(iwrite=1)
-!
-    if (imax .gt. 15) then
-      write (6, *) 'Error in checkres: imax is too large', imax
-      stop
-    end if
-    do i = 1, imax
-      if (xseclvc(i) .eq. 0.d0) then
-        ckc(i) = abs(xsecvc(i))
-      else
-        ckc(i) = abs(xsecvc(i)/xseclvc(i) - 1.d0)
-      end if
-    end do
-    if (iflag .eq. 0) then
-      rat = 4.d0
-    elseif (iflag .eq. 1) then
-      rat = 2.d0
-    else
-      write (6, *) 'Error in checkres: iflag=', iflag
-      write (6, *) ' Must be 0 for soft, 1 for collinear'
-      stop
-    end if
-!
-    i = 1
-    do while (ckc(i) .gt. 0.1d0 .and. xseclvc(i) .ne. 0d0)
-      i = i + 1
-    end do
-    imin = i
-    do i = imin, imax - 1
-      if (ckc(i + 1) .ne. 0.d0) then
-        rckc(i) = ckc(i)/ckc(i + 1)
-      else
-        rckc(i) = 1.d8
-      end if
-    end do
-    icount = 0
-    i = imin
-    do while (icount .lt. ithrs .and. i .lt. imax)
-      if (rckc(i) .gt. rat) then
-        icount = icount + 1
-      else
-        icount = 0
-      end if
-      i = i + 1
-    end do
-!
-    iret = 0
-    if (icount .ne. ithrs) then
-      iret = 1
-      if (istop .eq. 1) then
-        write (6, *) 'Test failed', iflag
-        write (6, *) 'Event #', iev
-        stop
-      end if
-      if (iwrite .eq. 1) then
-        write (77, *) '    '
-        if (iflag .eq. 0) then
-          write (77, *) 'Soft #', iev
-        elseif (iflag .eq. 1) then
-          write (77, *) 'Collinear #', iev
-        end if
-        write (77, *) 'ME*wgt:'
-        do i = 1, imax
-          call xprintout(77, xsecvc(i), xseclvc(i))
-        end do
-        write (77, *) 'wgt:'
-        do i = 1, imax
-          call xprintout(77, wgt(i), wgtl(i))
-        end do
-!
-        write (78, *) '    '
-        if (iflag .eq. 0) then
-          write (78, *) 'Soft #', iev
-        elseif (iflag .eq. 1) then
-          write (78, *) 'Collinear #', iev
-        end if
-        do k = 1, nexternal
-          write (78, *) ''
-          write (78, *) 'part:', k
-          do l = 0, 3
-            write (78, *) 'comp:', l
-            do i = 1, imax
-              call xprintout(78, xp(i, l, k), lxp(l, k))
-            end do
-          end do
-        end do
-        if (iflag .eq. 0) then
-          write (78, *) ''
-          write (78, *) 'part: i_fks reduced'
-          do l = 0, 3
-            write (78, *) 'comp:', l
-            do i = 1, imax
-              call xprintout(78, xp(i, l, nexternal + 1), lxp(l, nexternal + 1))
-            end do
-          end do
-          write (78, *) ''
-          write (78, *) 'part: i_fks full/reduced'
-          do l = 0, 3
-            write (78, *) 'comp:', l
-            do i = 1, imax
-              call xprintout(78, xp(i, l, i_fks), xp(i, l, nexternal + 1))
-            end do
-          end do
-        elseif (iflag .eq. 1) then
-          write (78, *) ''
-          write (78, *) 'part: i_fks+j_fks'
-          do l = 0, 3
-            write (78, *) 'comp:', l
-            do i = 1, imax
-              call xprintout(78, xp(i, l, i_fks) + xp(i, l, j_fks), lxp(l, i_fks) + lxp(l, j_fks))
-            end do
-          end do
-        end if
-      end if
-    end if
-    return
-  end subroutine checkres2
 
   subroutine bornsoftvirtual(p, bsv_wgt, virt_wgt, born_wgt)
     use extra_weights
@@ -3432,7 +2564,8 @@ contains
 ! wgt includes the gs/w^2
             call sborn_sf(p_born, m, n, wgt)
             if (wgt .ne. 0d0) then
-              call eikonal_Ireg(p, m, n, xicut_used, eikIreg)
+              call eikonal_Ireg(p, m, n, xicut_used, external_masses, &
+                                 shat, qes2, abrv, eikIreg)
               contr = contr + wgt*eikIreg
               do k = 1, amp_split_size
                 amp_split_bsv(k) = amp_split_bsv(k) - 2d0*eikIreg*oneo8pi2*amp_split_soft(k)
@@ -3476,7 +2609,9 @@ contains
     end do
 
     if (fold .eq. 0) then
-      if ((ran2() .le. virtual_fraction(ichan) .and. abrv(1:3) .ne. 'nov') .or. abrv(1:4) .eq. 'virt') then
+      if ((random_unit_interval(iconfig) .le. virtual_fraction(ichan) &
+           .and. abrv(1:3) .ne. 'nov') .or. &
+          abrv(1:4) .eq. 'virt') then
         call cpu_time(tBefore)
         call BinothLHA(p_born, born_wgt, virt_wgt)
         do iamp = 1, amp_split_size
@@ -3634,233 +2769,6 @@ contains
     return
   end subroutine bornsoftvirtual
 
-  subroutine eikonal_Ireg(p, m, n, xicut_used, eikIreg)
-    implicit none
-    double precision pi, pi2
-    parameter(pi=3.1415926535897932385d0)
-    parameter(pi2=pi**2)
-    double precision p(0:3, nexternal), xicut_used, eikIreg
-    integer m, n
-
-
-
-    double precision Ei, Ej, kikj, rij, tmp, xmj, betaj, betai
-    double precision xmi2, xmj2, vij, xi0, alij, tHVvl, tHVv
-    double precision arg1, arg2, arg3, arg4, xi1a
-
-    double precision pmass(nexternal)
-    pmass = external_masses
-    tmp = 0.d0
-    if (pmass(m) .eq. 0.d0 .and. pmass(n) .eq. 0.d0) then
-      if (m .eq. n) then
-        write (*, *) 'Error #2 in eikonal_Ireg', m, n
-        stop
-      end if
-      Ei = p(0, n)
-      Ej = p(0, m)
-      kikj = dot(p(0, n), p(0, m))
-      rij = kikj/(2*Ei*Ej)
-      if (abs(rij - 1.d0) .gt. 1.d-6) then
-        if (abrv .ne. 'virt') then
-! 1+2+3+4
-          tmp = 1d0/2d0*dlog(xicut_used**2*shat/QES2)**2 &
-                + dlog(xicut_used**2*shat/QES2)*dlog(rij) &
-                - ddilog(rij) + 1d0/2d0*dlog(rij)**2 &
-                - dlog(1 - rij)*dlog(rij)
-        else
-          write (*, *) 'Error #11 in eikonal_Ireg', abrv
-          stop
-        end if
-      else
-        if (abrv .ne. 'virt') then
-! 1+2+3+4
-          tmp = 1d0/2d0*dlog(xicut_used**2*shat/QES2)**2 - pi2/6.d0
-        else
-          write (*, *) 'Error #12 in eikonal_Ireg', abrv
-          stop
-        end if
-      end if
-    elseif ((pmass(m) .ne. 0.d0 .and. pmass(n) .eq. 0.d0) .or. (pmass(m) .eq. 0.d0 .and. pmass(n) .ne. 0.d0)) then
-      if (m .eq. n) then
-        write (*, *) 'Error #3 in eikonal_Ireg', m, n
-        stop
-      end if
-      if (pmass(m) .ne. 0.d0 .and. pmass(n) .eq. 0.d0) then
-        Ei = p(0, n)
-        Ej = p(0, m)
-        xmj = pmass(m)
-        betaj = sqrt(1 - xmj**2/Ej**2)
-      else
-        Ei = p(0, m)
-        Ej = p(0, n)
-        xmj = pmass(n)
-        betaj = sqrt(1 - xmj**2/Ej**2)
-      end if
-      kikj = dot(p(0, n), p(0, m))
-      rij = kikj/(2*Ei*Ej)
-
-      if (abrv .ne. 'virt') then
-! 1+2+3+4
-        tmp = dlog(xicut_used) &
-              *(dlog(xicut_used*shat/QES2) + 2*dlog(kikj/(xmj*Ei))) &
-              - ddilog(1 - (1 + betaj)/(2*rij)) &
-              + ddilog(1 - 2*rij/(1 - betaj)) &
-              + 1/2.d0*log(2*rij/(1 - betaj))**2 &
-              + dlog(shat/QES2)*dlog(kikj/(xmj*Ei)) - pi2/12.d0 &
-              + 1/4.d0*dlog(shat/QES2)**2 &
-              - 1/4.d0*dlog((1 + betaj)/(1 - betaj))**2
-      else
-        write (*, *) 'Error #13 in eikonal_Ireg', abrv
-        stop
-      end if
-    elseif (pmass(m) .ne. 0.d0 .and. pmass(n) .ne. 0.d0) then
-      if (n .eq. m) then
-        Ei = p(0, n)
-        betai = sqrt(1 - pmass(n)**2/Ei**2)
-        if (abrv .ne. 'virt') then
-! 1+2+3+4
-          if (betai .gt. 1d-6) then
-            tmp = dlog(xicut_used**2*shat/QES2) - 1/betai*dlog((1 + betai)/(1 - betai))
-          else
-            tmp = dlog(xicut_used**2*shat/QES2) - 2d0*(1d0 + betai**2/3d0 + betai**4/5d0)
-          end if
-        else
-          write (*, *) 'Error #14 in eikonal_Ireg', abrv
-          stop
-        end if
-      else
-        Ei = p(0, n)
-        Ej = p(0, m)
-        betai = sqrt(1 - pmass(n)**2/Ei**2)
-        betaj = sqrt(1 - pmass(m)**2/Ej**2)
-        xmi2 = pmass(n)**2
-        xmj2 = pmass(m)**2
-        kikj = dot(p(0, n), p(0, m))
-        vij = sqrt(1 - xmi2*xmj2/kikj**2)
-        alij = kikj*(1 + vij)/xmi2
-        tHVvl = (alij**2*xmi2 - xmj2)/2.d0
-        tHVv = tHVvl/(alij*Ei - Ej)
-        arg1 = alij*Ei
-        arg2 = arg1*betai
-        arg3 = Ej
-        arg4 = arg3*betaj
-        if (vij .lt. 1d0) then
-          xi0 = 1/vij*log((1 + vij)/(1 - vij))
-        else
-          xi0 = dlog(4d0*kikj**2/(xmi2*xmj2))
-        end if
-!          xi0=1/vij*log((1+vij)/(1-vij))
-        xi1a = kikj**2*(1 + vij)/xmi2*(xj1a(arg1, arg2, tHVv, tHVvl) - xj1a(arg3, arg4, tHVv, tHVvl))
-
-        if (abrv .ne. 'virt') then
-! 1+2+3+4
-          tmp = 1/2.d0*xi0*dlog(xicut_used**2*shat/QES2) + 1/2.d0*xi1a
-        else
-          write (*, *) 'Error #15 in eikonal_Ireg', abrv
-          stop
-        end if
-      end if
-    else
-      write (*, *) 'Error #4 in eikonal_Ireg', m, n, pmass(m), pmass(n)
-      stop
-    end if
-    eikIreg = tmp
-    return
-  end subroutine eikonal_Ireg
-
-  function xj1a(x, y, tHVv, tHVvl)
-    implicit none
-    double precision xj1a, x, y, tHVv, tHVvl
-!
-    xj1a = 1/(2*tHVvl)*(dlog((x - y)/(x + y))**2 + 4*ddilog(1 - (x + y)/tHVv) + 4*ddilog(1 - (x - y)/tHVv))
-    return
-  end function xj1a
-
-  function DDILOG(X)
-!
-! $Id: imp64.inc,v 1.1.1.1 1996/04/01 15:02:59 mclareni Exp $
-!
-! $Log: imp64.inc,v $
-! Revision 1.1.1.1  1996/04/01 15:02:59  mclareni
-! Mathlib gen
-!
-!
-! imp64.inc
-!
-    implicit none
-    integer i
-    double precision ddilog, x, y, s, a, t, h, alfa, b0, b1, b2, c(0:19)
-    double precision z1, hf, pi, pi3, pi6, pi12
-    parameter(Z1=1, HF=Z1/2)
-    parameter(PI=3.14159265358979324d0)
-    parameter(PI3=PI**2/3, PI6=PI**2/6, PI12=PI**2/12)
-    data C(0)/0.42996693560813697d0/
-    data C(1)/0.40975987533077105d0/
-    data C(2)/-0.01858843665014592d0/
-    data C(3)/0.00145751084062268d0/
-    data C(4)/-0.00014304184442340d0/
-    data C(5)/0.00001588415541880d0/
-    data C(6)/-0.00000190784959387d0/
-    data C(7)/0.00000024195180854d0/
-    data C(8)/-0.00000003193341274d0/
-    data C(9)/0.00000000434545063d0/
-    data C(10)/-0.00000000060578480d0/
-    data C(11)/0.00000000008612098d0/
-    data C(12)/-0.00000000001244332d0/
-    data C(13)/0.00000000000182256d0/
-    data C(14)/-0.00000000000027007d0/
-    data C(15)/0.00000000000004042d0/
-    data C(16)/-0.00000000000000610d0/
-    data C(17)/0.00000000000000093d0/
-    data C(18)/-0.00000000000000014d0/
-    data C(19)/+0.00000000000000002d0/
-    if (X .eq. 1) then
-      H = PI6
-    elseif (X .eq. -1) then
-      H = -PI12
-    else
-      T = -X
-      if (T .le. -2) then
-        Y = -1/(1 + T)
-        S = 1
-        A = -PI3 + HF*(log(-T)**2 - log(1 + 1/T)**2)
-      elseif (T .lt. -1) then
-        Y = -1 - T
-        S = -1
-        A = log(-T)
-        A = -PI6 + A*(A + log(1 + 1/T))
-      else if (T .le. -HF) then
-        Y = -(1 + T)/T
-        S = 1
-        A = log(-T)
-        A = -PI6 + A*(-HF*A + log(1 + T))
-      else if (T .lt. 0) then
-        Y = -T/(1 + T)
-        S = -1
-        A = HF*log(1 + T)**2
-      else if (T .le. 1) then
-        Y = T
-        S = 1
-        A = 0
-      else
-        Y = 1/T
-        S = -1
-        A = PI6 + HF*log(T)**2
-      end if
-      H = Y + Y - 1
-      ALFA = H + H
-      B1 = 0
-      B2 = 0
-      do I = 19, 0, -1
-        B0 = C(I) + ALFA*B1 - B2
-        B2 = B1
-        B1 = B0
-      end do
-      H = -(S*(B0 - H*B2) + A)
-    end if
-    DDILOG = H
-    return
-  end function DDILOG
 
   subroutine getpoles(p, xmu2, double, single, fksprefact, split_poles)
 ! Returns the residues of double and single poles according to
@@ -4282,21 +3190,6 @@ contains
     end if
     return
   end subroutine set_mu_central
-
-  function ran2()
-!     Wrapper for the random numbers; needed for the NLO stuff
-    use mint_module
-    use ranmar_module, only: ntuple
-    implicit none
-    double precision ran2, x, a, b
-    integer jconfig
-    a = 0d0                     ! min allowed value for x
-    b = 1d0                     ! max allowed value for x
-    jconfig = iconfig           ! integration channel (for off-set)
-    call ntuple(x, a, b, jconfig)
-    ran2 = x
-    return
-  end function ran2
 
   subroutine fill_configurations_common
     implicit none

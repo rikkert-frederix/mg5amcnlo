@@ -31,9 +31,6 @@ module process_dimensions
   integer, public :: born_maxflow = 0
   integer, public :: born_maxproc = 0
   integer, public :: maxsproc = 0
-  integer, public :: nsquaredso = 0
-  integer, public :: nsqso_born = 0
-
   logical, public :: process_dimensions_initialized = .false.
   logical :: born_dimensions_initialized = .false.
 
@@ -121,8 +118,7 @@ contains
 
 
   subroutine initialize_born_dimensions(max_bhel_in, max_bcol_in, &
-       maxamps_in, maxflow_in, maxproc_in, maxsproc_in, nsquaredso_in, &
-       nsqso_born_in)
+       maxamps_in, maxflow_in, maxproc_in, maxsproc_in)
     implicit none
     integer, intent(in) :: max_bhel_in
     integer, intent(in) :: max_bcol_in
@@ -130,8 +126,6 @@ contains
     integer, intent(in) :: maxflow_in
     integer, intent(in) :: maxproc_in
     integer, intent(in) :: maxsproc_in
-    integer, intent(in) :: nsquaredso_in
-    integer, intent(in) :: nsqso_born_in
 
     if (max_bhel_in < 1) then
       call fail_validation('MAX_BHEL must be positive')
@@ -151,19 +145,10 @@ contains
     if (maxsproc_in < 1 .or. maxsproc_in > maxproc_in) then
       call fail_validation('MAXSPROC is outside the Born process range')
     end if
-    if (nsquaredso_in < 1) then
-      call fail_validation('NSQUAREDSO must be positive')
-    end if
-    if (nsqso_born_in < 1) then
-      call fail_validation('NSQSO_BORN must be positive')
-    end if
-
     if (born_dimensions_initialized) then
       if (max_bhel /= max_bhel_in .or. max_bcol /= max_bcol_in .or. &
            maxamps /= maxamps_in .or. born_maxflow /= maxflow_in .or. &
-           born_maxproc /= maxproc_in .or. maxsproc /= maxsproc_in .or. &
-           nsquaredso /= nsquaredso_in .or. &
-           nsqso_born /= nsqso_born_in) then
+           born_maxproc /= maxproc_in .or. maxsproc /= maxsproc_in) then
         call fail_validation('Born dimensions were reinitialized ' // &
              'with different values')
       end if
@@ -176,8 +161,6 @@ contains
     born_maxflow = maxflow_in
     born_maxproc = maxproc_in
     maxsproc = maxsproc_in
-    nsquaredso = nsquaredso_in
-    nsqso_born = nsqso_born_in
     born_dimensions_initialized = .true.
 
     call validate_born_dimensions()
@@ -417,8 +400,7 @@ contains
     end if
     if (max_bhel < 1 .or. max_bcol < 1 .or. maxamps < 1 .or. &
          born_maxflow < 1 .or. born_maxproc < 1 .or. maxsproc < 1 .or. &
-         maxsproc > born_maxproc .or. nsquaredso < 1 .or. &
-         nsqso_born < 1) then
+         maxsproc > born_maxproc) then
       call fail_validation('the Born dimensions are not valid')
     end if
   end subroutine validate_born_dimensions

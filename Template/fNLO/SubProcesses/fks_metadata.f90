@@ -36,7 +36,7 @@ contains
     integer, intent(in) :: particle_type_in(:, :), pdg_type_in(:, :)
     logical, intent(in) :: split_type_in(:, :)
     logical, intent(in) :: need_color_links_in(:)
-    integer :: configuration, emitter, count
+    integer :: configuration, particle, count
 
     call validate_process_dimensions()
     call validate_input_shapes(fks_i_in, fks_j_in, extra_cnt_in, &
@@ -79,15 +79,15 @@ contains
     split_type_values = split_type_in
     need_color_links_values = need_color_links_in
 
-    ! fks_info.inc DATA-initializes only the emitter row of this table.
-    ! Canonical zeroes make all unspecified rows portable and retain the
-    ! behavior relied upon by the chooser.
+    ! Canonicalize entries beyond each generated partner count, while
+    ! retaining every populated emitter row used by the FKS partition.
     fks_j_from_i_values = 0
     do configuration = 1, fks_configs
-      emitter = fks_i_in(configuration)
-      count = fks_j_from_i_in(configuration, emitter, 0)
-      fks_j_from_i_values(configuration, emitter, 0:count) = &
-           fks_j_from_i_in(configuration, emitter, 0:count)
+      do particle = 1, nexternal
+        count = fks_j_from_i_in(configuration, particle, 0)
+        fks_j_from_i_values(configuration, particle, 0:count) = &
+             fks_j_from_i_in(configuration, particle, 0:count)
+      end do
     end do
 
     metadata_initialized = .true.
@@ -283,7 +283,7 @@ contains
     integer, intent(in) :: isplitorder_born_in(:), isplitorder_cnt_in(:)
     integer, intent(in) :: fks_j_from_i_in(:, :, 0:)
     logical, intent(in) :: split_type_in(:, :)
-    integer :: configuration, emitter, position, count
+    integer :: configuration, emitter, particle, position, count
     logical :: found_fks_partner
 
     if (any(fks_i_in < 1) .or. any(fks_i_in > nexternal) .or. &
@@ -304,18 +304,28 @@ contains
       if (.not. any(split_type_in(configuration, :))) then
         call fail_validation('an FKS configuration has no splitting type')
       end if
+
+      do particle = 1, nexternal
+        count = fks_j_from_i_in(configuration, particle, 0)
+        if (count < 0 .or. count > nexternal) then
+          call fail_validation('FKS_J_FROM_I_D has an invalid count')
+        end if
+        do position = 1, count
+          if (fks_j_from_i_in(configuration, particle, position) < 1 &
+              .or. fks_j_from_i_in(configuration, particle, position) > &
+              nexternal) then
+            call fail_validation('FKS_J_FROM_I_D has an invalid partner')
+          end if
+        end do
+      end do
+
       emitter = fks_i_in(configuration)
       count = fks_j_from_i_in(configuration, emitter, 0)
-      if (count < 1 .or. count > nexternal) then
+      if (count < 1) then
         call fail_validation('FKS_J_FROM_I_D has an invalid emitter count')
       end if
       found_fks_partner = .false.
       do position = 1, count
-        if (fks_j_from_i_in(configuration, emitter, position) < 1 .or. &
-            fks_j_from_i_in(configuration, emitter, position) > &
-            nexternal) then
-          call fail_validation('FKS_J_FROM_I_D has an invalid partner')
-        end if
         if (fks_j_from_i_in(configuration, emitter, position) == &
             fks_j_in(configuration)) found_fks_partner = .true.
       end do
@@ -368,7 +378,7 @@ contains
     integer, intent(in) :: particle_type_in(:, :), pdg_type_in(:, :)
     logical, intent(in) :: split_type_in(:, :)
     logical, intent(in) :: need_color_links_in(:)
-    integer :: configuration, emitter, count
+    integer :: configuration, particle, count
 
     same_metadata = .false.
     if (.not. storage_shapes_are_valid()) return
@@ -382,11 +392,12 @@ contains
     if (.not. all(split_type_values .eqv. split_type_in)) return
     if (.not. all(need_color_links_values .eqv. need_color_links_in)) return
     do configuration = 1, fks_configs
-      emitter = fks_i_in(configuration)
-      count = fks_j_from_i_in(configuration, emitter, 0)
-      if (.not. all(fks_j_from_i_values(configuration, emitter, &
-           0:count) == fks_j_from_i_in(configuration, emitter, &
-           0:count))) return
+      do particle = 1, nexternal
+        count = fks_j_from_i_in(configuration, particle, 0)
+        if (.not. all(fks_j_from_i_values(configuration, particle, &
+             0:count) == fks_j_from_i_in(configuration, particle, &
+             0:count))) return
+      end do
     end do
     same_metadata = .true.
   end function same_metadata

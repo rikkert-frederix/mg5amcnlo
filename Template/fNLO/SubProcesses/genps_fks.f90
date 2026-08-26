@@ -1,14 +1,18 @@
 module genps_fks
   use boostwdir2_module, only: boostwdir2, boostwdir2_in_place
-  use process_dimensions, only: nexternal, nincoming, max_particles, &
-                                max_branch, validate_process_dimensions
+  use process_dimensions, only: validate_process_dimensions
   use run_state
   use timing_state, only: tGenPS
   use kin_functions_module, only: dot => dot_impl, rho => rho_impl
-  use fks_singular_module, only: rotate_invar, phspncheck_nocms, xmom_compare
+  use phase_space_kinematics, only: rotate_invar, phspncheck_nocms, &
+                                    phase_space_lambda
+  use fks_diagnostics, only: xmom_compare
   use genps_born, only: born_phase_space, generate_born_phase_space, &
-                        invalidate_born_phase_space, phase_space_lambda
-  use fnlo_process_common, only: nocntevents, use_evpr, nbody, &
+                        invalidate_born_phase_space
+  ! Generated parameters keep the phase-space normalization bit-identical
+  ! to the NLO template's compile-time arithmetic.
+  use fnlo_process_common, only: nexternal, nincoming, max_particles, &
+                                 max_branch, nocntevents, use_evpr, nbody, &
                                  xi_i_hat_ev, xij_aor, &
                                  i_fks, j_fks, ybst_til_tolab, &
                                  ybst_til_tocm, sqrtshat, shat, &
@@ -308,7 +312,8 @@ contains
     nocntevents = (cnt_jacobian(0) .le. 0.d0) .and. &
       & (cnt_jacobian(1) .le. 0.d0) .and. &
       & (cnt_jacobian(2) .le. 0.d0)
-    call xmom_compare(i_fks, j_fks, cnt_jacobian, cnt_momenta, pass)
+    call xmom_compare(i_fks, j_fks, cnt_jacobian, cnt_momenta, &
+                      particle_masses, pass)
 !
     return
   end subroutine generate_FKS_kinematics

@@ -1,7 +1,6 @@
 module setscales_module
   use process_dimensions, only: nexternal, nincoming, &
        validate_process_dimensions
-  use kinematic_runtime_state, only: validate_kinematic_state
   use run_state, only: scale, fixed_ren_scale, fixed_fac_scale, &
        fixed_qes_scale, mur_over_ref, muf1_over_ref, &
        muf2_over_ref, qes_over_ref, mur_ref_fixed, muf1_ref_fixed, &
@@ -23,9 +22,6 @@ module setscales_module
   public :: set_alphas, set_ren_scale, set_fac_scale
 
   interface
-    subroutine sync_setscales_bridge()
-    end subroutine sync_setscales_bridge
-
     subroutine set_model_ren_scale_bridge(mur, g_value)
       double precision, intent(in) :: mur, g_value
     end subroutine set_model_ren_scale_bridge
@@ -43,14 +39,6 @@ module setscales_module
 
 contains
 
-  subroutine sync_setscales_state()
-    implicit none
-
-    call sync_setscales_bridge()
-    call validate_kinematic_state()
-  end subroutine sync_setscales_state
-
-
   subroutine set_alphas_impl(xp)
     implicit none
     double precision, intent(in) :: xp(0:, :)
@@ -59,7 +47,6 @@ contains
     logical :: reset_momenta, copy_momenta
 
     call validate_process_dimensions()
-    call validate_kinematic_state()
     if (size(xp, 2) /= nexternal) then
       call fail_setscales('set_alphas received the wrong momentum shape')
     end if
@@ -300,7 +287,6 @@ contains
     character(len=*), intent(in) :: routine_name
 
     call validate_process_dimensions()
-    call validate_kinematic_state()
     if (size(p, 1) /= 4 .or. size(p, 2) /= nexternal) then
       call fail_setscales(trim(routine_name) // &
            ' received the wrong momentum shape')
@@ -321,7 +307,6 @@ contains
     implicit none
     double precision, intent(in) :: xp(0:, :)
 
-    call sync_setscales_state()
     call set_alphas_impl(xp)
   end subroutine set_alphas
 
@@ -331,7 +316,6 @@ contains
     double precision, intent(in) :: pp(0:, :)
     double precision, intent(out) :: mur
 
-    call sync_setscales_state()
     call set_ren_scale_impl(pp, mur)
   end subroutine set_ren_scale
   subroutine set_fac_scale(pp, muf)
@@ -339,7 +323,6 @@ contains
     double precision, intent(in) :: pp(0:, :)
     double precision, intent(out) :: muf(2)
 
-    call sync_setscales_state()
     call set_fac_scale_impl(pp, muf)
   end subroutine set_fac_scale
 end module setscales_module

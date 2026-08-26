@@ -215,6 +215,18 @@ class TestMadEventCmd(unittest.TestCase):
             subprocess_dir, 'driver_mintFO_bridge.f')))
         self.assertTrue(os.path.exists(pjoin(
             subprocess_dir, 'genps_born.f90')))
+        for physics_module in [
+                'phase_space_kinematics.f90',
+                'fks_event_kinematics.f90',
+                'fks_qcd_splitting.f90',
+                'fks_soft_kernels.f90',
+                'fks_channel_map.f90',
+                'fks_diagnostics.f90',
+                'fks_random.f90']:
+            self.assertTrue(os.path.exists(pjoin(
+                subprocess_dir, physics_module)))
+        self.assertFalse(os.path.exists(pjoin(
+            subprocess_dir, 'kinematic_runtime_state.f90')))
         self.assertFalse(os.path.exists(pjoin(
             subprocess_dir, 'driver_mintMC.f')))
         self.assertFalse(os.path.exists(pjoin(
@@ -245,6 +257,9 @@ class TestMadEventCmd(unittest.TestCase):
         self.assertNotIn('compute_MC_subt_term', fks_singular)
         self.assertNotIn('replace_MC_subt', fks_singular)
         self.assertNotIn('factor_n1body_NLOPS', fks_singular)
+        self.assertNotIn('subroutine AP_reduced', fks_singular)
+        self.assertNotIn('subroutine eikonal_Ireg', fks_singular)
+        self.assertNotIn('subroutine set_cms_stuff', fks_singular)
 
         with open(pjoin(subprocess_dir, 'genps_born.f90')) as stream:
             genps_born = stream.read().lower()
@@ -261,6 +276,8 @@ class TestMadEventCmd(unittest.TestCase):
         self.assertNotIn('subroutine generate_tau', genps_fks)
         self.assertNotIn('fks_as_is', genps_fks)
         self.assertNotIn('-2:2', genps_fks)
+        self.assertNotIn('use fks_singular_module', genps_born)
+        self.assertNotIn('use fks_singular_module', genps_fks)
 
         for counterevent_source in [
                 'driver_mintFO.f90', 'fks_Sij.f90',

@@ -1,11 +1,3 @@
-      subroutine sync_setscales_bridge()
-      use kinematic_runtime_state, only: sync_kinematic_state
-      use fnlo_process_common, only: is_a_j,is_a_lp,is_a_lm,is_a_ph
-      implicit none
-      call sync_kinematic_state(is_a_j,is_a_lp,is_a_lm,is_a_ph)
-      end
-
-
       subroutine set_model_ren_scale_bridge(mur,g_value)
       implicit none
       double precision mur,g_value

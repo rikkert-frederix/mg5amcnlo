@@ -108,11 +108,3 @@ c born_props.inc writes PMASS and PWIDTH by those exact names.
       include 'born_props.inc'
       return
       end
-
-c Generated Born helicity code still calls this random-number entry point.
-      double precision function ran2()
-      use fks_singular_module, only: implementation => ran2
-      implicit none
-      call init_fks_singular_bridge()
-      ran2=implementation()
-      end
