@@ -15,13 +15,11 @@ contains
     double precision, intent(in) :: counter_jacobian(0:2)
     double precision, intent(in) :: pmass(nexternal)
     integer i_fks, j_fks
-    integer izero, ione, itwo, iunit, isum
-    logical verbose, pass, pass0
+    integer izero, ione, itwo, isum
+    logical pass, pass0
     parameter(izero=0)
     parameter(ione=1)
     parameter(itwo=2)
-    parameter(iunit=6)
-    parameter(verbose=.false.)
 !
     isum = 0
     if (counter_jacobian(0) .gt. 0.d0) isum = isum + 1
@@ -31,52 +29,27 @@ contains
 !
     if (isum .eq. 0 .or. isum .eq. 1 .or. isum .eq. 2 .or. isum .eq. 4) then
 ! Nothing to be done: 0 or 1 configurations computed
-      if (verbose) write (iunit, *) 'none'
     elseif (isum .eq. 3 .or. isum .eq. 5 .or. isum .eq. 7) then
 ! Soft is taken as reference
       if (isum .eq. 7) then
-        if (verbose) then
-          write (iunit, *) 'all'
-          write (iunit, *) '    '
-          write (iunit, *) 'C/S'
-        end if
-        call xmcompare(verbose, pass0, ione, izero, i_fks, j_fks, &
+        call xmcompare(pass0, ione, izero, i_fks, j_fks, &
                        counter_momenta, pmass)
         pass = pass .and. pass0
-        if (verbose) then
-          write (iunit, *) '    '
-          write (iunit, *) 'SC/S'
-        end if
-        call xmcompare(verbose, pass0, itwo, izero, i_fks, j_fks, &
+        call xmcompare(pass0, itwo, izero, i_fks, j_fks, &
                        counter_momenta, pmass)
         pass = pass .and. pass0
       elseif (isum .eq. 3) then
-        if (verbose) then
-          write (iunit, *) 'C+S'
-          write (iunit, *) '    '
-          write (iunit, *) 'C/S'
-        end if
-        call xmcompare(verbose, pass0, ione, izero, i_fks, j_fks, &
+        call xmcompare(pass0, ione, izero, i_fks, j_fks, &
                        counter_momenta, pmass)
         pass = pass .and. pass0
       elseif (isum .eq. 5) then
-        if (verbose) then
-          write (iunit, *) 'SC+S'
-          write (iunit, *) '    '
-          write (iunit, *) 'SC/S'
-        end if
-        call xmcompare(verbose, pass0, itwo, izero, i_fks, j_fks, &
+        call xmcompare(pass0, itwo, izero, i_fks, j_fks, &
                        counter_momenta, pmass)
         pass = pass .and. pass0
       end if
     elseif (isum .eq. 6) then
 ! Collinear is taken as reference
-      if (verbose) then
-        write (iunit, *) 'SC+C'
-        write (iunit, *) '    '
-        write (iunit, *) 'SC/C'
-      end if
-      call xmcompare(verbose, pass0, itwo, ione, i_fks, j_fks, &
+      call xmcompare(pass0, itwo, ione, i_fks, j_fks, &
                      counter_momenta, pmass)
       pass = pass .and. pass0
     else
@@ -88,15 +61,14 @@ contains
     return
   end subroutine xmom_compare
 
-  subroutine xmcompare(verbose, pass0, inum, iden, i_fks, j_fks, &
+  subroutine xmcompare(pass0, inum, iden, i_fks, j_fks, &
                        counter_momenta, pmass)
     implicit none
     double precision, intent(in) :: counter_momenta(0:3, nexternal, 0:2)
     double precision, intent(in) :: pmass(nexternal)
-    logical verbose, pass0
-    integer inum, iden, i_fks, j_fks, iunit, ipart, i, j, k
+    logical pass0
+    integer inum, iden, i_fks, j_fks, ipart, i, j, k
     double precision tiny, vtiny, xnum, xden, xrat
-    parameter(iunit=6)
     parameter(tiny=1.d-4)
     parameter(vtiny=1.d-10)
 !
@@ -105,37 +77,31 @@ contains
       do i = 0, 3
         xnum = counter_momenta(i, ipart, inum)
         xden = counter_momenta(i, ipart, iden)
-        if (verbose) then
-          if (i .eq. 0) then
-            write (iunit, *) ' '
-            write (iunit, *) 'part=', ipart
+        if (ipart .ne. i_fks .and. ipart .ne. j_fks) then
+          if (xden .ne. 0.d0) then
+            xrat = abs(1 - xnum/xden)
+          else
+            xrat = abs(xnum)
           end if
-          call xprintout(iunit, xnum, xden)
-        else
-          if (ipart .ne. i_fks .and. ipart .ne. j_fks) then
-            if (xden .ne. 0.d0) then
-              xrat = abs(1 - xnum/xden)
-            else
-              xrat = abs(xnum)
-            end if
-            if (abs(xnum) .eq. 0d0 .and. abs(xden) .le. vtiny) xrat = 0d0
+          if (abs(xnum) .eq. 0d0 .and. abs(xden) .le. vtiny) xrat = 0d0
 ! The following line solves some problem as well, but before putting
 ! it as the standard, one should think a bit about it
-            if (abs(xnum) .le. vtiny .and. abs(xden) .le. vtiny) xrat = 0d0
-            if (xrat .gt. tiny .and. (pmass(ipart) .eq. 0d0 .or. xnum/pmass(ipart) .gt. vtiny)) then
-              write (*, *) 'Kinematics of counterevents'
-              write (*, *) inum, iden
-              write (*, *) 'is different. Particle:', ipart
-              write (*, *) xrat, xnum, xden
-              do j = 1, nexternal
-                write (*, *) j, (counter_momenta(k, j, inum), k=0, 3)
-              end do
-              do j = 1, nexternal
-                write (*, *) j, (counter_momenta(k, j, iden), k=0, 3)
-              end do
-              xratmax = max(xratmax, xrat)
-              pass0 = .false.
-            end if
+          if (abs(xnum) .le. vtiny .and. abs(xden) .le. vtiny) xrat = 0d0
+          if (xrat .gt. tiny .and. &
+              (pmass(ipart) .eq. 0d0 .or. &
+               xnum/pmass(ipart) .gt. vtiny)) then
+            write (*, *) 'Kinematics of counterevents'
+            write (*, *) inum, iden
+            write (*, *) 'is different. Particle:', ipart
+            write (*, *) xrat, xnum, xden
+            do j = 1, nexternal
+              write (*, *) j, (counter_momenta(k, j, inum), k=0, 3)
+            end do
+            do j = 1, nexternal
+              write (*, *) j, (counter_momenta(k, j, iden), k=0, 3)
+            end do
+            xratmax = max(xratmax, xrat)
+            pass0 = .false.
           end if
         end if
       end do
@@ -152,25 +118,17 @@ contains
         xden = -counter_momenta(i, i_fks, iden) + &
                 counter_momenta(i, j_fks, iden)
       end if
-      if (verbose) then
-        if (i .eq. 0) then
-          write (iunit, *) ' '
-          write (iunit, *) 'part=i+j'
-        end if
-        call xprintout(iunit, xnum, xden)
+      if (xden .ne. 0.d0) then
+        xrat = abs(1 - xnum/xden)
       else
-        if (xden .ne. 0.d0) then
-          xrat = abs(1 - xnum/xden)
-        else
-          xrat = abs(xnum)
-        end if
-        if (xrat .gt. tiny) then
-          write (*, *) 'Kinematics of counterevents'
-          write (*, *) inum, iden
-          write (*, *) 'is different. Particle i+j'
-          xratmax = max(xratmax, xrat)
-          pass0 = .false.
-        end if
+        xrat = abs(xnum)
+      end if
+      if (xrat .gt. tiny) then
+        write (*, *) 'Kinematics of counterevents'
+        write (*, *) inum, iden
+        write (*, *) 'is different. Particle i+j'
+        xratmax = max(xratmax, xrat)
+        pass0 = .false.
       end if
     end do
     return

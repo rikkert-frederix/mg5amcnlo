@@ -1,6 +1,6 @@
 module symmetry_fks_module
   use process_dimensions, only: nexternal, nincoming, ngraphs, &
-       fks_configs, validate_process_dimensions
+       fks_configs, validate_process_and_born_dimensions
   use fks_metadata, only: validate_fks_metadata, fks_i_d, fks_j_d
   use genps_fks, only: generate_momenta
   use kin_functions_module, only: switchmom => switchmom_impl
@@ -58,7 +58,7 @@ contains
     implicit none
     integer, intent(in) :: mapconfig_input(0:)
 
-    call validate_process_dimensions(require_born=.true.)
+    call validate_process_and_born_dimensions()
     call validate_fks_metadata()
     if (size(mapconfig_input) < 2) then
       call fail_symmetry('the Born configuration table is empty')
@@ -102,7 +102,7 @@ contains
     logical, intent(inout) :: nbody
     logical, intent(inout) :: is_aorg(:)
     integer, intent(inout) :: idup(:, :)
-    logical :: mtc, even, force_one_job
+    logical :: mtc, even
     integer :: j, k, nmatch, ibase, ntry
     integer, allocatable :: icb(:), inverse_permutation(:)
     integer, allocatable :: use_config(:)
@@ -116,9 +116,7 @@ contains
     if (len_trim(run_mode) < 2) then
       call fail_symmetry('unknown run_mode in gensym')
     end if
-    if (run_mode(1:3) == 'NLO' .or. run_mode(1:2) == 'LO') then
-      force_one_job = .false.
-    else
+    if (run_mode(1:3) /= 'NLO' .and. run_mode(1:2) /= 'LO') then
       call fail_symmetry('unknown run_mode in gensym')
     end if
 
@@ -235,7 +233,7 @@ contains
     end do
     write (*,*) 'Found ', nmatch, ' matches. ', &
          born_mapconfig(0) - nmatch, ' channels remain for integration.'
-    call write_bash(use_config, force_one_job)
+    call write_bash(use_config)
   end subroutine run_symmetry
 
 
@@ -335,10 +333,9 @@ contains
   end subroutine nexper
 
 
-  subroutine write_bash(use_config, force_one_job)
+  subroutine write_bash(use_config)
     implicit none
     integer, intent(in) :: use_config(0:)
-    logical, intent(in) :: force_one_job
     integer :: configuration, name_length, record_length
     character(len=30) :: file_name
     character(len=2) :: postfix
@@ -355,8 +352,7 @@ contains
         final_fks_partner = .true.
       end if
     end do
-    two_jobs = .not. force_one_job .and. initial_fks_partner .and. &
-         final_fks_partner
+    two_jobs = initial_fks_partner .and. final_fks_partner
 
     file_name = 'ajob'
     name_length = 4
@@ -459,7 +455,7 @@ contains
     logical, intent(in) :: is_aorg(:)
     integer, intent(in) :: idup(:, :)
 
-    call validate_process_dimensions(require_born=.true.)
+    call validate_process_and_born_dimensions()
     call validate_fks_metadata()
     if (.not. symmetry_data_initialized) then
       call fail_symmetry('generated symmetry data are not initialized')

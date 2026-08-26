@@ -2,7 +2,7 @@ module binoth_lha_olp_backend
   use FKSParams, only: IRPoleCheckThreshold
   use process_dimensions, only: nexternal
   use fks_singular_module, only: getpoles
-  use fnlo_process_common, only: qes2, isum_hel
+  use fnlo_process_common, only: isum_hel
   implicit none
   private
 
@@ -29,7 +29,6 @@ contains
     integer, intent(in) :: proc_label
     double precision, intent(in) :: pmass(nexternal)
 
-    logical, parameter :: fksprefact = .true.
     integer, parameter :: nbadmax = 5
     double precision :: p(0:4, nexternal-1)
     double precision :: virt_wgts(4)
@@ -64,8 +63,7 @@ contains
 
     if (firsttime_pole) then
       tolerance = IRPoleCheckThreshold
-      call getpoles(pin, qes2, madfks_double, &
-           madfks_single, fksprefact)
+      call getpoles(pin, madfks_double, madfks_single)
       if (dabs(single_pole-madfks_single) < tolerance .and. &
           dabs(double_pole-madfks_double) < tolerance) then
         write (*,*) '---- POLES CANCELLED ----'

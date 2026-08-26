@@ -114,7 +114,7 @@ module mint_module
   integer, allocatable, private :: nhits(:, :, :)
   integer, allocatable, private :: nhits_in_grids(:)
   integer, allocatable, private :: nvirt(:, :, :, :), nvirt_acc(:, :, :, :)
-  logical, private :: double_points, reset, even_rn, firsttime
+  logical, private :: double_points, reset, firsttime
   logical, allocatable, private :: regridded(:)
   double precision, allocatable, private :: xgrid(:, :, :), xacc(:, :, :)
   double precision, allocatable, private :: vtot(:, :), etot(:, :), chi2(:, :)
@@ -154,7 +154,7 @@ module mint_module
        &, reset_mint_grids, setup_common, write_grids_to_file &
        &, double_grid, regrid, smooth_xacc, nextlexi, init_ave_virt&
        &, get_ave_virt, fill_ave_virt, regrid_ave_virt, double_ave_virt&
-       &, get_channel, close_run_zero_res, ran3 &
+       &, get_channel, close_run_zero_res &
        &, initialize_even_random_numbers, get_ran
 contains
 
@@ -808,7 +808,7 @@ contains
     call get_channel
 ! find random x, and its random cell
     do kdim = 1, ndim
-      rand(kdim) = ran3(even_rn)
+      rand(kdim) = get_ran()
       ncell(kdim) = min(int(rand(kdim)*nint_used) + 1, nint_used)
       rand(kdim) = rand(kdim)*nint_used - (ncell(kdim) - 1)
     end do
@@ -867,13 +867,10 @@ contains
 
   subroutine check_evenly_random_numbers
     implicit none
-    if (even_rn .and. ncalls .ne. ncalls0) then
+    if (ncalls .ne. ncalls0) then
       ! Uses more evenly distributed random numbers. This overwrites
       ! the number of calls
       call initialize_even_random_numbers
-      write (*, *) 'Update # PS points (even_rn): ', ncalls0, ' --> ', ncalls
-    elseif (ncalls0 .ne. ncalls) then
-      ncalls = ncalls0
       write (*, *) 'Update # PS points: ', ncalls0, ' --> ', ncalls
     end if
   end subroutine check_evenly_random_numbers
@@ -932,7 +929,6 @@ contains
 
   subroutine setup_imode_m1
     implicit none
-    even_rn = .true.
     imode = 0
     min_it = min_it0
     ans_chan(1:nchans) = ans(1, 1:nchans)
@@ -941,7 +937,6 @@ contains
 
   subroutine setup_imode_0
     implicit none
-    even_rn = .true.
     min_it = min_it0
     call reset_mint_grids
   end subroutine setup_imode_0
@@ -1331,6 +1326,7 @@ contains
 ! updates the selected integration-channel state.
     implicit none
     double precision :: trgt, total
+    double precision, external :: ran2
     if (nchans .eq. 1) then
       ichan = 1
       iconfig = iconfigs(ichan)
@@ -1338,7 +1334,7 @@ contains
     elseif (nchans .gt. 1) then
       if (ans_chan(0) .le. 0d0) then
 !     pick one at random (flat)
-        ichan = int(ran3(.false.)*nchans) + 1
+        ichan = int(ran2()*nchans) + 1
         iconfig = iconfigs(ichan)
         vol_chan = 1d0/dble(nchans)
       else
@@ -1348,7 +1344,7 @@ contains
           write (*, *) 'ERROR: total should be equal to ans', total, ans_chan(0)
           stop 1
         end if
-        trgt = ans_chan(0)*ran3(.false.)
+        trgt = ans_chan(0)*ran2()
         total = 0d0
         ichan = 0
         do while (total .lt. trgt)
@@ -1385,18 +1381,6 @@ contains
     end do
     close (12)
   end subroutine close_run_zero_res
-
-  function ran3(even)
-    implicit none
-    double precision :: ran3
-    logical :: even
-    double precision, external :: ran2
-    if (even) then
-      ran3 = get_ran()
-    else
-      ran3 = ran2()
-    end if
-  end function ran3
 
   subroutine initialize_even_random_numbers
 ! Recompute the number of calls. Uses the algorithm from VEGAS

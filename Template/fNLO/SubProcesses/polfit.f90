@@ -182,7 +182,6 @@ contains
     integer :: i
     integer :: ierr
     double precision :: eps
-    logical, parameter :: verbose = .false.
 
     call require_initialized('do_polyfit')
     do ic = 1, nchan
@@ -193,11 +192,6 @@ contains
           call polfit(n(ic), x2d(1, i, ic), y(1, ko, ic), &
                       w(1, ko, ic), maxdeg, ndeg(i, ko, ic), eps, r, ierr, a)
           a2d(1:maxdeg*3 + 3, i, ko, ic) = a(1:maxdeg*3 + 3)
-          if (verbose) then
-            write (*, '(a,i3,i3,i3,i8,i3,i3,f10.4)') &
-              'polyfit -', ic, ko, i, n(ic), &
-              ndeg(i, ko, ic), ierr, eps
-          end if
         end do
       end do
     end do
@@ -268,7 +262,6 @@ contains
     integer :: i
     integer :: ko
     character(len=3) :: dummy
-    logical, parameter :: verbose = .false.
 
     call require_initialized('restore_polyfit')
     do ic = 1, nchan
@@ -291,10 +284,6 @@ contains
         end do
       end do
     end do
-    if (verbose) then
-      write (*, *) 'polyfit - valid orders virt', &
-        valid_ord_virt(0:n_ord_virt)
-    end if
   end subroutine restore_polyfit
 
   subroutine require_initialized(caller)

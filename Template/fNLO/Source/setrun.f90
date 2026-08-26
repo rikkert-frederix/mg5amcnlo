@@ -47,8 +47,6 @@ contains
     q2fact(1) = muf1_ref_fixed**2
     q2fact(2) = muf2_ref_fixed**2
 
-    call fill_needed_splittings()
-
     ! Set alpha_s(mZ).  The model coupling is obtained through the fixed-form
     ! bridge, which is the only code in this unit that includes coupl.inc.
     if (lpp(1) /= 0 .or. lpp(2) /= 0) then

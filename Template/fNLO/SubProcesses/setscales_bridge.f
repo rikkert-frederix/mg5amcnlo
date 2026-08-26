@@ -18,13 +18,12 @@
       end
 
 
-      subroutine update_model_momenta_bridge(p,reset_momenta,
-     &     copy_momenta)
+      subroutine update_model_momenta_bridge(p,reset_momenta)
       use fnlo_process_common, only: nexternal,max_particles,
      $     model_momenta
       implicit none
       double precision p(0:3,nexternal)
-      logical reset_momenta,copy_momenta
+      logical reset_momenta
       integer i,j
 
       if (reset_momenta) then
@@ -34,11 +33,9 @@
             enddo
          enddo
       endif
-      if (copy_momenta) then
-         do j=1,nexternal
-            do i=0,3
-               model_momenta(i,j)=p(i,j)
-            enddo
+      do j=1,nexternal
+         do i=0,3
+            model_momenta(i,j)=p(i,j)
          enddo
-      endif
+      enddo
       end

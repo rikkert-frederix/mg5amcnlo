@@ -4,8 +4,7 @@ module fks_weights_module
   use run_state, only: q2fact, scale, dynamical_scale_choice
   use timing_state, only: t_as, tr_s, tr_pdf, t_plot
   use mint_module, only: nintegrals, virt_wgt_mint, born_wgt_mint
-  use fks_metadata, only: fks_i_d, fks_j_d, extra_cnt_d, &
-                          isplitorder_born_d, split_type_d
+  use fks_metadata, only: fks_i_d, fks_j_d
   use setscales_module, only: set_ren_scale, set_fac_scale
   use split_orders, only: amp_split_pos_to_orders
   use chooser_functions_module, only: set_pdg_impl
@@ -120,7 +119,7 @@ contains
     momenta_equal_uborn = momenta_equal(pb1, pb2)
   end function momenta_equal_uborn
 
-  subroutine add_wgt(event_slot, type, orders, wgt1, wgt2, wgt3)
+  subroutine add_wgt(event_slot, type, wgt1, wgt2, wgt3)
 ! Adds a contribution to the list in weight_lines. 'type' sets the type
 ! of the contribution and wgt1..wgt3 are the coefficients multiplying
 ! the logs. The arguments are:
@@ -135,13 +134,6 @@ contains
 !     wgt1 : weight of the contribution not multiplying a scale log
 !     wgt2 : coefficient of the weight multiplying the log(/mu_R^2/Q^2/)
 !     wgt3 : coefficient of the weight multiplying the log(/mu_F^2/Q^2/)
-!
-!
-! The argument orders specifies what are the squared coupling orders
-! factorizing the particular set of weights added here. The position of
-! the QCD order there can be obtained via qcd_pos from orders.inc
-! This is solely used for now in order to apply a potential user-defined filer.
-!
 ! This subroutine increments the 'icontr' counter: each new call to this
 ! function makes sure that it's considered a new contribution. For each
 ! contribution, we save the
@@ -196,9 +188,8 @@ contains
     use FKSParams
     implicit none
     integer event_slot, type, i, j
-    logical foundIt, foundOrders
+    logical foundIt
     double precision wgt1, wgt2, wgt3
-    integer orders(nsplitorders)
 
     if (wgt1 .eq. 0d0 .and. wgt2 .eq. 0d0 .and. wgt3 .eq. 0d0) return
 ! Check for NaN's and INF's. Simply skip the contribution
@@ -218,32 +209,6 @@ contains
       end do
       if (.not. foundIt) then
 ! This contribution was not part of the user selection. Skip it.
-        return
-      end if
-    end if
-
-! Apply the user-defined coupling-order filter if present
-! First the simple QCD filter
-    if (QCD_squared_selected .ne. -1 .and. QCD_squared_selected .ne. orders(qcd_pos)) then
-      return
-    end if
-! Secondly, the more advanced filter
-    if (SelectedCouplingOrders(1, 0) .gt. 0) then
-      foundIt = .false.
-      do j = 1, SelectedCouplingOrders(1, 0)
-        foundOrders = .true.
-        do i = 1, nsplitorders
-          if (SelectedCouplingOrders(i, j) .ne. orders(i)) then
-            foundOrders = .false.
-            exit
-          end if
-        end do
-        if (foundOrders) then
-          foundIt = .true.
-          exit
-        end if
-      end do
-      if (.not. foundIt) then
         return
       end if
     end if
@@ -455,25 +420,7 @@ contains
           if (abs(idup_d(iFKS, fks_i_d(iFKS), j)) .eq. &
               abs(idup_d(iFKS, fks_j_d(iFKS), j)) .and. &
               abs(pdg(fks_i_d(iFKS), ict)) .ne. 21) then
-! check if any extra cnt is needed
-            if (extra_cnt_d(iFKS) .eq. 0) then
-! if not, assign a gluon for the QCD splitting
-              if (split_type_d(iFKS, qcd_pos)) then
-                parton_pdg_uborn(k, j, ict) = 21
-              else
-                write (*, *) 'set_pdg_codes ', 'ERROR#1 in PDG assigment for underlying Born'
-                stop 1
-              end if
-            else
-! if there are extra cnt's, assign the pdg of the
-! mother in the born (according to isplitorder_born_d)
-              if (isplitorder_born_d(iFKS) .eq. qcd_pos) then
-                parton_pdg_uborn(k, j, ict) = 21
-              else
-                write (*, *) 'set_pdg_codes ', 'ERROR#2 in PDG assigment for underlying Born'
-                stop 1
-              end if
-            end if
+            parton_pdg_uborn(k, j, ict) = 21
           elseif (abs(idup_d(iFKS, fks_i_d(iFKS), j)) .eq. 21) then
             parton_pdg_uborn(k, j, ict) = idup_d(iFKS, fks_j_d(iFKS), j)
           elseif (idup_d(iFKS, fks_j_d(iFKS), j) .eq. 21) then
@@ -485,9 +432,7 @@ contains
         elseif (k .lt. fks_i_d(iFKS)) then
           parton_pdg_uborn(k, j, ict) = idup_d(iFKS, k, j)
         elseif (k .eq. nexternal) then
-          if (split_type_d(iFKS, qcd_pos)) then
-            parton_pdg_uborn(k, j, ict) = 21 ! give the extra particle a gluon PDG code
-          end if
+          parton_pdg_uborn(k, j, ict) = 21
         elseif (k .ge. fks_i_d(iFKS)) then
           parton_pdg_uborn(k, j, ict) = idup_d(iFKS, k + 1, j)
         end if

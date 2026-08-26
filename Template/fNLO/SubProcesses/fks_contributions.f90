@@ -74,7 +74,7 @@ contains
       orders_tag = get_orders_tag(orders)
       amp_pos = iamp
       wgt1 = amp_split(iamp)*f_b/g**(qcd_power)
-      call add_wgt(soft_counterevent, born_contribution, orders, wgt1, 0d0, 0d0)
+      call add_wgt(soft_counterevent, born_contribution, wgt1, 0d0, 0d0)
     end do
 
     call cpu_time(tAfter)
@@ -114,8 +114,10 @@ contains
       wgt2 = amp_split_wgtwnstmpmur(iamp)*f_nb/g22
       wgt3 = amp_split_wgtwnstmpmuf(iamp)*f_nb/g22
       wgt4 = amp_split_avv(iamp)*f_nb/g22
-      call add_wgt(soft_counterevent, integrated_contribution, orders, wgt1, wgt2, wgt3)
-      call add_wgt(soft_counterevent, averaged_born_contribution, orders, wgt4, 0d0, 0d0)
+      call add_wgt(soft_counterevent, integrated_contribution, &
+                   wgt1, wgt2, wgt3)
+      call add_wgt(soft_counterevent, averaged_born_contribution, &
+                   wgt4, 0d0, 0d0)
     end do
 ! Special for the soft-virtual needed for the virt-tricks. The
 ! *_wgt_mint variable should be directly passed to the mint-integrator
@@ -132,7 +134,7 @@ contains
       virt_wgt_mint(iamp) = virt_wgt_mint(iamp) + wgt1
       born_wgt_mint(iamp) = born_wgt_mint(iamp) + amp_split_born_for_virt(iamp)*f_nb
       wgt1 = wgt1/g**(QCD_power)
-      call add_wgt(soft_counterevent, virtual_contribution, orders, wgt1, 0d0, 0d0)
+      call add_wgt(soft_counterevent, virtual_contribution, wgt1, 0d0, 0d0)
     end do
 
     call cpu_time(tAfter)
@@ -163,7 +165,7 @@ contains
       orders_tag = get_orders_tag(orders)
       amp_pos = iamp
       wgt1 = amp_split(iamp)*s_ev*f_r/g**(qcd_power)
-      call add_wgt(real_event, real_contribution, orders, wgt1, 0d0, 0d0)
+      call add_wgt(real_event, real_contribution, wgt1, 0d0, 0d0)
     end do
     call cpu_time(tAfter)
     tReal = tReal + (tAfter - tBefore)
@@ -204,7 +206,7 @@ contains
         wgt1 = -amp_split(iamp)*s_s*f_s/g22
       end if
       if (wgt1 .ne. 0d0) &
-        call add_wgt(soft_counterevent, soft_contribution, orders, wgt1, 0d0, 0d0)
+        call add_wgt(soft_counterevent, soft_contribution, wgt1, 0d0, 0d0)
     end do
 
     call cpu_time(tAfter)
@@ -255,7 +257,8 @@ contains
                      log(event_xi(collinear_counterevent)))*f_dc/g22
       wgt3 = amp_split_wgtdegrem_muF(iamp)*f_dc/g22
       if (wgt1 .ne. 0d0 .or. wgt3 .ne. 0d0) &
-        call add_wgt(collinear_counterevent, collinear_contribution, orders, wgt1, 0d0, wgt3)
+        call add_wgt(collinear_counterevent, collinear_contribution, &
+                     wgt1, 0d0, wgt3)
     end do
 
     call cpu_time(tAfter)
@@ -313,7 +316,8 @@ contains
         wgt3 = -amp_split_wgtdegrem_muF(iamp)*f_dsc(4)/g22
       end if
       if (wgt1 .ne. 0d0 .or. wgt3 .ne. 0d0) &
-        call add_wgt(soft_collinear_counterevent, soft_collinear_contribution, orders, wgt1, 0d0, wgt3)
+        call add_wgt(soft_collinear_counterevent, &
+                     soft_collinear_contribution, wgt1, 0d0, wgt3)
     end do
 
     call cpu_time(tAfter)

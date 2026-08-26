@@ -1,10 +1,9 @@
 module chooser_functions_module
   use process_dimensions, only: nexternal, nincoming, max_branch, &
-       lmaxconfigs, maxproc, maxflow, fks_configs, nsplitorders, &
-       qcd_pos, validate_process_dimensions
+       lmaxconfigs, maxproc, maxflow, fks_configs, &
+       validate_process_dimensions, validate_process_and_born_dimensions
   use fks_metadata, only: validate_fks_metadata, fks_i_d, fks_j_d, &
-       extra_cnt_d, isplitorder_born_d, isplitorder_cnt_d, &
-       fks_j_from_i_d, particle_type_d, pdg_type_d, split_type_d, &
+       fks_j_from_i_d, particle_type_d, pdg_type_d, &
        need_color_links_d
   use weight_lines, only: pdg, pdg_uborn
   implicit none
@@ -40,7 +39,6 @@ module chooser_functions_module
   public :: leshouche_inc_chooser_impl
   public :: get_mother_colour_impl
   public :: set_pdg_impl
-  public :: fill_needed_splittings_impl
 
   interface
     double precision function get_mass_from_id(id)
@@ -147,7 +145,7 @@ contains
     integer, intent(in) :: born_icolup_input(:, :, :)
     integer :: configuration, process
 
-    call validate_process_dimensions(require_born=.true.)
+    call validate_process_and_born_dimensions()
     call validate_fks_metadata()
     call validate_leshouche_input(maxproc_used_in, maxflow_used_in, &
          idup_input, mothup_input, icolup_input, niprocs_input, &
@@ -251,16 +249,14 @@ contains
 
   subroutine fks_inc_chooser_impl(nfksprocess, fks_j_from_i, &
        particle_type, pdg_type, i_fks, j_fks, need_color_links, &
-       extra_cnt, isplitorder_born, isplitorder_cnt, split_type, is_aorg)
+       is_aorg)
     implicit none
     integer, intent(in) :: nfksprocess
     integer, intent(inout) :: fks_j_from_i(:, 0:)
     integer, intent(out) :: particle_type(:), pdg_type(:)
     integer, intent(out) :: i_fks, j_fks
     logical, intent(out) :: need_color_links
-    integer, intent(out) :: extra_cnt, isplitorder_born
-    integer, intent(out) :: isplitorder_cnt
-    logical, intent(out) :: split_type(:), is_aorg(:)
+    logical, intent(out) :: is_aorg(:)
     integer :: particle, position
 
     call validate_process_dimensions()
@@ -268,9 +264,6 @@ contains
 
     i_fks = fks_i_d(nfksprocess)
     j_fks = fks_j_d(nfksprocess)
-    extra_cnt = extra_cnt_d(nfksprocess)
-    isplitorder_born = isplitorder_born_d(nfksprocess)
-    isplitorder_cnt = isplitorder_cnt_d(nfksprocess)
     need_color_links = need_color_links_d(nfksprocess)
 
     do particle = 1, nexternal
@@ -290,9 +283,6 @@ contains
       is_aorg(particle) = abs(pdg_type(particle)) == 21
     end do
 
-    do position = 1, nsplitorders
-      split_type(position) = split_type_d(nfksprocess, position)
-    end do
   end subroutine fks_inc_chooser_impl
 
 
@@ -552,23 +542,7 @@ contains
         if (abs(pdg(fks_i_d(ifks), ict)) == &
             abs(pdg(fks_j_d(ifks), ict)) .and. &
             abs(pdg(fks_i_d(ifks), ict)) /= 21) then
-          if (extra_cnt_d(ifks) == 0) then
-            if (split_type_d(ifks, qcd_pos)) then
-              pdg_uborn(particle, ict) = 21
-            else
-              write (*, *) 'set_pdg ', &
-                   'ERROR#1 in PDG assigment for underlying Born'
-              stop 1
-            end if
-          else
-            if (isplitorder_born_d(ifks) == qcd_pos) then
-              pdg_uborn(particle, ict) = 21
-            else
-              write (*, *) 'set_pdg ', &
-                   'ERROR#2 in PDG assigment for underlying Born'
-              stop 1
-            end if
-          end if
+          pdg_uborn(particle, ict) = 21
         else if (abs(pdg(fks_i_d(ifks), ict)) == 21) then
           pdg_uborn(particle, ict) = pdg(fks_j_d(ifks), ict)
         else if (pdg(fks_j_d(ifks), ict) == 21) then
@@ -581,44 +555,12 @@ contains
       else if (particle < fks_i_d(ifks)) then
         pdg_uborn(particle, ict) = pdg(particle, ict)
       else if (particle == nexternal) then
-        if (split_type_d(ifks, qcd_pos)) then
-          pdg_uborn(particle, ict) = 21
-        else
-          if (ifks == 1) then
-            pdg_uborn(particle, ict) = 21
-          else
-            write (*, *) &
-                 'set_pdg ERROR#4 in PDG assigment for underlying Born'
-            stop 1
-          end if
-        end if
+        pdg_uborn(particle, ict) = 21
       else if (particle >= fks_i_d(ifks)) then
         pdg_uborn(particle, ict) = pdg(particle + 1, ict)
       end if
     end do
   end subroutine set_pdg_impl
-
-
-  subroutine fill_needed_splittings_impl(split_type_used)
-    implicit none
-    logical, intent(out) :: split_type_used(:)
-    integer :: configuration, split_order
-
-    call validate_process_dimensions()
-    call validate_fks_metadata()
-
-    do split_order = 1, nsplitorders
-      split_type_used(split_order) = .false.
-    end do
-    do configuration = 1, fks_configs
-      do split_order = 1, nsplitorders
-        split_type_used(split_order) = &
-             split_type_used(split_order) .or. &
-             split_type_d(configuration, split_order)
-      end do
-    end do
-    write (*, *) 'SPLIT TYPE USED:', split_type_used
-  end subroutine fill_needed_splittings_impl
 
 
   subroutine validate_configs_input(max_branch_used_in, &

@@ -36,14 +36,13 @@ module fks_singular_module
                                  virtual_over_born, softtest, colltest, &
                                  need_color_links, xij_aor, &
                                  i_type, j_type, m_type, &
-                                 iextra_cnt, isplitorder_born, &
-                                 isplitorder_cnt, iden_comp, &
+                                 iden_comp, &
                                  c, gamma, gammap, beta0, abrv, &
                                  multi_channel, nbody, qes2, amp_split, &
                                  amp_split_cnt, p_born, &
                                  idup, &
                                  fks_j_from_i, particle_type, pdg_type, &
-                                 split_type, is_aorg, ans_cnt, &
+                                 is_aorg, ans_cnt, &
                                  amp_split_virt, &
                                  amp_split_born_for_virt, amp_split_avv, &
                                  amp_split_wgtnstmp, &
@@ -54,7 +53,7 @@ module fks_singular_module
                                  amp_split_wgtdegrem_muf, &
                                  amp_split_soft, &
                                  amp_split_finite_ml, amp_split_poles_fks, &
-                                 split_type_used, config_mass, &
+                                 config_mass, &
                                  config_width, config_forest, config_sprop, &
                                  config_tprid, config_map, real_forest, &
                                  real_sprop, real_tprid, real_map, &
@@ -64,7 +63,6 @@ module fks_singular_module
 
   double precision, parameter :: fks_a = 1.5d0, fks_b = 1.5d0
   double precision, parameter :: a_h_damp = 1d0, one_h_damp = 1d-2
-  logical, parameter :: useenergy = .true., usebeta = .true.
   double precision, parameter :: deltao = 1d0, deltai = 1d0, xicut = 0.5d0
   double precision, parameter :: deltas = 1d0, xiscut = 0.5d0, xibsvcut = 1d0
   double precision, parameter :: deltaminy = 0.95d0, skewy = 10d0, alphay = 2d0
@@ -99,7 +97,7 @@ contains
 
     call require_fks_singular_state()
     call initialize_fks_sij_module(nexternal, nincoming, fks_a, fks_b, &
-                                   a_h_damp, one_h_damp, useenergy, usebeta)
+                                   a_h_damp, one_h_damp)
     call set_fks_sij_partition_state(fks_j_from_i, particle_type, is_aorg, &
                                      i_fks, j_fks, &
                                      ybst_til_tocm(event_slot), &
@@ -282,8 +280,6 @@ contains
     parameter(ximag=(0.d0, 1.d0))
     double precision amp_split_local(amp_split_size)
     complex(kind=kind(0d0)) wgt1(2)
-    complex(kind=kind(0d0)) ans_extra_cnt(2, nsplitorders)
-
 !
     amp_split_local(1:amp_split_size) = 0d0
 
@@ -300,35 +296,12 @@ contains
     z = 1d0 - E_i_fks/(E_i_fks + E_j_fks)
     t = z*partonic_shat/4d0
     call sborn(p_born, wgt_born)
-    if (iextra_cnt .gt. 0) call extra_cnt(p_born, iextra_cnt, ans_extra_cnt)
     call AP_reduced(j_type, i_type, t, z, g, ap)
     call Qterms_reduced_timelike(j_type, i_type, t, z, g, Q)
     wgt = 0d0
     iord = qcd_pos
-    if (.not. split_type(iord)) then
-      amp_split(1:amp_split_size) = 0d0
-      return
-    end if
-! check if any extra_cnt is needed
-    if (iextra_cnt .gt. 0) then
-      if (iord .eq. isplitorder_born) then
-        call sborn(p_born, wgt_born)
-        wgt1(1) = ans_cnt(1, iord)
-        wgt1(2) = ans_cnt(2, iord)
-      elseif (iord .eq. isplitorder_cnt) then
-! this is the contribution from the extra cnt
-        call extra_cnt(p_born, iextra_cnt, ans_extra_cnt)
-        wgt1(1) = ans_extra_cnt(1, iord)
-        wgt1(2) = ans_extra_cnt(2, iord)
-      else
-        write (*, *) 'ERROR in sborncol_fsr', iord
-        stop
-      end if
-    else
-      call sborn(p_born, wgt_born)
-      wgt1(1) = ans_cnt(1, iord)
-      wgt1(2) = ans_cnt(2, iord)
-    end if
+    wgt1(1) = ans_cnt(1, iord)
+    wgt1(2) = ans_cnt(2, iord)
     if (abs(j_type) .eq. 3 .and. i_type .eq. 8) then
       Q(1) = 0d0
       wgt1(2) = 0d0
@@ -396,9 +369,6 @@ contains
     double precision amp_split_local(amp_split_size)
     complex(kind=kind(0d0)) amp_split_cnt_local(amp_split_size, 2, nsplitorders)
     complex(kind=kind(0d0)) wgt1(2)
-    complex(kind=kind(0d0)) ans_extra_cnt(2, nsplitorders)
-
-
 !
     amp_split_local(1:amp_split_size) = 0d0
 
@@ -420,28 +390,8 @@ contains
     call Qterms_reduced_spacelike(m_type, i_type, t, z, g, Q)
     wgt = 0d0
     iord = qcd_pos
-    if (.not. split_type(iord)) then
-      amp_split(1:amp_split_size) = 0d0
-      return
-    end if
-! check if any extra_cnt is needed
-    if (iextra_cnt .gt. 0) then
-      if (iord .eq. isplitorder_born) then
-! this is the contribution from the born ME
-        call sborn(p_born_used, wgt_born)
-        wgt1(1:2) = ans_cnt(1:2, iord)
-      else if (iord .eq. isplitorder_cnt) then
-! this is the contribution from the extra cnt
-        call extra_cnt(p_born_used, iextra_cnt, ans_extra_cnt)
-        wgt1(1:2) = ans_extra_cnt(1:2, iord)
-      else
-        write (*, *) 'ERROR in sborncol_isr', iord
-        stop
-      end if
-    else
-      call sborn(p_born_used, wgt_born)
-      wgt1(1:2) = ans_cnt(1:2, iord)
-    end if
+    call sborn(p_born_used, wgt_born)
+    wgt1(1:2) = ans_cnt(1:2, iord)
     amp_split_cnt_local(1:amp_split_size, 1, iord) = amp_split_cnt(1:amp_split_size, 1, iord)
     amp_split_cnt_local(1:amp_split_size, 2, iord) = amp_split_cnt(1:amp_split_size, 2, iord)
     if (abs(m_type) .eq. 3) then
@@ -576,8 +526,6 @@ contains
     parameter(one=1.d0)
     parameter(pi=3.1415926535897932385d0)
 
-    complex(kind=kind(0d0)) ans_extra_cnt(2, nsplitorders)
-
     double precision amp_split_collrem_xi(amp_split_size), amp_split_collrem_lxi(amp_split_size)
     double precision prefact_xi
 
@@ -629,29 +577,9 @@ contains
     calculatedborn = .false.
     iord = qcd_pos
     iap = 1
-    if (.not. split_type(iord)) return
-
-! check if any extra_cnt is needed
-    if (iextra_cnt .gt. 0) then
-      if (iord .eq. isplitorder_born) then
-! this is the contribution from the born ME
-        call sborn(p_born_used, wgt_born)
-        wgt1(1) = ans_cnt(1, iord)
-        wgt1(2) = ans_cnt(2, iord)
-      else if (iord .eq. isplitorder_cnt) then
-! this is the contribution from the extra cnt
-        call extra_cnt(p_born_used, iextra_cnt, ans_extra_cnt)
-        wgt1(1) = ans_extra_cnt(1, iord)
-        wgt1(2) = ans_extra_cnt(2, iord)
-      else
-        write (*, *) 'ERROR in sreal_deg', iord
-        stop
-      end if
-    else
-      call sborn(p_born_used, wgt_born)
-      wgt1(1) = ans_cnt(1, iord)
-      wgt1(2) = ans_cnt(2, iord)
-    end if
+    call sborn(p_born_used, wgt_born)
+    wgt1(1) = ans_cnt(1, iord)
+    wgt1(2) = ans_cnt(2, iord)
 
     collrem_xi_tmp = ap(iap)*log( &
                        event_shat(event_slot)*delta_used/ &
@@ -712,12 +640,6 @@ contains
     parameter(pi=3.1415926535897932385d0)
 
     double precision c_used, gamma_used, gammap_used
-    double precision double, single, xmu2
-    logical ComputePoles, fksprefact
-    parameter(ComputePoles=.false.)
-    parameter(fksprefact=.true.)
-
-
     double precision virt_wgt
 
 
@@ -800,62 +722,62 @@ contains
 
 ! Q contribution eq 5.5 and 5.6 of FKS
     Q = 0d0
-    if (split_type_used(qcd_pos)) then
-      do i = 1, nexternal
-        if (i .ne. i_fks .and. pmass(i) .eq. ZERO) then
+    do i = 1, nexternal
+      if (i .ne. i_fks .and. pmass(i) .eq. ZERO) then
 ! set the colour factors according to the
 ! type of the leg
-          if (particle_type(i) .eq. 8) then
-            aj = 0
-          elseif (abs(particle_type(i)) .eq. 3) then
-            aj = 1
-          else
-            aj = -1
-          end if
-          Ej = p(0, i)
+        if (particle_type(i) .eq. 8) then
+          aj = 0
+        elseif (abs(particle_type(i)) .eq. 3) then
+          aj = 1
+        else
+          aj = -1
+        end if
+        Ej = p(0, i)
 
-          if (aj .eq. -1) cycle
-          c_used = c(aj)
-          gamma_used = gamma(aj)
-          gammap_used = gammap(aj)
+        if (aj .eq. -1) cycle
+        c_used = c(aj)
+        gamma_used = gamma(aj)
+        gammap_used = gammap(aj)
 
-          if (i .gt. nincoming) then
+        if (i .gt. nincoming) then
 ! Q terms for final state partons
-            if (abrv .ne. 'virt') then
+          if (abrv .ne. 'virt') then
 ! 1+2+3+4
-              Q = Q + gammap_used &
-                  - dlog(event_shat(event_slot)*deltaO/2d0/QES2) &
-                  *(gamma_used &
-                    - 2d0*c_used*dlog( &
-                        2d0*Ej/xicut_used/event_sqrt_shat(event_slot))) &
-                  + 2d0*c_used*(dlog( &
-                        2d0*Ej/event_sqrt_shat(event_slot))**2 &
-                                - dlog(xicut_used)**2) &
-                  - 2d0*gamma_used*dlog( &
-                      2d0*Ej/event_sqrt_shat(event_slot))
-            else
-              write (*, *) 'Error in bornsoftvirtual'
-              write (*, *) 'abrv in Q:', abrv
-              stop
-            end if
-
+            Q = Q + gammap_used &
+                - dlog(event_shat(event_slot)*deltaO/2d0/QES2) &
+                *(gamma_used &
+                  - 2d0*c_used*dlog( &
+                      2d0*Ej/xicut_used/event_sqrt_shat(event_slot))) &
+                + 2d0*c_used*(dlog( &
+                      2d0*Ej/event_sqrt_shat(event_slot))**2 &
+                              - dlog(xicut_used)**2) &
+                - 2d0*gamma_used*dlog( &
+                    2d0*Ej/event_sqrt_shat(event_slot))
           else
+            write (*, *) 'Error in bornsoftvirtual'
+            write (*, *) 'abrv in Q:', abrv
+            stop
+          end if
+
+        else
 ! Q terms for initial state partons
-            if (abrv .ne. 'virt') then
+          if (abrv .ne. 'virt') then
 ! 1+2+3+4
-              Q = Q - dlog(q2fact(i)/QES2)*(gamma_used + 2d0*c_used*dlog(xicut_used))
-            else
-              write (*, *) 'Error in bornsoftvirtual'
-              write (*, *) 'abrv in Q:', abrv
-              stop
-            end if
+            Q = Q - dlog(q2fact(i)/QES2) &
+                *(gamma_used + 2d0*c_used*dlog(xicut_used))
+          else
+            write (*, *) 'Error in bornsoftvirtual'
+            write (*, *) 'abrv in Q:', abrv
+            stop
           end if
         end if
-      end do
+      end if
+    end do
 ! end of the external particle loop
-      bsv_wgt = bsv_wgt + aso2pi*Q*dble(ans_cnt(1, qcd_pos))
-      amp_split_bsv(1:amp_split_size) = amp_split_bsv(1:amp_split_size) + aso2pi*Q*dble(amp_split_cnt(1:amp_split_size, 1, qcd_pos))
-    end if
+    bsv_wgt = bsv_wgt + aso2pi*Q*dble(ans_cnt(1, qcd_pos))
+    amp_split_bsv(1:amp_split_size) = amp_split_bsv(1:amp_split_size) + &
+      aso2pi*Q*dble(amp_split_cnt(1:amp_split_size, 1, qcd_pos))
 
 !     If doing MC over helicities, must sum over the two
 !     helicity contributions for the Q-terms of collinear limit.
@@ -1013,30 +935,26 @@ contains
 
     if (abrv .ne. 'born' .and. abrv .ne. 'grid') then
       call sborn(p_born, wgt1)
-      if (abrv(1:2) .eq. 'vi') then
-      else
-        if (split_type_used(qcd_pos)) then
-          do i = 1, nincoming
-            if (particle_type(i) .eq. 8) then
-              aj = 0
-            elseif (abs(particle_type(i)) .eq. 3) then
-              aj = 1
-            else
-              aj = -1
-            end if
-            if (aj .eq. -1) cycle
-            c_used = c(aj)
-            gamma_used = gamma(aj)
-            gammap_used = gammap(aj)
-            do iamp = 1, amp_split_size
-              if (dble(amp_split_cnt(iamp, 1, qcd_pos)) .eq. 0d0) cycle
-              amp_split_wgtwnstmpmuf(iamp) = &
-                amp_split_wgtwnstmpmuf(iamp) &
-                - (gamma_used + 2d0*c_used*dlog(xicut_used)) &
-                *dble(amp_split_cnt(iamp, 1, qcd_pos))*aso2pi
-            end do
-          end do            !end loop i=1,nincoming
-        end if
+      if (abrv(1:2) .ne. 'vi') then
+        do i = 1, nincoming
+          if (particle_type(i) .eq. 8) then
+            aj = 0
+          elseif (abs(particle_type(i)) .eq. 3) then
+            aj = 1
+          else
+            aj = -1
+          end if
+          if (aj .eq. -1) cycle
+          c_used = c(aj)
+          gamma_used = gamma(aj)
+          do iamp = 1, amp_split_size
+            if (dble(amp_split_cnt(iamp, 1, qcd_pos)) .eq. 0d0) cycle
+            amp_split_wgtwnstmpmuf(iamp) = &
+              amp_split_wgtwnstmpmuf(iamp) &
+              - (gamma_used + 2d0*c_used*dlog(xicut_used)) &
+              *dble(amp_split_cnt(iamp, 1, qcd_pos))*aso2pi
+          end do
+        end do
         do iamp = 1, amp_split_size
           if (dble(amp_split_cnt(iamp, 1, qcd_pos)) .eq. 0d0) cycle
           call amp_split_pos_to_orders(iamp, orders)
@@ -1061,36 +979,16 @@ contains
       born_wgt = 0d0
     end if
 
-    if (ComputePoles) then
-      call sborn(p_born, wgt1)
-
-      print *, "           "
-      write (*, 123) ((p(i, j), i=0, 3), j=1, nexternal)
-      xmu2 = q2fact(1)
-      call getpoles(p, xmu2, double, single, fksprefact)
-      print *, "BORN", born_wgt!/conv
-      print *, "DOUBLE", double
-      print *, "SINGLE", single
-!         print*,"LOOP",virt_wgt!/born_wgt/ao2pi*2d0
-!         print*,"LOOP2",(virtcor+born_wgt*4d0/3d0-double*pi**2/6d0)
-!         stop
-123   format(4(1x, d22.16))
-    end if
-
 999 continue
     return
   end subroutine bornsoftvirtual
 
 
-  subroutine getpoles(p, xmu2, double, single, fksprefact, split_poles)
-! Returns the residues of double and single poles according to
-! eq.(B.1) and eq.(B.2) if fksprefact=.true.. When fksprefact=.false.,
-! the prefactor (mu2/Q2)^ep in eq.(B.1) is expanded, and giving an
-! extra contribution to the single pole
+  subroutine getpoles(p, double, single, split_poles)
+! Returns the residues of double and single poles in the FKS convention
+! of eqs. (B.1) and (B.2).
     implicit none
-!      include "fks.inc"
-    double precision p(0:3, nexternal), xmu2, double, single
-    logical fksprefact
+    double precision p(0:3, nexternal), double, single
     double precision, optional, intent(out) :: split_poles(amp_split_size, 2)
     double precision wgt1
     double precision born, wgt, kikj, vij, aso2pi
@@ -1214,7 +1112,6 @@ contains
     nFKSprocess = nFKSprocess_save
     call fks_inc_chooser()
 
-    if (.not. fksprefact) single = single + double*dlog(xmu2/QES2)
     if (present(split_poles)) split_poles = amp_split_poles_FKS
 !
     return

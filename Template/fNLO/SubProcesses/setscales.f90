@@ -30,10 +30,9 @@ module setscales_module
       double precision, intent(in) :: qes_squared
     end subroutine set_model_qes_scale_bridge
 
-    subroutine update_model_momenta_bridge(p, reset_momenta, &
-         copy_momenta)
+    subroutine update_model_momenta_bridge(p, reset_momenta)
       double precision, intent(in) :: p(0:3, *)
-      logical, intent(in) :: reset_momenta, copy_momenta
+      logical, intent(in) :: reset_momenta
     end subroutine update_model_momenta_bridge
   end interface
 
@@ -44,7 +43,7 @@ contains
     double precision, intent(in) :: xp(0:, :)
     double precision :: dummy, dummy_qes, dummies(2)
     real :: time_before, time_after
-    logical :: reset_momenta, copy_momenta
+    logical :: reset_momenta
 
     call validate_process_dimensions()
     if (size(xp, 2) /= nexternal) then
@@ -104,8 +103,7 @@ contains
     call set_fac_scale_impl(xp, dummies)
     call set_ren_scale_impl(xp, dummy)
 
-    copy_momenta = .true.
-    call update_model_momenta_bridge(xp, reset_momenta, copy_momenta)
+    call update_model_momenta_bridge(xp, reset_momenta)
 
     call cpu_time(time_after)
     t_coupl = t_coupl + (time_after - time_before)

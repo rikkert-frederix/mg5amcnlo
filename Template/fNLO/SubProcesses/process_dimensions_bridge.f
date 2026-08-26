@@ -3,8 +3,7 @@
       use fnlo_process_common, only: nexternal,nincoming,
      $     max_particles,max_branch,lmaxconfigs,maxproc,ngraphs,
      $     ncolor,maxflow,fks_configs,nsplitorders,qcd_pos,
-     $     amp_split_size,amp_split_size_born,ordernames,born_orders,
-     $     nlo_orders
+     $     amp_split_size,ordernames
       implicit none
       include 'amp_split_orders.inc'
 
@@ -12,8 +11,7 @@ c Only immutable dimensions and order data cross into the dynamic module.
       call initialize_process_dimensions(nexternal,nincoming,
      &     max_particles,max_branch,lmaxconfigs,maxproc,ngraphs,
      &     ncolor,maxflow,fks_configs,nsplitorders,qcd_pos,
-     &     amp_split_size,amp_split_size_born,ordernames,
-     &     born_orders,nlo_orders,amp_split_orders)
+     &     amp_split_size,ordernames,amp_split_orders)
       return
       end
 

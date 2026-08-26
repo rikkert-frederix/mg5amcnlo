@@ -49,8 +49,7 @@ FILES= fnlo_process_common.o process_dimensions.o			\
 	 setcuts_bridge.o						\
 	 setscales.o setscales_bridge.o				\
 	 $(patsubst %.f,%.o,$(wildcard b_sf_???.f)) 			\
-	 born.o sborn_sf.o extra_cnt_wrapper.o				\
-	 $(patsubst %.f,%.o,$(wildcard born_cnt_*.f))			\
+	 born.o sborn_sf.o						\
 	 fks_Sij.o $(fastjetfortran_madfks)				\
 	 fks_model_state.o fks_singular.o fks_weights.o		\
 	 fks_contributions.o fks_singular_bridge.o fks_random_bridge.o	\

@@ -113,6 +113,122 @@ class TestMadEventCmd(unittest.TestCase):
             export_fks.get_nlo_correction_orders('p p > t t~ [LOonly]'),
             ['QCD'])
 
+    def test_fnlo_exporter_rejects_mixed_born_orders(self):
+        """The exporter enforces the reduced fNLO physics invariant."""
+
+        class FakeBorn(object):
+
+            def __init__(self, squared_orders, amplitude_orders=None):
+                self.squared_orders = squared_orders
+                self.amplitude_orders = (amplitude_orders if
+                                         amplitude_orders is not None else
+                                         [((2, 0), (1,))])
+
+            def get_split_orders_mapping(self):
+                return self.squared_orders, self.amplitude_orders
+
+        class FakeRealProcess(object):
+
+            def __init__(self, squared_orders, amplitude_orders=None):
+                self.matrix_element = FakeBorn(
+                    squared_orders, amplitude_orders)
+
+        class FakeMatrixElement(object):
+
+            def __init__(self, squared_orders=((4, 0),),
+                         real_squared_orders=((6, 0),),
+                         amplitude_orders=None,
+                         real_amplitude_orders=None,
+                         virtual_squared_orders=None,
+                         splitting_types=('QCD',), extra=False,
+                         ewsudakov=False):
+                self.born_me = FakeBorn(squared_orders, amplitude_orders)
+                self.real_processes = [FakeRealProcess(
+                    real_squared_orders, real_amplitude_orders)]
+                self.virt_matrix_element = (FakeBorn(
+                    virtual_squared_orders) if
+                    virtual_squared_orders is not None else None)
+                self.extra_cnt_me_list = [object()] if extra else []
+                self.ewsudakov = ewsudakov
+                self.splitting_types = splitting_types
+
+            def get_fks_info_list(self):
+                return [{'fks_info': {
+                    'splitting_type': list(self.splitting_types)}}]
+
+        exporter = object.__new__(export_fks.ProcessExporterFortranFKS)
+        exporter.opt = {'fks_template': 'fNLO'}
+        exporter.validate_fnlo_matrix_element(FakeMatrixElement())
+
+        with self.assertRaisesRegex(Exception, 'one maximally QCD-like Born'):
+            exporter.validate_fnlo_matrix_element(FakeMatrixElement(
+                squared_orders=((4, 0), (2, 2))))
+        with self.assertRaisesRegex(Exception, 'one maximally QCD-like Born'):
+            exporter.validate_fnlo_matrix_element(FakeMatrixElement(
+                amplitude_orders=[((2, 0), (1,)), ((0, 2), (2,))]))
+        with self.assertRaisesRegex(Exception, 'one QCD-corrected real'):
+            exporter.validate_fnlo_matrix_element(FakeMatrixElement(
+                real_squared_orders=((6, 0), (4, 2))))
+        with self.assertRaisesRegex(Exception, 'one QCD-corrected real'):
+            exporter.validate_fnlo_matrix_element(FakeMatrixElement(
+                real_amplitude_orders=[
+                    ((3, 0), (1,)), ((1, 2), (2,))]))
+        with self.assertRaisesRegex(Exception, 'one QCD-corrected virtual'):
+            exporter.validate_fnlo_matrix_element(FakeMatrixElement(
+                virtual_squared_orders=((6, 0), (4, 2))))
+        with self.assertRaisesRegex(Exception, 'QCD FKS splittings only'):
+            exporter.validate_fnlo_matrix_element(FakeMatrixElement(
+                splitting_types=('QED',)))
+        with self.assertRaisesRegex(Exception, 'extra counterterms'):
+            exporter.validate_fnlo_matrix_element(FakeMatrixElement(
+                extra=True))
+        with self.assertRaisesRegex(Exception, 'EW Sudakov corrections'):
+            exporter.validate_fnlo_matrix_element(FakeMatrixElement(
+                ewsudakov=True))
+
+        born_template_path = pjoin(
+            madgraph.MG5DIR, 'madgraph', 'iolibs', 'template_files',
+            'bornmatrix_splitorders_fks.inc')
+        with open(born_template_path) as stream:
+            born_template = stream.read()
+        with open(pjoin(
+                madgraph.MG5DIR, 'madgraph', 'iolibs', 'template_files',
+                'bornmatrix_qcd_fks.inc')) as stream:
+            born_wrapper = stream.read()
+        reduced_template = exporter.specialize_fnlo_born_template(
+            born_wrapper, born_template).lower()
+        self.assertNotIn('split_type_used', reduced_template)
+        self.assertNotIn('has_ewsudakov', reduced_template)
+        self.assertNotIn('subroutine sborn_onehel', reduced_template)
+        self.assertNotIn('keep_order', reduced_template)
+        self.assertNotIn('force_ijglu_zero', reduced_template)
+        self.assertIn('subroutine sborn_splitorders', reduced_template)
+
+        for wrapper_name, generic_name, suffix_marker in [
+                ('born_hel_qcd_fks.inc',
+                 'born_hel_splitorders_fks.inc',
+                 'SUBROUTINE SBORN_HEL_SPLITORDERS'),
+                ('realmatrix_qcd_fks.inc',
+                 'realmatrix_splitorders_fks.inc',
+                 'SUBROUTINE SMATRIX%(proc_prefix)s_SPLITORDERS'),
+                ('b_sf_xxx_qcd_fks.inc',
+                 'b_sf_xxx_splitorders_fks.inc',
+                 'SUBROUTINE SB_SF_%(ilink)3.3d_SPLITORDERS')]:
+            with open(pjoin(
+                    madgraph.MG5DIR, 'madgraph', 'iolibs', 'template_files',
+                    wrapper_name)) as stream:
+                wrapper = stream.read()
+            with open(pjoin(
+                    madgraph.MG5DIR, 'madgraph', 'iolibs', 'template_files',
+                    generic_name)) as stream:
+                generic_template = stream.read()
+            reduced_template = exporter.compose_fnlo_matrix_template(
+                wrapper, generic_template, suffix_marker).lower()
+            for obsolete_selector in [
+                    'keep_order', 'firsttime', 'born_orders', 'nlo_orders',
+                    'split_type', 'ewsudakov']:
+                self.assertNotIn(obsolete_selector, reduced_template)
+
     def test_fnlo_run_card_include_is_reduced(self):
         """Hidden matching and EW fields do not leak into run_card.inc."""
 
@@ -245,6 +361,8 @@ class TestMadEventCmd(unittest.TestCase):
             subprocess_dir, 'montecarlocounter.f')))
         self.assertFalse(os.path.exists(pjoin(
             subprocess_dir, 'montecarlocounter_alt.f')))
+        self.assertFalse(os.path.exists(pjoin(
+            subprocess_dir, 'fks_powers.inc')))
         for removed_source in [
                 'cluster.f90', 'cluster_bridge.f', 'recmom.f90',
                 'cuts_bridge.f', 'genps_fks_bridge.f',
@@ -258,6 +376,23 @@ class TestMadEventCmd(unittest.TestCase):
                 'sub_f2py_ewsudakov.f90']:
             self.assertFalse(os.path.exists(pjoin(
                 subprocess_dir, removed_source)))
+
+        with open(pjoin(template_dir, 'Cards', 'FKS_params.dat')) as stream:
+            fks_parameters = stream.read().lower()
+        for removed_order_filter in [
+                '#qcd^2==', '#selectedcouplingorders',
+                '#vetoedcontributiontypes']:
+            self.assertNotIn(removed_order_filter, fks_parameters)
+
+        for source_name in [
+                'FKSParams.f90', 'fks_weights.f90',
+                'process_dimensions.f90', 'process_dimensions_bridge.f']:
+            with open(pjoin(subprocess_dir, source_name)) as stream:
+                source = stream.read().lower()
+            for removed_order_state in [
+                    'qcd_squared_selected', 'selectedcouplingorders',
+                    'vetoedcontributiontypes', 'nlo_orders']:
+                self.assertNotIn(removed_order_state, source)
 
         self.assertFalse(os.path.lexists(pjoin(template_dir, 'Source',
                                               'cuts.inc')))
@@ -287,6 +422,8 @@ class TestMadEventCmd(unittest.TestCase):
         self.assertNotIn('subroutine AP_reduced', fks_singular)
         self.assertNotIn('subroutine eikonal_Ireg', fks_singular)
         self.assertNotIn('subroutine set_cms_stuff', fks_singular)
+        self.assertNotIn('split_type', fks_singular.lower())
+        self.assertNotIn('extra_cnt', fks_singular.lower())
         self.assertFalse(os.path.exists(pjoin(
             subprocess_dir, 'fks_event_kinematics.f90')))
 
@@ -337,6 +474,10 @@ class TestMadEventCmd(unittest.TestCase):
                 'xi_i_fks_ev', 'xi_i_fks_cnt', 'p_i_fks_ev',
                 'p_i_fks_cnt']:
             self.assertNotIn(split_event_state, process_common)
+        for removed_mixed_order_state in [
+                'split_type', 'iextra_cnt', 'isplitorder_born',
+                'isplitorder_cnt', 'amp_split_size_born']:
+            self.assertNotIn(removed_mixed_order_state, process_common)
 
         for counterevent_source in [
                 'driver_mintFO.f90', 'fks_Sij.f90',

@@ -1,7 +1,7 @@
 module test_soft_col_limits_module
   use process_dimensions, only: nexternal, nincoming, fks_configs, &
-                                nsplitorders, amp_split_size, amp_split_size_born, order_names, &
-                                validate_process_dimensions
+                                nsplitorders, amp_split_size, order_names, &
+                                validate_process_and_born_dimensions
   use fks_metadata, only: fks_i_d, pdg_type_d, validate_fks_metadata
   use run_state, only: lpp, ebeam, ptj, ptl, &
                        mll, mll_sf, ptgmin
@@ -152,7 +152,7 @@ contains
     logical :: calculated_born, softtest, colltest
     complex(kind=kind(0d0)) :: wgt1(2)
 
-    call validate_process_dimensions(require_born=.true.)
+    call validate_process_and_born_dimensions()
     call validate_fks_metadata()
     call initialize_work_state()
 
@@ -495,7 +495,7 @@ contains
           write (*, *) 'Soft tests done for (Born) config', iconfig
           write (*, *) 'Failures:', nerr
           do iamp = 0, amp_split_size
-            if (iamp .gt. 0 .and. iamp .le. amp_split_size_born) cycle
+            if (iamp == 1) cycle
             fail_frac(iamp) = nerr(iamp)/dble(nsofttests)
             if (iamp .ne. 0) then
               write (*, fmt="(a,i3,a)", advance="no") 'Split-order', iamp, ': '
@@ -715,7 +715,7 @@ contains
           write (*, *) 'Collinear tests done for (Born) config', iconfig
           write (*, *) 'Failures:', nerr
           do iamp = 0, amp_split_size
-            if (iamp .gt. 0 .and. iamp .le. amp_split_size_born) cycle
+            if (iamp == 1) cycle
             fail_frac(iamp) = nerr(iamp)/dble(nsofttests)
             if (iamp .ne. 0) then
               write (*, fmt="(a,i3,a)", advance="no") 'Split-order', iamp, ': '

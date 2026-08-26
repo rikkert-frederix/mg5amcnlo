@@ -1,13 +1,12 @@
 module check_poles_module
   use run_printout_module, only: write_run_summary
   use process_dimensions, only: nexternal, nincoming, fks_configs, &
-       validate_process_dimensions
+       validate_process_dimensions, validate_process_and_born_dimensions
   use fks_metadata, only: fks_i_d, pdg_type_d, validate_fks_metadata
   use run_state, only: lpp, ebeam
   use mint_module, only: iconfig, ichan, iconfigs
   use fks_random_module, only: random_unit_interval
-  use FKSParams, only: paramFileName, IRPoleCheckThreshold, &
-       FKSParamReader
+  use FKSParams, only: IRPoleCheckThreshold, FKSParamReader
   use fks_singular_module, only: setfksfactor
   use fnlo_process_common, only: calculatedborn => calculated_born, &
                                  nfksprocess, qes2, force_polecheck, &
@@ -24,11 +23,6 @@ module check_poles_module
 
   double precision, allocatable :: generated_masses(:)
   logical :: generated_data_initialized = .false.
-
-  double precision, allocatable :: virtual_weights(:, :)
-  double precision, allocatable :: pole_accuracies(:)
-  logical, allocatable :: kept_orders(:)
-  logical :: pole_work_initialized = .false.
 
   double precision, allocatable :: rambo_log_weights(:)
   integer :: rambo_warnings(5) = 0
@@ -62,14 +56,6 @@ module check_poles_module
     subroutine setrun_model_strong_coupling(value)
       double precision, intent(out) :: value
     end subroutine setrun_model_strong_coupling
-
-    subroutine get_nsqso_loop(number_of_orders)
-      integer, intent(out) :: number_of_orders
-    end subroutine get_nsqso_loop
-
-    subroutine get_answer_dimension(answer_dimension)
-      integer, intent(out) :: answer_dimension
-    end subroutine get_answer_dimension
 
     subroutine setrun()
     end subroutine setrun
@@ -142,22 +128,6 @@ contains
   end subroutine initialize_check_poles_data
 
 
-  subroutine initialize_pole_work()
-    implicit none
-    integer :: number_of_orders, answer_dimension
-
-    if (pole_work_initialized) return
-    call get_nsqso_loop(number_of_orders)
-    call get_answer_dimension(answer_dimension)
-    allocate(virtual_weights(0:3, 0:answer_dimension))
-    allocate(pole_accuracies(0:number_of_orders))
-    allocate(kept_orders(number_of_orders))
-    pole_work_initialized = .true.
-  end subroutine initialize_pole_work
-
-
-
-
   subroutine run_check_poles(p_born)
     implicit none
     double precision, intent(inout) :: p_born(0:, :)
@@ -173,11 +143,10 @@ contains
     call init_process_dimensions_bridge()
     call init_born_dimensions_bridge()
     call init_fks_metadata_bridge()
-    call validate_process_dimensions(require_born=.true.)
+    call validate_process_and_born_dimensions()
     call validate_fks_metadata()
 
     force_polecheck = .true.
-    call initialize_pole_work()
 
     call setrun()
     call setpara('param_card.dat')
@@ -190,7 +159,7 @@ contains
       call fail_check_poles('generated masses are not initialized')
     end if
 
-    call FKSParamReader(paramFileName, .true., .false.)
+    call FKSParamReader()
     tolerance_default = IRPoleCheckThreshold
     iconfig = 1
     ichan = 1

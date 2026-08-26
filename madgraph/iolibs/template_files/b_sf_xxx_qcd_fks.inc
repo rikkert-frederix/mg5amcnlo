@@ -1,0 +1,43 @@
+      SUBROUTINE SB_SF_%(ilink)3.3d(P,ANS_SUMMED)
+C
+%(info_lines)s
+C
+C     Evaluate the colour-linked form of the single selected Born order.
+C
+%(process_lines)s
+C
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INTEGER NSQAMPSO
+      PARAMETER (NSQAMPSO=1)
+
+      REAL*8 P(0:3,NEXTERNAL-1),ANS_SUMMED
+
+      INTEGER J
+      INCLUDE 'orders.inc'
+      REAL*8 ANS(0:NSQAMPSO)
+      INTEGER AMP_ORDERS(NSPLITORDERS)
+      DOUBLE PRECISION TINY,MAX_VAL
+      PARAMETER (TINY=1D-12)
+
+      INTEGER GETORDPOWFROMINDEX_B
+      INTEGER ORDERS_TO_AMP_SPLIT_POS
+
+      CALL SB_SF_%(ilink)3.3d_SPLITORDERS(P,ANS)
+      ANS_SUMMED=ANS(1)
+      MAX_VAL=ABS(ANS(1))
+
+      AMP_SPLIT_CNT(1:AMP_SPLIT_SIZE,1:2,1:NSPLITORDERS)=
+     $     DCMPLX(0D0,0D0)
+      DO J=1,NSPLITORDERS
+        AMP_ORDERS(J)=GETORDPOWFROMINDEX_B(J,1)
+      ENDDO
+      AMP_ORDERS(QCD_POS)=AMP_ORDERS(QCD_POS)+2
+      IF (ABS(ANS(1)).GT.MAX_VAL*TINY) THEN
+        AMP_SPLIT_CNT(ORDERS_TO_AMP_SPLIT_POS(AMP_ORDERS),1,QCD_POS)=
+     $       ANS(1)
+      ENDIF
+      IF (ABS(ANS_SUMMED).LT.MAX_VAL*TINY) ANS_SUMMED=0D0
+
+      RETURN
+      END

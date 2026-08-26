@@ -1,7 +1,7 @@
 module binoth_lha_madloop_backend
   use FKSParams
   use process_dimensions, only: nexternal, nincoming, max_bhel, &
-       nsplitorders, amp_split_size, nlo_orders, order_names
+       nsplitorders, amp_split_size, order_names
   use split_orders, only: orders_to_amp_split_pos, &
        amp_split_pos_to_orders
   use fks_singular_module, only: getpoles
@@ -16,9 +16,6 @@ module binoth_lha_madloop_backend
   logical :: firsttime = .true.
   logical :: firsttime_run = .true.
   integer :: nbad = 0
-  integer :: nsqso = 0
-  integer :: ml_res_array_dim = 0
-  logical, allocatable :: keep_order(:)
   double precision, allocatable :: virt_wgts(:,:)
   double precision, allocatable :: virt_wgts_hel(:,:)
   double precision, allocatable :: accuracies(:)
@@ -52,7 +49,6 @@ contains
          amp_split_poles_fks(amp_split_size,2)
 
     double precision, parameter :: pi = 3.1415926535897932385d0
-    logical, parameter :: fksprefact = .true.
     integer, parameter :: nbadmax = 5
     double precision :: single_pole, double_pole
     double precision :: mu_r_value, ao2pi, alpha_s
@@ -88,12 +84,9 @@ contains
       if (.not. force_polecheck) then
         call set_forbid_hel_doublecheck(.true.)
       end if
-      call get_nsqso_loop(nsqso)
-      call get_answer_dimension(ml_res_array_dim)
-      allocate(accuracies(0:nsqso))
-      allocate(virt_wgts(0:3,0:ml_res_array_dim))
-      allocate(virt_wgts_hel(0:3,0:ml_res_array_dim))
-      allocate(keep_order(nsqso))
+      allocate(accuracies(0:1))
+      allocate(virt_wgts(0:3,0:1))
+      allocate(virt_wgts_hel(0:3,0:1))
       allocate(include_hel(max_bhel))
       allocate(goodhel(max_bhel))
       allocate(hel(0:max_bhel))
@@ -116,85 +109,56 @@ contains
       call sloopmatrix_thres(p, virt_wgts, tolerance, accuracies, &
            ret_code)
 
-      do i = 1, nsqso
-        keep_order(i) = .true.
-        do j = 1, nsplitorders
-          if (getordpowfromindex_ml5(j,i) > nlo_orders(j)) then
-            keep_order(i) = .false.
-            exit
-          end if
-        end do
-        if (keep_order(i)) then
-          write (*,*) 'VIRT: keeping split order ', i
-        else
-          write (*,*) 'VIRT: not keeping split order ', i
-        end if
+      virt_wgt = virt_wgts(1,1)
+      single_pole = virt_wgts(2,1)
+      double_pole = virt_wgts(3,1)
+      do j = 1, nsplitorders
+        amp_orders(j) = getordpowfromindex_ml5(j,1)
       end do
-
-      do i = 1, nsqso
-        if (keep_order(i)) then
-          virt_wgt = virt_wgt + virt_wgts(1,i)
-          single_pole = single_pole + virt_wgts(2,i)
-          double_pole = double_pole + virt_wgts(3,i)
-          do j = 1, nsplitorders
-            amp_orders(j) = getordpowfromindex_ml5(j,i)
-          end do
-          amp_split_finite_ml(orders_to_amp_split_pos(amp_orders)) = &
-               virt_wgts(1,i)
-          amp_split_poles_ml(orders_to_amp_split_pos(amp_orders),1) = &
-               virt_wgts(2,i)
-          amp_split_poles_ml(orders_to_amp_split_pos(amp_orders),2) = &
-               virt_wgts(3,i)
-          prec_found(orders_to_amp_split_pos(amp_orders)) = accuracies(i)
-        end if
-      end do
+      amp_split_finite_ml(orders_to_amp_split_pos(amp_orders)) = &
+           virt_wgts(1,1)
+      amp_split_poles_ml(orders_to_amp_split_pos(amp_orders),1) = &
+           virt_wgts(2,1)
+      amp_split_poles_ml(orders_to_amp_split_pos(amp_orders),2) = &
+           virt_wgts(3,1)
+      prec_found(orders_to_amp_split_pos(amp_orders)) = accuracies(1)
     else
       tolerance = PrecisionVirtualAtRunTime
       if (mc_hel == 0) then
         call sloopmatrix_thres(p, virt_wgts, tolerance, accuracies, &
              ret_code)
-        do i = 1, nsqso
-          if (keep_order(i)) then
-            virt_wgt = virt_wgt + virt_wgts(1,i)
-            single_pole = single_pole + virt_wgts(2,i)
-            double_pole = double_pole + virt_wgts(3,i)
-            do j = 1, nsplitorders
-              amp_orders(j) = getordpowfromindex_ml5(j,i)
-            end do
-            amp_split_finite_ml(orders_to_amp_split_pos(amp_orders)) = &
-                 virt_wgts(1,i)
-            amp_split_poles_ml(orders_to_amp_split_pos(amp_orders),1) = &
-                 virt_wgts(2,i)
-            amp_split_poles_ml(orders_to_amp_split_pos(amp_orders),2) = &
-                 virt_wgts(3,i)
-            prec_found(orders_to_amp_split_pos(amp_orders)) = &
-                 accuracies(i)
-          end if
+        virt_wgt = virt_wgts(1,1)
+        single_pole = virt_wgts(2,1)
+        double_pole = virt_wgts(3,1)
+        do j = 1, nsplitorders
+          amp_orders(j) = getordpowfromindex_ml5(j,1)
         end do
+        amp_split_finite_ml(orders_to_amp_split_pos(amp_orders)) = &
+             virt_wgts(1,1)
+        amp_split_poles_ml(orders_to_amp_split_pos(amp_orders),1) = &
+             virt_wgts(2,1)
+        amp_split_poles_ml(orders_to_amp_split_pos(amp_orders),2) = &
+             virt_wgts(3,1)
+        prec_found(orders_to_amp_split_pos(amp_orders)) = accuracies(1)
       else if (mc_hel == 1) then
         call PickHelicityMC(p, goodhel, hel, ihel, volh)
         call sloopmatrixhel_thres(p, hel(ihel), virt_wgts_hel, &
              tolerance, accuracies, ret_code)
         hel_fact = dble(goodhel(ihel))/volh/4d0
-        do i = 1, nsqso
-          if (keep_order(i)) then
-            born_hel_from_virt = born_hel_from_virt + virt_wgts_hel(0,i)
-            virt_wgt = virt_wgt + virt_wgts_hel(1,i)*hel_fact
-            single_pole = single_pole + virt_wgts_hel(2,i)*hel_fact
-            double_pole = double_pole + virt_wgts_hel(3,i)*hel_fact
-            do j = 1, nsplitorders
-              amp_orders(j) = getordpowfromindex_ml5(j,i)
-            end do
-            amp_split_finite_ml(orders_to_amp_split_pos(amp_orders)) = &
-                 virt_wgts_hel(1,i)*hel_fact
-            amp_split_poles_ml(orders_to_amp_split_pos(amp_orders),1) = &
-                 virt_wgts_hel(2,i)*hel_fact
-            amp_split_poles_ml(orders_to_amp_split_pos(amp_orders),2) = &
-                 virt_wgts_hel(3,i)*hel_fact
-            prec_found(orders_to_amp_split_pos(amp_orders)) = &
-                 accuracies(i)
-          end if
+        born_hel_from_virt = virt_wgts_hel(0,1)
+        virt_wgt = virt_wgts_hel(1,1)*hel_fact
+        single_pole = virt_wgts_hel(2,1)*hel_fact
+        double_pole = virt_wgts_hel(3,1)*hel_fact
+        do j = 1, nsplitorders
+          amp_orders(j) = getordpowfromindex_ml5(j,1)
         end do
+        amp_split_finite_ml(orders_to_amp_split_pos(amp_orders)) = &
+             virt_wgts_hel(1,1)*hel_fact
+        amp_split_poles_ml(orders_to_amp_split_pos(amp_orders),1) = &
+             virt_wgts_hel(2,1)*hel_fact
+        amp_split_poles_ml(orders_to_amp_split_pos(amp_orders),2) = &
+             virt_wgts_hel(3,1)*hel_fact
+        prec_found(orders_to_amp_split_pos(amp_orders)) = accuracies(1)
         if (nincoming /= 2) then
           write (*,*) 'Cannot do MC over helicities for 1->N processes'
           stop
@@ -212,34 +176,25 @@ contains
     ret_code_common = ret_code
     if ((firsttime .or. mc_hel == 0) .and. &
         mod(ret_code,100)/10 /= 3 .and. mod(ret_code,100)/10 /= 4) then
-      call getpoles(p, qes2, madfks_double, madfks_single, fksprefact, &
-           amp_split_poles_fks)
+      call getpoles(p, madfks_double, madfks_single, &
+                    amp_split_poles_fks)
       polecheck_passed = .true.
       do iamp = 1, amp_split_size
-        if (iamp /= 0) then
-          if (amp_split_poles_fks(iamp,1) == 0d0 .and. &
-              amp_split_poles_fks(iamp,1) == 0d0) cycle
+        if (amp_split_poles_fks(iamp,1) == 0d0 .and. &
+            amp_split_poles_fks(iamp,2) == 0d0) cycle
+        if (firsttime) then
+          write (*,*) ''
+          write (*,*) 'Splitorders', iamp
+          call amp_split_pos_to_orders(iamp, split_amp_orders)
+          do i = 1, nsplitorders
+            write (*,*) '      ', order_names(i)(1:order_name_width), ':', &
+                 split_amp_orders(i)
+          end do
         end if
-        if (iamp == 0) then
-          if (firsttime) then
-            write (*,*) ''
-            write (*,*) 'Sum of all split-orders'
-          end if
-        else
-          if (firsttime) then
-            write (*,*) ''
-            write (*,*) 'Splitorders', iamp
-            call amp_split_pos_to_orders(iamp, split_amp_orders)
-            do i = 1, nsplitorders
-              write (*,*) '      ', order_names(i)(1:order_name_width), ':', &
-                   split_amp_orders(i)
-            end do
-          end if
-          single_pole = amp_split_poles_ml(iamp,1)
-          double_pole = amp_split_poles_ml(iamp,2)
-          madfks_single = amp_split_poles_fks(iamp,1)
-          madfks_double = amp_split_poles_fks(iamp,2)
-        end if
+        single_pole = amp_split_poles_ml(iamp,1)
+        double_pole = amp_split_poles_ml(iamp,2)
+        madfks_single = amp_split_poles_fks(iamp,1)
+        madfks_double = amp_split_poles_fks(iamp,2)
 
         avg_pole_res(1) = (single_pole+madfks_single)/2d0
         avg_pole_res(2) = (double_pole+madfks_double)/2d0
@@ -366,7 +321,7 @@ contains
           end if
         end if
       end do
-      firsttime = .false. .or. cpol
+      firsttime = cpol
     end if
 
     ntot = ntot + 1

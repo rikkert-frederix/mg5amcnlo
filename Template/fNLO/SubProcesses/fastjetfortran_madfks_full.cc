@@ -468,8 +468,7 @@ void fastjetglobalrhoandsigma_(const double & rapmin, const double & rapmax,
   if (csab != 0) {
       // we have areas and can use csab to access all the area-related info
     Selector range =  SelectorRapRange(rapmin,rapmax) && SelectorPhiRange(phimin,phimax);
-      bool use_area_4vector = false;
-      csab->get_median_rho_and_sigma(range,use_area_4vector,rho,sigma,meanarea);
+      csab->get_median_rho_and_sigma(range,false,rho,sigma,meanarea);
   } else {
       Error("Clustering with area is necessary in order to be able to evaluate rho."); 
   }

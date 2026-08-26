@@ -31,13 +31,11 @@
       use chooser_functions_module, only: fks_inc_chooser_impl
       use fnlo_process_common, only: nfksprocess,fks_j_from_i,
      $     particle_type,pdg_type,i_fks,j_fks,need_color_links,
-     $     extra_cnt=>iextra_cnt,isplitorder_born,isplitorder_cnt,
-     $     split_type,is_aorg
+     $     is_aorg
       implicit none
 
       call fks_inc_chooser_impl(nfksprocess,fks_j_from_i,
      $     particle_type,pdg_type,i_fks,j_fks,need_color_links,
-     $     extra_cnt,isplitorder_born,isplitorder_cnt,split_type,
      $     is_aorg)
       return
       end
@@ -61,15 +59,5 @@
      $     idup_d,mothup_d,icolup_d,niprocs_d,idup,mothup,icolup)
       call leshouche_inc_chooser_impl(nfksprocess,idup_common,
      $     mothup_common,icolup_common,niprocs_common)
-      return
-      end
-
-
-      subroutine fill_needed_splittings()
-      use chooser_functions_module, only: fill_needed_splittings_impl
-      use fnlo_process_common, only: split_type_used
-      implicit none
-
-      call fill_needed_splittings_impl(split_type_used)
       return
       end

@@ -38,33 +38,7 @@
 ! Default :: 1.0d-3
 !
 ! ==========================================================================
-! Parameters controlling what coupling orders must be factorized by the
-! contributions included by MadFKS in the context of mixed-order expansions
-! ==========================================================================
-!
-! Set the QCD squared order that must be factorized by the contribution
-! selected. This follows the same convention as the QCD^2== syntax used
-! at generation time. The default value of -1
-! instructs MadFKS to include all those available.
-!
-#QCD^2==
--1
-! Default :: -1
-!
-! Alternatively the user can defined a list of squared orders to select
-! The first entry is the number of specifed squared orders, and the ordering
-! is indicated in orders.inc.
-! This is just the generalization of the short-hand above.
-!
-#SelectedCouplingOrders
-0
--1 -1
-! Default ::
-! 0
-! -1 -1
-!
-! ==========================================================================
-! This parameter allows to veto of select specific type of contributions.
+! This parameter allows selection of specific contribution types.
 !     type=1 : real-emission
 !     type=2 : Born
 !     type=3 : integrated counter terms
@@ -75,29 +49,16 @@
 !     type=15: virt-trick: average born contribution
 ! ==========================================================================
 ! 
-! The first entry specifies the length  of the list of vetoed or allowed types
+! The first entry specifies the length of the list of allowed types.
 !
 ! Example:
 ! #SelectedContributionTypes
 ! 3
 ! 2 14 15
 !
-! Would select only the finite part of the virtual and the Born contribution, and
+! Would select only the finite part of the virtual and the Born contribution.
 !
-! #VetoedContributionTypes
-! 1
-! 2
-!
-! Would remove the Born contribution, effectively computing only the NLO contribs.
-!
-! The default values disable completely these filters.
-!
-#VetoedContributionTypes
-0
--1
-! Default ::
-! 0
-! -1
+! The default value disables the filter.
 !
 #SelectedContributionTypes
 0

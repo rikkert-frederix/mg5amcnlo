@@ -18,10 +18,7 @@ module process_dimensions
   integer, public :: nsplitorders = 0
   integer, public :: qcd_pos = 0
   integer, public :: amp_split_size = 0
-  integer, public :: amp_split_size_born = 0
   character(len=order_name_length), allocatable, public :: order_names(:)
-  integer, allocatable, public :: born_orders(:)
-  integer, allocatable, public :: nlo_orders(:)
   integer, allocatable, public :: amp_split_orders(:,:)
 
   integer, public :: max_bhel = 0
@@ -36,6 +33,7 @@ module process_dimensions
   public :: initialize_process_dimensions
   public :: initialize_born_dimensions
   public :: validate_process_dimensions
+  public :: validate_process_and_born_dimensions
 
 contains
 
@@ -43,8 +41,7 @@ contains
        max_particles_in, max_branch_in, lmaxconfigs_in, maxproc_in, &
        ngraphs_in, ncolor_in, maxflow_in, fks_configs_in, &
        nsplitorders_in, qcd_pos_in, amp_split_size_in, &
-       amp_split_size_born_in, order_names_in, born_orders_in, &
-       nlo_orders_in, amp_split_orders_in)
+       order_names_in, amp_split_orders_in)
     implicit none
     integer, intent(in) :: nexternal_in
     integer, intent(in) :: nincoming_in
@@ -59,26 +56,21 @@ contains
     integer, intent(in) :: nsplitorders_in
     integer, intent(in) :: qcd_pos_in
     integer, intent(in) :: amp_split_size_in
-    integer, intent(in) :: amp_split_size_born_in
     character(len=*), intent(in) :: order_names_in(:)
-    integer, intent(in) :: born_orders_in(:)
-    integer, intent(in) :: nlo_orders_in(:)
     integer, intent(in) :: amp_split_orders_in(:,:)
 
     call validate_initial_values(nexternal_in, nincoming_in, &
          max_particles_in, max_branch_in, lmaxconfigs_in, maxproc_in, &
          ngraphs_in, ncolor_in, maxflow_in, fks_configs_in, &
          nsplitorders_in, qcd_pos_in, amp_split_size_in, &
-         amp_split_size_born_in, order_names_in, born_orders_in, &
-         nlo_orders_in, amp_split_orders_in)
+         order_names_in, amp_split_orders_in)
 
     if (process_dimensions_initialized) then
       if (.not. same_process_dimensions(nexternal_in, nincoming_in, &
            max_particles_in, max_branch_in, lmaxconfigs_in, maxproc_in, &
            ngraphs_in, ncolor_in, maxflow_in, fks_configs_in, &
            nsplitorders_in, qcd_pos_in, amp_split_size_in, &
-           amp_split_size_born_in, order_names_in, born_orders_in, &
-           nlo_orders_in, amp_split_orders_in)) then
+           order_names_in, amp_split_orders_in)) then
         call fail_validation('process dimensions were reinitialized ' // &
              'with different values')
       end if
@@ -98,15 +90,10 @@ contains
     nsplitorders = nsplitorders_in
     qcd_pos = qcd_pos_in
     amp_split_size = amp_split_size_in
-    amp_split_size_born = amp_split_size_born_in
 
     allocate(order_names(nsplitorders))
-    allocate(born_orders(nsplitorders))
-    allocate(nlo_orders(nsplitorders))
     allocate(amp_split_orders(amp_split_size, nsplitorders))
     order_names = order_names_in
-    born_orders = born_orders_in
-    nlo_orders = nlo_orders_in
     amp_split_orders = amp_split_orders_in
 
     process_dimensions_initialized = .true.
@@ -164,33 +151,26 @@ contains
   end subroutine initialize_born_dimensions
 
 
-
-
-  subroutine validate_process_dimensions(require_born)
+  subroutine validate_process_dimensions()
     implicit none
-    logical, intent(in), optional :: require_born
-    logical :: need_born
-
-    need_born = .false.
-    if (present(require_born)) need_born = require_born
 
     if (.not. process_dimensions_are_valid()) then
       call fail_validation('the process dimensions are not valid')
-    end if
-    if (need_born .and. .not. born_dimensions_initialized) then
-      call fail_validation('the Born dimensions are not initialized')
     end if
     if (born_dimensions_initialized) call validate_born_dimensions()
   end subroutine validate_process_dimensions
 
 
-  logical function process_dimensions_are_valid(require_born)
+  subroutine validate_process_and_born_dimensions()
     implicit none
-    logical, intent(in), optional :: require_born
-    logical :: need_born
 
-    need_born = .false.
-    if (present(require_born)) need_born = require_born
+    call validate_process_dimensions()
+    call validate_born_dimensions()
+  end subroutine validate_process_and_born_dimensions
+
+
+  logical function process_dimensions_are_valid()
+    implicit none
 
     process_dimensions_are_valid = process_dimensions_initialized
     process_dimensions_are_valid = process_dimensions_are_valid .and. &
@@ -210,32 +190,15 @@ contains
     process_dimensions_are_valid = process_dimensions_are_valid .and. &
          nsplitorders > 0 .and. amp_split_size > 0
     process_dimensions_are_valid = process_dimensions_are_valid .and. &
-         amp_split_size_born > 0
-    process_dimensions_are_valid = process_dimensions_are_valid .and. &
-         amp_split_size_born <= amp_split_size
-    process_dimensions_are_valid = process_dimensions_are_valid .and. &
-         allocated(order_names) .and. allocated(born_orders) .and. &
-         allocated(nlo_orders) .and. allocated(amp_split_orders)
+         allocated(order_names) .and. allocated(amp_split_orders)
     if (allocated(order_names)) then
       process_dimensions_are_valid = process_dimensions_are_valid .and. &
            size(order_names) == nsplitorders
-    end if
-    if (allocated(born_orders)) then
-      process_dimensions_are_valid = process_dimensions_are_valid .and. &
-           size(born_orders) == nsplitorders
-    end if
-    if (allocated(nlo_orders)) then
-      process_dimensions_are_valid = process_dimensions_are_valid .and. &
-           size(nlo_orders) == nsplitorders
     end if
     if (allocated(amp_split_orders)) then
       process_dimensions_are_valid = process_dimensions_are_valid .and. &
            size(amp_split_orders, 1) == amp_split_size .and. &
            size(amp_split_orders, 2) == nsplitorders
-    end if
-    if (need_born) then
-      process_dimensions_are_valid = process_dimensions_are_valid .and. &
-           born_dimensions_initialized
     end if
   end function process_dimensions_are_valid
 
@@ -244,8 +207,7 @@ contains
        max_particles_in, max_branch_in, lmaxconfigs_in, maxproc_in, &
        ngraphs_in, ncolor_in, maxflow_in, fks_configs_in, &
        nsplitorders_in, qcd_pos_in, amp_split_size_in, &
-       amp_split_size_born_in, order_names_in, born_orders_in, &
-       nlo_orders_in, amp_split_orders_in)
+       order_names_in, amp_split_orders_in)
     implicit none
     integer, intent(in) :: nexternal_in
     integer, intent(in) :: nincoming_in
@@ -260,10 +222,7 @@ contains
     integer, intent(in) :: nsplitorders_in
     integer, intent(in) :: qcd_pos_in
     integer, intent(in) :: amp_split_size_in
-    integer, intent(in) :: amp_split_size_born_in
     character(len=*), intent(in) :: order_names_in(:)
-    integer, intent(in) :: born_orders_in(:)
-    integer, intent(in) :: nlo_orders_in(:)
     integer, intent(in) :: amp_split_orders_in(:,:)
     integer :: i
 
@@ -288,9 +247,7 @@ contains
     if (nsplitorders_in < 1) then
       call fail_validation('NSPLITORDERS must be positive')
     end if
-    if (size(order_names_in) /= nsplitorders_in .or. &
-         size(born_orders_in) /= nsplitorders_in .or. &
-         size(nlo_orders_in) /= nsplitorders_in) then
+    if (size(order_names_in) /= nsplitorders_in) then
       call fail_validation('the order metadata has inconsistent dimensions')
     end if
     if (len(order_names_in) > order_name_length) then
@@ -300,16 +257,12 @@ contains
       if (len_trim(order_names_in(i)) == 0) then
         call fail_validation('an order name is empty')
       end if
-      if (born_orders_in(i) < 0 .or. nlo_orders_in(i) < 0) then
-        call fail_validation('coupling orders must not be negative')
-      end if
     end do
     if (qcd_pos_in < 1 .or. qcd_pos_in > nsplitorders_in) then
       call fail_validation('QCD_POS is outside the order metadata')
     end if
-    if (amp_split_size_in < 1 .or. amp_split_size_born_in < 1 .or. &
-         amp_split_size_born_in > amp_split_size_in) then
-      call fail_validation('the amplitude split dimensions are inconsistent')
+    if (amp_split_size_in < 1) then
+      call fail_validation('AMP_SPLIT_SIZE must be positive')
     end if
     if (size(amp_split_orders_in, 1) /= amp_split_size_in .or. &
          size(amp_split_orders_in, 2) /= nsplitorders_in) then
@@ -325,8 +278,7 @@ contains
        max_particles_in, max_branch_in, lmaxconfigs_in, maxproc_in, &
        ngraphs_in, ncolor_in, maxflow_in, fks_configs_in, &
        nsplitorders_in, qcd_pos_in, amp_split_size_in, &
-       amp_split_size_born_in, order_names_in, born_orders_in, &
-       nlo_orders_in, amp_split_orders_in)
+       order_names_in, amp_split_orders_in)
     implicit none
     integer, intent(in) :: nexternal_in
     integer, intent(in) :: nincoming_in
@@ -341,10 +293,7 @@ contains
     integer, intent(in) :: nsplitorders_in
     integer, intent(in) :: qcd_pos_in
     integer, intent(in) :: amp_split_size_in
-    integer, intent(in) :: amp_split_size_born_in
     character(len=*), intent(in) :: order_names_in(:)
-    integer, intent(in) :: born_orders_in(:)
-    integer, intent(in) :: nlo_orders_in(:)
     integer, intent(in) :: amp_split_orders_in(:,:)
 
     same_process_dimensions = nexternal == nexternal_in .and. &
@@ -355,21 +304,15 @@ contains
          ngraphs == ngraphs_in .and. ncolor == ncolor_in .and. &
          maxflow == maxflow_in .and. fks_configs == fks_configs_in .and. &
          nsplitorders == nsplitorders_in .and. qcd_pos == qcd_pos_in .and. &
-         amp_split_size == amp_split_size_in .and. &
-         amp_split_size_born == amp_split_size_born_in
+         amp_split_size == amp_split_size_in
     same_process_dimensions = same_process_dimensions .and. &
-         allocated(order_names) .and. allocated(born_orders) .and. &
-         allocated(nlo_orders) .and. allocated(amp_split_orders)
+         allocated(order_names) .and. allocated(amp_split_orders)
     if (.not. same_process_dimensions) return
     same_process_dimensions = size(order_names) == nsplitorders_in .and. &
-         size(born_orders) == nsplitorders_in .and. &
-         size(nlo_orders) == nsplitorders_in .and. &
          size(amp_split_orders, 1) == amp_split_size_in .and. &
          size(amp_split_orders, 2) == nsplitorders_in
     if (.not. same_process_dimensions) return
     same_process_dimensions = all(order_names == order_names_in) .and. &
-         all(born_orders == born_orders_in) .and. &
-         all(nlo_orders == nlo_orders_in) .and. &
          all(amp_split_orders == amp_split_orders_in)
   end function same_process_dimensions
 

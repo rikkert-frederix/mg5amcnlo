@@ -12,8 +12,6 @@ module fks_sij_module
   double precision :: fks_angle_power = 0d0
   double precision :: h_damp_power = 0d0
   double precision :: h_damp_edge = 0d0
-  logical :: use_energy_weight = .false.
-  logical :: use_beta_weight = .false.
   logical :: module_initialized = .false.
   logical :: partition_state_ready = .false.
   logical :: kinematic_state_ready = .false.
@@ -38,13 +36,12 @@ module fks_sij_module
 contains
 
   subroutine initialize_fks_sij_module(nexternal_in, nincoming_in, &
-                                       fks_a_in, fks_b_in, a_h_damp_in, one_h_damp_in, useenergy_in, &
-                                       usebeta_in)
+                                       fks_a_in, fks_b_in, a_h_damp_in, &
+                                       one_h_damp_in)
     implicit none
     integer, intent(in) :: nexternal_in, nincoming_in
     double precision, intent(in) :: fks_a_in, fks_b_in
     double precision, intent(in) :: a_h_damp_in, one_h_damp_in
-    logical, intent(in) :: useenergy_in, usebeta_in
 
     if (nexternal_in < 1) then
       call fail_validation('NEXTERNAL must be positive')
@@ -77,9 +74,7 @@ contains
           fks_energy_power /= fks_a_in .or. &
           fks_angle_power /= fks_b_in .or. &
           h_damp_power /= a_h_damp_in .or. &
-          h_damp_edge /= one_h_damp_in .or. &
-          (use_energy_weight .neqv. useenergy_in) .or. &
-          (use_beta_weight .neqv. usebeta_in)) then
+          h_damp_edge /= one_h_damp_in) then
         call fail_validation('module was reinitialized with new values')
       end if
       return
@@ -91,8 +86,6 @@ contains
     fks_angle_power = fks_b_in
     h_damp_power = a_h_damp_in
     h_damp_edge = one_h_damp_in
-    use_energy_weight = useenergy_in
-    use_beta_weight = usebeta_in
 
     allocate (fks_j_from_i_state(particle_count, 0:particle_count))
     allocate (particle_type_state(particle_count))
@@ -417,35 +410,20 @@ contains
     e1 = -1d0
     e2 = -1d0
     if (ioneortwo == 2) then
-      if (itype1 == 8 .or. (itype1 /= 8 .and. use_energy_weight)) then
-        e1 = get_cms_energy_impl(p1, ka, kb, ybst_til_tocm_state, &
-                                 shat_state)
-        energy = energy*e1*e1resc/(sqrtshat_state/2d0)
-        setsijzero = setsijzero .or. &
-                     (e1*e1resc) < (vtiny*sqrtshat_state/2d0)
-      else if (itype1 /= 8 .and. .not. use_energy_weight) then
-        energy = energy
-      else
-        write (*, *) 'Error #1 in dkl_Sij', itype1, use_energy_weight
-        stop
-      end if
+      e1 = get_cms_energy_impl(p1, ka, kb, ybst_til_tocm_state, &
+                               shat_state)
+      energy = energy*e1*e1resc/(sqrtshat_state/2d0)
+      setsijzero = setsijzero .or. &
+                   (e1*e1resc) < (vtiny*sqrtshat_state/2d0)
     else if (ioneortwo /= 1) then
       write (*, *) 'Error in dkl_Sij: unknown option', ioneortwo
       stop
     end if
     if (setsijzero) return
 
-    if (itype2 == 8 .or. (itype2 /= 8 .and. use_energy_weight)) then
-      e2 = get_cms_energy_impl(p2, ka, kb, ybst_til_tocm_state, &
-                               shat_state)
-      energy = energy*e2/(sqrtshat_state/2d0)
-      setsijzero = setsijzero .or. e2 < (vtiny*sqrtshat_state/2d0)
-    else if (itype2 /= 8 .and. .not. use_energy_weight) then
-      energy = energy
-    else
-      write (*, *) 'Error #2 in dkl_Sij', itype2, use_energy_weight
-      stop
-    end if
+    e2 = get_cms_energy_impl(p2, ka, kb, ybst_til_tocm_state, shat_state)
+    energy = energy*e2/(sqrtshat_state/2d0)
+    setsijzero = setsijzero .or. e2 < (vtiny*sqrtshat_state/2d0)
     if (setsijzero) return
 
     if (energy > 0d0) then
@@ -459,10 +437,10 @@ contains
     call get_cms_costh_fks_impl(p1, p2, ka, kb, e1, e2, &
                                 particle_mass_state(i1), particle_mass_state(i2), beta1, &
                                 beta2, costhfks, ybst_til_tocm_state, shat_state)
-    if (itype1 /= 8 .and. particle_mass_state(i1) /= zero .and. &
-        use_beta_weight) beta = beta*beta1
-    if (itype2 /= 8 .and. particle_mass_state(i2) /= zero .and. &
-        use_beta_weight) beta = beta*beta2
+    if (itype1 /= 8 .and. particle_mass_state(i1) /= zero) &
+      beta = beta*beta1
+    if (itype2 /= 8 .and. particle_mass_state(i2) /= zero) &
+      beta = beta*beta2
     angle = 1d0 - beta*costhfks
     setsijzero = setsijzero .or. angle < vtiny
     if (angle > 0d0) then

@@ -42,15 +42,6 @@ c Selected subprocess and generated process records.
       logical need_color_links
       common /c_need_links/need_color_links
 
-      integer iextra_cnt,isplitorder_born,isplitorder_cnt
-      common /c_extra_cnt/iextra_cnt,isplitorder_born,
-     $     isplitorder_cnt
-
-      logical split_type(nsplitorders)
-      logical split_type_used(nsplitorders)
-      common /c_split_type/split_type
-      common /to_split_type_used/split_type_used
-
       logical is_aorg(nexternal)
       common /c_is_aorg/is_aorg
 

@@ -121,6 +121,86 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         return pjoin(self.mgme_dir, 'Template',
                      self.opt.get('fks_template', 'NLO'))
 
+    def validate_fnlo_matrix_element(self, matrix_element):
+        """Validate the physics restrictions of the reduced fNLO output.
+
+        The fNLO template implements one maximally QCD-like Born
+        contribution and QCD radiative corrections.  In particular, it has
+        no machinery for mixed Born coupling orders or for the alternative
+        mothers needed by mixed QCD/QED subtraction terms.
+        """
+
+        if self.opt.get('fks_template') != 'fNLO':
+            return
+
+        born_squared_orders, born_amplitude_orders = \
+            matrix_element.born_me.get_split_orders_mapping()
+        if (len(born_squared_orders) != 1 or
+                len(born_amplitude_orders) != 1):
+            raise fks_common.FKSProcessError(
+                'fNLO output requires one maximally QCD-like Born '
+                'coupling order; found %d Born amplitude-order and %d '
+                'squared-order combinations' %
+                (len(born_amplitude_orders), len(born_squared_orders)))
+
+        for real_process in matrix_element.real_processes:
+            real_squared_orders, real_amplitude_orders = \
+                real_process.matrix_element.get_split_orders_mapping()
+            if (len(real_squared_orders) != 1 or
+                    len(real_amplitude_orders) != 1):
+                raise fks_common.FKSProcessError(
+                    'fNLO output requires one QCD-corrected real coupling '
+                    'order; found %d real amplitude-order and %d '
+                    'squared-order combinations' %
+                    (len(real_amplitude_orders), len(real_squared_orders)))
+
+        virtual_matrix_element = getattr(
+            matrix_element, 'virt_matrix_element', None)
+        if virtual_matrix_element:
+            virtual_squared_orders, _ = \
+                virtual_matrix_element.get_split_orders_mapping()
+            if len(virtual_squared_orders) != 1:
+                raise fks_common.FKSProcessError(
+                    'fNLO output requires one QCD-corrected virtual '
+                    'coupling order; found %d virtual squared-order '
+                    'combinations' % len(virtual_squared_orders))
+
+        for info in matrix_element.get_fks_info_list():
+            splitting_types = set(info['fks_info']['splitting_type'])
+            if splitting_types != set(['QCD']):
+                found = ', '.join(sorted(splitting_types)) or 'none'
+                raise fks_common.FKSProcessError(
+                    'fNLO output supports QCD FKS splittings only; found %s' %
+                    found)
+
+        if matrix_element.extra_cnt_me_list:
+            raise fks_common.FKSProcessError(
+                'fNLO output does not support mixed-order extra '
+                'counterterms')
+
+        if matrix_element.ewsudakov:
+            raise fks_common.FKSProcessError(
+                'fNLO output does not support EW Sudakov corrections')
+
+    @staticmethod
+    def compose_fnlo_matrix_template(wrapper, generic_template,
+                                     suffix_marker):
+        """Join a reduced fNLO wrapper to an unchanged matrix-element core."""
+
+        suffix_start = generic_template.index(suffix_marker)
+        return wrapper.rstrip() + '\n\n' + generic_template[suffix_start:]
+
+    def specialize_fnlo_born_template(self, wrapper, generic_template):
+        """Compose the Born wrapper and remove its obsolete one-hel state."""
+
+        template = self.compose_fnlo_matrix_template(
+            wrapper, generic_template, 'SUBROUTINE SBORN_SPLITORDERS')
+        template = template.replace(
+            '      logical force_ijglu_zero\n'
+            '      common /to_force_ijglu/ force_ijglu_zero\n', '')
+        return template.replace(
+            '      if (force_ijglu_zero) glu_ij = 0\n', '')
+
     def write_pdf_opendata(self):
         """Write generated PDF helpers, omitting unsupported fNLO backends."""
 
@@ -595,6 +675,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                                     me_ntot, path=os.getcwd(),OLP='MadLoop'):
         """Generate the Pxxxxx_i directories for a subprocess in MadFKS,
         including the necessary matrix.f and various helper files"""
+        self.validate_fnlo_matrix_element(matrix_element)
         proc = matrix_element.born_me['processes'][0]
 
         if not self.model:
@@ -640,25 +721,26 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         sqsorders_list = \
             self.write_real_matrix_elements(matrix_element, fortran_model)
 
-        filename = 'extra_cnt_wrapper.f'
-        self.write_extra_cnt_wrapper(writers.FortranWriter(filename),
-                                     matrix_element.extra_cnt_me_list, 
-                                     fortran_model)
-        for i, extra_cnt_me in enumerate(matrix_element.extra_cnt_me_list):
-            replace_dict = {}
+        if self.opt.get('fks_template') != 'fNLO':
+            filename = 'extra_cnt_wrapper.f'
+            self.write_extra_cnt_wrapper(writers.FortranWriter(filename),
+                                         matrix_element.extra_cnt_me_list,
+                                         fortran_model)
+            for i, extra_cnt_me in enumerate(matrix_element.extra_cnt_me_list):
+                replace_dict = {}
 
-            den_factor_lines = self.get_den_factor_lines(matrix_element,
-                                                         extra_cnt_me)
-            replace_dict['den_factor_lines'] = '\n'.join(den_factor_lines)
+                den_factor_lines = self.get_den_factor_lines(
+                    matrix_element, extra_cnt_me)
+                replace_dict['den_factor_lines'] = '\n'.join(
+                    den_factor_lines)
 
-            ij_lines = self.get_ij_lines(matrix_element)
-            replace_dict['ij_lines'] = '\n'.join(ij_lines)
+                ij_lines = self.get_ij_lines(matrix_element)
+                replace_dict['ij_lines'] = '\n'.join(ij_lines)
 
-            filename = 'born_cnt_%d.f' % (i+1)
-            self.write_split_me_fks(writers.FortranWriter(filename),
-                                        extra_cnt_me, 
-                                        fortran_model, 'cnt', '%d' % (i+1),
-                                        replace_dict)
+                filename = 'born_cnt_%d.f' % (i + 1)
+                self.write_split_me_fks(
+                    writers.FortranWriter(filename), extra_cnt_me,
+                    fortran_model, 'cnt', '%d' % (i + 1), replace_dict)
 
         self.write_pdf_calls(matrix_element, fortran_model)
 
@@ -768,10 +850,11 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                                 writers.FortranWriter(filename),
                                 startfroma0, matrix_element, split_types)
 
-        filename = 'orders.h'
-        self.write_orders_c_header_file(
-                            writers.CPPWriter(filename),
-                            amp_split_size, amp_split_size_born)
+        if self.opt.get('fks_template') != 'fNLO':
+            filename = 'orders.h'
+            self.write_orders_c_header_file(
+                                writers.CPPWriter(filename),
+                                amp_split_size, amp_split_size_born)
 
         filename = 'amp_split_orders.inc'
         self.write_amp_split_orders_file(
@@ -962,6 +1045,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 'dire_fortran.cc',
                 'eepdf.inc',
                 'fill_MC_mshell.f',
+                'fks_powers.inc',
                 'handling_lhe_events.f',
                 'hep_event_streams.inc',
                 'initial_states_map.dat',
@@ -1158,7 +1242,11 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
 
         self.proc_characteristic['grouped_matrix'] = False
         self.proc_characteristic['complex_mass_scheme'] = mg5options['complex_mass_scheme']
-        self.proc_characteristic['nlo_mixed_expansion'] = mg5options['nlo_mixed_expansion']
+        if fixed_order_only:
+            self.proc_characteristic['nlo_mixed_expansion'] = False
+        else:
+            self.proc_characteristic['nlo_mixed_expansion'] = \
+                mg5options['nlo_mixed_expansion']
         self.proc_characteristic['fixed_order_only'] = fixed_order_only
         # determine perturbation order
         self.proc_characteristic['perturbation_order'] = perturbation_order 
@@ -1632,7 +1720,8 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         # or of [QCD SDK] virtual and reals, but of QCD origin.
         # In both case a coupling combination corresponding to 
         # born_orders + 2*QED must be added
-        if  matrix_element.ewsudakov:
+        if (matrix_element.ewsudakov and
+                self.opt.get('fks_template') != 'fNLO'):
             # compute the born orders
             born_orders = []
             split_orders = matrix_element.born_me['processes'][0]['split_orders'] 
@@ -1664,21 +1753,39 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                     stop = len(split_orders)
                 text += 'data (ordernames(ORDERNAMEINDEX), ORDERNAMEINDEX=%s,%s)  / %s /\n' % (start, stop, data)
 
-        text += 'integer born_orders(nsplitorders), nlo_orders(nsplitorders)\n'
+        if self.opt.get('fks_template') != 'fNLO':
+            text += ('integer born_orders(nsplitorders), '
+                     'nlo_orders(nsplitorders)\n')
         text += '! the order of the coupling orders is %s\n' % ', '.join(split_orders)
-        text += 'data born_orders / %s /\n' % ', '.join([str(max_born_orders[o]) for o in split_orders])
-        text += 'data nlo_orders / %s /\n' % ', '.join([str(max_nlo_orders[o]) for o in split_orders])
-        text += '! The position of the QCD /QED orders in the array\n'
-        text += 'integer qcd_pos, qed_pos\n'
-        text += '! if = -1, then it is not in the split_orders\n'
-        text += 'parameter (qcd_pos = %d)\n' % qcd_pos
-        text += 'parameter (qed_pos = %d)\n' % qed_pos
+        if self.opt.get('fks_template') != 'fNLO':
+            text += 'data born_orders / %s /\n' % ', '.join(
+                [str(max_born_orders[o]) for o in split_orders])
+        if self.opt.get('fks_template') != 'fNLO':
+            text += 'data nlo_orders / %s /\n' % ', '.join(
+                [str(max_nlo_orders[o]) for o in split_orders])
+        if self.opt.get('fks_template') == 'fNLO':
+            text += '! The position of the QCD order in the array\n'
+            text += 'integer qcd_pos\n'
+            text += 'parameter (qcd_pos = %d)\n' % qcd_pos
+        else:
+            text += '! The position of the QCD /QED orders in the array\n'
+            text += 'integer qcd_pos, qed_pos\n'
+            text += '! if = -1, then it is not in the split_orders\n'
+            text += 'parameter (qcd_pos = %d)\n' % qcd_pos
+            text += 'parameter (qed_pos = %d)\n' % qed_pos
         text += '! this is to keep track of the various \n'
         text += '! coupling combinations entering each ME\n'
-        text += 'integer amp_split_size, amp_split_size_born\n'
+        if self.opt.get('fks_template') == 'fNLO':
+            if amp_split_size_born != 1:
+                raise fks_common.FKSProcessError(
+                    'fNLO output requires exactly one Born squared order')
+            text += 'integer amp_split_size\n'
+        else:
+            text += 'integer amp_split_size, amp_split_size_born\n'
         text += 'parameter (amp_split_size = %d)\n' % amp_split_size
-        text += '! the first entries in the next line in amp_split are for the born \n'
-        text += 'parameter (amp_split_size_born = %d)\n' % amp_split_size_born
+        if self.opt.get('fks_template') != 'fNLO':
+            text += '! the first entries in the next line in amp_split are for the born \n'
+            text += 'parameter (amp_split_size_born = %d)\n' % amp_split_size_born
         text += 'double precision amp_split(amp_split_size)\n'
         text += 'double complex amp_split_cnt(amp_split_size,2,nsplitorders)\n'
         text += 'common /to_amp_split/amp_split, amp_split_cnt\n'
@@ -2401,31 +2508,35 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         replace_dict['jamp_lines'] = '\n'.join(jamp_lines)    
         replace_dict['nb_temp_jamp'] = nb_temp_jamp
         
+        template_dir = pjoin(_file_path, 'iolibs', 'template_files')
         if proc_type=='born':
-            file = open(pjoin(_file_path, \
-            'iolibs/template_files/bornmatrix_splitorders_fks.inc')).read()
+            file = open(pjoin(
+                template_dir, 'bornmatrix_splitorders_fks.inc')).read()
+            if self.opt.get('fks_template') == 'fNLO':
+                wrapper = open(pjoin(
+                    template_dir, 'bornmatrix_qcd_fks.inc')).read()
+                file = self.specialize_fnlo_born_template(wrapper, file)
         elif proc_type=='bhel':
-            file = open(pjoin(_file_path, \
-            'iolibs/template_files/born_hel_splitorders_fks.inc')).read()
+            file = open(pjoin(
+                template_dir, 'born_hel_splitorders_fks.inc')).read()
+            if self.opt.get('fks_template') == 'fNLO':
+                wrapper = open(pjoin(
+                    template_dir, 'born_hel_qcd_fks.inc')).read()
+                file = self.compose_fnlo_matrix_template(
+                    wrapper, file, 'SUBROUTINE SBORN_HEL_SPLITORDERS')
         elif proc_type=='real':
-            file = open(pjoin(_file_path, \
-            'iolibs/template_files/realmatrix_splitorders_fks.inc')).read()
+            file = open(pjoin(
+                template_dir, 'realmatrix_splitorders_fks.inc')).read()
+            if self.opt.get('fks_template') == 'fNLO':
+                wrapper = open(pjoin(
+                    template_dir, 'realmatrix_qcd_fks.inc')).read()
+                file = self.compose_fnlo_matrix_template(
+                    wrapper, file,
+                    'SUBROUTINE SMATRIX%(proc_prefix)s_SPLITORDERS')
         elif proc_type=='cnt':
             # MZ this is probably not the best way to go
-            file = open(pjoin(_file_path, \
-            'iolibs/template_files/born_cnt_splitorders_fks.inc')).read()
-
-        if (proc_type == 'born' and
-                self.opt.get('fks_template') == 'fNLO'):
-            file = file.replace(
-                "      include 'has_ewsudakov.inc'\n", '')
-            start = file.index(
-                'C check that, if one include the sudakov corrections')
-            end = file.index('\n\n do j = 1, nsplitorders', start)
-            file = file[:start] + file[end + 2:]
-            start = file.index('      SUBROUTINE SBORN_ONEHEL')
-            end = file.index('SUBROUTINE SBORN_SPLITORDERS', start)
-            file = file[:start] + file[end:]
+            file = open(pjoin(
+                template_dir, 'born_cnt_splitorders_fks.inc')).read()
 
         file = file % replace_dict
 
@@ -2480,9 +2591,10 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         self.write_born_nhel_file(writers.FortranWriter(filename),
                            born_me, nflows, fortran_model)
 
-        filename = 'born_coloramps.inc'
-        self.write_coloramps_file(writers.FortranWriter(filename),
-                                  mapconfigs, born_me, fortran_model)
+        if self.opt.get('fks_template') != 'fNLO':
+            filename = 'born_coloramps.inc'
+            self.write_coloramps_file(writers.FortranWriter(filename),
+                                      mapconfigs, born_me, fortran_model)
         
         # the born ME's and color/charge links
         sqsorders_list = []
@@ -3872,8 +3984,15 @@ Parameters              %(params)s\n\
         # Extract the number of FKS process
         replace_dict['nconfs'] = len(fksborn.get_fks_info_list())
 
-        file = open(os.path.join(_file_path, \
-                          'iolibs/template_files/b_sf_xxx_splitorders_fks.inc')).read()
+        template_dir = pjoin(_file_path, 'iolibs', 'template_files')
+        file = open(pjoin(
+            template_dir, 'b_sf_xxx_splitorders_fks.inc')).read()
+        if self.opt.get('fks_template') == 'fNLO':
+            wrapper = open(pjoin(
+                template_dir, 'b_sf_xxx_qcd_fks.inc')).read()
+            file = self.compose_fnlo_matrix_template(
+                wrapper, file,
+                'SUBROUTINE SB_SF_%(ilink)3.3d_SPLITORDERS')
         file = file % replace_dict
         
         # Write the file
@@ -3928,11 +4047,13 @@ Parameters              %(params)s\n\
         the last colored particle as j_fks."""
 
         replace_dict = {}
+        fixed_order_only = self.opt.get('fks_template') == 'fNLO'
         fks_info_list = fksborn.get_fks_info_list()
         split_orders = fksborn.born_me['processes'][0]['split_orders']
         replace_dict['nconfs'] = max(len(fks_info_list), 1)
-        replace_dict['nsplitorders'] = len(split_orders)
-        replace_dict['splitorders_name'] = ', '.join(split_orders)
+        if not fixed_order_only:
+            replace_dict['nsplitorders'] = len(split_orders)
+            replace_dict['splitorders_name'] = ', '.join(split_orders)
 
         bool_dict = {True: '.true.', False: '.false.'}
         split_types_return = set(sum([info['fks_info']['splitting_type'] for info in fks_info_list], []))
@@ -3943,42 +4064,44 @@ Parameters              %(params)s\n\
                                                  for info in fks_info_list]) 
             replace_dict['fks_j_values'] = ', '.join(['%d' % info['fks_info']['j'] \
                                                  for info in fks_info_list]) 
-            replace_dict['extra_cnt_values'] = ', '.join(['%d' % (info['fks_info']['extra_cnt_index'] + 1) \
-                                                 for info in fks_info_list]) 
-            # extra array to be filled, with the type of the splitting of the born and of the extra cnt
-            isplitorder_born = []
-            isplitorder_cnt = []
-            for info in fks_info_list:
-                # fill 0 if no extra_cnt is needed
-                if info['fks_info']['extra_cnt_index'] == -1:
-                    isplitorder_born.append(0)
-                    isplitorder_cnt.append(0)
-                else:
-                    # the 0th component of split_type correspond to the born, the 1st
-                    # to the extra_cnt
-                    isplitorder_born.append(split_orders.index(
-                                            info['fks_info']['splitting_type'][0]) + 1)
-                    isplitorder_cnt.append(split_orders.index(
-                                           info['fks_info']['splitting_type'][1]) + 1)
+            if not fixed_order_only:
+                replace_dict['extra_cnt_values'] = ', '.join(
+                    ['%d' % (info['fks_info']['extra_cnt_index'] + 1)
+                     for info in fks_info_list])
+                # Store the splitting order of the ordinary and alternative
+                # underlying Born contributions.
+                isplitorder_born = []
+                isplitorder_cnt = []
+                for info in fks_info_list:
+                    if info['fks_info']['extra_cnt_index'] == -1:
+                        isplitorder_born.append(0)
+                        isplitorder_cnt.append(0)
+                    else:
+                        isplitorder_born.append(split_orders.index(
+                            info['fks_info']['splitting_type'][0]) + 1)
+                        isplitorder_cnt.append(split_orders.index(
+                            info['fks_info']['splitting_type'][1]) + 1)
 
-            replace_dict['isplitorder_born_values'] = \
-                            ', '.join(['%d' % n for n in isplitorder_born])
-            replace_dict['isplitorder_cnt_values'] = \
-                            ', '.join(['%d' % n for n in isplitorder_cnt])
+                replace_dict['isplitorder_born_values'] = ', '.join(
+                    ['%d' % n for n in isplitorder_born])
+                replace_dict['isplitorder_cnt_values'] = ', '.join(
+                    ['%d' % n for n in isplitorder_cnt])
 
             replace_dict['need_color_links'] = ', '.join(\
                     [bool_dict[info['fks_info']['need_color_links']] for \
                     info in fks_info_list ])
-            replace_dict['need_charge_links'] = ', '.join(\
-                    [bool_dict[info['fks_info']['need_charge_links']] for \
-                    info in fks_info_list ])
+            if not fixed_order_only:
+                replace_dict['need_charge_links'] = ', '.join(\
+                        [bool_dict[info['fks_info']['need_charge_links']] for \
+                        info in fks_info_list ])
 
             col_lines = []
             pdg_lines = []
-            charge_lines = []
-            tag_lines = []
             fks_j_from_i_lines = []
-            split_type_lines = []
+            if not fixed_order_only:
+                charge_lines = []
+                tag_lines = []
+                split_type_lines = []
             for i, info in enumerate(fks_info_list):
                 col_lines.append( \
                     'DATA (PARTICLE_TYPE_D(%d, IPOS), IPOS=1, NEXTERNAL) / %s /' \
@@ -3986,19 +4109,25 @@ Parameters              %(params)s\n\
                 pdg_lines.append( \
                     'DATA (PDG_TYPE_D(%d, IPOS), IPOS=1, NEXTERNAL) / %s /' \
                     % (i + 1, ', '.join('%d' % pdg for pdg in info['pdgs'])))
-                charge_lines.append(\
-                    'DATA (PARTICLE_CHARGE_D(%d, IPOS), IPOS=1, NEXTERNAL) / %s /'\
-                    % (i + 1, ', '.join('%19.15fd0' % charg\
-                                        for charg in fksborn.real_processes[info['n_me']-1].charges) ))
-                tag_lines.append( \
-                    'DATA (PARTICLE_TAG_D(%d, IPOS), IPOS=1, NEXTERNAL) / %s /' \
-                    % (i + 1, ', '.join(bool_dict[tag] for tag in fksborn.real_processes[info['n_me']-1].particle_tags) ))
                 fks_j_from_i_lines.extend(self.get_fks_j_from_i_lines(fksborn.real_processes[info['n_me']-1],\
                                                 i + 1))
-                split_type_lines.append( \
-                    'DATA (SPLIT_TYPE_D (%d, IPOS), IPOS=1, %d) / %s /' %
-                      (i + 1, len(split_orders), 
-                       ', '.join([bool_dict[ordd in info['fks_info']['splitting_type']] for ordd in split_orders])))
+                if not fixed_order_only:
+                    charge_lines.append(\
+                        'DATA (PARTICLE_CHARGE_D(%d, IPOS), IPOS=1, NEXTERNAL) / %s /'\
+                        % (i + 1, ', '.join('%19.15fd0' % charg\
+                            for charg in fksborn.real_processes[
+                                info['n_me']-1].charges)))
+                    tag_lines.append( \
+                        'DATA (PARTICLE_TAG_D(%d, IPOS), IPOS=1, NEXTERNAL) / %s /' \
+                        % (i + 1, ', '.join(bool_dict[tag] for tag in
+                            fksborn.real_processes[
+                                info['n_me']-1].particle_tags)))
+                    split_type_lines.append( \
+                        'DATA (SPLIT_TYPE_D (%d, IPOS), IPOS=1, %d) / %s /' %
+                          (i + 1, len(split_orders),
+                           ', '.join([bool_dict[ordd in
+                            info['fks_info']['splitting_type']]
+                            for ordd in split_orders])))
         else:
         # this is for 'LOonly', generate a fake FKS configuration with
         # - i_fks = nexternal, pdg type = -21 and color =8
@@ -4007,7 +4136,9 @@ Parameters              %(params)s\n\
             pdgs = [l.get('id') for l in bornproc.get('legs')] + [-21]
             colors = [l.get('color') for l in bornproc.get('legs')] + [8]
             charges = [l.get('charge') for l in bornproc.get('legs')] + [0.]
-            tags = [l.get('is_tagged') for l in bornproc.get('legs')] + [False]
+            if not fixed_order_only:
+                tags = [l.get('is_tagged') for l in
+                        bornproc.get('legs')] + [False]
 
             fks_i = len(colors)
             # fist look for a colored legs (set j to 1 otherwise)
@@ -4030,35 +4161,40 @@ Parameters              %(params)s\n\
 
             replace_dict['fks_i_values'] = str(fks_i)
             replace_dict['fks_j_values'] = str(fks_j)
-            replace_dict['extra_cnt_values'] = '0'
-            replace_dict['isplitorder_born_values'] = '0'
-            replace_dict['isplitorder_cnt_values'] = '0'
-            # set both color/charge links to true
+            # The fake configuration is allowed to use colour links.
             replace_dict['need_color_links'] = '.true.'
-            replace_dict['need_charge_links'] = '.true.'
+            if not fixed_order_only:
+                replace_dict['extra_cnt_values'] = '0'
+                replace_dict['isplitorder_born_values'] = '0'
+                replace_dict['isplitorder_cnt_values'] = '0'
+                replace_dict['need_charge_links'] = '.true.'
 
             col_lines = ['DATA (PARTICLE_TYPE_D(1, IPOS), IPOS=1, NEXTERNAL) / %s /' \
                             % ', '.join([str(col) for col in colors])]
             pdg_lines = ['DATA (PDG_TYPE_D(1, IPOS), IPOS=1, NEXTERNAL) / %s /' \
                             % ', '.join([str(pdg) for pdg in pdgs])]
-            charge_lines = ['DATA (PARTICLE_CHARGE_D(1, IPOS), IPOS=1, NEXTERNAL) / %s /' \
-                            % ', '.join('%19.15fd0' % charg for charg in charges)]
-            tag_lines = ['DATA (PARTICLE_TAG_D(1, IPOS), IPOS=1, NEXTERNAL) / %s /' \
-                            %  ', '.join(bool_dict[tag] for tag in tags)]
             fks_j_from_i_lines = ['DATA (FKS_J_FROM_I_D(1, %d, JPOS), JPOS = 0, 1)  / 1, %d /' \
                             % (fks_i, fks_j)]
-            split_type_lines = [ \
+            if not fixed_order_only:
+                charge_lines = [
+                    'DATA (PARTICLE_CHARGE_D(1, IPOS), IPOS=1, NEXTERNAL) / %s /' \
+                    % ', '.join('%19.15fd0' % charg for charg in charges)]
+                tag_lines = [
+                    'DATA (PARTICLE_TAG_D(1, IPOS), IPOS=1, NEXTERNAL) / %s /' \
+                    %  ', '.join(bool_dict[tag] for tag in tags)]
+                split_type_lines = [
                     'DATA (SPLIT_TYPE_D (%d, IPOS), IPOS=1, %d) / %s /' %
-                      (1, len(split_orders), 
-                       ', '.join([bool_dict[False]] * len(split_orders)))]
+                    (1, len(split_orders), ', '.join(
+                        [bool_dict[False]] * len(split_orders)))]
             
 
         replace_dict['col_lines'] = '\n'.join(col_lines)
         replace_dict['pdg_lines'] = '\n'.join(pdg_lines)
-        replace_dict['charge_lines'] = '\n'.join(charge_lines)
-        replace_dict['tag_lines'] = '\n'.join(tag_lines)
         replace_dict['fks_j_from_i_lines'] = '\n'.join(fks_j_from_i_lines)
-        replace_dict['split_type_lines'] = '\n'.join(split_type_lines)
+        if not fixed_order_only:
+            replace_dict['charge_lines'] = '\n'.join(charge_lines)
+            replace_dict['tag_lines'] = '\n'.join(tag_lines)
+            replace_dict['split_type_lines'] = '\n'.join(split_type_lines)
 
         template = ('fks_info_qcd.inc'
                     if self.opt.get('fks_template') == 'fNLO'
@@ -4225,6 +4361,8 @@ Parameters              %(params)s\n\
     #===============================================================================
     def write_born_conf_file(self, writer, me, fortran_model):
         """Write the configs.inc file for the list of born matrix-elements"""
+
+        fixed_order_only = self.opt.get('fks_template') == 'fNLO'
     
         # Extract number of external particles
         (nexternal, ninitial) = me.get_nexternal_ninitial()
@@ -4243,7 +4381,7 @@ Parameters              %(params)s\n\
         particle_dict = me.get('processes')[0].get('model').\
                         get('particle_dict')
 
-        booldict = {True: '.false.', False: '.false'} 
+        booldict = {True: '.false.', False: '.false'}
 
         max_leg_number = 0
 
@@ -4307,13 +4445,14 @@ Parameters              %(params)s\n\
         for iconf, config in enumerate(s_and_t_channels):
             schannels = config[0]
             nschannels.append(len(schannels))
-            for vertex in schannels:
-                # For the resulting leg, pick out whether it comes from
-                # decay or not, as given by the from_group flag
-                leg = vertex.get('legs')[-1]
-                lines_BW.append("data gForceBW(%d,%d)/%s/" % \
-                             (leg.get('number'), iconf + 1,
-                              booldict[leg.get('from_group')]))
+            if not fixed_order_only:
+                for vertex in schannels:
+                    # For the resulting leg, pick out whether it comes from
+                    # decay or not, as given by the from_group flag
+                    leg = vertex.get('legs')[-1]
+                    lines_BW.append("data gForceBW(%d,%d)/%s/" % \
+                                 (leg.get('number'), iconf + 1,
+                                  booldict[leg.get('from_group')]))
 
         #lines for the declarations
         firstlines = []
@@ -4324,7 +4463,10 @@ Parameters              %(params)s\n\
         firstlines.append('integer iforest(2, -max_branchb_used:-1, lmaxconfigsb_used)')
         firstlines.append('integer sprop(-max_branchb_used:-1, lmaxconfigsb_used)')
         firstlines.append('integer tprid(-max_branchb_used:-1, lmaxconfigsb_used)')
-        firstlines.append('logical gforceBW(-max_branchb_used : -1, lmaxconfigsb_used)')
+        if not fixed_order_only:
+            firstlines.append(
+                'logical gforceBW(-max_branchb_used : -1, '
+                'lmaxconfigsb_used)')
     
         # Write the file
         writer.writelines(firstlines + lines + lines_BW)

@@ -8,12 +8,11 @@ module driver_mintfo_module
                          iconfigs, accuracy, wgt_mult, new_point, pass_cuts_check, &
                          virt_wgt_mint, born_wgt_mint, mint
   use mint_module, only: ans_result => ans, unc_result => unc
-  use FKSParams, only: paramFileName, min_virt_fraction, virt_fraction, &
-                       FKSParamReader
+  use FKSParams, only: min_virt_fraction, virt_fraction, FKSParamReader
   use weight_lines, only: icontr, deallocate_weight_lines
   use process_dimensions, only: nexternal, nincoming, fks_configs, &
-                                amp_split_size, amp_split_size_born, lmaxconfigs, &
-                                validate_process_dimensions
+                                amp_split_size, lmaxconfigs, &
+                                validate_process_and_born_dimensions
   use fks_metadata, only: fks_i_d, pdg_type_d, validate_fks_metadata
   use fks_channel_map, only: fks_channel_count, &
                              fks_channel_configuration, &
@@ -42,7 +41,7 @@ module driver_mintfo_module
   use fnlo_process_common, only: nfksprocess, soft_counterevent, &
                                  collinear_counterevent, &
                                  real_event, &
-                                 ybst_til_tolab
+                                 ybst_til_tolab, force_polecheck
   implicit none
   private
 
@@ -107,7 +106,7 @@ contains
     implicit none
     integer, intent(in) :: mapconfig_in(0:, 0:)
 
-    call validate_process_dimensions(require_born=.true.)
+    call validate_process_and_born_dimensions()
     if (ubound(mapconfig_in, 1) /= lmaxconfigs .or. &
         ubound(mapconfig_in, 2) /= fks_configs) then
       call fail_driver('generated configuration map has the wrong shape')
@@ -142,14 +141,15 @@ contains
     call init_process_dimensions_bridge()
     call init_born_dimensions_bridge()
     call init_fks_metadata_bridge()
-    call validate_process_dimensions(require_born=.true.)
+    call validate_process_and_born_dimensions()
     call validate_fks_metadata()
+    force_polecheck = .false.
 
     write (*, *) drv_getpid()
     call reset_timing_state()
     call cpu_time(time_before)
 
-    call FKSParamReader(paramFileName, .true., .false.)
+    call FKSParamReader()
     min_virt_fraction_mint = min_virt_fraction
     do kchan = 1, maxchannels
       do i = 0, n_ave_virt
@@ -497,7 +497,7 @@ contains
     if (.not. generated_data_initialized) then
       call fail_driver('generated driver data are not initialized')
     end if
-    call validate_process_dimensions(require_born=.true.)
+    call validate_process_and_born_dimensions()
     call validate_fks_metadata()
 
     open (unit=83, file='input_app.txt', status='old')
@@ -623,7 +623,7 @@ contains
 
     if (fks_configs == 1) then
       if (pdg_type_d(1, fks_i_d(1)) == -21 .and. abrv /= 'born') then
-        if (amp_split_size == amp_split_size_born) then
+        if (amp_split_size == 1) then
           write (*, *) 'Process generated with [LOonly=QCD]. '// &
             'Setting abrv to "born".'
           abrv = 'born'

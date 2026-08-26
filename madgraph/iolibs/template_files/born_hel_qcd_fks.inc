@@ -1,0 +1,27 @@
+      SUBROUTINE SBORN_HEL(P,ANS_SUMMED)
+C
+C     Return the helicity weights of the single selected Born order.
+C
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INCLUDE 'born_nhel.inc'
+      INTEGER NSQAMPSO
+      PARAMETER (NSQAMPSO=1)
+
+      REAL*8 P(0:3,NEXTERNAL-1),ANS_SUMMED
+
+      INTEGER J
+      REAL*8 ANS(0:NSQAMPSO)
+      DOUBLE PRECISION WGT_HEL(NSQAMPSO,MAX_BHEL)
+      COMMON /C_BORN_HEL_SPLIT/ WGT_HEL
+      DOUBLE PRECISION WGT_HEL_SUMMED(MAX_BHEL)
+      COMMON /C_BORN_HEL/ WGT_HEL_SUMMED
+
+      CALL SBORN_HEL_SPLITORDERS(P,ANS)
+      ANS_SUMMED=ANS(1)
+      DO J=1,MAX_BHEL
+        WGT_HEL_SUMMED(J)=WGT_HEL(1,J)
+      ENDDO
+
+      RETURN
+      END
