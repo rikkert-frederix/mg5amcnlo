@@ -24,7 +24,7 @@ module fks_contributions_module
                                  stored_event_momenta => event_momenta, &
                                  p_born, i_fks, j_fks, &
                                  f_b, f_nb, f_r, f_s, f_c, f_dc, f_sc, &
-                                 f_dsc, f_pdfsch_d, f_pdfsch_p, f_pdfsch_l, &
+                                 f_dsc, &
                                  xiscut_used, xibsvcut_used, delta_used, &
                                  xicut_used, fkssymmetryfactor, &
                                  fkssymmetryfactorborn, &
@@ -37,9 +37,7 @@ module fks_contributions_module
                                  amp_split_wgtwnstmpmur, &
                                  amp_split_wgtdegrem_xi, &
                                  amp_split_wgtdegrem_lxi, &
-                                 amp_split_wgtdegrem_muf, &
-                                 amp_split_wgtpsch_p, amp_split_wgtpsch_l, &
-                                 amp_split_wgtpsch_d
+                                 amp_split_wgtdegrem_muf
   implicit none
   private
 
@@ -222,7 +220,6 @@ contains
     real :: tBefore, tAfter
     integer orders(nsplitorders)
     integer iamp
-! amp_split for the PDF scheme
     double precision one, s_c, fx_c, deg_xi_c, deg_lxi_c, wgt1, wgt3, g22
     parameter(one=1d0)
     call cpu_time(tBefore)
@@ -245,10 +242,7 @@ contains
     do iamp = 1, amp_split_size
       if (amp_split(iamp) .eq. 0d0 .and. &
           amp_split_wgtdegrem_xi(iamp) .eq. 0d0 .and. &
-          amp_split_wgtdegrem_lxi(iamp) .eq. 0d0 .and. &
-          amp_split_wgtpsch_p(iamp) .eq. 0d0 .and. &
-          amp_split_wgtpsch_l(iamp) .eq. 0d0 .and. &
-          amp_split_wgtpsch_d(iamp) .eq. 0d0) cycle
+          amp_split_wgtdegrem_lxi(iamp) .eq. 0d0) cycle
 
       call amp_split_pos_to_orders(iamp, orders)
       QCD_power = orders(qcd_pos)
@@ -257,9 +251,7 @@ contains
       g22 = g**(QCD_power)
       wgt1 = -amp_split(iamp)*s_c*f_c/g22
       wgt1 = wgt1 + (amp_split_wgtdegrem_xi(iamp) + &
-                     amp_split_wgtpsch_p(iamp) + &
-                     (amp_split_wgtdegrem_lxi(iamp) + &
-                      amp_split_wgtpsch_l(iamp))* &
+                     amp_split_wgtdegrem_lxi(iamp)* &
                      log(event_xi(collinear_counterevent)))*f_dc/g22
       wgt3 = amp_split_wgtdegrem_muF(iamp)*f_dc/g22
       if (wgt1 .ne. 0d0 .or. wgt3 .ne. 0d0) &
@@ -279,10 +271,8 @@ contains
     real :: tBefore, tAfter
     integer orders(nsplitorders)
     integer iamp
-! amp_split for the PDF scheme
     double precision zero, one, s_sc, fx_sc, wgt1, wgt3, deg_xi_sc, deg_lxi_sc, g22
     parameter(zero=0d0, one=1d0)
-! PDF scheme prefactors
     call cpu_time(tBefore)
     if (f_sc .eq. 0d0 .and. f_dsc(1) .eq. 0d0 .and. f_dsc(2) .eq. 0d0 .and. f_dsc(3) .eq. 0d0 .and. f_dsc(4) .eq. 0d0) return
     if (event_xi_hat(real_event)*event_xi_max(collinear_counterevent) &
@@ -304,10 +294,7 @@ contains
     do iamp = 1, amp_split_size
       if (amp_split(iamp) .eq. 0d0 .and. &
           amp_split_wgtdegrem_xi(iamp) .eq. 0d0 .and. &
-          amp_split_wgtdegrem_lxi(iamp) .eq. 0d0 .and. &
-          amp_split_wgtpsch_p(iamp) .eq. 0d0 .and. &
-          amp_split_wgtpsch_l(iamp) .eq. 0d0 .and. &
-          amp_split_wgtpsch_d(iamp) .eq. 0d0) cycle
+          amp_split_wgtdegrem_lxi(iamp) .eq. 0d0) cycle
       call amp_split_pos_to_orders(iamp, orders)
       QCD_power = orders(qcd_pos)
       orders_tag = get_orders_tag(orders)
@@ -318,14 +305,11 @@ contains
       if (event_xi(collinear_counterevent) .lt. xiScut_used) then
         wgt1 = amp_split(iamp)*s_sc*f_sc/g22
         wgt1 = wgt1 + ( &
-               -(amp_split_wgtdegrem_xi(iamp) + amp_split_wgtpsch_p(iamp) + &
-                 (amp_split_wgtdegrem_lxi(iamp) + amp_split_wgtpsch_l(iamp))* &
+               -(amp_split_wgtdegrem_xi(iamp) + &
+                 amp_split_wgtdegrem_lxi(iamp)* &
                  log(event_xi(collinear_counterevent)))*f_dsc(1) &
                - (amp_split_wgtdegrem_xi(iamp)*f_dsc(2) + &
-                  amp_split_wgtdegrem_lxi(iamp)*f_dsc(3)) &
-               + amp_split_wgtpsch_d(iamp)*f_pdfsch_d &
-               + amp_split_wgtpsch_p(iamp)*f_pdfsch_p &
-               + amp_split_wgtpsch_l(iamp)*f_pdfsch_l)/g22
+                  amp_split_wgtdegrem_lxi(iamp)*f_dsc(3)))/g22
         wgt3 = -amp_split_wgtdegrem_muF(iamp)*f_dsc(4)/g22
       end if
       if (wgt1 .ne. 0d0 .or. wgt3 .ne. 0d0) &
@@ -422,9 +406,6 @@ contains
       f_dsc(2) = f_dsc(2)*enhance
       f_dsc(3) = f_dsc(3)*enhance
       f_dsc(4) = f_dsc(4)*enhance
-      f_pdfsch_d = f_pdfsch_d*enhance
-      f_pdfsch_p = f_pdfsch_p*enhance
-      f_pdfsch_l = f_pdfsch_l*enhance
     end if
     call cpu_time(tAfter)
     tf_nb = tf_nb + (tAfter - tBefore)
@@ -443,8 +424,6 @@ contains
     double precision prefact_deg_slxi, prefact_deg_sxi
     integer i
     parameter(pi=3.1415926535897932385d0)
-! prefactors for the PDF scheme
-    double precision prefact_pdfsch_d, prefact_pdfsch_p, prefact_pdfsch_l
     call cpu_time(tBefore)
 
 ! f_* multiplication factors for real-emission, soft counter, ... etc.
@@ -524,25 +503,6 @@ contains
                    stored_event_jacobian(soft_collinear_counterevent)/ &
                    (event_shat(soft_collinear_counterevent)/(32*pi**2))* &
                    fkssymmetryfactorDeg*vegas_wgt
-! prefactor for the PDF scheme
-        prefact_pdfsch_d = event_xi_norm(collinear_counterevent)/ &
-                           xiScut_used/deltaS
-        f_pdfsch_d = prefact_pdfsch_d* &
-                     stored_event_jacobian(soft_collinear_counterevent)/ &
-                     (event_shat(soft_collinear_counterevent)/(32*pi**2))* &
-                     fkssymmetryfactorDeg*vegas_wgt
-        prefact_pdfsch_p = event_xi_norm(collinear_counterevent)* &
-                           dlog(xiScut_used)/xiScut_used/deltaS
-        f_pdfsch_p = prefact_pdfsch_p* &
-                     stored_event_jacobian(soft_collinear_counterevent)/ &
-                     (event_shat(soft_collinear_counterevent)/(32*pi**2))* &
-                     fkssymmetryfactorDeg*vegas_wgt
-        prefact_pdfsch_l = event_xi_norm(collinear_counterevent)* &
-                           dlog(xiScut_used)**2/2d0/xiScut_used/deltaS
-        f_pdfsch_l = prefact_pdfsch_l* &
-                     stored_event_jacobian(soft_collinear_counterevent)/ &
-                     (event_shat(soft_collinear_counterevent)/(32*pi**2))* &
-                     fkssymmetryfactorDeg*vegas_wgt
       else
         f_c = 0d0
         f_dc = 0d0

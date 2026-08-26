@@ -175,12 +175,6 @@ c Matrix-element and subtraction state.
       common /to_amp_split_deg/amp_split_wgtdegrem_xi,
      $     amp_split_wgtdegrem_lxi,amp_split_wgtdegrem_muf
 
-      double precision amp_split_wgtpsch_p(amp_split_size)
-      double precision amp_split_wgtpsch_l(amp_split_size)
-      double precision amp_split_wgtpsch_d(amp_split_size)
-      common /to_amp_split_dis/amp_split_wgtpsch_p,
-     $     amp_split_wgtpsch_l,amp_split_wgtpsch_d
-
       double precision amp_split_soft(amp_split_size)
       double precision amp_split_finite_ml(amp_split_size)
       double precision amp_split_poles_fks(amp_split_size,2)
@@ -195,10 +189,8 @@ c Matrix-element and subtraction state.
 
       double precision f_b,f_nb
       double precision f_r,f_s,f_c,f_dc,f_sc,f_dsc(4)
-      double precision f_pdfsch_d,f_pdfsch_p,f_pdfsch_l
       common /factor_nbody/f_b,f_nb
       common /factor_n1body/f_r,f_s,f_c,f_dc,f_sc,f_dsc
-      common /factor_pdfsch/f_pdfsch_d,f_pdfsch_p,f_pdfsch_l
 
       double precision fkssymmetryfactor,fkssymmetryfactorborn
       double precision fkssymmetryfactordeg

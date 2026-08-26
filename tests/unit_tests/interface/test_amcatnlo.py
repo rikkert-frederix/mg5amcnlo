@@ -125,6 +125,15 @@ class TestMadEventCmd(unittest.TestCase):
         for parameter in run_mecmd.FNLO_OMITTED_RUN_CARD_PARAMETERS:
             self.assertNotIn(parameter, include_text)
 
+    def test_fnlo_rejects_non_msbar_pdf_scheme(self):
+        """The reduced fNLO template supports MSbar factorization only."""
+
+        run_card = banner_mod.RunCardNLO()
+        run_card.set('pdfscheme', 1)
+        with self.assertRaisesRegex(
+                banner_mod.InvalidRunCard, 'MSbar PDF factorization scheme'):
+            run_mecmd.prepare_fixed_order_only_run_card(run_card)
+
     def test_fnlo_exporter_and_template(self):
         """The fNLO factory route uses the fixed-order-only template."""
 

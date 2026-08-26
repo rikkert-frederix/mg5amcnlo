@@ -1,6 +1,6 @@
 module run_state
   use fnlo_runtime_common, only: run_seed_kind, &
-                                 lpp, ebeam, q2fact, lhaid, pdfscheme, pdlabel, asmz, nloop, &
+                                 lpp, ebeam, q2fact, lhaid, pdlabel, asmz, nloop, &
                                  iseed
   implicit none
   private
@@ -21,7 +21,7 @@ module run_state
   public :: jetalgo, jetradius, ptj, etaj, ptl, etal, drll, drll_sf
   public :: mll, mll_sf, gamma_is_j, ptgmin, r0gamma, xn, epsgamma
   public :: etagamma, isoem, maxjetflavor
-  public :: lhaid, pdfscheme, pdlabel
+  public :: lhaid, pdlabel
   public :: asmz, nloop, iseed
 
   double precision :: scale
@@ -131,7 +131,6 @@ contains
     isoem = .false.
     maxjetflavor = 0
     lhaid = 0
-    pdfscheme = 0
     pdlabel = ''
     asmz = 0d0
     nloop = 0

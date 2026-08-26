@@ -158,6 +158,7 @@ FNLO_UNSUPPORTED_RUN_CARD_PARAMETERS = frozenset({
 # RunCardNLO keeps these compatibility aliases in sync with the live fNLO
 # parameters.  The aliases themselves must not become Fortran assignments.
 FNLO_UNUSED_RUN_CARD_PARAMETERS = frozenset({
+    'pdfscheme',
     'muf_ref_fixed', 'muf_over_ref',
     'rw_fscale_down', 'rw_fscale_up',
     'rw_rscale_down', 'rw_rscale_up',
@@ -191,6 +192,11 @@ def prepare_fixed_order_only_run_card(run_card):
         raise banner_mod.InvalidRunCard(
             'Jet matching and merging (ickkw=%s) are not available for '
             'fNLO outputs' % run_card['ickkw'])
+
+    if run_card['pdfscheme'] != 0:
+        raise banner_mod.InvalidRunCard(
+            'fNLO supports the MSbar PDF factorization scheme only; '
+            'pdfscheme must be 0')
 
     beam_types = (run_card['lpp1'], run_card['lpp2'])
     unsupported_beams = sorted(set(
@@ -3482,7 +3488,9 @@ RESTART = %(mint_mode)s
         # Collect the plots and put them in the Events/run* folder
         self.combine_plots_FO(folder_name,jobs)
         # PineAPPL remains available to the full NLO template only.
-        if not self.fixed_order_only and self.run_card['pineappl']:
+        fixed_order_only = is_fixed_order_only(
+            self.me_dir, getattr(self, 'proc_characteristics', None))
+        if not fixed_order_only and self.run_card['pineappl']:
             cross=self.cross_sect_dict['xsect']
             error=self.cross_sect_dict['errt']
             self.pineappl_combine(cross,error,jobs)

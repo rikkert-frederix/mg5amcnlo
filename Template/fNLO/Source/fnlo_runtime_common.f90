@@ -4,7 +4,7 @@ module fnlo_runtime_common
 
   integer, parameter, public :: run_seed_kind = selected_int_kind(18)
   public :: lpp, ebeam, q2fact
-  public :: lhaid, pdfscheme, pdlabel
+  public :: lhaid, pdlabel
   public :: asmz, nloop, iseed, random_offset_split
   public :: cmass, bmass
   public :: tBorn, tIS, tReal, tCount, tf_nb, tf_all, t_as
@@ -15,9 +15,9 @@ module fnlo_runtime_common
   double precision, target :: ebeam(2), q2fact(2)
   common/to_collider/ebeam, q2fact, lpp
 
-  integer, target :: lhaid, pdfscheme
+  integer, target :: lhaid
   character(len=7), target :: pdlabel
-  common/to_pdf/lhaid, pdfscheme, pdlabel
+  common/to_pdf/lhaid, pdlabel
 
   double precision, target :: asmz
   integer, target :: nloop

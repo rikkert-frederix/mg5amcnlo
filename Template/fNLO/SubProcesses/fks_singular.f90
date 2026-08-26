@@ -3,15 +3,14 @@ module fks_singular_module
                                 lmaxconfigs, fks_configs, nsplitorders, &
                                 qcd_pos, amp_split_size, &
                                 validate_process_dimensions
-  use run_state
-  use timing_state
+  use run_state, only: q2fact, scale
+  use timing_state, only: tOLP
   use mint_module, only: maxchannels
   use fks_metadata, only: validate_fks_metadata
   use split_orders, only: amp_split_pos_to_orders
   use kin_functions_module, only: dot => dot_impl
   use phase_space_kinematics, only: getaziangles
-  use fks_qcd_splitting, only: xkplus, xklog, xkdelta, AP_reduced, &
-                                AP_reduced_prime, &
+  use fks_qcd_splitting, only: AP_reduced, AP_reduced_prime, &
                                 Qterms_reduced_timelike, &
                                 Qterms_reduced_spacelike
   use fks_random_module, only: random_unit_interval
@@ -20,9 +19,8 @@ module fks_singular_module
                             set_fks_sij_partition_state, fks_sij_impl
   use FKSParams, only: use_poly_virtual
   use chooser_functions_module, only: get_mother_colour_impl, set_pdg_impl
-  use fks_model_state_module, only: g => strong_coupling, &
-                                    nf => active_flavours, external_masses, &
-                                    validate_fks_model_state
+  use fks_model_state_module, only: g => strong_coupling, active_flavours, &
+                                    external_masses, validate_fks_model_state
   use fnlo_process_common, only: nfksprocess, i_fks, j_fks, &
                                  soft_counterevent, &
                                  soft_collinear_counterevent, real_event, &
@@ -54,8 +52,7 @@ module fks_singular_module
                                  amp_split_wgtdegrem_xi, &
                                  amp_split_wgtdegrem_lxi, &
                                  amp_split_wgtdegrem_muf, &
-                                 amp_split_wgtpsch_p, amp_split_wgtpsch_l, &
-                                 amp_split_wgtpsch_d, amp_split_soft, &
+                                 amp_split_soft, &
                                  amp_split_finite_ml, amp_split_poles_fks, &
                                  split_type_used, config_mass, &
                                  config_width, config_forest, config_sprop, &
@@ -570,7 +567,7 @@ contains
 
 
 
-    double precision shattmp, oo2pi, z, t, ap(2), apprime(2), xkkernp(2), xkkernd(2), xkkernl(2), xnorm
+    double precision shattmp, oo2pi, z, t, ap(2), apprime(2), xnorm
 
 ! Colour representations of i_fks, j_fks and the FKS mother
     complex(kind=kind(0d0)) wgt1(2)
@@ -582,27 +579,13 @@ contains
     complex(kind=kind(0d0)) ans_extra_cnt(2, nsplitorders)
 
     double precision amp_split_collrem_xi(amp_split_size), amp_split_collrem_lxi(amp_split_size)
-! amp_split for the PDF scheme
     double precision prefact_xi
-
-
-    logical firsttime_pdf
-    data firsttime_pdf/.true./
-
-! The fixed-order template supports the MSbar (0) and DIS (1) schemes.
-    if (firsttime_pdf) then
-      write (*, *) 'PDFscheme', pdfscheme
-      firsttime_pdf = .false.
-    end if
 
     amp_split_collrem_xi(1:amp_split_size) = 0d0
     amp_split_collrem_lxi(1:amp_split_size) = 0d0
     amp_split_wgtdegrem_xi(1:amp_split_size) = 0d0
     amp_split_wgtdegrem_lxi(1:amp_split_size) = 0d0
     amp_split_wgtdegrem_muF(1:amp_split_size) = 0d0
-    amp_split_wgtpsch_p(1:amp_split_size) = 0d0
-    amp_split_wgtpsch_l(1:amp_split_size) = 0d0
-    amp_split_wgtpsch_d(1:amp_split_size) = 0d0
 
     p_born_used(:, :) = p_born(:, :)
 
@@ -640,14 +623,6 @@ contains
     t = one
     call AP_reduced(m_type, i_type, t, z, g, ap)
     call AP_reduced_prime(m_type, i_type, t, z, g, apprime)
-
-! call the PDF-scheme kernels here
-!   p-> (/1/(1-z)/)_+
-!   l-> (/log(1-z)/(1-z)/)_+
-!   d-> delta(1-z)
-    call xkplus(PDFscheme, m_type, i_type, z, g, nf, xkkernp)
-    call xkdelta(PDFscheme, m_type, i_type, g, xkkernd)
-    call xklog(PDFscheme, m_type, i_type, z, g, nf, xkkernl)
 
     collrem_xi = 0.d0
     collrem_lxi = 0.d0
@@ -711,21 +686,6 @@ contains
     amp_split_wgtdegrem_muF(1:amp_split_size) = &
       amp_split_wgtdegrem_muF(1:amp_split_size) - &
       oo2pi*dble(amp_split_cnt(1:amp_split_size, 1, iord))*ap(iap)*xnorm
-! amp split for the PDF scheme
-    if (PDFscheme .ne. 0) then
-      amp_split_wgtpsch_p(1:amp_split_size) = &
-        amp_split_wgtpsch_p(1:amp_split_size) - &
-        dble(amp_split_cnt(1:amp_split_size, 1, iord)) &
-        *xkkernp(iap)*oo2pi*xnorm
-      amp_split_wgtpsch_l(1:amp_split_size) = &
-        amp_split_wgtpsch_l(1:amp_split_size) - &
-        dble(amp_split_cnt(1:amp_split_size, 1, iord)) &
-        *xkkernl(iap)*oo2pi*xnorm
-      amp_split_wgtpsch_d(1:amp_split_size) = &
-        amp_split_wgtpsch_d(1:amp_split_size) - &
-        dble(amp_split_cnt(1:amp_split_size, 1, iord)) &
-        *xkkernd(iap)*oo2pi*xnorm
-    end if
     calculatedborn = .false.
 
     return
@@ -1304,9 +1264,10 @@ contains
 
     c(0) = CA
     c(1) = CF
-    gamma(0) = (11d0*CA - 2d0*Nf)/6d0
+    gamma(0) = (11d0*CA - 2d0*active_flavours)/6d0
     gamma(1) = CF*3d0/2d0
-    gammap(0) = (67d0/9d0 - 2d0*PI**2/3d0)*CA - 23d0/18d0*Nf
+    gammap(0) = (67d0/9d0 - 2d0*PI**2/3d0)*CA - &
+                23d0/18d0*active_flavours
     gammap(1) = (13/2d0 - 2d0*PI**2/3d0)*CF
 
 ! Beta_0 defined according to (MadFKS.C.5)

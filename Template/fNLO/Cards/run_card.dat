@@ -58,7 +58,6 @@
  %(lhaid)s  = lhaid   ! If pdlabel=lhapdf, this is the lhapdf number. Only 
               ! numbers for central PDF sets are allowed. Can be a list; 
               ! PDF sets beyond the first are included via reweighting.
-  0	= pdfscheme ! the scheme of the input PDFs. 0->MSbar; 1->DIS
 #***********************************************************************
 # Renormalization and factorization scales                             *
 # (Default functional form for the non-fixed scales is the sum of      *
