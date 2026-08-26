@@ -1,29 +1,13 @@
-c Python-generated declarations and COMMON boundary for iproc_map.f90.
+c Python-generated declarations and shared-state boundary for iproc_map.f90.
 
       subroutine find_iproc_map
       use iproc_map_module, only: initialize_iproc_map_workspace,
      $     map_iproc_configuration,finalize_iproc_map_workspace
+      use fnlo_runtime_common, only: xbk
+      use fnlo_process_common, only: nexternal,maxproc,fks_configs,
+     $     qcd_pos,subproc_iproc,nfksprocess,idup,
+     $     i_fks,j_fks,split_type,iproc_save,eto,etoi,maxproc_found
       implicit none
-      include 'nexternal.inc'
-      include 'genps.inc'
-      include 'nFKSconfigs.inc'
-      include 'run.inc'
-      include 'orders.inc'
-      integer iproc
-      double precision pd(0:maxproc)
-      common /subproc/ pd,iproc
-      integer nfksprocess
-      common/c_nfksprocess/nfksprocess
-      integer idup(nexternal,maxproc),mothup(2,nexternal,maxproc),
-     $     icolup(2,nexternal,maxflow),niprocs
-      common /c_leshouche_inc/idup,mothup,icolup,niprocs
-      integer i_fks,j_fks
-      common/fks_indices/i_fks,j_fks
-      logical split_type(nsplitorders)
-      common /c_split_type/split_type
-      integer iproc_save(fks_configs),eto(maxproc,fks_configs),
-     $     etoi(maxproc,fks_configs),maxproc_found
-      common/cproc_combination/iproc_save,eto,etoi,maxproc_found
       double precision dummy,dlum
 
       call initialize_iproc_map_workspace(nexternal,maxproc)
@@ -34,7 +18,8 @@ c Python-generated declarations and COMMON boundary for iproc_map.f90.
          xbk(2)=0.5d0
          dummy=dlum()
          call map_iproc_configuration(nfksprocess,qcd_pos,
-     $        split_type,idup,i_fks,j_fks,iproc,iproc_save,eto,etoi,
+     $        split_type,idup,i_fks,j_fks,subproc_iproc,iproc_save,
+     $        eto,etoi,
      $        maxproc_found)
       enddo
       call finalize_iproc_map_workspace()
@@ -46,18 +31,10 @@ c Python-generated declarations and COMMON boundary for iproc_map.f90.
       use iproc_map_module, only: initialize_flavour_workspace,
      $     read_initial_states_map,match_flavour_configuration,
      $     validate_flavour_map,finalize_flavour_workspace
+      use fnlo_process_common, only: fks_configs,maxproc,mxpdflumi,
+     $     max_nproc,flavour_map,nfksprocess,idup,niprocs,
+     $     appl_lumimap,appl_nproc,appl_nlumi
       implicit none
-      include 'nFKSconfigs.inc'
-      include 'nexternal.inc'
-      include 'genps.inc'
-      include 'pineappl_common.inc'
-      integer flavour_map(fks_configs)
-      common/c_flavour_map/flavour_map
-      integer nfksprocess
-      common/c_nfksprocess/nfksprocess
-      integer idup(nexternal,maxproc),mothup(2,nexternal,maxproc),
-     $     icolup(2,nexternal,maxflow),niprocs
-      common /c_leshouche_inc/idup,mothup,icolup,niprocs
       integer npdflumi,nmatch_total
 
       call initialize_flavour_workspace(mxpdflumi,max_nproc,

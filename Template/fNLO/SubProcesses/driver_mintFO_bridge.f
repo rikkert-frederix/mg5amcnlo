@@ -1,21 +1,9 @@
       program driver
       use driver_mintfo_module, only: run_mintfo_driver
+      use fnlo_process_common, only: nndim,flat_grid,
+     $     i_momcmp_count,xratmax,abrv,ntot,nsun,nsps,nups,neps,
+     $     n100,nddp,nqdp,nini,n10,n1,useitmax
       implicit none
-      integer nndim
-      common /tosigint/nndim
-      logical flat_grid
-      common /to_readgrid/flat_grid
-      integer i_momcmp_count
-      double precision xratmax
-      common /ccheckcnt/i_momcmp_count,xratmax
-      character(len=4) abrv
-      common /to_abrv/abrv
-      integer ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10
-      integer n1(0:9)
-      common /ups_stats/ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,
-     $     nini,n10,n1
-      logical useitmax
-      common /cuseitmax/useitmax
 
       call run_mintfo_driver(nndim,flat_grid,i_momcmp_count,
      $     xratmax,abrv,ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,
@@ -34,34 +22,13 @@
 
       double precision function sigint(xx,vegas_wgt,ifl,f)
       use driver_mintfo_module, only: sigint_impl
-      use mint_module, only: ndimmax,nintegrals,maxchannels
+      use mint_module, only: ndimmax,nintegrals
+      use fnlo_process_common, only: ini_fin_fks,nndim,nbody,
+     $     p1_cnt,p_born,virtual_over_born,calculated_born,abrv,
+     $     wgt_me_born,wgt_me_real,fold,use_evpr
       implicit none
-      include 'nexternal.inc'
       double precision xx(ndimmax),vegas_wgt,f(nintegrals)
       integer ifl
-      integer ini_fin_fks(maxchannels)
-      common /fks_channels/ini_fin_fks
-      integer nndim
-      common /tosigint/nndim
-      logical nbody
-      common /cnbody/nbody
-      double precision p1_cnt(0:3,nexternal,0:2),wgt_cnt(0:2)
-      double precision pswgt_cnt(0:2),jac_cnt(0:2)
-      common /counterevnts/p1_cnt,wgt_cnt,pswgt_cnt,jac_cnt
-      double precision p_born(0:3,nexternal-1)
-      common /pborn/p_born
-      double precision virtual_over_born
-      common /c_vob/virtual_over_born
-      logical calculated_born
-      common /ccalculatedborn/calculated_born
-      character(len=4) abrv
-      common /to_abrv/abrv
-      double precision wgt_me_born,wgt_me_real
-      common /c_wgt_me_tree/wgt_me_born,wgt_me_real
-      integer fold,ifold_counter
-      common /cfl/fold,ifold_counter
-      logical use_evpr
-      common /to_use_evpr/use_evpr
 
       sigint=sigint_impl(xx,vegas_wgt,ifl,f,ini_fin_fks,nndim,
      $     nbody,p1_cnt,p_born,virtual_over_born,calculated_born,
@@ -73,39 +40,12 @@
       subroutine get_user_params(ncall,nitmax,irestart)
       use driver_mintfo_module, only: init_driver_generated_data,
      $     get_user_params_impl
-      use mint_module, only: maxchannels
+      use fnlo_process_common, only: ini_fin_fks,isum_hel,
+     $     multi_channel,use_cut,lbw,abrv,nbody,
+     $     mapconfig=>config_map,mc_hel
+      use fnlo_runtime_common, only: random_offset_split
       implicit none
-      include 'genps.inc'
-      include 'nexternal.inc'
-      include 'nFKSconfigs.inc'
       integer ncall,nitmax,irestart
-      integer ini_fin_fks(maxchannels)
-      common /fks_channels/ini_fin_fks
-      integer isum_hel
-      logical multi_channel
-      common /to_matrix/isum_hel,multi_channel
-      integer use_cut
-      common /to_weight/use_cut
-      integer lbw(0:nexternal)
-      common /to_bw/lbw
-      character(len=4) abrv
-      common /to_abrv/abrv
-      logical nbody
-      common /cnbody/nbody
-      double precision pmass(-nexternal:0,lmaxconfigs,0:fks_configs)
-      double precision pwidth(-nexternal:0,lmaxconfigs,0:fks_configs)
-      integer iforest(2,-max_branch:-1,lmaxconfigs,0:fks_configs)
-      integer sprop(-max_branch:-1,lmaxconfigs,0:fks_configs)
-      integer tprid(-max_branch:-1,lmaxconfigs,0:fks_configs)
-      integer mapconfig(0:lmaxconfigs,0:fks_configs)
-      common /c_configurations/pmass,pwidth,iforest,sprop,tprid,
-     $     mapconfig
-      double precision volh
-      integer mc_hel,ihel
-      logical fillh
-      common /mc_int2/volh,mc_hel,ihel,fillh
-      integer random_offset_split
-      common /c_random_offset_split/random_offset_split
 
       call init_driver_generated_data(mapconfig)
       call get_user_params_impl(ncall,nitmax,irestart,ini_fin_fks,

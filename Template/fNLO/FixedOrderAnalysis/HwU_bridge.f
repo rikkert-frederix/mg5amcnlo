@@ -2,25 +2,22 @@ c Process-generated PineAPPL declarations are isolated here so that the
 c histogram implementation in HwU.f90 has no generated INCLUDE files.
 
       subroutine hwu_pineappl_inithist
+      use run_state, only: pineappl
+      use fnlo_process_common, only: appl_obs_nbins
       implicit none
-      include 'reweight_pineappl.inc'
-      include 'pineappl_common.inc'
-      logical pineappl
-      common /for_pineappl/ pineappl
 
       if (pineappl) appl_obs_nbins = 0
       end
 
 
       subroutine hwu_pineappl_book(label,title_l,nbin_l,xmin,xmax)
+      use run_state, only: pineappl
+      use fnlo_process_common, only: appl_obs_nbins,appl_obs_bins,
+     $     appl_obs_min,appl_obs_max,nh_obs,ih_obs
       implicit none
       integer label,nbin_l,i
       character(len=*) title_l
       double precision xmin,xmax,del
-      include 'reweight_pineappl.inc'
-      include 'pineappl_common.inc'
-      logical pineappl
-      common /for_pineappl/ pineappl
 
       if (pineappl.and.index(title_l,'Born').eq.0) then
          if (appl_obs_nbins.eq.0) then
@@ -45,13 +42,12 @@ c histogram implementation in HwU.f90 has no generated INCLUDE files.
 
 
       subroutine hwu_pineappl_fill(label,x)
+      use run_state, only: pineappl
+      use fnlo_process_common, only: nh_obs,ih_obs,appl_obs_num,
+     $     appl_obs_histo
       implicit none
       integer label,j
       double precision x
-      include 'reweight_pineappl.inc'
-      include 'pineappl_common.inc'
-      logical pineappl
-      common /for_pineappl/ pineappl
 
       if (pineappl) then
          do j=1,nh_obs

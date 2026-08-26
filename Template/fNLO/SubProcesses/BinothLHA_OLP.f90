@@ -2,15 +2,13 @@ module binoth_lha_olp_backend
   use FKSParams, only: IRPoleCheckThreshold
   use process_dimensions, only: nexternal
   use fks_singular_module, only: getpoles
+  use fnlo_process_common, only: qes2, isum_hel
   implicit none
   private
 
   logical, save :: firsttime_pole = .true.
   logical, save :: firsttime_init = .true.
   integer, save :: nbad = 0
-
-  double precision :: qes2
-  common /coupl_es/ qes2
 
   interface
     subroutine binoth_lha_update_couplings(mu_r_value, alpha_s)
@@ -39,11 +37,6 @@ contains
     double precision :: mu_r_value, alpha_s
     double precision :: tolerance, madfks_single, madfks_double
     integer :: i, j
-    integer :: isum_hel
-    logical :: multi_channel
-
-    common /to_matrix/ isum_hel, multi_channel
-
     if (isum_hel /= 0) then
       write (*,*) 'Can only do explicit helicity sum' // &
            ' for Virtual corrections', isum_hel

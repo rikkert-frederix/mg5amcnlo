@@ -11,17 +11,11 @@ module setscales_module
   use alfas_functions_module, only: alphas
   use kin_functions_module, only: et => et_impl
   use fixed_order_user_hooks, only: fixed_user_scale
+  use fnlo_process_common, only: mur_id_str, muf1_id_str, &
+                                 muf2_id_str, qes_id_str, temp_scale_id, &
+                                 calculated_born
   implicit none
   private
-
-  character(len=80) :: mur_id_str, muf1_id_str, muf2_id_str
-  character(len=80) :: qes_id_str, temp_scale_id
-  common /cscales_id_string/ mur_id_str, muf1_id_str, muf2_id_str, &
-       qes_id_str
-  common /ctemp_scale_id/ temp_scale_id
-
-  logical :: calculated_born
-  common /ccalculatedBorn/ calculated_born
 
   logical :: first_set_alphas = .true.
   double precision :: current_g = 0d0

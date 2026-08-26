@@ -147,8 +147,7 @@ contains
   implicit none
 ! This includes the 'nexternal' parameter that labels the number of
 ! particles in the (n+1)-body process
-! This include file contains common blocks filled with the cuts defined
-! in the run_card.dat
+! The cut state is filled from run_card.dat.
 !
 ! This is an array which is '-1' for initial state and '1' for final
 ! state particles

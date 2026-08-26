@@ -3,6 +3,7 @@
 ! demand; the initial capacities retain the layout limits of the original
 ! fixed-form implementation.
 module mc_integer_module
+  use fnlo_process_common, only: flat_grid
   implicit none
   private
 
@@ -123,8 +124,6 @@ contains
     character(len=1) :: cdum
     character(len=3) :: action
     logical :: grid_file_open
-    logical :: flat_grid
-    common /to_readgrid/ flat_grid
 
     if (niint_thisd < 1) then
       write (*, *) 'ERROR in get_MC_integer: invalid interval count', &

@@ -1,9 +1,7 @@
       program driver
       use check_poles_module, only: run_check_poles
+      use fnlo_process_common, only: p_born
       implicit none
-      include 'nexternal.inc'
-      double precision p_born(0:3,nexternal-1)
-      common /pborn/p_born
 
       call run_check_poles(p_born)
       end
@@ -11,8 +9,8 @@
 
       subroutine init_check_poles_data_bridge()
       use check_poles_module, only: initialize_check_poles_data
+      use fnlo_process_common, only: nexternal
       implicit none
-      include 'nexternal.inc'
       include 'coupl.inc'
       double precision zero,pmass(nexternal)
       parameter (zero=0d0)

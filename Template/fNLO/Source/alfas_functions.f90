@@ -1,4 +1,5 @@
 module alfas_functions_module
+  use fnlo_runtime_common, only: cmass, bmass, asmz, nloop
   implicit none
   private
 
@@ -23,9 +24,6 @@ module alfas_functions_module
        1.22140465909230d0, 0.99743079911360d0, &
        0.66077962451190d0 /)
 
-  ! Keep the legacy threshold COMMON visible to external fixed-form callers.
-  real(dp) :: cmass, bmass
-  common /qmass/ cmass, bmass
   logical :: qmass_initialized = .false.
 
   real(dp) :: cached_asmz = 0d0
@@ -51,9 +49,6 @@ contains
   double precision function alphas(q)
     implicit none
     real(dp), intent(in) :: q
-    real(dp) :: asmz
-    integer :: nloop
-    common /a_block/ asmz, nloop
 
     alphas = alphas_from_grids_impl(q, asmz, nloop)
   end function alphas

@@ -1,9 +1,0 @@
-*     -*-fortran-*-
-
-      real tBefore, tAfter
-      real tBorn,tIS,tReal,tCount,tf_nb,tf_all,t_as,tr_s,tr_pdf
-     &     ,t_plot,t_cuts,t_isum,tOLP,tGenPS
-     &     ,t_coupl
-      common/timings/tBorn,tIS,tReal,tCount,tf_nb,tf_all,t_as
-     $     ,tr_s,tr_pdf,t_plot,t_cuts,t_isum,tOLP,tGenPS
-     $     ,t_coupl

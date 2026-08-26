@@ -39,10 +39,10 @@ endif
 
 all: $(LIBDIR)$(LIBRARY)
 
-pdfwrap_bridge.o: pdfwrap.o pdf.inc ../alfas.inc
+pdfwrap_bridge.o: pdfwrap.o $(LIBDIR)fnlo_runtime_common.mod
 pdf.o pdfwrap.o: NNPDFDriver.o
 pdg2pdf.o: pdf.o
-pdg2pdf_bridge.o: pdg2pdf.o
+pdg2pdf_bridge.o: pdg2pdf.o $(LIBDIR)fnlo_runtime_common.mod
 pdg2pdf_lhapdf6_bridge.o: pdg2pdf_lhapdf6.o
 
 $(LIBDIR)$(LIBRARY): $(PDF)

@@ -71,8 +71,7 @@ contains
     integer iPDG(nexternal)
     double precision p(0:4, nexternal)
     double precision wgts(*)
-    integer i, l, nwgt_analysis
-    common/c_analysis/nwgt_analysis
+    integer i, l
     double precision ppl(0:3), pplb(0:3), ppv(0:3), ycut, xmv, ptv, yv &
     & , etav, ptl, yl, etal, ptlb, ylb, etalb, ptpair, azi, azinorm, xmll &
     & , detallb

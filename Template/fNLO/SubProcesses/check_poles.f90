@@ -8,6 +8,10 @@ module check_poles_module
   use FKSParams, only: paramFileName, IRPoleCheckThreshold, &
        FKSParamReader
   use fks_singular_module, only: setfksfactor, ran2
+  use fnlo_process_common, only: calculatedborn => calculated_born, &
+                                 nfksprocess, qes2, force_polecheck, &
+                                 polecheck_passed, &
+                                 ret_code_ml => ret_code_common
   implicit none
   private
 
@@ -30,21 +34,6 @@ module check_poles_module
   double precision :: rambo_two_pi = 0d0
   double precision :: rambo_log_pi = 0d0
   logical :: rambo_initialized = .false.
-
-  logical :: calculatedborn
-  common /ccalculatedborn/ calculatedborn
-
-  integer :: nfksprocess
-  common /c_nfksprocess/ nfksprocess
-
-  double precision :: qes2
-  common /coupl_es/ qes2
-
-  logical :: force_polecheck, polecheck_passed
-  common /to_polecheck/ force_polecheck, polecheck_passed
-
-  integer :: ret_code_ml
-  common /to_ret_code/ ret_code_ml
 
   public :: run_check_poles
   public :: initialize_check_poles_data

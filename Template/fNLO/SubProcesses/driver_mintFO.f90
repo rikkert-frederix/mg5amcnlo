@@ -37,6 +37,7 @@ module driver_mintfo_module
                                  get_wgt_no_nbody, fill_plots, fill_mint_function, &
                                  fill_configurations_common, setfksfactor, ran2
   use madfks_plot_module, only: topout_impl
+  use fnlo_process_common, only: nfksprocess
   implicit none
   private
 
@@ -47,9 +48,6 @@ module driver_mintfo_module
   logical, save :: sigint_first_time = .true.
   logical, save :: born_map_first_time = .true.
   logical, save :: sum_fks_directories = .false.
-  integer :: nfksprocess
-  common/c_nfksprocess/nfksprocess
-
   public :: run_mintfo_driver
   public :: init_driver_generated_data
   public :: sigint_impl

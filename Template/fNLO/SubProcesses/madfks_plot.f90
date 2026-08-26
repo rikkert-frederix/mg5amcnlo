@@ -6,6 +6,7 @@ module madfks_plot_module
   use process_dimensions, only: nexternal, nincoming, &
        validate_process_dimensions
   use run_state, only: do_rwgt_pdf, do_rwgt_scale, pineappl
+  use fnlo_process_common, only: useitmax, xsecScale_acc, xsecPDFr_acc
   implicit none
   private
 
@@ -14,13 +15,6 @@ module madfks_plot_module
   integer, parameter :: pine_reset_action = 1
   integer, parameter :: pine_norm_action = 2
   integer, parameter :: pine_event_action = 3
-
-  logical :: useitmax
-  common /cuseitmax/ useitmax
-
-  double precision :: xsecScale_acc(maxscales, maxscales, maxdynscales)
-  double precision :: xsecPDFr_acc(0:maxPDFs, maxPDFsets)
-  common /scale_pdf_print/ xsecScale_acc, xsecPDFr_acc
 
   interface
     subroutine analysis_begin(nwgt, weights_info)

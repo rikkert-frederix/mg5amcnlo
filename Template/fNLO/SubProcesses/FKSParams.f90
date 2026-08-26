@@ -1,6 +1,6 @@
 !====================================================================
 !
-!  Define common block with all general parameters used by MadFKS
+!  Define the module state for general parameters used by MadFKS
 !  See their definitions in the file FKS_params.dat.
 !
 !====================================================================

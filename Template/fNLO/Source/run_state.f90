@@ -1,9 +1,12 @@
 module run_state
+  use fnlo_runtime_common, only: run_seed_kind, max_lhe_processes, &
+                                 lpp, ebeam, xbk, q2fact, lhaid, pdfscheme, pdlabel, asmz, nloop, &
+                                 iseed, pineappl, idbmup, ebmup, pdfgup, pdfsup, idwtup, nprup, &
+                                 xsecup, xerrup, xmaxup, lprup
   implicit none
   private
 
-  integer, parameter, public :: run_seed_kind = selected_int_kind(18)
-  integer, parameter, public :: max_lhe_processes = 100
+  public :: run_seed_kind, max_lhe_processes
 
   public :: reset_run_state
   public :: scale, fixed_ren_scale, fixed_fac_scale
@@ -46,12 +49,6 @@ module run_state
   double precision :: muf22_current
   double precision :: qes2_current
 
-  integer :: lpp(2)
-  double precision :: ebeam(2)
-  double precision :: xbk(2)
-  double precision :: q2fact(2)
-  common /to_collider/ ebeam, xbk, q2fact, lpp
-
   double precision :: bwcutoff
 
   logical :: do_rwgt_scale
@@ -84,34 +81,6 @@ module run_state
   logical :: isoem
 
   integer :: maxjetflavor
-
-  integer :: lhaid
-  integer :: pdfscheme
-  character(len=7) :: pdlabel
-  common /to_pdf/ lhaid, pdfscheme, pdlabel
-
-  double precision :: asmz
-  integer :: nloop
-  common /a_block/ asmz, nloop
-
-  integer(kind=run_seed_kind) :: iseed
-  common /to_seed/ iseed
-
-  logical :: pineappl
-  common /for_pineappl/ pineappl
-
-  integer :: idbmup(2)
-  double precision :: ebmup(2)
-  integer :: pdfgup(2)
-  integer :: pdfsup(2)
-  integer :: idwtup
-  integer :: nprup
-  double precision :: xsecup(max_lhe_processes)
-  double precision :: xerrup(max_lhe_processes)
-  double precision :: xmaxup(max_lhe_processes)
-  integer :: lprup(max_lhe_processes)
-  common /heprup/ idbmup, ebmup, pdfgup, pdfsup, idwtup, nprup, &
-       xsecup, xerrup, xmaxup, lprup
 
 contains
 

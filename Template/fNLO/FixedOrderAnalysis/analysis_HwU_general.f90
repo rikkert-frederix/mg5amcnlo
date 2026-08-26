@@ -5,13 +5,11 @@ module analysis_hwu_general_module
   use HwU_module, only: HwU_inithist, HwU_book, HwU_fill
   use cuts_module, only: chi_gamma_iso, iso_getdrv40, sortzv
   use kin_functions_module, only: pt => pt_impl, eta => eta_impl
+  use fnlo_process_common, only: orders_tag_plot
   implicit none
   private
 
   public :: analysis_begin, analysis_end, analysis_fill
-
-  integer :: orders_tag_plot
-  common/corderstagplot/orders_tag_plot
 
   interface
     subroutine amcatnlo_fastjetppgenkt_etamax(pqcd, nn, rfj, sycut, &

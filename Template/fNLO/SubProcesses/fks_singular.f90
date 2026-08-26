@@ -17,6 +17,36 @@ module fks_singular_module
   use FKSParams, only: use_poly_virtual
   use chooser_functions_module, only: get_mother_colour_impl, set_pdg_impl
   use madfks_plot_module, only: initplot_impl, outfun_impl
+  use fnlo_process_common, only: nfksprocess, i_fks, j_fks, &
+                                 ybst_til_tolab, ybst_til_tocm, &
+                                 sqrtshat, shat, xi_i_fks_ev, &
+                                 y_ij_fks_ev, p_i_fks_ev, p_i_fks_cnt, &
+                                 xi_i_fks_cnt, xi_i_hat_ev, &
+                                 xiimax_ev, xiimax_cnt, xinorm_ev, &
+                                 xinorm_cnt, f_b, f_nb, f_r, f_s, f_c, &
+                                 f_dc, f_sc, f_dsc, f_pdfsch_d, &
+                                 f_pdfsch_p, f_pdfsch_l, xiscut_used, &
+                                 xibsvcut_used, delta_used, xicut_used, &
+                                 fkssymmetryfactor, &
+                                 fkssymmetryfactorborn, &
+                                 fkssymmetryfactordeg, ngluons, &
+                                 rndec, this_config, &
+                                 diagramsymmetryfactor, &
+                                 calculatedborn => calculated_born, &
+                                 use_evpr, nocntevents, wgt_me_born, &
+                                 wgt_me_real, &
+                                 fold, ifold_counter, fixed_order, &
+                                 orders_tag_plot, amp_pos_plot, &
+                                 virtual_over_born, softtest, colltest, &
+                                 need_color_links, xij_aor, &
+                                 i_type, j_type, m_type, &
+                                 iextra_cnt, isplitorder_born, &
+                                 isplitorder_cnt, iden_comp, sqrtshat_ev, &
+                                 shat_ev, sqrtshat_cnt, shat_cnt, &
+                                 ycm_ev, ycm_cnt, xbjrk_ev, &
+                                 xbjrk_cnt, i_momcmp_count, xratmax, c, &
+                                 gamma, gammap, beta0, abrv, &
+                                 multi_channel, nbody
   implicit none
   private
 
@@ -113,8 +143,6 @@ module fks_singular_module
   integer, allocatable, save :: iden_real_fks(:), iden_born_fks(:)
   logical, save :: setfks_firsttime = .true.
   logical, save :: fks_singular_state_initialized = .false.
-  integer :: nfksprocess
-  common/c_nfksprocess/nfksprocess
 
   public :: compute_born
   public :: compute_nbody_noborn, compute_real_emission
@@ -141,13 +169,6 @@ contains
     double precision, intent(in) :: p(0:3, nexternal)
     double precision, intent(in) :: xi_i_fks, y_ij_fks
     integer, intent(in) :: ii_fks, jj_fks
-    integer :: i_fks, j_fks
-    double precision :: ybst_til_tolab, ybst_til_tocm, sqrtshat, shat
-    double precision :: xi_i_fks_ev, y_ij_fks_ev
-    double precision :: p_i_fks_ev(0:3), p_i_fks_cnt(0:3, 0:2)
-    common/fks_indices/i_fks, j_fks
-    common/parton_cms_stuff/ybst_til_tolab, ybst_til_tocm, sqrtshat, shat
-    common/fksvariables/xi_i_fks_ev, y_ij_fks_ev, p_i_fks_ev, p_i_fks_cnt
 
     call require_fks_singular_state()
     call initialize_fks_sij_module(nexternal, nincoming, fks_a, fks_b, &
@@ -434,14 +455,6 @@ contains
 
     double precision wgt_c
     double precision wgt1
-    double precision xiimax_cnt(0:2)
-    common/cxiimaxcnt/xiimax_cnt
-    double precision xi_i_hat_ev, xi_i_hat_cnt(0:2)
-    common/cxi_i_hat/xi_i_hat_ev, xi_i_hat_cnt
-    double precision f_b, f_nb
-    common/factor_nbody/f_b, f_nb
-    double precision xiScut_used, xiBSVcut_used
-    common/cxiScut_used/xiScut_used, xiBSVcut_used
     call cpu_time(tBefore)
     if (f_b .eq. 0d0) return
     if (xi_i_hat_ev*xiimax_cnt(0) .gt. xiBSVcut_used) return
@@ -472,14 +485,6 @@ contains
     integer iamp
 
     double precision wgt1, wgt2, wgt3, bsv_wgt, virt_wgt, born_wgt, g22, wgt4
-    double precision xiimax_cnt(0:2)
-    common/cxiimaxcnt/xiimax_cnt
-    double precision xi_i_hat_ev, xi_i_hat_cnt(0:2)
-    common/cxi_i_hat/xi_i_hat_ev, xi_i_hat_cnt
-    double precision f_b, f_nb
-    common/factor_nbody/f_b, f_nb
-    double precision xiScut_used, xiBSVcut_used
-    common/cxiScut_used/xiScut_used, xiBSVcut_used
     call cpu_time(tBefore)
     if (f_nb .eq. 0d0) return
     if (xi_i_hat_ev*xiimax_cnt(0) .gt. xiBSVcut_used) return
@@ -533,12 +538,6 @@ contains
     integer orders(nsplitorders)
     integer iamp
     double precision s_ev, p(0:3, nexternal), wgt1, fx_ev
-    integer i_fks, j_fks
-    common/fks_indices/i_fks, j_fks
-    double precision xi_i_fks_ev, y_ij_fks_ev, p_i_fks_ev(0:3), p_i_fks_cnt(0:3, 0:2)
-    common/fksvariables/xi_i_fks_ev, y_ij_fks_ev, p_i_fks_ev, p_i_fks_cnt
-    double precision f_r, f_s, f_c, f_dc, f_sc, f_dsc(4)
-    common/factor_n1body/f_r, f_s, f_c, f_dc, f_sc, f_dsc
     call cpu_time(tBefore)
     if (f_r .eq. 0d0) return
     s_ev = evaluate_fks_sij(p, i_fks, j_fks, xi_i_fks_ev, y_ij_fks_ev)
@@ -568,18 +567,6 @@ contains
     integer iamp
     double precision wgt1, s_s, fx_s, zero, g22
     parameter(zero=0d0)
-    double precision xiScut_used, xiBSVcut_used
-    common/cxiScut_used/xiScut_used, xiBSVcut_used
-    double precision xiimax_cnt(0:2)
-    common/cxiimaxcnt/xiimax_cnt
-    double precision xi_i_hat_ev, xi_i_hat_cnt(0:2)
-    common/cxi_i_hat/xi_i_hat_ev, xi_i_hat_cnt
-    double precision xi_i_fks_ev, y_ij_fks_ev, p_i_fks_ev(0:3), p_i_fks_cnt(0:3, 0:2)
-    common/fksvariables/xi_i_fks_ev, y_ij_fks_ev, p_i_fks_ev, p_i_fks_cnt
-    integer i_fks, j_fks
-    common/fks_indices/i_fks, j_fks
-    double precision f_r, f_s, f_c, f_dc, f_sc, f_dsc(4)
-    common/factor_n1body/f_r, f_s, f_c, f_dc, f_sc, f_dsc
     call cpu_time(tBefore)
     if (f_s .eq. 0d0) return
     if (xi_i_hat_ev*xiimax_cnt(0) .gt. xiScut_used) return
@@ -617,14 +604,6 @@ contains
 ! amp_split for the PDF scheme
     double precision one, s_c, fx_c, deg_xi_c, deg_lxi_c, wgt1, wgt3, g22
     parameter(one=1d0)
-    integer i_fks, j_fks
-    common/fks_indices/i_fks, j_fks
-    double precision xi_i_fks_ev, y_ij_fks_ev, p_i_fks_ev(0:3), p_i_fks_cnt(0:3, 0:2)
-    common/fksvariables/xi_i_fks_ev, y_ij_fks_ev, p_i_fks_ev, p_i_fks_cnt
-    double precision xi_i_fks_cnt(0:2)
-    common/cxiifkscnt/xi_i_fks_cnt
-    double precision f_r, f_s, f_c, f_dc, f_sc, f_dsc(4)
-    common/factor_n1body/f_r, f_s, f_c, f_dc, f_sc, f_dsc
     double precision pmass(nexternal)
     call cpu_time(tBefore)
     pmass = external_masses
@@ -675,23 +654,7 @@ contains
 ! amp_split for the PDF scheme
     double precision zero, one, s_sc, fx_sc, wgt1, wgt3, deg_xi_sc, deg_lxi_sc, g22
     parameter(zero=0d0, one=1d0)
-    double precision xi_i_fks_ev, y_ij_fks_ev, p_i_fks_ev(0:3), p_i_fks_cnt(0:3, 0:2)
-    common/fksvariables/xi_i_fks_ev, y_ij_fks_ev, p_i_fks_ev, p_i_fks_cnt
-    integer i_fks, j_fks
-    common/fks_indices/i_fks, j_fks
-    double precision xiScut_used, xiBSVcut_used
-    common/cxiScut_used/xiScut_used, xiBSVcut_used
-    double precision xi_i_fks_cnt(0:2)
-    common/cxiifkscnt/xi_i_fks_cnt
-    double precision xiimax_cnt(0:2)
-    common/cxiimaxcnt/xiimax_cnt
-    double precision xi_i_hat_ev, xi_i_hat_cnt(0:2)
-    common/cxi_i_hat/xi_i_hat_ev, xi_i_hat_cnt
-    double precision f_r, f_s, f_c, f_dc, f_sc, f_dsc(4)
-    common/factor_n1body/f_r, f_s, f_c, f_dc, f_sc, f_dsc
 ! PDF scheme prefactors
-    double precision f_pdfsch_d, f_pdfsch_p, f_pdfsch_l
-    common/factor_pdfsch/f_pdfsch_d, f_pdfsch_p, f_pdfsch_l
     double precision pmass(nexternal)
     pmass = external_masses
     call cpu_time(tBefore)
@@ -827,25 +790,8 @@ contains
     logical firsttime
     data firsttime/.true./
     parameter(pi=3.1415926535897932385d0)
-    double precision xinorm_ev
-    common/cxinormev/xinorm_ev
-    double precision xiimax_ev
-    common/cxiimaxev/xiimax_ev
-    double precision xiScut_used, xiBSVcut_used
-    common/cxiScut_used/xiScut_used, xiBSVcut_used
-    double precision ybst_til_tolab, ybst_til_tocm, sqrtshat, shat
-    common/parton_cms_stuff/ybst_til_tolab, ybst_til_tocm, sqrtshat, shat
-    double precision fkssymmetryfactor, fkssymmetryfactorBorn, fkssymmetryfactorDeg
-    integer ngluons, nquarks(-6:6)
-    common/numberofparticles/fkssymmetryfactor, fkssymmetryfactorBorn, fkssymmetryfactorDeg, ngluons, nquarks
-    double precision f_b, f_nb
-    common/factor_nbody/f_b, f_nb
-    logical pineappl
-    common/for_pineappl/pineappl
     logical needrndec
     parameter(needrndec=.false.)
-    double precision rndec(10)
-    common/crndec/rndec
     integer orders(nsplitorders)
 !
     call cpu_time(tBefore)
@@ -887,20 +833,6 @@ contains
     integer inoborn_cnt, i, imode
     data inoborn_cnt/0/
     double precision p_born_used(0:3, nexternal - 1)
-    integer this_config
-    common/to_mconfigs/this_config
-    double precision diagramsymmetryfactor
-    common/dsymfactor/diagramsymmetryfactor
-    double precision f_b, f_nb
-    common/factor_nbody/f_b, f_nb
-    double precision f_r, f_s, f_c, f_dc, f_sc, f_dsc(4)
-    common/factor_n1body/f_r, f_s, f_c, f_dc, f_sc, f_dsc
-    double precision f_pdfsch_d, f_pdfsch_p, f_pdfsch_l
-    common/factor_pdfsch/f_pdfsch_d, f_pdfsch_p, f_pdfsch_l
-    logical calculatedBorn
-    common/ccalculatedBorn/calculatedBorn
-    logical use_evpr
-    common/to_use_evpr/use_evpr
 
     call cpu_time(tBefore)
 
@@ -1018,40 +950,8 @@ contains
     double precision prefact_deg_slxi, prefact_deg_sxi
     integer i
     parameter(pi=3.1415926535897932385d0)
-    double precision xi_i_fks_ev, y_ij_fks_ev
-    double precision p_i_fks_ev(0:3), p_i_fks_cnt(0:3, 0:2)
-    common/fksvariables/xi_i_fks_ev, y_ij_fks_ev, p_i_fks_ev, p_i_fks_cnt
-    integer i_fks, j_fks
-    common/fks_indices/i_fks, j_fks
-    double precision xi_i_fks_cnt(0:2)
-    common/cxiifkscnt/xi_i_fks_cnt
-    double precision xinorm_ev
-    common/cxinormev/xinorm_ev
-    double precision xiimax_ev
-    common/cxiimaxev/xiimax_ev
-    double precision xiimax_cnt(0:2)
-    common/cxiimaxcnt/xiimax_cnt
-    double precision xinorm_cnt(0:2)
-    common/cxinormcnt/xinorm_cnt
-    double precision delta_used
-    common/cdelta_used/delta_used
-    double precision xicut_used
-    common/cxicut_used/xicut_used
-    double precision xiScut_used, xiBSVcut_used
-    common/cxiScut_used/xiScut_used, xiBSVcut_used
-    double precision ybst_til_tolab, ybst_til_tocm, sqrtshat, shat
-    common/parton_cms_stuff/ybst_til_tolab, ybst_til_tocm, sqrtshat, shat
-    double precision fkssymmetryfactor, fkssymmetryfactorBorn, fkssymmetryfactorDeg
-    integer ngluons, nquarks(-6:6)
-    common/numberofparticles/fkssymmetryfactor, fkssymmetryfactorBorn, fkssymmetryfactorDeg, ngluons, nquarks
-    logical nocntevents
-    common/cnocntevents/nocntevents
-    double precision f_r, f_s, f_c, f_dc, f_sc, f_dsc(4)
-    common/factor_n1body/f_r, f_s, f_c, f_dc, f_sc, f_dsc
 ! prefactors for the PDF scheme
     double precision prefact_pdfsch_d, prefact_pdfsch_p, prefact_pdfsch_l
-    double precision f_pdfsch_d, f_pdfsch_p, f_pdfsch_l
-    common/factor_pdfsch/f_pdfsch_d, f_pdfsch_p, f_pdfsch_l
     double precision pmass(nexternal)
     pmass = external_masses
     call cpu_time(tBefore)
@@ -1202,17 +1102,6 @@ contains
     logical foundIt, foundOrders
     double precision wgt1, wgt2, wgt3
     integer orders(nsplitorders)
-    integer nFKSprocess
-    common/c_nFKSprocess/nFKSprocess
-    double precision ybst_til_tolab, ybst_til_tocm, sqrtshat, shat
-    common/parton_cms_stuff/ybst_til_tolab, ybst_til_tocm, sqrtshat, shat
-    double precision fkssymmetryfactor, fkssymmetryfactorBorn, fkssymmetryfactorDeg
-    integer ngluons, nquarks(-6:6)
-    common/numberofparticles/fkssymmetryfactor, fkssymmetryfactorBorn, fkssymmetryfactorDeg, ngluons, nquarks
-    double precision wgt_ME_born, wgt_ME_real
-    common/c_wgt_ME_tree/wgt_ME_born, wgt_ME_real
-    integer fold, ifold_counter
-    common/cfl/fold, ifold_counter
 
     if (wgt1 .eq. 0d0 .and. wgt2 .eq. 0d0 .and. wgt3 .eq. 0d0) return
 ! Check for NaN's and INF's. Simply skip the contribution
@@ -1349,8 +1238,6 @@ contains
     logical virt_found
     double precision xlum, dlum, mu2_r, mu2_f, mu2_q, wgt_wo_pdf, conv
     external dlum
-    integer nFKSprocess
-    common/c_nFKSprocess/nFKSprocess
     parameter(conv=389379660d0) ! conversion to picobarns
     call cpu_time(tBefore)
     if (icontr .eq. 0) return
@@ -1419,8 +1306,6 @@ contains
   subroutine separate_flavour_config(ict)
     use weight_lines
     implicit none
-    logical fixed_order
-    common/c_fixed_order/fixed_order
     integer ict, i_add, i, j, k, ict_new, n
     if ((.not. fixed_order) .or. niproc(ict) .eq. 1) then
       return
@@ -1547,8 +1432,6 @@ contains
     double precision xlum(maxscales), dlum, pi, mu2_r(maxscales), c_mu2_r, c_mu2_f, mu2_f(maxscales), mu2_q, g(maxscales), conv
     parameter(pi=3.1415926535897932385d0)
     external dlum
-    integer nFKSprocess
-    common/c_nFKSprocess/nFKSprocess
     parameter(conv=389379660d0) ! conversion to picobarns
     call cpu_time(tBefore)
     if (icontr .eq. 0) return
@@ -1619,8 +1502,6 @@ contains
     double precision xlum, dlum, pi, mu2_r, mu2_f, mu2_q, g, conv
     parameter(pi=3.1415926535897932385d0)
     external dlum
-    integer nFKSprocess
-    common/c_nFKSprocess/nFKSprocess
     parameter(conv=389379660d0) ! conversion to picobarns
     call cpu_time(tBefore)
     if (icontr .eq. 0) return
@@ -1664,7 +1545,7 @@ contains
   end subroutine reweight_pdf
 
   subroutine fill_pineappl_weights(vegas_wgt)
-! Fills the FineAPPL weights of pineappl_common.inc. This subroutine assumes
+! Fill the PineAPPL state owned by fnlo_process_common. This subroutine assumes
 ! that there is an unique PS configuration: at most one Born, one real
 ! and one set of counter terms. Among other things, this means that one
 ! must do MC over FKS directories.
@@ -1808,10 +1689,6 @@ contains
     integer i, ii, j, max_weight
     double precision, allocatable :: www(:)
 ! stuff for plotting the different splitorders
-    integer orders_tag_plot
-    common/corderstagplot/orders_tag_plot
-    integer amp_pos_plot
-    common/campposplot/amp_pos_plot
     save max_weight
     call cpu_time(tBefore)
     if (icontr .eq. 0) return
@@ -1904,8 +1781,6 @@ contains
     implicit none
     integer i, iamp, ithree, isix
     double precision f(nintegrals), sigint
-    double precision virtual_over_born
-    common/c_vob/virtual_over_born
     sigint = 0d0
     do i = 1, icontr
       sigint = sigint + wgts(1, i)
@@ -2142,19 +2017,11 @@ contains
 
     double precision shattmp
 
-    integer i_fks, j_fks
-    common/fks_indices/i_fks, j_fks
 
-    double precision ybst_til_tolab, ybst_til_tocm, sqrtshat, shat
-    common/parton_cms_stuff/ybst_til_tolab, ybst_til_tocm, sqrtshat, shat
 
-    logical softtest, colltest
-    common/sctests/softtest, colltest
 
     double precision zero, tiny
     parameter(zero=0d0)
-    logical need_color_links
-    common/c_need_links/need_color_links
 
     double precision pmass(nexternal)
     pmass = external_masses
@@ -2215,21 +2082,11 @@ contains
     double precision y_ij_fks
 !
 
-    integer i_fks, j_fks
-    common/fks_indices/i_fks, j_fks
 
-    double precision ybst_til_tolab, ybst_til_tocm, sqrtshat, shat
-    common/parton_cms_stuff/ybst_til_tolab, ybst_til_tocm, sqrtshat, shat
 
-    double precision xi_i_fks_ev, y_ij_fks_ev
-    double precision p_i_fks_ev(0:3), p_i_fks_cnt(0:3, 0:2)
-    common/fksvariables/xi_i_fks_ev, y_ij_fks_ev, p_i_fks_ev, p_i_fks_cnt
 
     complex(kind=kind(0d0)) xij_aor
-    common/cxij_aor/xij_aor
 
-    double precision cthbe, sthbe, cphibe, sphibe
-    common/cbeangles/cthbe, sthbe, cphibe, sphibe
 
     integer i, imother_fks, iord
     double precision t, z, ap(2), E_j_fks, E_i_fks, Q(2), cphi_mother, sphi_mother, pi(0:3), pj(0:3), wgt_born
@@ -2237,8 +2094,6 @@ contains
     complex(kind=kind(0d0)) azifact
 
 ! Colour representations of i_fks, j_fks and the FKS mother
-    integer i_type, j_type, m_type
-    common/cparticle_types/i_type, j_type, m_type
 
     double precision zero, vtiny
     parameter(zero=0d0)
@@ -2248,11 +2103,7 @@ contains
     double precision amp_split_local(amp_split_size)
     complex(kind=kind(0d0)) wgt1(2)
     complex(kind=kind(0d0)) ans_extra_cnt(2, nsplitorders)
-    integer iextra_cnt, isplitorder_born, isplitorder_cnt
-    common/c_extra_cnt/iextra_cnt, isplitorder_born, isplitorder_cnt
 
-    double precision iden_comp
-    common/c_iden_comp/iden_comp
 !
     amp_split_local(1:amp_split_size) = 0d0
 
@@ -2351,22 +2202,12 @@ contains
 
     double precision p_born_used(0:3, nexternal - 1)
 
-    integer i_fks, j_fks
-    common/fks_indices/i_fks, j_fks
 
-    double precision ybst_til_tolab, ybst_til_tocm, sqrtshat, shat
-    common/parton_cms_stuff/ybst_til_tolab, ybst_til_tocm, sqrtshat, shat
 
-    double precision xi_i_fks_ev, y_ij_fks_ev
-    double precision p_i_fks_ev(0:3), p_i_fks_cnt(0:3, 0:2)
-    common/fksvariables/xi_i_fks_ev, y_ij_fks_ev, p_i_fks_ev, p_i_fks_cnt
 
     complex(kind=kind(0d0)) xij_aor
-    common/cxij_aor/xij_aor
 
 ! Colour representations of i_fks, j_fks and the FKS mother
-    integer i_type, j_type, m_type
-    common/cparticle_types/i_type, j_type, m_type
 
     integer i, iord
     double precision t, z, ap(2), Q(2), cphi_mother, sphi_mother, pi(0:3), pj(0:3), wgt_born
@@ -2382,14 +2223,8 @@ contains
     complex(kind=kind(0d0)) amp_split_cnt_local(amp_split_size, 2, nsplitorders)
     complex(kind=kind(0d0)) wgt1(2)
     complex(kind=kind(0d0)) ans_extra_cnt(2, nsplitorders)
-    integer iextra_cnt, isplitorder_born, isplitorder_cnt
-    common/c_extra_cnt/iextra_cnt, isplitorder_born, isplitorder_cnt
 
-    double precision iden_comp
-    common/c_iden_comp/iden_comp
 
-    logical use_evpr
-    common/to_use_evpr/use_evpr
 !
     amp_split_local(1:amp_split_size) = 0d0
 
@@ -2506,8 +2341,6 @@ contains
     parameter(vcf=4.d0/3.d0)
     parameter(vtf=1.d0/2.d0)
 
-    integer i_fks, j_fks
-    common/fks_indices/i_fks, j_fks
 !
     xkk(2) = 0d0
     if (PDFscheme .eq. 0) then
@@ -2774,17 +2607,11 @@ contains
     double precision wgt1
     integer i, j
 
-    integer i_fks, j_fks
-    common/fks_indices/i_fks, j_fks
 
     double precision zero, pmass(nexternal)
     parameter(zero=0d0)
 
-    logical need_color_links
-    common/c_need_links/need_color_links
 
-    double precision iden_comp
-    common/c_iden_comp/iden_comp
     pmass = external_masses
 !
 ! Call the Born to be sure that 'CalculatedBorn' is done correctly. This
@@ -2828,12 +2655,7 @@ contains
     double precision dotnm, dotni, dotmi, fact
     integer n, m, i_fks, j_fks, i
     integer softcol
-    double precision xi_i_fks_ev, y_ij_fks_ev
-    double precision p_i_fks_ev(0:3), p_i_fks_cnt(0:3, 0:2)
-    common/fksvariables/xi_i_fks_ev, y_ij_fks_ev, p_i_fks_ev, p_i_fks_cnt
 
-    double precision ybst_til_tolab, ybst_til_tocm, sqrtshat, shat
-    common/parton_cms_stuff/ybst_til_tolab, ybst_til_tocm, sqrtshat, shat
 
     double precision phat_i_fks(0:3)
 
@@ -2898,40 +2720,24 @@ contains
 
     double precision p_born_used(0:3, nexternal - 1)
 
-    integer i_fks, j_fks
-    common/fks_indices/i_fks, j_fks
 
-    double precision ybst_til_tolab, ybst_til_tocm, sqrtshat, shat
-    common/parton_cms_stuff/ybst_til_tolab, ybst_til_tocm, sqrtshat, shat
 
-    double precision delta_used
-    common/cdelta_used/delta_used
 
     double precision shattmp, oo2pi, z, t, ap(2), apprime(2), xkkernp(2), xkkernd(2), xkkernl(2), xnorm
 
 ! Colour representations of i_fks, j_fks and the FKS mother
-    integer i_type, j_type, m_type
-    common/cparticle_types/i_type, j_type, m_type
     complex(kind=kind(0d0)) wgt1(2)
 
     double precision one, pi
     parameter(one=1.d0)
     parameter(pi=3.1415926535897932385d0)
-    double precision iden_comp
-    common/c_iden_comp/iden_comp
 
     complex(kind=kind(0d0)) ans_extra_cnt(2, nsplitorders)
-    integer iextra_cnt, isplitorder_born, isplitorder_cnt
-    common/c_extra_cnt/iextra_cnt, isplitorder_born, isplitorder_cnt
-    logical calculatedBorn
-    common/ccalculatedBorn/calculatedBorn
 
     double precision amp_split_collrem_xi(amp_split_size), amp_split_collrem_lxi(amp_split_size)
 ! amp_split for the PDF scheme
     double precision prefact_xi
 
-    logical use_evpr
-    common/to_use_evpr/use_evpr
 
     logical firsttime_pdf
     data firsttime_pdf/.true./
@@ -3096,23 +2902,11 @@ contains
     implicit none
     integer icountevts
 
-    double precision ybst_til_tolab, ybst_til_tocm, sqrtshat, shat
-    common/parton_cms_stuff/ybst_til_tolab, ybst_til_tocm, sqrtshat, shat
 
-    double precision sqrtshat_ev, shat_ev
-    common/parton_cms_ev/sqrtshat_ev, shat_ev
 
-    double precision sqrtshat_cnt(0:2), shat_cnt(0:2)
-    common/parton_cms_cnt/sqrtshat_cnt, shat_cnt
 
-    double precision tau_ev, ycm_ev
-    common/cbjrk12_ev/tau_ev, ycm_ev
 
-    double precision tau_cnt(0:2), ycm_cnt(0:2)
-    common/cbjrk12_cnt/tau_cnt, ycm_cnt
 
-    double precision xbjrk_ev(2), xbjrk_cnt(2, 0:2)
-    common/cbjorkenx/xbjrk_ev, xbjrk_cnt
 
 ! rapidity of boost from \tilde{k}_1+\tilde{k}_2 c.m. frame to lab frame --
 ! same for event and counterevents
@@ -3151,17 +2945,11 @@ contains
     integer i_fks, j_fks
     integer izero, ione, itwo, iunit, isum
     logical verbose, pass, pass0
-    double precision xi_i_fks_ev, y_ij_fks_ev
-    double precision p_i_fks_ev(0:3), p_i_fks_cnt(0:3, 0:2)
-    common/fksvariables/xi_i_fks_ev, y_ij_fks_ev, p_i_fks_ev, p_i_fks_cnt
     parameter(izero=0)
     parameter(ione=1)
     parameter(itwo=2)
     parameter(iunit=6)
     parameter(verbose=.false.)
-    integer i_momcmp_count
-    double precision xratmax
-    common/ccheckcnt/i_momcmp_count, xratmax
 !
     isum = 0
     if (jac_cnt(0) .gt. 0.d0) isum = isum + 1
@@ -3233,9 +3021,6 @@ contains
     parameter(tiny=1.d-4)
     parameter(vtiny=1.d-10)
     double precision pmass(nexternal)
-    integer i_momcmp_count
-    double precision xratmax
-    common/ccheckcnt/i_momcmp_count, xratmax
     pmass = external_masses
 !
     pass0 = .true.
@@ -3467,40 +3252,24 @@ contains
     double precision shattmp
     integer i, j, aj, m, n, k
 
-    integer i_fks, j_fks
-    common/fks_indices/i_fks, j_fks
-    double precision xicut_used
-    common/cxicut_used/xicut_used
 
-    double precision ybst_til_tolab, ybst_til_tocm, sqrtshat, shat
-    common/parton_cms_stuff/ybst_til_tolab, ybst_til_tocm, sqrtshat, shat
 
     double precision pi
     parameter(pi=3.1415926535897932385d0)
 
-    double precision c(0:1), gamma(0:1), gammap(0:1)
-    common/fks_colors/c, gamma, gammap
     double precision c_used, gamma_used, gammap_used
     double precision double, single, xmu2
     logical ComputePoles, fksprefact
     parameter(ComputePoles=.false.)
     parameter(fksprefact=.true.)
 
-    double precision beta0
-    common/cbeta0/beta0
 
     double precision virt_wgt
 
-    character(len=4) abrv
-    common/to_abrv/abrv
 
-    double precision virtual_over_born
-    common/c_vob/virtual_over_born
 
 ! timing statistics
 ! For the MINT folding
-    integer fold, ifold_counter
-    common/cfl/fold, ifold_counter
     double precision virt_wgt_save
     save virt_wgt_save
 
@@ -3510,12 +3279,9 @@ contains
     data firsttime/.true./
     logical need_color_links_used
     data need_color_links_used/.false./
-    logical need_color_links
-    common/c_need_links/need_color_links
     double precision oneo8pi2
     parameter(oneo8pi2=1d0/(8d0*pi**2))
-    integer nFKSprocess, nFKSprocess_save, nFKSprocess_col
-    common/c_nFKSprocess/nFKSprocess
+    integer nFKSprocess_save, nFKSprocess_col
     data nFKSprocess_col/0/
     double precision bsv_wgt_mufoqes, bsv_wgt_mufomur
     double precision contr_mufoqes, contr_mufomur
@@ -3876,11 +3642,7 @@ contains
     double precision p(0:3, nexternal), xicut_used, eikIreg
     integer m, n
 
-    double precision ybst_til_tolab, ybst_til_tocm, sqrtshat, shat
-    common/parton_cms_stuff/ybst_til_tolab, ybst_til_tocm, sqrtshat, shat
 
-    character(len=4) abrv
-    common/to_abrv/abrv
 
     double precision Ei, Ej, kikj, rij, tmp, xmj, betaj, betai
     double precision xmi2, xmj2, vij, xi0, alij, tHVvl, tHVv
@@ -4110,10 +3872,6 @@ contains
     double precision p(0:3, nexternal), xmu2, double, single
     logical fksprefact
     double precision, optional, intent(out) :: split_poles(amp_split_size, 2)
-    double precision c(0:1), gamma(0:1), gammap(0:1)
-    common/fks_colors/c, gamma, gammap
-    integer i_fks, j_fks
-    common/fks_indices/i_fks, j_fks
     double precision wgt1
     double precision born, wgt, kikj, vij, aso2pi
     double precision contr1, contr2
@@ -4121,12 +3879,9 @@ contains
     double precision pmass(nexternal), zero, pi
     parameter(pi=3.1415926535897932385d0)
     parameter(zero=0d0)
-    logical need_color_links
-    common/c_need_links/need_color_links
     double precision oneo8pi2
     parameter(oneo8pi2=1d0/(8d0*pi**2))
-    integer nFKSprocess, nFKSprocess_save, nFKSprocess_col
-    common/c_nFKSprocess/nFKSprocess
+    integer nFKSprocess_save, nFKSprocess_col
     logical need_color_links_used
     double precision soft_fact
     pmass = external_masses
@@ -4255,53 +4010,21 @@ contains
     parameter(CA=3d0, CF=4d0/3d0)
     parameter(pi=3.1415926535897932385d0)
 
-    double precision c(0:1), gamma(0:1), gammap(0:1)
-    common/fks_colors/c, gamma, gammap
 
-    double precision beta0
-    common/cbeta0/beta0
 
-    logical softtest, colltest
-    common/sctests/softtest, colltest
 
     integer i, j, fac1, fac2, kchan, open_status
 
-    double precision fkssymmetryfactor, fkssymmetryfactorBorn, fkssymmetryfactorDeg
-    integer ngluons, nquarks(-6:6)
-    common/numberofparticles/fkssymmetryfactor, fkssymmetryfactorBorn, fkssymmetryfactorDeg, ngluons, nquarks
 
-    double precision iden_comp
-    common/c_iden_comp/iden_comp
-    integer NFKSPROCESS
-    common/C_NFKSPROCESS/NFKSPROCESS
 
-    double precision xicut_used
-    common/cxicut_used/xicut_used
-    double precision delta_used
-    common/cdelta_used/delta_used
-    double precision xiScut_used, xiBSVcut_used
-    common/cxiScut_used/xiScut_used, xiBSVcut_used
-    double precision diagramsymmetryfactor
-    common/dsymfactor/diagramsymmetryfactor
 
-    integer isum_hel
-    logical multi_channel
-    common/to_matrix/isum_hel, multi_channel
 
-    integer i_fks, j_fks
     double precision dfac1
-    common/fks_indices/i_fks, j_fks
     integer fac_i, fac_j, i_fks_pdg, j_fks_pdg, iden(nexternal)
 
-    character(len=4) abrv
-    common/to_abrv/abrv
 
-    logical nbody
-    common/cnbody/nbody
 
 ! Colour representations of i_fks, j_fks and the FKS mother
-    integer i_type, j_type, m_type
-    common/cparticle_types/i_type, j_type, m_type
     softtest = .false.
     colltest = .false.
 

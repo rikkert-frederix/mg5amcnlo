@@ -1,4 +1,6 @@
 module ranmar_module
+  use fnlo_runtime_common, only: base_seed_common => iseed, &
+                                 random_offset_split_common => random_offset_split
   implicit none
   private
 
@@ -15,11 +17,6 @@ module ranmar_module
   logical :: ntuple_needs_initialization = .true.
   integer :: ntuple_ij = 0
   integer :: ntuple_kl = 0
-
-  integer(kind=ranmar_seed_kind) :: base_seed_common
-  common /to_seed/ base_seed_common
-  integer :: random_offset_split_common
-  common /c_random_offset_split/ random_offset_split_common
 
   public :: ntuple
 

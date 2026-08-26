@@ -1,11 +1,5 @@
-c***********************************************************************
-c     this files contains the common blocks for the 
-c     the alpha_s settings
-c
-c     asmz   = alpha_s(Mz) is set based on the pdf chosen in setcuts.f
-c     nloop  = order of the running of alpha_s based on the pdf chosen  
-c***********************************************************************
+c Generated LHAPDF-wrapper ABI for state owned by
+c fnlo_runtime_common.  Maintained fNLO sources import the module.
       integer nloop
       double precision asmz
       common/a_block/asmz,nloop
-

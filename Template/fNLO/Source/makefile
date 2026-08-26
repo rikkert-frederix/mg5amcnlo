@@ -6,7 +6,8 @@ PDFDIR= ./PDF/
 CUTTOOLSDIR= ./CutTools/
 IREGIDIR= ./IREGI/src/
 
-GENERIC = timing_state.o $(alfas_functions).o alfas_functions_bridge.o	\
+GENERIC = fnlo_runtime_common.o timing_state.o $(alfas_functions).o \
+	  alfas_functions_bridge.o	\
 	  run_state.o kin_functions.o run_printout.o				\
 	  ranmar.o setrun.o setrun_bridge.o
 
@@ -41,6 +42,9 @@ $(LIBDIR)libgeneric.a: $(GENERIC) extra_weights.o
 	mv libgeneric.a $(LIBDIR)
 	cp -f *.mod $(LIBDIR)
 	rm -f $(alfas_functions).o alfas_functions_bridge.o
+
+timing_state.o run_state.o ranmar.o $(alfas_functions).o: \
+	fnlo_runtime_common.o
 
 setrun.o: extra_weights.o run_state.o
 setrun_bridge.o: run_card.inc MODEL/coupl.inc extra_weights.o \

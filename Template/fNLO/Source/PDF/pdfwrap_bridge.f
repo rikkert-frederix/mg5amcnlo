@@ -3,9 +3,8 @@ c     ABI.  The bundled NNPDF backend uses this adapter to expose the same
 c     selectable interface without putting generated includes in a module.
       subroutine pdfwrap
       use pdfwrap_module, only: configure_pdf
+      use fnlo_runtime_common, only: pdlabel,asmz,nloop
       implicit none
-      include 'pdf.inc'
-      include '../alfas.inc'
 
       call configure_pdf(pdlabel,asmz,nloop)
       end

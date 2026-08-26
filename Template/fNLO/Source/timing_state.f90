@@ -1,26 +1,13 @@
 module timing_state
+  use fnlo_runtime_common, only: tBorn, tIS, tReal, tCount, tf_nb, &
+                                 tf_all, t_as, tr_s, tr_pdf, t_plot, t_cuts, t_isum, tOLP, &
+                                 tGenPS, t_coupl
   implicit none
   private
 
-  real, public :: tBorn
-  real, public :: tIS
-  real, public :: tReal
-  real, public :: tCount
-  real, public :: tf_nb
-  real, public :: tf_all
-  real, public :: t_as
-  real, public :: tr_s
-  real, public :: tr_pdf
-  real, public :: t_plot
-  real, public :: t_cuts
-  real, public :: t_isum
-  real, public :: tOLP
-  real, public :: tGenPS
-  real, public :: t_coupl
-
-  common /timings/ tBorn, tIS, tReal, tCount, tf_nb, tf_all, &
-       t_as, tr_s, tr_pdf, t_plot, t_cuts, t_isum, tOLP, tGenPS, &
-       t_coupl
+  public :: tBorn, tIS, tReal, tCount, tf_nb, tf_all, t_as
+  public :: tr_s, tr_pdf, t_plot, t_cuts, t_isum, tOLP, tGenPS
+  public :: t_coupl
 
   public :: reset_timing_state
 

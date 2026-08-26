@@ -42,6 +42,7 @@
 !
 
 module mint_module
+  use fnlo_process_common, only: fixed_order, iappl, fnlo_maxchannels
   use FKSParams ! contains use_poly_virtual
   use mc_integer_module, only: regrid_MC_integer, empty_MC_integer, &
                                reset_MC_grid
@@ -59,7 +60,7 @@ module mint_module
   integer, parameter :: max_fold = 512     ! 8*8*8 is max folding for the three variables
 ! Maximum points to try per iteration when too few non-zero points are found.
   integer, parameter, private :: max_points = 100000
-  integer, parameter, public  :: maxchannels = 20 ! set as least as large as in amcatnlo_run_interface
+  integer, parameter, public  :: maxchannels = fnlo_maxchannels
   ! Note that the number of intervals in the integration grids, 'nintervals', cannot be arbitrarily large.
   ! It should be equal to
   !     nintervals = min_inter * 2^n,
@@ -134,9 +135,7 @@ module mint_module
   integer, private :: even_current_dim = 0
   integer, allocatable, private :: even_iii(:), even_kkk(:)
 
-! Common blocks used elsewhere in the code
-  logical, public :: fixed_order
-  common/c_fixed_order/fixed_order
+  public :: fixed_order
 
 ! functions and subroutines:
   public :: mint
@@ -554,8 +553,6 @@ contains
   subroutine check_fractional_uncertainty(efrac)
     implicit none
     double precision, dimension(nintegrals) :: efrac
-    integer iappl
-    common/for_applgrid/iappl
 ! If there was a large fluctation in this iteration, be careful with
 ! including it in the accumalated results and plots.
     if (efrac(1) .gt. 0.3d0 .and. iappl .eq. 0 .and. nit .gt. 3) then
@@ -1337,7 +1334,7 @@ contains
 
   subroutine get_channel
 ! Picks one random 'ichan' among the 'nchans' integration channels and
-! fills the channels common block in mint.inc.
+! updates the selected integration-channel state.
     implicit none
     double precision :: trgt, total
     if (nchans .eq. 1) then

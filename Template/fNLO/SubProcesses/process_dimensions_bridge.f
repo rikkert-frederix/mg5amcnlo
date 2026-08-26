@@ -1,15 +1,14 @@
       subroutine init_process_dimensions_bridge()
       use process_dimensions, only: initialize_process_dimensions
+      use fnlo_process_common, only: nexternal,nincoming,
+     $     max_particles,max_branch,lmaxconfigs,maxproc,ngraphs,
+     $     ncolor,maxflow,fks_configs,nsplitorders,qcd_pos,qed_pos,
+     $     amp_split_size,amp_split_size_born,ordernames,born_orders,
+     $     nlo_orders
       implicit none
-      include 'nexternal.inc'
-      include 'genps.inc'
-      include 'nFKSconfigs.inc'
-      include 'orders.inc'
       include 'amp_split_orders.inc'
 
-c The mutable AMP_SPLIT and AMP_SPLIT_CNT arrays declared by orders.inc
-c remain in /TO_AMP_SPLIT/.  Only immutable dimensions and order data
-c cross into the Fortran 90 module.
+c Only immutable dimensions and order data cross into the dynamic module.
       call initialize_process_dimensions(nexternal,nincoming,
      &     max_particles,max_branch,lmaxconfigs,maxproc,ngraphs,
      &     ncolor,maxflow,fks_configs,nsplitorders,qcd_pos,qed_pos,

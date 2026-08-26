@@ -5,6 +5,11 @@ module binoth_lha_madloop_backend
   use split_orders, only: orders_to_amp_split_pos, &
        amp_split_pos_to_orders
   use fks_singular_module, only: getpoles
+  use fnlo_process_common, only: qes2, ntot, nsun, nsps, nups, &
+                                 neps, n100, nddp, nqdp, nini, n10, n1, &
+                                 volh, mc_hel, ihel, fillh, &
+                                 force_polecheck, polecheck_passed, &
+                                 ret_code_common, cs_run
   implicit none
   private
 
@@ -21,28 +26,6 @@ module binoth_lha_madloop_backend
   double precision, allocatable :: prec_found(:)
   character(len=1), allocatable :: include_hel(:)
   integer, allocatable :: goodhel(:), hel(:)
-
-  double precision :: qes2
-  common /coupl_es/ qes2
-
-  integer :: ntot, nsun, nsps, nups, neps, n100
-  integer :: nddp, nqdp, nini, n10, n1(0:9)
-  common /ups_stats/ ntot, nsun, nsps, nups, neps, n100, nddp, nqdp, &
-       nini, n10, n1
-
-  double precision :: volh
-  integer :: mc_hel, ihel
-  logical :: fillh
-  common /mc_int2/ volh, mc_hel, ihel, fillh
-
-  logical :: force_polecheck, polecheck_passed
-  common /to_polecheck/ force_polecheck, polecheck_passed
-
-  integer :: ret_code_common
-  common /to_ret_code/ ret_code_common
-
-  logical :: cs_run
-  common /to_cs_run/ cs_run
 
   interface
     subroutine binoth_lha_update_couplings(mu_r_value, alpha_s)

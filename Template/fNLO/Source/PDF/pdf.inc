@@ -1,4 +1,5 @@
-c Fixed-order PDF selection state.
+c Generated LHAPDF-wrapper ABI for state owned by
+c fnlo_runtime_common.  Maintained fNLO sources import the module.
       integer lhaid,pdfscheme
       character*7 pdlabel
       common/to_pdf/lhaid,pdfscheme,pdlabel

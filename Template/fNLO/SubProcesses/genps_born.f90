@@ -5,6 +5,10 @@ module genps_born
   use run_state
   use kin_functions_module, only: dot => dot_impl
   use fks_singular_module, only: phspncheck_born
+  use fnlo_process_common, only: i_fks, j_fks, iconfig0, this_config, &
+                                 softtest, colltest, &
+                                 tau_born_lower_bound, &
+                                 tau_lower_bound_resonance
   implicit none
   private
 
@@ -29,9 +33,9 @@ module genps_born
     double precision, pointer :: external_masses(:) => null()
   end type born_phase_space
 
-! Python writes the dimensions of these historical COMMON blocks for each
-! subprocess. The fixed-form bridge owns that generated storage; these
-! pointers let this module use the same live objects.
+! Python writes the dimensions of this shared process state for each
+! subprocess. fnlo_process_common owns the storage; the fixed-form bridge
+! binds these pointers to the same live objects.
   double precision, pointer :: config_mass(:, :, :) => null()
   double precision, pointer :: config_width(:, :, :) => null()
   integer, pointer :: config_forest(:, :, :, :) => null()
@@ -143,12 +147,6 @@ contains
     double precision :: qmass(-nexternal:0), qwidth(-nexternal:0)
     double precision :: s(-max_branch:max_particles)
     integer :: i, j
-    integer :: i_fks, j_fks
-    common/fks_indices/i_fks, j_fks
-    integer :: iconfig0
-    common/ciconfig0/iconfig0
-    integer :: this_config
-    common/to_mconfigs/this_config
 
     call require_born_state()
 
@@ -260,12 +258,6 @@ contains
 !
     integer ndim_dummy
 
-    integer i_fks, j_fks
-    common/fks_indices/i_fks, j_fks
-
-    logical softtest, colltest
-    common/sctests/softtest, colltest
-
     ndim_dummy = -1 ! this is actually not used anymore
 
     if (abs(lpp(1)) .gt. 1 .or. abs(lpp(2)) .gt. 1) then
@@ -280,7 +272,7 @@ contains
 
     if (abs(lpp(1)) .ge. 1 .and. abs(lpp(2)) .ge. 1 .and. &
       & .not. (softtest .or. colltest)) then
-! x(ndim-1) -> tau_cnt(0); x(ndim) -> ycm_cnt(0)
+! x(ndim-1) and x(ndim) generate the Born tau and rapidity.
 !  rndx(1) -> tau; rndx(2) -> ycm
       if (born_one_body) then
 ! tau is fixed by the mass of the final state particle
@@ -629,10 +621,6 @@ contains
     double precision stot, x, tau, jac, mass, width, BWmass(-1:1), BWwidth( &
       & -1:1), s_mass, s
     double precision smax, smin
-    double precision tau_Born_lower_bound, tau_lower_bound_resonance &
-      & , tau_lower_bound
-    common/ctau_lower_bound/tau_Born_lower_bound &
-      & , tau_lower_bound_resonance, tau_lower_bound
     if (cBW .eq. 1 .and. width .gt. 0d0 .and. BWwidth(1) .gt. 0d0) then
       smin = tau_Born_lower_bound*stot
       smax = stot
@@ -659,10 +647,6 @@ contains
     double precision x, tau, jac, smin, smax, s_mass, s, tiny, dum, dum3(-1:1) &
       & , stot
     parameter(tiny=1d-8)
-    double precision tau_Born_lower_bound, tau_lower_bound_resonance &
-      & , tau_lower_bound
-    common/ctau_lower_bound/tau_Born_lower_bound &
-      & , tau_lower_bound_resonance, tau_lower_bound
     smin = tau_born_lower_bound*stot
     smax = stot
     s_mass = tau_lower_bound_resonance*stot

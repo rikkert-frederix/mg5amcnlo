@@ -8,13 +8,13 @@ c Process-generated declaration boundary for madfks_plot_module.
       end
       subroutine plot_pine_bridge(action,norm,ibody,itype,www)
       use run_state, only: pineappl
+      use fnlo_process_common, only: amp_pos_plot,appl_q2min,
+     $     appl_q2max,appl_xmin,appl_xmax,appl_nq2,appl_q2order,
+     $     appl_nx,appl_xorder,appl_norm_histo,appl_itype,
+     $     appl_amp_pos,appl_www_histo
       implicit none
       integer action,ibody,itype
       double precision norm,www
-      integer amp_pos_plot
-      common /campposplot/ amp_pos_plot
-      include 'pineappl_common.inc'
-
       if (.not.pineappl) return
       if (action.eq.1) then
          appl_Q2min=-1d0

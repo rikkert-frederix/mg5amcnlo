@@ -40,7 +40,8 @@ endif
 
 
 # Files for all executables
-FILES= process_dimensions.o process_dimensions_bridge.o			\
+FILES= fnlo_process_common.o process_dimensions.o			\
+	 process_dimensions_bridge.o					\
 	 fks_metadata.o fks_metadata_bridge.o				\
 	 $(patsubst %.f,%.o,$(wildcard parton_lum_*.f)) 			\
 	 $(patsubst %.f,%.o,$(wildcard matrix_*.f)) 			\
@@ -92,6 +93,22 @@ FNLO_DUMMY_ANALYSIS_BRIDGES = \
 	$(if $(filter HwU_dummy.o,$(FO_ANALYSE)),HwU_dummy_bridge.o)
 FNLO_AUTO_DUMMY_ANALYSIS_BRIDGES = \
 	$(filter-out $(FO_ANALYSE),$(FNLO_DUMMY_ANALYSIS_BRIDGES))
+
+# Sources using process-sized shared storage must wait for the module file.
+FNLO_PROCESS_COMMON_USERS = \
+	analysis_HwU_general.o HwU_bridge.o \
+	BinothLHA.o BinothLHA_bridge.o \
+	BinothLHA_OLP.o BinothLHA_OLP_bridge.o \
+	BinothLHA_user_bridge.o check_poles.o check_poles_bridge.o \
+	chooser_functions_bridge.o cuts_bridge.o \
+	driver_mintFO.o driver_mintFO_bridge.o \
+	fks_singular.o fks_singular_bridge.o \
+	genps_born.o genps_fks.o genps_fks_bridge.o \
+	iproc_map_bridge.o madfks_plot.o madfks_plot_bridge.o \
+	MC_integer.o mint_module.o open_output_files_bridge.o \
+	process_dimensions_bridge.o setcuts_bridge.o \
+	setscales.o setscales_bridge.o symmetry_fks_v3_bridge.o \
+	test_soft_col_limits_bridge.o
 FNLO_EXPLICIT_ANALYSIS_BRIDGES = \
 	$(filter $(FNLO_MODULE_ANALYSIS_BRIDGES),$(FO_ANALYSE))
 FNLO_WRONG_ANALYSIS_BRIDGES = \
@@ -181,6 +198,8 @@ libMadLoop.a:
 	for dir in `ls -d V*`; do cd $$dir; make; cd ../; done
 
 process_dimensions_bridge.o: process_dimensions.o
+fnlo_process_common.o: $(LIBDIR)extra_weights.mod
+$(FNLO_PROCESS_COMMON_USERS): fnlo_process_common.o
 fks_metadata.o: process_dimensions.o
 fks_metadata_bridge.o: fks_metadata.o
 kinematic_runtime_state.o: process_dimensions.o
@@ -191,7 +210,7 @@ setscales_bridge.o: setscales.o kinematic_runtime_state.o
 fks_Sij.o: process_dimensions.o $(LIBDIR)kin_functions_module.mod
 splitorders_stuff_bridge.o: splitorders_stuff.o process_dimensions.o
 pineappl_interface_dummy_bridge.o: pineappl_interface_dummy.o
-iproc_map_bridge.o: iproc_map.o
+iproc_map_bridge.o: iproc_map.o $(LIBDIR)fnlo_runtime_common.mod
 FKSParams.o: process_dimensions.o
 analysis_dummy.o: process_dimensions.o
 analysis_dummy_bridge.o: analysis_dummy.o process_dimensions.o
@@ -227,7 +246,8 @@ driver_mintFO.o: process_dimensions.o fks_metadata.o genps_fks.o \
 	splitorders_stuff.o cuts.o fks_singular.o madfks_plot.o \
 	$(LIBDIR)run_state.mod $(LIBDIR)timing_state.mod \
 	$(LIBDIR)extra_weights.mod $(LIBDIR)run_printout_module.mod
-driver_mintFO_bridge.o: driver_mintFO.o
+driver_mintFO_bridge.o: driver_mintFO.o \
+	$(LIBDIR)fnlo_runtime_common.mod
 chooser_functions.o: process_dimensions.o fks_metadata.o weight_lines.o
 chooser_functions_bridge.o: chooser_functions.o
 setcuts.o: process_dimensions.o fks_metadata.o \

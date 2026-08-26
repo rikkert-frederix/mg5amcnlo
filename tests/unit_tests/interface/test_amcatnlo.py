@@ -160,6 +160,55 @@ class TestMadEventCmd(unittest.TestCase):
                 'dbook.f', 'dbook.inc', 'rbook_be8.cc', 'rbook_fe8.f']:
             self.assertNotIn(removed_analysis_support, analysis_files)
         subprocess_dir = pjoin(template_dir, 'SubProcesses')
+        runtime_common = pjoin(template_dir, 'Source',
+                               'fnlo_runtime_common.f90')
+        process_common = pjoin(subprocess_dir, 'fnlo_process_common.f')
+        self.assertTrue(os.path.exists(runtime_common))
+        self.assertTrue(os.path.exists(process_common))
+        for removed_common_include in [
+                'pineappl_common.inc', 'q_es.inc',
+                'reweight_pineappl.inc', 'timing_variables.inc']:
+            self.assertFalse(os.path.lexists(pjoin(
+                subprocess_dir, removed_common_include)))
+
+        common_owners = {
+            os.path.realpath(runtime_common),
+            os.path.realpath(process_common),
+        }
+        common_sources = set()
+        for source_root in [pjoin(template_dir, 'Source'), subprocess_dir,
+                            analysis_dir]:
+            for directory, _, filenames in os.walk(source_root):
+                for filename in filenames:
+                    if not filename.lower().endswith(('.f', '.f90')):
+                        continue
+                    source_path = pjoin(directory, filename)
+                    with open(source_path) as stream:
+                        if any(line.lstrip().lower().startswith('common')
+                               for line in stream):
+                            common_sources.add(os.path.realpath(source_path))
+        self.assertEqual(common_sources, common_owners)
+
+        compatibility_includes = {
+            os.path.realpath(pjoin(template_dir, 'Source', 'run.inc')),
+            os.path.realpath(pjoin(template_dir, 'Source', 'alfas.inc')),
+            os.path.realpath(pjoin(template_dir, 'Source', 'PDF',
+                                   'pdf.inc')),
+        }
+        common_includes = set()
+        for source_root in [pjoin(template_dir, 'Source'), subprocess_dir,
+                            analysis_dir]:
+            for directory, _, filenames in os.walk(source_root):
+                for filename in filenames:
+                    if not filename.lower().endswith('.inc'):
+                        continue
+                    source_path = pjoin(directory, filename)
+                    with open(source_path) as stream:
+                        if any(line.lstrip().lower().startswith('common')
+                               for line in stream):
+                            common_includes.add(os.path.realpath(source_path))
+        self.assertEqual(common_includes, compatibility_includes)
+
         self.assertTrue(os.path.exists(pjoin(
             subprocess_dir, 'driver_mintFO.f90')))
         self.assertTrue(os.path.exists(pjoin(

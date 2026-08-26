@@ -8,13 +8,26 @@ module genps_fks
   use fks_singular_module, only: rotate_invar, phspncheck_nocms, xmom_compare
   use genps_born, only: born_phase_space, generate_born_phase_space, &
                         invalidate_born_phase_space, phase_space_lambda
+  use fnlo_process_common, only: nocntevents, use_evpr, nbody, &
+                                 xi_i_hat_ev, xij_aor, &
+                                 i_fks, j_fks, ybst_til_tolab, &
+                                 ybst_til_tocm, sqrtshat, shat, &
+                                 xi_i_fks_ev, y_ij_fks_ev, p_i_fks_ev, &
+                                 p_i_fks_cnt, xi_i_fks_cnt, xiimax_ev, &
+                                 xiimax_cnt, xbjrk_ev, xbjrk_cnt, &
+                                 sqrtshat_ev, shat_ev, sqrtshat_cnt, &
+                                 shat_cnt, ycm_ev, ycm_cnt, &
+                                 xinorm_ev, xinorm_cnt, &
+                                 veckn_ev, veckbarn_ev, xp0jfks, &
+                                 softtest, colltest, xi_i_fks_fix, &
+                                 y_ij_fks_fix, tau_lower_bound
   implicit none
   private
   public :: generate_momenta
   public :: initialize_genps_fks_state
 
-! The fixed-form bridge owns the process-sized COMMON storage. These pointers
-! give the radiation module access only to event and counterevent state.
+! fnlo_process_common owns the process-sized storage. The fixed-form bridge
+! gives the radiation module access only to event and counterevent state.
   double precision, pointer :: cnt_momenta(:, :, :) => null()
   double precision, pointer :: cnt_weight(:) => null()
   double precision, pointer :: cnt_psweight(:) => null()
@@ -73,11 +86,6 @@ contains
     double precision :: jac
     integer :: i
     logical :: pass
-    logical :: nocntevents
-    common/cnocntevents/nocntevents
-    logical :: use_evpr
-    common/to_use_evpr/use_evpr
-
     call require_genps_state()
     call cpu_time(tBefore)
 
@@ -138,35 +146,7 @@ contains
     double precision pi
     parameter(pi=3.1415926535897932d0)
 
-    logical nocntevents
-    common/cnocntevents/nocntevents
-
-    logical nbody
-    common/cnbody/nbody
-
-    double precision xi_i_hat_ev, xi_i_hat_cnt(0:2)
-    common/cxi_i_hat/xi_i_hat_ev, xi_i_hat_cnt
-
-    complex(kind=kind(0d0)) xij_aor
-    common/cxij_aor/xij_aor
-
-    integer i_fks, j_fks
-    common/fks_indices/i_fks, j_fks
-
-    double precision ybst_til_tolab, ybst_til_tocm, sqrtshat, shat
-    common/parton_cms_stuff/ybst_til_tolab, ybst_til_tocm, &
-      & sqrtshat, shat
-
-    double precision xi_i_fks_ev, y_ij_fks_ev
-    double precision p_i_fks_ev(0:3), p_i_fks_cnt(0:3, 0:2)
-    common/fksvariables/xi_i_fks_ev, y_ij_fks_ev, p_i_fks_ev, p_i_fks_cnt
-
     integer isolsign
-
-    double precision xiimax_ev
-    common/cxiimaxev/xiimax_ev
-    double precision xiimax_cnt(0:2)
-    common/cxiimaxcnt/xiimax_cnt
 
 ! check that the starting PS point is meaningful
     if (xjac0 .lt. 0d0) then
@@ -372,49 +352,15 @@ contains
 
     integer i, j
 
-    double precision xi_i_fks_ev, y_ij_fks_ev
-    double precision p_i_fks_ev(0:3), p_i_fks_cnt(0:3, 0:2)
-    common/fksvariables/xi_i_fks_ev, y_ij_fks_ev, p_i_fks_ev, p_i_fks_cnt
-
-    double precision xi_i_fks_cnt(0:2)
-    common/cxiifkscnt/xi_i_fks_cnt
-
-    double precision xi_i_hat_ev, xi_i_hat_cnt(0:2)
-    common/cxi_i_hat/xi_i_hat_ev, xi_i_hat_cnt
-
-    double precision xbjrk_ev(2), xbjrk_cnt(2, 0:2)
-    common/cbjorkenx/xbjrk_ev, xbjrk_cnt
-
-    double precision sqrtshat_ev, shat_ev
-    common/parton_cms_ev/sqrtshat_ev, shat_ev
-    double precision sqrtshat_cnt(0:2), shat_cnt(0:2)
-    common/parton_cms_cnt/sqrtshat_cnt, shat_cnt
-
-    double precision tau_ev, ycm_ev
-    common/cbjrk12_ev/tau_ev, ycm_ev
-    double precision tau_cnt(0:2), ycm_cnt(0:2)
-    common/cbjrk12_cnt/tau_cnt, ycm_cnt
-
-    double precision xiimax_ev
-    common/cxiimaxev/xiimax_ev
-    double precision xiimax_cnt(0:2)
-    common/cxiimaxcnt/xiimax_cnt
-
-    double precision xinorm_ev
-    common/cxinormev/xinorm_ev
-    double precision xinorm_cnt(0:2)
-    common/cxinormcnt/xinorm_cnt
-
 ! Catch the points for which there is no viable phase-space generation
-! (still fill the common blocks with some information that is needed
+! (still fill the shared state with some information that is needed
 ! (e.g. ycm_cnt)).
     if (xjac .le. 0d0) then
       xp(0, 1) = -99d0
     end if
 !
-! Fill common blocks
+! Fill shared FKS state
     if (icountevts .eq. -100) then
-      tau_ev = tau
       ycm_ev = ycm
       shat_ev = shat
       sqrtshat_ev = sqrtshat
@@ -436,7 +382,6 @@ contains
       end do
       jac = xjac
     elseif (icountevts .ge. 0 .and. icountevts .le. 2) then
-      tau_cnt(icountevts) = tau
 ! Special fix in the case the soft counter-events are not generated but
 ! the Born and real are. (This can happen if ptj>0 in the
 ! run_card). This fix is needed for set_cms_stuff to work properly.
@@ -451,7 +396,6 @@ contains
       xiimax_cnt(icountevts) = xiimax
       xinorm_cnt(icountevts) = xinorm
       xi_i_fks_cnt(icountevts) = xi_i_fks
-      xi_i_hat_cnt(icountevts) = xi_i_hat
       do i = 0, 3
         p_i_fks_cnt(i, icountevts) = p_i_fks(i)
       end do
@@ -461,7 +405,7 @@ contains
         end do
       end do
       cnt_jacobian(icountevts) = xjac
-! the following two are obsolete, but still part of some common block:
+! The following two are obsolete, but remain part of the generated ABI:
 ! so give some non-physical values
       cnt_weight(icountevts) = -1d99
       cnt_psweight(icountevts) = -1d99
@@ -484,15 +428,6 @@ contains
       & , y_ij_fks, p_born_imother(0:3), phi_i_fks, xi_i_hat
     double precision xiimax, xinorm, xi_i_fks, p_i_fks(0:3), xjac, xpswgt
     logical pass
-! common blocks
-    double precision veckn_ev, veckbarn_ev, xp0jfks
-    common/cgenps_fks/veckn_ev, veckbarn_ev, xp0jfks
-    complex(kind=kind(0d0)) xij_aor
-    common/cxij_aor/xij_aor
-    logical softtest, colltest
-    common/sctests/softtest, colltest
-    double precision xi_i_fks_fix, y_ij_fks_fix
-    common/cxiyfix/xi_i_fks_fix, y_ij_fks_fix
 ! local
     integer i, j
     double precision E_i_fks, x3len_i_fks, x3len_j_fks, x3len_fks_mother &
@@ -741,13 +676,6 @@ contains
       & , y_ij_fks, p_born_imother(0:3), m_j_fks, phi_i_fks, xi_i_hat
     double precision xiimax, xinorm, xi_i_fks, p_i_fks(0:3), xjac, xpswgt
     logical pass
-! common blocks
-    double precision veckn_ev, veckbarn_ev, xp0jfks
-    common/cgenps_fks/veckn_ev, veckbarn_ev, xp0jfks
-    logical softtest, colltest
-    common/sctests/softtest, colltest
-    double precision xi_i_fks_fix, y_ij_fks_fix
-    common/cxiyfix/xi_i_fks_fix, y_ij_fks_fix
 ! local
     integer i, j
     double precision xmj, xmj2, xmjhat, xmhat, xim, cffA2, cffB2, cffC2 &
@@ -1051,19 +979,6 @@ contains
       & , x(2), y_ij_fks, xi_i_hat
     double precision shat, sqrtshat, tau, ycm, xbjrk(2), p_i_fks(0:3)
     logical pass
-! common blocks
-    double precision tau_Born_lower_bound, tau_lower_bound_resonance &
-      & , tau_lower_bound
-    common/ctau_lower_bound/tau_Born_lower_bound &
-      & , tau_lower_bound_resonance, tau_lower_bound
-    double precision veckn_ev, veckbarn_ev, xp0jfks
-    common/cgenps_fks/veckn_ev, veckbarn_ev, xp0jfks
-    complex(kind=kind(0d0)) xij_aor
-    common/cxij_aor/xij_aor
-    logical softtest, colltest
-    common/sctests/softtest, colltest
-    double precision xi_i_fks_fix, y_ij_fks_fix
-    common/cxiyfix/xi_i_fks_fix, y_ij_fks_fix
 ! local
     integer i, j, idir
     double precision yijdir, costh_i_fks, x1bar2, x2bar2, yij_sol, xi1, xi2 &
