@@ -18,11 +18,7 @@
 import logging
 import logging.config
 import os
-import re
-import shutil
-import subprocess
 import sys
-import time
 root_path = os.path.split(os.path.dirname(os.path.realpath( __file__ )))[0]
 pjoin = os.path.join
 sys.path.append(pjoin(root_path,'bin','internal'))
@@ -41,7 +37,7 @@ except ImportError:
 
     
 def set_configuration():
-    import coloring_logging
+    import coloring_logging  # noqa: F401 - configures colored log output
     logging.config.fileConfig(os.path.join(root_path, 'bin', 'internal', 'me5_logging.conf'))
     logging.root.setLevel(logging.INFO)
     logging.getLogger('amcatnlo').setLevel(logging.INFO)

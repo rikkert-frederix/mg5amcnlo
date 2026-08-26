@@ -11,12 +11,11 @@ c bridge with the selected module; only one analysis bridge may be linked.
       end
 
 
-      subroutine analysis_end(dummy)
+      subroutine analysis_end()
       use analysis_hwu_pp_lvl_module,
      &     only: module_analysis_end => analysis_end
       implicit none
-      double precision dummy
-      call module_analysis_end(dummy)
+      call module_analysis_end()
       end
 
 
@@ -27,5 +26,5 @@ c bridge with the selected module; only one analysis bridge may be linked.
       implicit none
       double precision p(0:4,nexternal),wgts(*)
       integer istatus(nexternal),ipdg(nexternal),ibody
-      call module_analysis_fill(p,istatus,ipdg,wgts,ibody)
+      call module_analysis_fill(p,ipdg,wgts,ibody)
       end

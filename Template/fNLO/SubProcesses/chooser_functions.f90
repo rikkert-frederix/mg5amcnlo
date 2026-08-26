@@ -200,32 +200,6 @@ contains
   end subroutine initialize_leshouche_data
 
 
-  subroutine finalize_chooser_data()
-    implicit none
-
-    if (allocated(external_masses)) deallocate(external_masses)
-    if (allocated(mapconfig_values)) deallocate(mapconfig_values)
-    if (allocated(iforest_values)) deallocate(iforest_values)
-    if (allocated(sprop_values)) deallocate(sprop_values)
-    if (allocated(tprid_values)) deallocate(tprid_values)
-    if (allocated(pmass_values)) deallocate(pmass_values)
-    if (allocated(pwidth_values)) deallocate(pwidth_values)
-    if (allocated(pow_values)) deallocate(pow_values)
-    if (allocated(idup_values)) deallocate(idup_values)
-    if (allocated(mothup_values)) deallocate(mothup_values)
-    if (allocated(icolup_values)) deallocate(icolup_values)
-    if (allocated(niprocs_values)) deallocate(niprocs_values)
-    if (allocated(born_idup_values)) deallocate(born_idup_values)
-    if (allocated(born_mothup_values)) deallocate(born_mothup_values)
-    if (allocated(born_icolup_values)) deallocate(born_icolup_values)
-
-    config_max_branch_used = 0
-    config_lmaxconfigs_used = 0
-    leshouche_maxproc_used = 0
-    leshouche_maxflow_used = 0
-    configs_and_props_initialized = .false.
-    leshouche_initialized = .false.
-  end subroutine finalize_chooser_data
 
 
   subroutine configs_props_chooser_core(nfksprocess, &

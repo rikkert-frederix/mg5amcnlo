@@ -903,7 +903,6 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 'pineappl_interface_dummy.f':
                     'pineappl_interface_dummy.f90',
                 'polfit.f': 'polfit.f90',
-                'reweight_xsec.f': 'reweight_xsec.f90',
                 'setcuts.f': 'setcuts.f90',
                 'setscales.f': 'setscales.f90',
                 'splitorders_stuff.f': 'splitorders_stuff.f90',
@@ -918,6 +917,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               'process_dimensions_bridge.f',
                               'fks_metadata.f90',
                               'fks_metadata_bridge.f',
+                              'genps_born.f90',
                               'analysis_dummy_bridge.f',
                               'BinothLHADummy_bridge.f',
                               'fks_singular_bridge.f',
@@ -950,6 +950,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 'check_sudakov.f',
                 'check_sudakov_angle2.f',
                 'cluster.f',
+                'cuts.inc',
                 'dire_fortran.cc',
                 'eepdf.inc',
                 'fill_MC_mshell.f',
@@ -967,6 +968,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 'pythia8_wrapper.cc',
                 'recluster.cc',
                 'recmom.f',
+                'reweight_xsec.f',
                 'reweight_xsec_events.f',
                 'reweight_xsec_events_pdf_dummy.f',
                 'sudakov.f',
@@ -1129,7 +1131,12 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                     'fNLO output supports QCD corrections only; found %s' %
                     ', '.join(unsupported))
 
-        self.proc_characteristic['ew_sudakov'] = has_ew_sudakov
+        if fixed_order_only:
+            # These fields only describe functionality absent from fNLO.
+            self.proc_characteristic.pop('ew_sudakov', None)
+            self.proc_characteristic.pop('max_n_matched_jets', None)
+        else:
+            self.proc_characteristic['ew_sudakov'] = has_ew_sudakov
 
         self.proc_characteristic['grouped_matrix'] = False
         self.proc_characteristic['complex_mass_scheme'] = mg5options['complex_mass_scheme']
@@ -1735,7 +1742,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         """writes the declarations for the variables relevant for configs_and_props
         """
         lines = []
-        lines.append("integer ifr,lmaxconfigs_used,max_branch_used")
+        lines.append("integer lmaxconfigs_used,max_branch_used")
         lines.append("parameter (lmaxconfigs_used=%4d)" % max_iconfig)
         lines.append("parameter (max_branch_used =%4d)" % -max_leg_number)
         lines.append("integer mapconfig_d(%3d,0:lmaxconfigs_used)" % nfksconfs)
@@ -4327,8 +4334,9 @@ Parameters              %(params)s\n\
                              (leg.get('number'), iconf + 1, mass))
                 lines_P.append("pwidth(%3d,%4d) = %s" % \
                              (leg.get('number'), iconf + 1, width))
-                lines_P.append("pow(%3d,%4d) = %d" % \
-                             (leg.get('number'), iconf + 1, pow_part))
+                if self.opt.get('fks_template') != 'fNLO':
+                    lines_P.append("pow(%3d,%4d) = %d" % \
+                                 (leg.get('number'), iconf + 1, pow_part))
 
         # Write the file
         writer.writelines(lines_P)

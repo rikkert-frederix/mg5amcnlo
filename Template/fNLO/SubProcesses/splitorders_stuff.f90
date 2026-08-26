@@ -39,15 +39,6 @@ contains
   end subroutine initialize_split_orders
 
 
-  subroutine finalize_split_orders()
-    implicit none
-
-    if (allocated(first_contribution_message)) then
-      deallocate(first_contribution_message)
-    end if
-    first_tag_message = .true.
-    split_orders_initialized = .false.
-  end subroutine finalize_split_orders
 
 
   integer function get_orders_tag(ord)
@@ -208,16 +199,6 @@ contains
   end subroutine check_amp_split
 
 
-  logical function orders_equal(orders1, orders2)
-    implicit none
-    integer, intent(in) :: orders1(:)
-    integer, intent(in) :: orders2(:)
-
-    call ensure_split_orders_initialized()
-    call validate_order_vector(orders1)
-    call validate_order_vector(orders2)
-    orders_equal = all(orders1 == orders2)
-  end function orders_equal
 
 
   subroutine ensure_split_orders_initialized()

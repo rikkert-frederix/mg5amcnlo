@@ -8,9 +8,7 @@ module alfas_functions_module
   integer, parameter :: gridsize_high = 255
   real(dp), parameter :: cut_off_low = -0.69314718055994530942d0
   real(dp), parameter :: cut_off_high = 11.512925464970228420d0
-  real(dp), parameter :: pi = 3.14159265358979323846d0
   real(dp), parameter :: zmass = 91.188d0
-  real(dp), parameter :: tmass = 174d0
 
   real(dp), parameter :: b0(3:5) = (/ &
        0.716197243913527d0, 0.66314559621623d0, &
@@ -235,36 +233,6 @@ contains
       exit
     end do
   end subroutine newton1_impl
-
-
-  double precision function mfrun_impl(mf, scale, nloop, alpha_asmz, &
-       alpha_nloop)
-    implicit none
-    real(dp), intent(in) :: mf, scale, alpha_asmz
-    integer, intent(in) :: nloop, alpha_nloop
-    real(dp) :: a1, as, asmf, beta0, beta1, gamma0, gamma1, l2
-    integer :: nf
-
-    if (mf > tmass) then
-      nf = 6
-    else
-      nf = 5
-    end if
-
-    beta0 = (11d0 - 2d0 / 3d0 * nf) / 4d0
-    beta1 = (102d0 - 38d0 / 3d0 * nf) / 16d0
-    gamma0 = 1d0
-    gamma1 = (202d0 / 3d0 - 20d0 / 9d0 * nf) / 16d0
-    a1 = -beta1 * gamma0 / beta0**2 + gamma1 / beta0
-    as = alphas_from_grids_impl(scale, alpha_asmz, alpha_nloop)
-    asmf = alphas_from_grids_impl(mf, alpha_asmz, alpha_nloop)
-    l2 = (1d0 + a1 * as / pi) / (1d0 + a1 * asmf / pi)
-
-    mfrun_impl = mf * (as / asmf)**(gamma0 / beta0)
-    if (nloop == 2) mfrun_impl = mfrun_impl * l2
-  end function mfrun_impl
-
-
   pure double precision function f2_value(as, nf)
     implicit none
     real(dp), intent(in) :: as

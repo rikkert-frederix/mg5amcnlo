@@ -35,9 +35,9 @@ c generated matrix elements, chooser, genps, and fixed-order driver.
       common /pborn_norad/p_born_norad
       common /pev/p_ev
 
-      double precision p1_cnt(0:3,nexternal,-2:2)
-      double precision wgt_cnt(-2:2),pswgt_cnt(-2:2)
-      double precision jac_cnt(-2:2)
+      double precision p1_cnt(0:3,nexternal,0:2)
+      double precision wgt_cnt(0:2),pswgt_cnt(0:2)
+      double precision jac_cnt(0:2)
       target p1_cnt,wgt_cnt,pswgt_cnt,jac_cnt
       common /counterevnts/p1_cnt,wgt_cnt,pswgt_cnt,jac_cnt
 
@@ -50,14 +50,6 @@ c generated matrix elements, chooser, genps, and fixed-order driver.
      $     icolup_common,niprocs_common
       target idup_d
       common /c_leshouche_idup_d/idup_d
-
-      double precision amp_split_6to5f(amp_split_size)
-      double precision amp_split_6to5f_muf(amp_split_size)
-      double precision amp_split_6to5f_mur(amp_split_size)
-      target amp_split_6to5f,amp_split_6to5f_muf,
-     $     amp_split_6to5f_mur
-      common /to_amp_split_6to5f/amp_split_6to5f,
-     $     amp_split_6to5f_muf,amp_split_6to5f_mur
 
       double precision amp_split_virt(amp_split_size)
       double precision amp_split_born_for_virt(amp_split_size)
@@ -156,7 +148,7 @@ c generated matrix elements, chooser, genps, and fixed-order driver.
       target is_aorg
       common /c_is_aorg/is_aorg
 
-      target g,mdl_mt,qes2
+      target g,qes2
       target amp_split,amp_split_cnt
       target appl_amp_split_size,appl_qcdpower,appl_qedpower
       target appl_nproc,appl_x1,appl_x2,appl_muf2,appl_mur2
@@ -168,15 +160,13 @@ c generated matrix elements, chooser, genps, and fixed-order driver.
       call init_fks_metadata_bridge()
       include 'pmass.inc'
 
-      call initialize_fks_model_state(g,qes2,mdl_mt,nf,pmass)
+      call initialize_fks_model_state(g,qes2,nf,pmass)
       call initialize_fks_phase_state(p_born,p_born_coll,
      $     p_born_norad,p_ev,p1_cnt,wgt_cnt,pswgt_cnt,jac_cnt,
      $     idup_common,mothup_common,icolup_common,niprocs_common,
      $     is_aorg,amp2,jamp2,subproc_pd,subproc_iproc,flavour_map,
      $     iproc_save,eto,etoi,maxproc_found)
       call initialize_fks_amplitude_state(amp_split,amp_split_cnt,
-     $     amp_split_6to5f,amp_split_6to5f_muf,
-     $     amp_split_6to5f_mur,
      $     amp_split_virt,amp_split_born_for_virt,amp_split_avv,
      $     amp_split_wgtnstmp,amp_split_wgtwnstmpmuf,
      $     amp_split_wgtwnstmpmur,amp_split_wgtdegrem_xi,
@@ -204,22 +194,15 @@ c generated matrix elements, chooser, genps, and fixed-order driver.
       use fks_singular_module, only: initialize_fks_generated_state
       implicit none
       include 'nexternal.inc'
-      include 'maxparticles.inc'
       include 'maxconfigs.inc'
-      include 'coupl.inc'
-      integer i,j
-      double precision zero
-      parameter (zero=0d0)
       include 'born_conf.inc'
       double precision born_mass(-nexternal:0,lmaxconfigs)
       double precision born_width(-nexternal:0,lmaxconfigs)
-      integer born_pow(-nexternal:0,lmaxconfigs)
 
       born_mass=0d0
       born_width=0d0
-      born_pow=0
-c born_props.inc writes PMASS, PWIDTH and POW by those exact names.
-      call fill_fks_born_props_bridge(born_mass,born_width,born_pow)
+c born_props.inc writes PMASS and PWIDTH by those exact names.
+      call fill_fks_born_props_bridge(born_mass,born_width)
       call initialize_fks_generated_state(max_branchb_used,
      $     lmaxconfigsb_used,iforest,sprop,tprid,mapconfig,
      $     born_mass,born_width)
@@ -227,7 +210,7 @@ c born_props.inc writes PMASS, PWIDTH and POW by those exact names.
       end
 
 
-      subroutine fill_fks_born_props_bridge(pmass,pwidth,pow)
+      subroutine fill_fks_born_props_bridge(pmass,pwidth)
       implicit none
       include 'nexternal.inc'
       include 'maxconfigs.inc'
@@ -236,7 +219,6 @@ c born_props.inc writes PMASS, PWIDTH and POW by those exact names.
       parameter (zero=0d0)
       double precision pmass(-nexternal:0,lmaxconfigs)
       double precision pwidth(-nexternal:0,lmaxconfigs)
-      integer pow(-nexternal:0,lmaxconfigs)
       include 'born_props.inc'
       return
       end

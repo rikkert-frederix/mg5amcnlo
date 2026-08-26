@@ -84,15 +84,6 @@ contains
   end subroutine validate_kinematic_state
 
 
-  subroutine finalize_kinematic_state()
-    implicit none
-
-    if (allocated(is_a_j)) deallocate(is_a_j)
-    if (allocated(is_a_lp)) deallocate(is_a_lp)
-    if (allocated(is_a_lm)) deallocate(is_a_lm)
-    if (allocated(is_a_ph)) deallocate(is_a_ph)
-    kinematic_state_initialized = .false.
-  end subroutine finalize_kinematic_state
 
 
   subroutine fail_validation(message)

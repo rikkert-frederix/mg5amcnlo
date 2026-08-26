@@ -21,28 +21,15 @@ module ranmar_module
   integer :: random_offset_split_common
   common /c_random_offset_split/ random_offset_split_common
 
-  type :: ranmar_state_type
-    real(kind=ranmar_real_kind) :: random_values(97)
-    real(kind=ranmar_real_kind) :: carry
-    real(kind=ranmar_real_kind) :: carry_decrement
-    real(kind=ranmar_real_kind) :: carry_modulus
-    integer :: first_index
-    integer :: second_index
-    logical :: ntuple_needs_initialization
-    integer :: ntuple_ij
-    integer :: ntuple_kl
-  end type ranmar_state_type
-
   public :: ntuple
 
 contains
 
-  subroutine ntuple(x, a, b, ii, jconfig)
+  subroutine ntuple(x, a, b, jconfig)
     ! Front end to RANMAR which lets the caller choose a seed.
     real(kind=ranmar_real_kind), intent(out) :: x
     real(kind=ranmar_real_kind), intent(in) :: a
     real(kind=ranmar_real_kind), intent(in) :: b
-    integer, intent(in) :: ii
     integer, intent(in) :: jconfig
 
     integer :: ioffset
@@ -82,8 +69,6 @@ contains
       call ranmar(x)
     end do
     x = a + x * (b - a)
-
-    ! ii is retained in the public ABI as the historical dummy placeholder.
   end subroutine ntuple
 
 
@@ -260,42 +245,4 @@ contains
     path(1:3) = '../'
     if (used_length + 3 < len(path)) path(used_length + 4:) = ' '
   end subroutine prepend_parent_directory
-
-
-  subroutine get_ranmar_state(state)
-    type(ranmar_state_type), intent(out) :: state
-
-    state%random_values = random_values
-    state%carry = carry
-    state%carry_decrement = carry_decrement
-    state%carry_modulus = carry_modulus
-    state%first_index = first_index
-    state%second_index = second_index
-    state%ntuple_needs_initialization = ntuple_needs_initialization
-    state%ntuple_ij = ntuple_ij
-    state%ntuple_kl = ntuple_kl
-  end subroutine get_ranmar_state
-
-
-  subroutine set_ranmar_state(state)
-    type(ranmar_state_type), intent(in) :: state
-
-    if (state%first_index < 1 .or. state%first_index > 97 .or. &
-        state%second_index < 1 .or. state%second_index > 97) then
-      write (*, *) 'Invalid indices in saved RANMAR state:', &
-           state%first_index, state%second_index
-      stop
-    end if
-
-    random_values = state%random_values
-    carry = state%carry
-    carry_decrement = state%carry_decrement
-    carry_modulus = state%carry_modulus
-    first_index = state%first_index
-    second_index = state%second_index
-    ntuple_needs_initialization = state%ntuple_needs_initialization
-    ntuple_ij = state%ntuple_ij
-    ntuple_kl = state%ntuple_kl
-  end subroutine set_ranmar_state
-
 end module ranmar_module

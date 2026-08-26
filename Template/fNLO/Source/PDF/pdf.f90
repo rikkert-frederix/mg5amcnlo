@@ -3,7 +3,7 @@ module pdf_dispatch_module
   private
 
   integer, parameter :: dp = kind(1.0d0)
-  real(dp), allocatable :: nnfx_workspace(:)
+  real(dp) :: nnfx_workspace(-6:7)
 
   public :: pftopdg_impl
 
@@ -16,20 +16,6 @@ module pdf_dispatch_module
   end interface
 
 contains
-
-  subroutine initialize_pdf_dispatch()
-    implicit none
-
-    if (.not. allocated(nnfx_workspace)) allocate(nnfx_workspace(-6:7))
-  end subroutine initialize_pdf_dispatch
-
-
-  subroutine finalize_pdf_dispatch()
-    implicit none
-
-    if (allocated(nnfx_workspace)) deallocate(nnfx_workspace)
-  end subroutine finalize_pdf_dispatch
-
 
   subroutine pftopdg_impl(ih, x, q, pdf, pdlabel)
     implicit none
@@ -59,7 +45,6 @@ contains
 
     select case (trim(pdlabel))
     case ('nn23lo', 'nn23lo1', 'nn23nlo')
-      call initialize_pdf_dispatch()
       call nnevolvepdf(x, xmu, nnfx_workspace)
       fx(-5:5) = nnfx_workspace(-5:5) / x
       fx(7) = nnfx_workspace(7) / x

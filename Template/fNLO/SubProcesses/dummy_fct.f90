@@ -13,7 +13,6 @@ contains
     accept_dummy_cuts = .true.
   end function accept_dummy_cuts
 
-
   double precision function fixed_user_scale(mu_r_reference, scale_id)
     implicit none
     double precision, intent(in) :: mu_r_reference

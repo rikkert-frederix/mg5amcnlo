@@ -1,8 +1,9 @@
 c Python-generated dimensions remain on this fixed-form boundary.  The
-c free-form module aliases this COMMON storage and allocates only its
-c private, process-sized cache.
+c free-form modules alias this COMMON storage and own only private,
+c process-sized caches.
 
       subroutine init_genps_fks_bridge()
+      use genps_born, only: initialize_genps_born_state
       use genps_fks, only: initialize_genps_fks_state
       implicit none
       logical initialized
@@ -28,9 +29,9 @@ c private, process-sized cache.
       target config_tree,config_index
       common /to_itree/config_tree,config_index
 
-      double precision cnt_momenta(0:3,nexternal,-2:2)
-      double precision cnt_weight(-2:2),cnt_psweight(-2:2)
-      double precision cnt_jacobian(-2:2)
+      double precision cnt_momenta(0:3,nexternal,0:2)
+      double precision cnt_weight(0:2),cnt_psweight(0:2)
+      double precision cnt_jacobian(0:2)
       target cnt_momenta,cnt_weight,cnt_psweight,cnt_jacobian
       common /counterevnts/cnt_momenta,cnt_weight,cnt_psweight,
      $     cnt_jacobian
@@ -73,14 +74,16 @@ c private, process-sized cache.
       common /to_phase_space_s_channel/schannel_masses
 
       if (initialized) return
-      call initialize_genps_fks_state(config_mass,config_width,
-     $     config_forest,config_tree,config_index,cnt_momenta,
-     $     cnt_weight,cnt_psweight,cnt_jacobian,born_tree,born_ns,
+      call initialize_genps_born_state(config_mass,config_width,
+     $     config_forest,config_tree,config_index,born_tree,born_ns,
      $     born_nt,born_onebody,born_nbranch,born_one_body,
-     $     born_momenta,born_lab_momenta,born_coll_momenta,
-     $     born_norad_momenta,event_momenta,cbw_mass,cbw_width,
+     $     born_momenta,born_lab_momenta,cbw_mass,cbw_width,
      $     cbw_level_max,cbw,cbw_level,particle_masses,
      $     schannel_masses)
+      call initialize_genps_fks_state(cnt_momenta,cnt_weight,
+     $     cnt_psweight,cnt_jacobian,born_lab_momenta,
+     $     born_coll_momenta,born_norad_momenta,event_momenta,
+     $     particle_masses)
       initialized=.true.
       return
       end

@@ -1,18 +1,15 @@
 module setscales_module
-  use process_dimensions, only: nexternal, nincoming, max_particles, &
+  use process_dimensions, only: nexternal, nincoming, &
        validate_process_dimensions
-  use kinematic_runtime_state, only: is_a_j, validate_kinematic_state
+  use kinematic_runtime_state, only: validate_kinematic_state
   use run_state, only: scale, fixed_ren_scale, fixed_fac_scale, &
-       fixed_couplings, fixed_qes_scale, mur_over_ref, muf1_over_ref, &
+       fixed_qes_scale, mur_over_ref, muf1_over_ref, &
        muf2_over_ref, qes_over_ref, mur_ref_fixed, muf1_ref_fixed, &
        muf2_ref_fixed, qes_ref_fixed, mur2_current, muf12_current, &
        muf22_current, qes2_current, q2fact, dynamical_scale_choice
-  use extra_weights, only: wgtbpower
   use timing_state, only: t_coupl
   use alfas_functions_module, only: alphas
-  use kin_functions_module, only: pt => pt_impl, et => et_impl, &
-       dot => dot_impl
-  use fastjet_timing_wrapper, only: fastjet_timed
+  use kin_functions_module, only: et => et_impl
   use fixed_order_user_hooks, only: fixed_user_scale
   implicit none
   private
@@ -32,10 +29,6 @@ module setscales_module
   public :: set_alphas, set_ren_scale, set_fac_scale
 
   interface
-    double precision function amcatnlo_fastjetdmergemax(index)
-      integer, intent(in) :: index
-    end function amcatnlo_fastjetdmergemax
-
     subroutine sync_setscales_bridge()
     end subroutine sync_setscales_bridge
 
@@ -130,7 +123,7 @@ contains
     call set_fac_scale_impl(xp, dummies)
     call set_ren_scale_impl(xp, dummy)
 
-    copy_momenta = .not. fixed_couplings
+    copy_momenta = .true.
     call update_model_momenta_bridge(xp, reset_momenta, copy_momenta)
 
     call cpu_time(time_after)
@@ -169,86 +162,14 @@ contains
   double precision function mur_ref_dynamic_impl(pp)
     implicit none
     double precision, intent(in) :: pp(0:, :)
-    integer, parameter :: imurtype = 1
-    integer :: i, j, nn, njet, iqcd
-    integer :: jet(nexternal)
-    double precision :: tmp, tmp1, tmp2, xm2
-    double precision :: pqcd(0:3, nexternal), pjet(0:3, nexternal)
-    double precision :: rfj, sycut, palg
 
     call validate_momenta(pp, 'muR_ref_dynamic')
-    tmp = 0d0
     if (nincoming == 1) then
-      tmp = pp(0, 1)
+      mur_ref_dynamic_impl = pp(0, 1)
       temp_scale_id = 'Mass of decaying particle'
-    else if (imurtype == 1) then
-      tmp = scale_global_ref_impl(pp)
-    else if (imurtype == 2) then
-      do i = nincoming + 1, nexternal
-        tmp = tmp + pt(pp(0:3, i))
-      end do
-      temp_scale_id = 'sum_i pT(i), i=final state'
-    else if (imurtype == 3) then
-      write(*, *) 'imurtype=3 not possible in setscales.f: ' // &
-           'need to check number of Born orders.'
-      stop 1
-
-      tmp1 = 0d0
-      tmp2 = 1d0
-      iqcd = 0
-      if (nint(wgtbpower) == 0) then
-        do i = nincoming + 1, nexternal
-          xm2 = dot(pp(0:3, i), pp(0:3, i))
-          if (xm2 <= 0d0) xm2 = 0d0
-          tmp1 = tmp1 + sqrt(pt(pp(0:3, i))**2 + xm2)
-        end do
-        tmp = tmp1
-      else
-        nn = 0
-        do i = 1, nexternal
-          if (is_a_j(i)) then
-            nn = nn + 1
-            do j = 0, 3
-              pqcd(j, nn) = pp(j, i)
-            end do
-          end if
-        end do
-        palg = 1d0
-        rfj = 0.4d0
-        sycut = 0d0
-        call fastjet_timed(pqcd, nn, rfj, sycut, &
-             palg, pjet, njet, jet)
-        if (nn - 1 > nint(wgtbpower)) then
-          write(*, *) 'More Born QCD partons than Born QCD ' // &
-               'couplings: cannot used this scale choice', imurtype
-          stop 1
-        else if (nn - 1 == nint(wgtbpower)) then
-          do i = 1, nint(wgtbpower)
-            tmp2 = tmp2 * sqrt(amcatnlo_fastjetdmergemax(nn - i - 1))
-          end do
-          tmp = tmp2**(1d0 / wgtbpower)
-        else if (nn - 1 < nint(wgtbpower)) then
-          do i = nincoming + 1, nexternal - 1
-            if (.not. is_a_j(i)) then
-              xm2 = dot(pp(0:3, i), pp(0:3, i))
-              if (xm2 <= 0d0) xm2 = 0d0
-              tmp1 = tmp1 + sqrt(pt(pp(0:3, i))**2 + xm2)
-            else
-              iqcd = iqcd + 1
-              tmp2 = tmp2 * &
-                   sqrt(amcatnlo_fastjetdmergemax(nn - iqcd - 1))
-            end if
-          end do
-          tmp = tmp2 * tmp1**(nint(wgtbpower) - iqcd)
-          tmp = tmp**(1d0 / wgtbpower)
-        end if
-      end if
-      temp_scale_id = 'geometric mean #3'
     else
-      write(*, *) 'Unknown option in muR_ref_dynamic', imurtype
-      stop 1
+      mur_ref_dynamic_impl = scale_global_ref_impl(pp)
     end if
-    mur_ref_dynamic_impl = tmp
   end function mur_ref_dynamic_impl
 
 
@@ -291,25 +212,9 @@ contains
   double precision function muf_ref_dynamic_impl(pp)
     implicit none
     double precision, intent(in) :: pp(0:, :)
-    integer, parameter :: imuftype = 1
-    integer :: i
-    double precision :: tmp
 
     call validate_momenta(pp, 'muF_ref_dynamic')
-    tmp = 0d0
-    if (imuftype == 1) then
-      tmp = scale_global_ref_impl(pp)
-    else if (imuftype == 2) then
-      do i = nincoming + 1, nexternal
-        tmp = tmp + pt(pp(0:3, i))**2
-      end do
-      tmp = sqrt(tmp)
-      temp_scale_id = 'Sqrt[sum_i pT(i)**2], i=final state'
-    else
-      write(*, *) 'Unknown option in muF_ref_dynamic', imuftype
-      stop 1
-    end if
-    muf_ref_dynamic_impl = tmp
+    muf_ref_dynamic_impl = scale_global_ref_impl(pp)
   end function muf_ref_dynamic_impl
 
 
@@ -342,27 +247,14 @@ contains
   double precision function qes_ref_dynamic_impl(pp)
     implicit none
     double precision, intent(in) :: pp(0:, :)
-    integer, parameter :: iqestype = 1
-    integer :: i
-    double precision :: tmp
 
     call validate_momenta(pp, 'QES_ref_dynamic')
-    tmp = 0d0
     if (nincoming == 1) then
-      tmp = pp(0, 1)
+      qes_ref_dynamic_impl = pp(0, 1)
       temp_scale_id = 'Mass of decaying particle'
-    else if (iqestype == 1) then
-      tmp = scale_global_ref_impl(pp)
-    else if (iqestype == 2) then
-      do i = nincoming + 1, nexternal
-        tmp = tmp + pt(pp(0:3, i))
-      end do
-      temp_scale_id = 'sum_i pT(i), i=final state'
     else
-      write(*, *) 'Unknown option in QES_ref_dynamic', iqestype
-      stop 1
+      qes_ref_dynamic_impl = scale_global_ref_impl(pp)
     end if
-    qes_ref_dynamic_impl = tmp
   end function qes_ref_dynamic_impl
 
 
@@ -448,17 +340,6 @@ contains
     call sync_setscales_state()
     call set_ren_scale_impl(pp, mur)
   end subroutine set_ren_scale
-
-
-  double precision function mur_ref_dynamic(pp)
-    implicit none
-    double precision, intent(in) :: pp(0:, :)
-
-    call sync_setscales_state()
-    mur_ref_dynamic = mur_ref_dynamic_impl(pp)
-  end function mur_ref_dynamic
-
-
   subroutine set_fac_scale(pp, muf)
     implicit none
     double precision, intent(in) :: pp(0:, :)
@@ -467,42 +348,4 @@ contains
     call sync_setscales_state()
     call set_fac_scale_impl(pp, muf)
   end subroutine set_fac_scale
-
-
-  double precision function muf_ref_dynamic(pp)
-    implicit none
-    double precision, intent(in) :: pp(0:, :)
-
-    call sync_setscales_state()
-    muf_ref_dynamic = muf_ref_dynamic_impl(pp)
-  end function muf_ref_dynamic
-
-
-  subroutine set_qes_scale(pp, qes)
-    implicit none
-    double precision, intent(in) :: pp(0:, :)
-    double precision, intent(out) :: qes
-
-    call sync_setscales_state()
-    call set_qes_scale_impl(pp, qes)
-  end subroutine set_qes_scale
-
-
-  double precision function qes_ref_dynamic(pp)
-    implicit none
-    double precision, intent(in) :: pp(0:, :)
-
-    call sync_setscales_state()
-    qes_ref_dynamic = qes_ref_dynamic_impl(pp)
-  end function qes_ref_dynamic
-
-
-  double precision function scale_global_reference(pp)
-    implicit none
-    double precision, intent(in) :: pp(0:, :)
-
-    call sync_setscales_state()
-    scale_global_reference = scale_global_ref_impl(pp)
-  end function scale_global_reference
-
 end module setscales_module

@@ -87,17 +87,3 @@ c histogram implementation in HwU.f90 has no generated INCLUDE files.
       double precision xnorm
       call module_HwU_output(unit,xnorm)
       end
-      subroutine accum(idummy)
-      use HwU_module, only: module_accum => accum
-      implicit none
-      integer idummy
-      call module_accum(idummy)
-      end
-
-
-      subroutine addfil(string)
-      use HwU_module, only: module_addfil => addfil
-      implicit none
-      character(len=*) string
-      call module_addfil(string)
-      end

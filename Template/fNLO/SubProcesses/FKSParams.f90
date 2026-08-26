@@ -55,13 +55,6 @@ contains
   end subroutine initialize_fks_params
 
 
-  subroutine finalize_fks_params()
-    implicit none
-
-    if (allocated(SelectedCouplingOrders)) deallocate(SelectedCouplingOrders)
-    HasReadOnce=.False.
-    paramPrinted=.False.
-  end subroutine finalize_fks_params
 
   subroutine FKSParamReader(filename, printParam, force)
     ! Reads the file 'filename' and sets the parameters found in that file.

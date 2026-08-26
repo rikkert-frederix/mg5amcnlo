@@ -6,7 +6,7 @@ c Legacy HwU ABI for the module-owned dummy implementation.
       integer idummy
       double precision dummy
 
-      call module_HwU_output(idummy,dummy)
+      call module_HwU_output(idummy)
       return
       end
 
@@ -29,26 +29,6 @@ c Legacy HwU ABI for the module-owned dummy implementation.
       integer idummy
       double precision dummy(2)
 
-      call module_HwU_accum_iter(ldummy,idummy,dummy)
-      return
-      end
-
-
-      subroutine accum(idummy)
-      use hwu_dummy_module, only: module_accum => accum
-      implicit none
-      integer idummy
-
-      call module_accum(idummy)
-      return
-      end
-
-
-      subroutine addfil(string)
-      use hwu_dummy_module, only: module_addfil => addfil
-      implicit none
-      character*(*) string
-
-      call module_addfil(string)
+      call module_HwU_accum_iter()
       return
       end

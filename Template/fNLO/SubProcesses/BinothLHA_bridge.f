@@ -13,18 +13,15 @@
       common /to_amp_split_finite/ amp_split_finite_ml
       double precision amp_split_poles_fks(amp_split_size,2)
       common /to_amp_split_poles_FKS/ amp_split_poles_fks
-      double precision amp_split_local(amp_split_size)
       double precision amp_split_finite_local(amp_split_size)
       double precision amp_split_poles_local(amp_split_size,2)
       include 'pmass.inc'
 
-      amp_split_local=amp_split
       amp_split_finite_local=amp_split_finite_ml
       amp_split_poles_local=amp_split_poles_fks
       call binoth_lha_eval(p,born_wgt,virt_wgt,pmass,
-     &     amp_split_local,amp_split_finite_local,
+     &     amp_split_finite_local,
      &     amp_split_poles_local)
-      amp_split=amp_split_local
       amp_split_finite_ml=amp_split_finite_local
       amp_split_poles_fks=amp_split_poles_local
       return

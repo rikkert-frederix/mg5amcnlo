@@ -88,12 +88,6 @@ contains
   end subroutine initialize_symmetry_data
 
 
-  subroutine finalize_symmetry_data()
-    implicit none
-
-    if (allocated(born_mapconfig)) deallocate(born_mapconfig)
-    symmetry_data_initialized = .false.
-  end subroutine finalize_symmetry_data
 
 
   subroutine run_symmetry(run_mode, nndim, amp2, p_born, &

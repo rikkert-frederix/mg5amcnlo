@@ -28,8 +28,7 @@ module madfks_plot_module
       character(len=*), intent(in) :: weights_info(*)
     end subroutine analysis_begin
 
-    subroutine analysis_end(xnorm)
-      double precision, intent(in) :: xnorm
+    subroutine analysis_end()
     end subroutine analysis_end
 
     subroutine analysis_fill(p, istatus, ipdg, wgts, ibody)
@@ -73,8 +72,6 @@ contains
     integer :: ii, jj, kk, n, nn, nwgt
 
     call validate_process_dimensions()
-    call validate_extra_weights()
-
     ! Determine the PDF members before allocating the weight descriptions.
     nwgt = 1
     if (do_rwgt_scale) then
@@ -206,15 +203,13 @@ contains
     double precision :: xnorm
     integer :: ii, jj, kk, n, nn
 
-    call validate_extra_weights()
-
     xnorm = 1d0/float(ncalls0)
     if (useitmax) xnorm = xnorm/float(itmax)
 
     ! Normalization factor for the PineAPPL grids.
     call plot_pine_bridge(pine_norm_action, &
          1d0/(dble(ncalls0)*dble(itmax)), 0, 0, 0d0)
-    call analysis_end(xnorm)
+    call analysis_end()
 
     open (unit=34, file='scale_pdf_dependence.dat', status='unknown')
     if (.not. useitmax) xnorm = xnorm/float(itmax)
@@ -274,8 +269,6 @@ contains
     integer :: istatus(nexternal)
 
     call validate_process_dimensions()
-    call validate_extra_weights()
-
     select case (itype)
     case (11)
       ibody = 1                 ! (n+1)-body

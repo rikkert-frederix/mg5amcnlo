@@ -7,18 +7,16 @@ c Legacy analysis ABI for the module-owned dummy implementation.
       integer nwgt
       character*(*) weights_info(*)
 
-      call module_analysis_begin(nwgt,weights_info)
+      call module_analysis_begin()
       return
       end
 
 
-      subroutine analysis_end(xnorm)
+      subroutine analysis_end()
       use analysis_dummy_module, only:
      &     module_analysis_end => analysis_end
       implicit none
-      double precision xnorm
-
-      call module_analysis_end(xnorm)
+      call module_analysis_end()
       return
       end
 
@@ -31,6 +29,6 @@ c Legacy analysis ABI for the module-owned dummy implementation.
       double precision p(0:4,nexternal),wgts(*)
       integer istatus(nexternal),ipdg(nexternal),ibody
 
-      call module_analysis_fill(p,istatus,ipdg,wgts,ibody)
+      call module_analysis_fill()
       return
       end

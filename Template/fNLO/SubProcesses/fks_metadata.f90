@@ -154,28 +154,8 @@ contains
   end subroutine validate_fks_metadata
 
 
-  subroutine finalize_fks_metadata()
-    if (allocated(fks_i_values)) deallocate(fks_i_values)
-    if (allocated(fks_j_values)) deallocate(fks_j_values)
-    if (allocated(extra_cnt_values)) deallocate(extra_cnt_values)
-    if (allocated(isplitorder_born_values)) then
-      deallocate(isplitorder_born_values)
-    end if
-    if (allocated(isplitorder_cnt_values)) deallocate(isplitorder_cnt_values)
-    if (allocated(fks_j_from_i_values)) deallocate(fks_j_from_i_values)
-    if (allocated(particle_type_values)) deallocate(particle_type_values)
-    if (allocated(pdg_type_values)) deallocate(pdg_type_values)
-    if (allocated(split_type_values)) deallocate(split_type_values)
-    if (allocated(need_color_links_values)) then
-      deallocate(need_color_links_values)
-    end if
-    metadata_initialized = .false.
-  end subroutine finalize_fks_metadata
 
 
-  logical function fks_metadata_is_initialized()
-    fks_metadata_is_initialized = metadata_initialized
-  end function fks_metadata_is_initialized
 
 
   integer function fks_i_d(configuration)

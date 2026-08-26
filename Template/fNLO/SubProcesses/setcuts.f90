@@ -681,24 +681,6 @@ subroutine initialize_setcuts_state()
 end subroutine initialize_setcuts_state
 
 
-subroutine finalize_setcuts_state()
-  implicit none
-
-  if (allocated(taumin)) deallocate(taumin)
-  if (allocated(taumin_s)) deallocate(taumin_s)
-  if (allocated(taumin_j)) deallocate(taumin_j)
-  if (allocated(mass_min)) deallocate(mass_min)
-  if (allocated(cbw_fks_level_max)) deallocate(cbw_fks_level_max)
-  if (allocated(cbw_fks)) deallocate(cbw_fks)
-  if (allocated(cbw_fks_level)) deallocate(cbw_fks_level)
-  if (allocated(cbw_fks_mass)) deallocate(cbw_fks_mass)
-  if (allocated(cbw_fks_width)) deallocate(cbw_fks_width)
-  if (allocated(s_mass_fks)) deallocate(s_mass_fks)
-  if (allocated(firsttime_chans)) deallocate(firsttime_chans)
-  if (allocated(saved_schan_order)) deallocate(saved_schan_order)
-  stot = 0d0
-  setcuts_state_initialized = .false.
-end subroutine finalize_setcuts_state
 
 
 subroutine validate_setcuts_state()

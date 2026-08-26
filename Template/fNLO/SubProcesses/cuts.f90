@@ -125,17 +125,6 @@ contains
   end subroutine require_cuts_event_state
 
 
-  subroutine finalize_cuts_module()
-    implicit none
-    if (allocated(etmin)) deallocate(etmin)
-    if (allocated(etmax)) deallocate(etmax)
-    if (allocated(mxxmin)) deallocate(mxxmin)
-    if (allocated(event_masses)) deallocate(event_masses)
-    if (allocated(event_idup)) deallocate(event_idup)
-    ybst_til_tolab = 0d0
-    cuts_runtime_initialized = .false.
-    cuts_event_initialized = .false.
-  end subroutine finalize_cuts_module
 
 
   subroutine fail_cuts(message)
@@ -180,22 +169,17 @@ contains
   double precision p(0:4,nexternal)
 !
   double precision p_reco(0:4,nexternal)
-  integer iPDG_reco(nexternal),nphiso
-! local integers
-  integer i,j
+  integer iPDG_reco(nexternal)
 ! bare parton algorithm
   integer nPART
   double precision pPART(0:3,nexternal)
 ! jet cluster algorithm
-  integer nQCD,NJET,JET(nexternal)
-  double precision pQCD(0:3,nexternal),PJET(0:3,nexternal)
-  integer njet_eta
-  double precision pgamma(0:3,nexternal),pgamma_iso(0:3,nexternal)
-  integer nph
+  integer nQCD
+  double precision pQCD(0:3,nexternal)
 ! logicals that define if particles are leptons, jets or photons. These
 ! are filled from the PDG codes (iPDG array) in this function.
-  logical is_a_lp(nexternal),is_a_lm(nexternal),is_a_j(nexternal) &
-  & ,is_a_ph(nexternal),is_nph_iso(nexternal),is_nextph_iso(nexternal)
+  logical is_a_lp(nexternal),is_a_lm(nexternal),is_a_j(nexternal)
+  logical is_nextph_iso(nexternal)
   logical is_a_lp_reco(nexternal),is_a_lm_reco(nexternal)
   call require_cuts_runtime_state()
   passcuts_user=.true. ! event is okay; otherwise it is changed
@@ -212,8 +196,8 @@ contains
 
   ! Apply the Photon cuts on isolated photons based on the bare particles
   passcuts_user = passcuts_user .and. &
-  & passcuts_photons(p,istatus,ipdg,is_a_lp,is_a_lm,pPART,nPART, &
-  & pgamma,nph,is_nph_iso,is_nextph_iso)
+  & passcuts_photons(p,ipdg,is_a_lp,is_a_lm,pPART,nPART, &
+  & is_nextph_iso)
   if (.not.passcuts_user) return
 
   p_reco = p
@@ -231,12 +215,12 @@ contains
 
   ! Apply the Jet cuts
   passcuts_user = passcuts_user .and. &
-  & passcuts_jets(p_reco,pQCD,nQCD,pgamma,nph,is_nph_iso)
+  & passcuts_jets(p_reco,pQCD,nQCD)
   if (.not.passcuts_user) return
 
   ! Apply PDG specific cuts
   passcuts_user = passcuts_user .and. &
-  & passcuts_pdgs(p_reco,istatus,ipdg_reco)
+  & passcuts_pdgs(p_reco)
   if (.not.passcuts_user) return
 
 !***************************************************************
@@ -304,17 +288,16 @@ contains
   return
   end subroutine identify_PART_partons
 
-  logical function passcuts_photons(p,istatus,ipdg,is_a_lp,is_a_lm, &
-  & pPART,nPART,pgamma,nph,is_nph_iso,is_nextph_iso)
+  logical function passcuts_photons(p,ipdg,is_a_lp,is_a_lm, &
+  & pPART,nPART,is_nextph_iso)
   implicit none
-  integer istatus(nexternal)
   integer iPDG(nexternal)
   double precision p(0:4,nexternal)
   logical is_a_lp(nexternal),is_a_lm(nexternal)
   integer nPART, nph
   double precision pPART(0:3,nexternal), pgamma(0:3,nexternal)
   double precision pgamma_iso(0:3,nexternal)
-  logical is_nph_iso(nexternal),is_nextph_iso(nexternal)
+  logical is_nextph_iso(nexternal)
   integer i,j,k,mu
 ! Sort array of results: ismode>0 for real, isway=0 for ascending order
   integer ismode,isway,izero,isorted(nexternal)
@@ -389,7 +372,6 @@ contains
   do while(j.lt.nph)
 
   j=j+1
-  is_nph_iso(j)=.False.
   ptg=pt(pgamma(0,j))
   if(ptg.lt.ptgmin)then
   cycle
@@ -453,7 +435,6 @@ contains
   enddo
   if(.not.isolated)cycle
   endif
-  is_nph_iso(j)=.True.
   nphiso=nphiso+1
 
   if (nphiso.gt.0) then
@@ -534,18 +515,17 @@ contains
   end subroutine identify_QCD_partons
 
 
-  logical function passcuts_jets(p,pQCD,nQCD,pgamma,nph,is_nph_iso)
+  logical function passcuts_jets(p,pQCD,nQCD)
   implicit none
   double precision p(0:4,nexternal)
-  integer nQCD, nph
-  double precision pQCD(0:3,nexternal), pgamma(0:3,nexternal)
-  logical is_nph_iso(nexternal)
+  integer nQCD
+  double precision pQCD(0:3,nexternal)
 
   integer NJET,JET(nexternal)
   double precision rfj,sycut,palg
   double precision PJET(0:3,nexternal)
   integer mm
-  integer i,j
+  integer j
 
   passcuts_jets=.true.
 
@@ -566,7 +546,7 @@ contains
   return
   endif
 
-! Define jet clustering parameters (from cuts.inc via the run_card.dat)
+! Define jet clustering parameters from the run card.
   palg=JETALGO         ! jet algorithm: 1.0=kt, 0.0=C/A, -1.0 = anti-kt
   rfj=JETRADIUS        ! the radius parameter
   sycut=ptj            ! minimum transverse momentum
@@ -690,10 +670,8 @@ contains
   return
   end function passcuts_leptons
 
-  logical function passcuts_pdgs(p,istatus,ipdg)
+  logical function passcuts_pdgs(p)
   implicit none
-  integer istatus(nexternal)
-  integer iPDG(nexternal)
   double precision p(0:4,nexternal)
 ! PDG specific cut
 ! temporary variable for caching locally computation
@@ -901,161 +879,37 @@ contains
   end subroutine sorttf
 
 
-  subroutine sortti(a,index,n1)
-    implicit none
-    integer, intent(in) :: n1,a(n1)
-    integer, intent(inout) :: index(n1)
-    integer :: n,i1,i2,i3,i22,i222,i33,ai
-
-    n=n1
-    do i1=2,n
-      i3=i1
-      i33=index(i3)
-      ai=a(i33)
-      do
-        i2=i3/2
-        if (i2 <= 0) exit
-        i22=index(i2)
-        if (ai <= a(i22)) exit
-        index(i3)=i22
-        i3=i2
-      end do
-      index(i3)=i33
-    end do
-    do
-      i3=index(n)
-      index(n)=index(1)
-      ai=a(i3)
-      n=n-1
-      if (n <= 1) exit
-      i1=1
-      do
-        i2=i1+i1
-        if (i2 > n) exit
-        i22=index(i2)
-        if (i2 < n) then
-          i222=index(i2+1)
-          if (a(i22) < a(i222)) then
-            i2=i2+1
-            i22=i222
-          end if
-        end if
-        if (ai >= a(i22)) exit
-        index(i1)=i22
-        i1=i2
-      end do
-      index(i1)=i3
-    end do
-    index(1)=i3
-  end subroutine sortti
 
 
-  subroutine sorttc(a,index,n1)
-    implicit none
-    integer, intent(in) :: n1,a(n1)
-    integer, intent(inout) :: index(n1)
-    integer :: n,i1,i2,i3,i22,i222,i33,ai
-
-    n=n1
-    do i1=2,n
-      i3=i1
-      i33=index(i3)
-      ai=a(i33)
-      do
-        i2=i3/2
-        if (i2 <= 0) exit
-        i22=index(i2)
-        if (icmpch(ai,a(i22)) <= 0) exit
-        index(i3)=i22
-        i3=i2
-      end do
-      index(i3)=i33
-    end do
-    do
-      i3=index(n)
-      index(n)=index(1)
-      ai=a(i3)
-      n=n-1
-      if (n <= 1) exit
-      i1=1
-      do
-        i2=i1+i1
-        if (i2 > n) exit
-        i22=index(i2)
-        if (i2 < n) then
-          i222=index(i2+1)
-          if (icmpch(a(i22),a(i222)) < 0) then
-            i2=i2+1
-            i22=i222
-          end if
-        end if
-        if (icmpch(ai,a(i22)) >= 0) exit
-        index(i1)=i22
-        i1=i2
-      end do
-      index(i1)=i3
-    end do
-    index(1)=i3
-  end subroutine sorttc
 
 
-  integer function icmpch(ic1,ic2)
-    implicit none
-    integer, intent(in) :: ic1,ic2
-    integer :: i1,i2
-    i1=ic1
-    i2=ic2
-    if (i1 >= 0 .and. i2 >= 0) then
-      if (i1 < i2) then
-        icmpch=-1
-      else if (i1 == i2) then
-        icmpch=0
-      else
-        icmpch=1
-      end if
-    else if (i1 >= 0) then
-      icmpch=-1
-    else if (i2 >= 0) then
-      icmpch=1
-    else
-      i1=-i1
-      i2=-i2
-      if (i1 < i2) then
-        icmpch=1
-      else if (i1 == i2) then
-        icmpch=0
-      else
-        icmpch=-1
-      end if
-    end if
-  end function icmpch
 
 
   function iso_getdrv40(p1,p2)
   implicit none
   double precision iso_getdrv40,p1(0:3),p2(0:3)
 !
-  iso_getdrv40=iso_getdr(p1(0),p1(1),p1(2),p1(3), &
-  & p2(0),p2(1),p2(2),p2(3))
+  iso_getdrv40=iso_getdr(p1(1),p1(2),p1(3), &
+  & p2(1),p2(2),p2(3))
   return
   end function iso_getdrv40
 
 
-  function iso_getdr(en1,ptx1,pty1,pl1,en2,ptx2,pty2,pl2)
+  function iso_getdr(ptx1,pty1,pl1,ptx2,pty2,pl2)
   implicit none
-  double precision iso_getdr,en1,ptx1,pty1,pl1,en2,ptx2,pty2,pl2,deta,dphi
+  double precision iso_getdr,ptx1,pty1,pl1,ptx2,pty2,pl2,deta,dphi
 !
-  deta=iso_getpseudorap(en1,ptx1,pty1,pl1)- &
-  & iso_getpseudorap(en2,ptx2,pty2,pl2)
+  deta=iso_getpseudorap(ptx1,pty1,pl1)- &
+  & iso_getpseudorap(ptx2,pty2,pl2)
   dphi=iso_getdelphi(ptx1,pty1,ptx2,pty2)
   iso_getdr=sqrt(dphi**2+deta**2)
   return
   end function iso_getdr
 
 
-  function iso_getpseudorap(en,ptx,pty,pl)
+  function iso_getpseudorap(ptx,pty,pl)
   implicit none
-  double precision iso_getpseudorap,en,ptx,pty,pl,tiny,pt,eta,th
+  double precision iso_getpseudorap,ptx,pty,pl,tiny,pt,eta,th
   parameter (tiny=1.d-5)
 !
   pt=sqrt(ptx**2+pty**2)
@@ -1203,29 +1057,6 @@ contains
   end function invm2_04
 
 
-  subroutine get_ID_H_impl(IDUP_tmp,idup_generated)
-  implicit none
-  integer idup_generated(:,:)
-  integer IDUP_tmp(nexternal),i
-!
-  do i=1,nexternal
-  IDUP_tmp(i)=idup_generated(i,1)
-  enddo
-!
-  return
-  end subroutine get_ID_H_impl
 
-  subroutine get_ID_S_impl(IDUP_tmp,idup_born)
-  implicit none
-  integer idup_born(:,:)
-  integer IDUP_tmp(nexternal),i
-!
-  do i=1,nexternal-1
-  IDUP_tmp(i)=idup_born(i,1)
-  enddo
-  IDUP_tmp(nexternal)=0
-!
-  return
-  end subroutine get_ID_S_impl
 
 end module cuts_module

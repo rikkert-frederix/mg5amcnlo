@@ -15,8 +15,6 @@
 """A File for splitting"""
 
 from __future__ import absolute_import
-import sys
-import re
 import os
 import logging
 pjoin = os.path.join
@@ -39,7 +37,6 @@ class FOAnalyseCard(dict):
     # Template/fNLO/FixedOrderAnalysis.
     fnlo_module_analyses = (
         'analysis_HwU_general.o',
-        'analysis_HwU_general_sdk.o',
         'analysis_HwU_pp_V.o',
         'analysis_HwU_pp_h.o',
         'analysis_HwU_pp_hjj.o',
@@ -50,9 +47,7 @@ class FOAnalyseCard(dict):
         'analysis_HwU_pp_tj.o',
         'analysis_HwU_pp_ttx.o',
         'analysis_HwU_pp_ttx_v2.o',
-        'analysis_HwU_pp_wpz.o',
         'analysis_HwU_template.o',
-        'analysis_pp_wz_ewsud.o',
     )
     fnlo_module_analysis_bridges = tuple(map(
         _analysis_bridge_object, fnlo_module_analyses))

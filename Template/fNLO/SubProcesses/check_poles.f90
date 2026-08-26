@@ -169,21 +169,6 @@ contains
   end subroutine initialize_pole_work
 
 
-  subroutine finalize_check_poles_data()
-    implicit none
-
-    if (allocated(generated_masses)) deallocate(generated_masses)
-    if (allocated(virtual_weights)) deallocate(virtual_weights)
-    if (allocated(pole_accuracies)) deallocate(pole_accuracies)
-    if (allocated(kept_orders)) deallocate(kept_orders)
-    if (allocated(rambo_log_weights)) deallocate(rambo_log_weights)
-    generated_data_initialized = .false.
-    pole_work_initialized = .false.
-    rambo_initialized = .false.
-    rambo_warnings = 0
-    rambo_two_pi = 0d0
-    rambo_log_pi = 0d0
-  end subroutine finalize_check_poles_data
 
 
   subroutine run_check_poles(p_born)

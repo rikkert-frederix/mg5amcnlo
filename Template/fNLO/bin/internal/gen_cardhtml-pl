@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-  my($interaction, $model, $qcdOrder, $qedOrder);
+  my($interaction, $model);
 #
 #    Make sure we are in the main directory, not bin
 #
@@ -22,14 +22,7 @@
 #  get the name of the directory
 #
   my $fullname=qx(pwd);
-  my @temp=split /\//,$fullname;
   my @couplings;
-#  foreach $ciccio (@temp){
-#      if( $ciccio =~ /p*__*/){
-#	  $procname=$ciccio;
-#      }
-#  chomp $procname;
-#  print $procname;
 
 #
 #	Writes out html page index.html with links to results
@@ -84,8 +77,6 @@ until($listpos>$#incard){
       ($model, $junk)   =split(/#/ , $incard[$ini+1]);
 
    chomp($interaction);
-#   chomp($qcdOrder);
-#   chomp($qedOrder);
    chomp($model);
    
 
@@ -143,7 +134,6 @@ until($listpos>$#incard){
 #
 #   Process information
 #
-  my($options) = "'toolbar=yes, location=yes, directories=no, status=no, menubar=yes, scrollbars=yes,resizeable=yes,width=600,height=525'";
   print PAGE "<td ALIGN=center><a href=\"HTML/info.html\"> \n ";
   print PAGE  "Process Information </a> \n";
   print PAGE "<td ALIGN=center> ";
@@ -220,135 +210,12 @@ until($listpos>$#incard){
   }
   print PAGE "</tr> \n";
   
-#  my @keywords =  &GetKeyInfo( $interaction, $model) ;
-#   my @keywords = {};
   print PAGE "</table> \n";
   print PAGE "<tr> <td align\=center colspan\=2> <font size\=-1> \n";
-#  print PAGE "Keywords: @keywords \n";
   print PAGE "Notes:  \n";
-#  print "@keywords \n";
   print PAGE "</font> \n </td> \n </table> \n <p> \n";
   my($today) = `date`;
   print PAGE "<b> Last Update: </b> $today";
   
   print PAGE "</center> \n </body> \n </html> \n";
   close PAGE;
-
-sub GetKeyInfo {
-    my($process, $model)= @_;
-    
-#-------------------------------------------
-# start keyword generation
-# result is an array of keywords (@keywords)
-#-------------------------------------------
-
-#get rid of spaces
-    $process =~ s/\s+//g; 
-
-#set everything to lowercase
-    $process =~ s/(.)/\L$1/g;
-
-# divide it into initial, intermediate and final state
-    ($process, my $forbid) = split /\//, $process;
-    my @splitprocess = split />/, $process; 
-    my $k= @splitprocess;
-
-    my $in= $splitprocess[0]; 
-    my $out=$splitprocess[$k-1]; 
-
-    if ($k > 2) {
-	my $inter=$splitprocess[$k-2];
-    };
-
-    my @keywords=();
-
-## start filling the keyowords array
-
-# initial state classification (trivial)
-
-    push @keywords, "$in-collision";
-
-# final state particle content extraction
-
-    $out =~ s/(.)/$1 /gi;
-    $out =~ s/( ~)/~/gi;
-
-    $out =~ s/( \+)/\+/gi;
-    $out =~ s/( \-)/\-/gi;
-
-    $out =~ s/(t a\+)/ta\+/gi;
-    $out =~ s/(t a\-)/ta\-/gi;
-    $out =~ s/(m u\-)/mu\-/gi;
-    $out =~ s/(m u\+)/mu\+/gi;
-
-    $out =~ s/(l e)/le/gi;
-    $out =~ s/(v l e )/vle /gi;
-
-    $out =~ s/(v )/v/gi;
-
-# count the number of final-state particles
-
-    my @entries= split /\s+/, $out;
-    my $nfinal= @entries; 
-
-    print " final state particles: @entries\n";
-    push @keywords, "2->$nfinal";
-
-#loop over particles
-
-    my $njets=0;
-    my $neutrinos=0;
-    my $cleptons=0;
-    my $top=0;
-    my $bottom=0;
-    my $higgs=0;
-    my $wb=0;
-
-    foreach (@entries){
-	if (substr($_,0,1) eq "v") {
-	    $neutrinos=1;
-	};
-	if (substr($_,0,1) eq "e"  ||
-	    substr($_,0,2) eq "mu" ||
-	    substr($_,0,2) eq "ta" || 
-            substr($_,0,1) eq "l" ) {
-	    $cleptons=1;
-	};
-	if (substr($_,1,1) =~ /([udcsgj])/) {
-	    $njets=$njets+1
-	    };
-	if ($_ eq "t" || $_ eq "t~") {
-	    $top=1;
-	};
-	if ($_ eq "b" || $_ eq "b~") {
-	    $bottom=1;
-	};
-	if ($_ eq "w+" || $_ eq "w-" || $_ eq "z") {
-	    $wb=1;
-	};
-	if ($_ eq "h") {
-	    $higgs=1;
-	};
-    };
-
-    if ($njets gt 1){push @keywords, "multi-jet";};
-    if ($top)       {push @keywords, "top";};
-    if ($bottom)    {push @keywords, "bottom";};
-    if ($higgs)     {push @keywords, "higgs";};
-    if ($wb)        {push @keywords, "weak-boson";};
-    if ($neutrinos) {push @keywords, "missing-energy";};
-    if ($cleptons)  {push @keywords, "charged-lepton";};
-
-# model
-
-	push @keywords, $model;
-
-
-
-#-------------------------
-# end keyword generation
-#-------------------------
-
-# final result
-    @keywords;
-}

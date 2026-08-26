@@ -11,12 +11,11 @@ c bridge with the selected module; only one analysis bridge may be linked.
       end
 
 
-      subroutine analysis_end(dummy)
+      subroutine analysis_end()
       use analysis_hwu_general_module,
      &     only: module_analysis_end => analysis_end
       implicit none
-      double precision dummy
-      call module_analysis_end(dummy)
+      call module_analysis_end()
       end
 
 

@@ -8,51 +8,16 @@ module pdg2pdf_internal_module
   integer, parameter :: first_parton = -7
   integer, parameter :: last_parton = 7
 
-  integer, allocatable :: cached_hadron(:)
-  character(len=7), allocatable :: cached_label(:)
-  real(dp), allocatable :: cached_x(:)
-  real(dp), allocatable :: cached_scale(:)
-  real(dp), allocatable :: cached_pdf(:, :)
+  integer :: cached_hadron(cache_size) = -99
+  character(len=7) :: cached_label(cache_size) = 'abcdefg'
+  real(dp) :: cached_x(cache_size) = -99d9
+  real(dp) :: cached_scale(cache_size) = -99d9
+  real(dp) :: cached_pdf(first_parton:last_parton, cache_size) = -99d9
   integer :: replacement_index = cache_size
-  logical :: cache_initialized = .false.
 
   public :: pdg2pdf_internal_value
 
 contains
-
-  subroutine initialize_pdg2pdf_internal()
-    implicit none
-
-    if (cache_initialized) return
-
-    allocate(cached_hadron(cache_size))
-    allocate(cached_label(cache_size))
-    allocate(cached_x(cache_size))
-    allocate(cached_scale(cache_size))
-    allocate(cached_pdf(first_parton:last_parton, cache_size))
-
-    cached_hadron = -99
-    cached_label = 'abcdefg'
-    cached_x = -99d9
-    cached_scale = -99d9
-    cached_pdf = -99d9
-    replacement_index = cache_size
-    cache_initialized = .true.
-  end subroutine initialize_pdg2pdf_internal
-
-
-  subroutine finalize_pdg2pdf_internal()
-    implicit none
-
-    if (allocated(cached_hadron)) deallocate(cached_hadron)
-    if (allocated(cached_label)) deallocate(cached_label)
-    if (allocated(cached_x)) deallocate(cached_x)
-    if (allocated(cached_scale)) deallocate(cached_scale)
-    if (allocated(cached_pdf)) deallocate(cached_pdf)
-    replacement_index = cache_size
-    cache_initialized = .false.
-  end subroutine finalize_pdg2pdf_internal
-
 
   real(dp) function pdg2pdf_internal_value(ih, ipdg, ibeam, x, xmu, &
                                            pdf_label)
@@ -64,8 +29,6 @@ contains
     integer :: cache_position, cached_position, index
     integer :: original_parton, parton
     real(dp), parameter :: tolerance = 1d-2
-
-    call initialize_pdg2pdf_internal()
 
     if (ih == 0) then
       pdg2pdf_internal_value = 1d0

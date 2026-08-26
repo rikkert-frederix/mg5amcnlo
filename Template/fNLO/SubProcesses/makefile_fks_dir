@@ -46,7 +46,8 @@ FILES= process_dimensions.o process_dimensions_bridge.o			\
 	 $(patsubst %.f,%.o,$(wildcard matrix_*.f)) 			\
 	 FKSParams.o real_me_chooser.o chooser_functions.o		\
 	 chooser_functions_bridge.o					\
-	 genps_fks.o genps_fks_bridge.o kinematic_runtime_state.o	\
+	 genps_born.o genps_fks.o genps_fks_bridge.o			\
+	 kinematic_runtime_state.o					\
 	 setcuts.o						\
 	 setcuts_bridge.o						\
 	 setscales.o setscales_bridge.o				\
@@ -55,7 +56,7 @@ FILES= process_dimensions.o process_dimensions_bridge.o			\
 	 $(patsubst %.f,%.o,$(wildcard born_cnt_*.f))			\
 	 fks_Sij.o $(fastjetfortran_madfks)				\
 	 fks_singular.o fks_singular_bridge.o			\
-	 reweight_xsec.o boostwdir2.o       				\
+	 boostwdir2.o       					\
 	 splitorders_stuff.o					\
 	 splitorders_stuff_bridge.o					\
 	 get_color.o iproc_map.o iproc_map_bridge.o			\
@@ -214,7 +215,7 @@ BinothLHA.o: process_dimensions.o FKSParams.o splitorders_stuff.o cuts.o \
 BinothLHA_bridge.o: BinothLHA.o
 fks_singular.o: process_dimensions.o fks_metadata.o weight_lines.o \
 	mint_module.o FKSParams.o setscales.o splitorders_stuff.o fks_Sij.o \
-	reweight_xsec.o cuts.o chooser_functions.o madfks_plot.o \
+	cuts.o chooser_functions.o madfks_plot.o \
 	$(LIBDIR)run_state.mod \
 	$(LIBDIR)timing_state.mod $(LIBDIR)extra_weights.mod \
 	$(LIBDIR)alfas_functions_module.mod $(LIBDIR)ranmar_module.mod \
@@ -232,11 +233,13 @@ chooser_functions_bridge.o: chooser_functions.o
 setcuts.o: process_dimensions.o fks_metadata.o \
 	kinematic_runtime_state.o mint_module.o $(LIBDIR)run_state.mod
 setcuts_bridge.o: setcuts.o
-genps_fks.o: process_dimensions.o boostwdir2.o FKSParams.o \
+genps_born.o: process_dimensions.o FKSParams.o fks_singular.o \
+	$(LIBDIR)run_state.mod $(LIBDIR)kin_functions_module.mod
+genps_fks.o: genps_born.o process_dimensions.o boostwdir2.o FKSParams.o \
 	fks_singular.o \
 	$(LIBDIR)run_state.mod $(LIBDIR)timing_state.mod \
 	$(LIBDIR)kin_functions_module.mod
-genps_fks_bridge.o: genps_fks.o
+genps_fks_bridge.o: genps_born.o genps_fks.o
 symmetry_fks_v3.o: process_dimensions.o fks_metadata.o genps_fks.o \
 	mint_module.o setscales.o cuts.o write_ajob.o fks_singular.o \
 	$(LIBDIR)run_state.mod $(LIBDIR)run_printout_module.mod \

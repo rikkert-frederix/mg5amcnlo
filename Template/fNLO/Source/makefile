@@ -7,7 +7,7 @@ CUTTOOLSDIR= ./CutTools/
 IREGIDIR= ./IREGI/src/
 
 GENERIC = timing_state.o $(alfas_functions).o alfas_functions_bridge.o	\
-	  rw_routines.o run_state.o kin_functions.o run_printout.o		\
+	  run_state.o kin_functions.o run_printout.o				\
 	  ranmar.o setrun.o setrun_bridge.o
 
 ifneq ("$(wildcard ./RUNNING)","")
@@ -42,12 +42,11 @@ $(LIBDIR)libgeneric.a: $(GENERIC) extra_weights.o
 	cp -f *.mod $(LIBDIR)
 	rm -f $(alfas_functions).o alfas_functions_bridge.o
 
-setrun.o: extra_weights.o run_state.o rw_routines.o
+setrun.o: extra_weights.o run_state.o
 setrun_bridge.o: run_card.inc MODEL/coupl.inc extra_weights.o \
 		 run_state.o setrun.o
 
 alfas_functions_bridge.o: $(alfas_functions).o
-kin_functions.o: run_state.o
 run_printout.o: run_state.o
 
 $(LIBDIR)libpdf.a: $(LIBDIR)libgeneric.a PDF

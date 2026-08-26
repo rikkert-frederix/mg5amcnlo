@@ -9,11 +9,6 @@ module ajob_file_module
 
 contains
 
-  subroutine initialize_ajob_file_module()
-    implicit none
-
-    file_counter = 0
-  end subroutine initialize_ajob_file_module
 
 
   subroutine open_bash_file(lun, fname, lname)

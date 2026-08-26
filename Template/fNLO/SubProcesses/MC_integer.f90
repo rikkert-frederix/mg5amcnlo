@@ -111,13 +111,6 @@ contains
   end subroutine initialize_mc_integer
 
 
-  subroutine finalize_mc_integer
-    if (allocated(grid)) then
-      deallocate(grid, acc, ncall, nintervals, firsttime)
-    end if
-    dimension_capacity = 0
-    interval_capacity = 0
-  end subroutine finalize_mc_integer
 
 
   subroutine get_mc_integer(this_dim, niint_thisd, iint, vol)

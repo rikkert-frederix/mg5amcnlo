@@ -122,7 +122,7 @@ class TestMadEventCmd(unittest.TestCase):
         run_card.write_include_file(None, include)
         include_text = include.getvalue().lower()
 
-        for parameter in run_mecmd.FNLO_UNSUPPORTED_RUN_CARD_PARAMETERS:
+        for parameter in run_mecmd.FNLO_OMITTED_RUN_CARD_PARAMETERS:
             self.assertNotIn(parameter, include_text)
 
     def test_fnlo_exporter_and_template(self):
@@ -150,11 +150,22 @@ class TestMadEventCmd(unittest.TestCase):
         self.assertEqual(exporter.get_fks_template_dir(), template_dir)
         self.assertFalse(os.path.exists(pjoin(template_dir, 'Utilities')))
         self.assertFalse(os.path.exists(pjoin(template_dir, 'MCatNLO')))
+        analysis_dir = pjoin(template_dir, 'FixedOrderAnalysis')
+        analysis_files = os.listdir(analysis_dir)
+        self.assertFalse(any(name.startswith('analysis_root_')
+                             for name in analysis_files))
+        self.assertFalse(any(name.startswith('analysis_td_')
+                             for name in analysis_files))
+        for removed_analysis_support in [
+                'dbook.f', 'dbook.inc', 'rbook_be8.cc', 'rbook_fe8.f']:
+            self.assertNotIn(removed_analysis_support, analysis_files)
         subprocess_dir = pjoin(template_dir, 'SubProcesses')
         self.assertTrue(os.path.exists(pjoin(
             subprocess_dir, 'driver_mintFO.f90')))
         self.assertTrue(os.path.exists(pjoin(
             subprocess_dir, 'driver_mintFO_bridge.f')))
+        self.assertTrue(os.path.exists(pjoin(
+            subprocess_dir, 'genps_born.f90')))
         self.assertFalse(os.path.exists(pjoin(
             subprocess_dir, 'driver_mintMC.f')))
         self.assertFalse(os.path.exists(pjoin(
@@ -169,7 +180,10 @@ class TestMadEventCmd(unittest.TestCase):
             self.assertFalse(os.path.exists(pjoin(
                 subprocess_dir, removed_source)))
 
-        for template_source in ['run.inc', 'cuts.inc', 'run_state.f90']:
+        self.assertFalse(os.path.lexists(pjoin(template_dir, 'Source',
+                                              'cuts.inc')))
+        self.assertFalse(os.path.lexists(pjoin(subprocess_dir, 'cuts.inc')))
+        for template_source in ['run.inc', 'run_state.f90']:
             with open(pjoin(template_dir, 'Source', template_source)) as stream:
                 source = stream.read().lower()
             for matching_name in [
@@ -182,6 +196,28 @@ class TestMadEventCmd(unittest.TestCase):
         self.assertNotIn('compute_MC_subt_term', fks_singular)
         self.assertNotIn('replace_MC_subt', fks_singular)
         self.assertNotIn('factor_n1body_NLOPS', fks_singular)
+
+        with open(pjoin(subprocess_dir, 'genps_born.f90')) as stream:
+            genps_born = stream.read().lower()
+        with open(pjoin(subprocess_dir, 'genps_fks.f90')) as stream:
+            genps_fks = stream.read().lower()
+        self.assertIn('subroutine generate_born_phase_space', genps_born)
+        self.assertIn('subroutine generate_momenta_born', genps_born)
+        self.assertNotIn('subroutine generate_fks_kinematics', genps_born)
+        self.assertNotIn('subroutine generate_momenta_massless_final',
+                         genps_born)
+        self.assertIn('subroutine generate_fks_kinematics', genps_fks)
+        self.assertIn('subroutine generate_momenta_massless_final', genps_fks)
+        self.assertNotIn('subroutine generate_momenta_born', genps_fks)
+        self.assertNotIn('subroutine generate_tau', genps_fks)
+        self.assertNotIn('fks_as_is', genps_fks)
+        self.assertNotIn('-2:2', genps_fks)
+
+        for counterevent_source in [
+                'driver_mintFO.f90', 'fks_Sij.f90',
+                'fks_singular.f90', 'test_soft_col_limits.f90']:
+            with open(pjoin(subprocess_dir, counterevent_source)) as stream:
+                self.assertNotIn('-2:2', stream.read())
 
         with open(pjoin(subprocess_dir,
                         'test_soft_col_limits.f90')) as stream:

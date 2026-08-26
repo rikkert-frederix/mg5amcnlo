@@ -184,42 +184,6 @@ contains
   end subroutine initialize_born_dimensions
 
 
-  subroutine finalize_process_dimensions()
-    implicit none
-
-    if (allocated(order_names)) deallocate(order_names)
-    if (allocated(born_orders)) deallocate(born_orders)
-    if (allocated(nlo_orders)) deallocate(nlo_orders)
-    if (allocated(amp_split_orders)) deallocate(amp_split_orders)
-
-    nexternal = 0
-    nincoming = 0
-    max_particles = 0
-    max_branch = 0
-    lmaxconfigs = 0
-    maxproc = 0
-    ngraphs = 0
-    ncolor = 0
-    maxflow = 0
-    fks_configs = 0
-    nsplitorders = 0
-    qcd_pos = 0
-    qed_pos = 0
-    amp_split_size = 0
-    amp_split_size_born = 0
-
-    max_bhel = 0
-    max_bcol = 0
-    maxamps = 0
-    born_maxflow = 0
-    born_maxproc = 0
-    maxsproc = 0
-    nsquaredso = 0
-    nsqso_born = 0
-
-    process_dimensions_initialized = .false.
-    born_dimensions_initialized = .false.
-  end subroutine finalize_process_dimensions
 
 
   subroutine validate_process_dimensions(require_born)

@@ -6,7 +6,6 @@ module binoth_lha_olp_backend
   private
 
   logical, save :: firsttime_pole = .true.
-  logical, save :: firsttime_conversion = .true.
   logical, save :: firsttime_init = .true.
   integer, save :: nbad = 0
 
@@ -32,13 +31,12 @@ contains
     integer, intent(in) :: proc_label
     double precision, intent(in) :: pmass(nexternal)
 
-    double precision, parameter :: pi = 3.1415926535897932385d0
     logical, parameter :: fksprefact = .true.
     integer, parameter :: nbadmax = 5
     double precision :: p(0:4, nexternal-1)
     double precision :: virt_wgts(4)
     double precision :: double_pole, single_pole, born
-    double precision :: mu_r_value, alpha_s, ao2pi, conversion
+    double precision :: mu_r_value, alpha_s
     double precision :: tolerance, madfks_single, madfks_double
     integer :: i, j
     integer :: isum_hel
@@ -53,8 +51,6 @@ contains
     virt_wgt = 0d0
 
     call binoth_lha_update_couplings(mu_r_value, alpha_s)
-    ao2pi = alpha_s / (2d0*pi)
-
     do i = 1, nexternal-1
       do j = 0, 3
         p(j,i) = pin(j,i)
@@ -72,14 +68,6 @@ contains
     single_pole = virt_wgts(2)
     virt_wgt = virt_wgts(3)
     born = virt_wgts(4)
-
-    ! A dimensional-reduction to CDR conversion can be enabled by an OLP
-    ! implementation exactly as in the legacy backend:
-    ! if (firsttime_conversion) then
-    !   call DRtoCDR(conversion)
-    !   firsttime_conversion = .false.
-    ! end if
-    ! virt_wgt = virt_wgt + conversion*born_wgt*ao2pi
 
     if (firsttime_pole) then
       tolerance = IRPoleCheckThreshold
@@ -128,51 +116,5 @@ contains
   end subroutine binoth_lha_init_impl
 
 
-  subroutine dr_to_cdr_impl(conversion, i_fks, j_fks, particle_type, &
-       m_type, pmass)
-    implicit none
-    double precision, intent(out) :: conversion
-    integer, intent(in) :: i_fks, j_fks
-    integer, intent(in) :: particle_type(nexternal)
-    integer, intent(in) :: m_type
-    double precision, intent(in) :: pmass(nexternal)
-
-    double precision, parameter :: ca = 3d0
-    double precision, parameter :: cf = 4d0/3d0
-    integer :: i, triplet, octet
-
-    triplet = 0
-    octet = 0
-    conversion = 0d0
-    do i = 1, nexternal
-      if (i /= i_fks .and. i /= j_fks) then
-        if (pmass(i) == 0d0) then
-          if (abs(particle_type(i)) == 3) then
-            conversion = conversion - cf/2d0
-            triplet = triplet + 1
-          else if (particle_type(i) == 8) then
-            conversion = conversion - ca/6d0
-            octet = octet + 1
-          end if
-        end if
-      else if (i == min(i_fks,j_fks)) then
-        if (pmass(j_fks) == 0d0 .and. pmass(i_fks) == 0d0) then
-          if (m_type == 8) then
-            conversion = conversion - ca/6d0
-            octet = octet + 1
-          else if (abs(m_type) == 3) then
-            conversion = conversion - cf/2d0
-            triplet = triplet + 1
-          else
-            write (*,*) 'Error in DRtoCDR, fks_mother must be' // &
-                 'triplet or octet', i, m_type
-            stop
-          end if
-        end if
-      end if
-    end do
-    write (*,*) 'From DR to CDR conversion: ', octet, ' octets and ', &
-         triplet, ' triplets in Born (both massless), sum =', conversion
-  end subroutine dr_to_cdr_impl
 
 end module binoth_lha_olp_backend

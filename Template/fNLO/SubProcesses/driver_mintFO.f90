@@ -2,40 +2,40 @@ module driver_mintfo_module
   use run_printout_module, only: write_run_summary
   use extra_weights, only: doreweight
   use mint_module, only: maxchannels, n_ave_virt, average_virtual, &
-       virtual_fraction, min_virt_fraction_mint, n_ord_virt, ncalls0, &
-       itmax, imode, ndim, ndimmax, nintegrals, nchans, only_virt, &
-       ifold, ifold_energy, ifold_yij, ifold_phi, iconfig, ichan, &
-       iconfigs, accuracy, wgt_mult, new_point, pass_cuts_check, &
-       virt_wgt_mint, born_wgt_mint, fixed_order, mint
+                         virtual_fraction, min_virt_fraction_mint, n_ord_virt, ncalls0, &
+                         itmax, imode, ndim, ndimmax, nintegrals, nchans, only_virt, &
+                         ifold, ifold_energy, ifold_yij, ifold_phi, iconfig, ichan, &
+                         iconfigs, accuracy, wgt_mult, new_point, pass_cuts_check, &
+                         virt_wgt_mint, born_wgt_mint, fixed_order, mint
   use mint_module, only: ans_result => ans, unc_result => unc
   use FKSParams, only: paramFileName, min_virt_fraction, virt_fraction, &
-       FKSParamReader
+                       FKSParamReader
   use weight_lines, only: icontr, deallocate_weight_lines
   use process_dimensions, only: nexternal, nincoming, fks_configs, &
-       amp_split_size, amp_split_size_born, lmaxconfigs, &
-       validate_process_dimensions
+                                amp_split_size, amp_split_size_born, lmaxconfigs, &
+                                validate_process_dimensions
   use fks_metadata, only: fks_i_d, fks_j_d, pdg_type_d, &
-       need_color_links_d, validate_fks_metadata
+                          need_color_links_d, validate_fks_metadata
   use run_state, only: lpp, fixed_fac_scale, muf1_over_ref, &
-       muf2_over_ref, muf1_ref_fixed, muf2_ref_fixed, pineappl, &
-       do_rwgt_scale, do_rwgt_pdf
+                       muf2_over_ref, muf1_ref_fixed, muf2_ref_fixed, pineappl, &
+                       do_rwgt_scale, do_rwgt_pdf
   use genps_fks, only: generate_momenta
   use setscales_module, only: set_alphas
   use split_orders, only: check_amp_split
   use cuts_module, only: passcuts
   use mc_integer_module, only: get_mc_integer, fill_mc_integer
   use timing_state, only: reset_timing_state, tBorn, tIS, tReal, &
-       tCount, tf_nb, tf_all, t_as, tr_s, tr_pdf, t_plot, &
-       t_cuts, t_isum, tOLP, tGenPS, t_coupl
+                          tCount, tf_nb, tf_all, t_as, tr_s, tr_pdf, t_plot, &
+                          t_cuts, t_isum, tOLP, tGenPS, t_coupl
   use fks_singular_module, only: compute_prefactors_nbody, &
-       compute_prefactors_n1body, set_cms_stuff, &
-       include_multichannel_enhance, compute_born, &
-       compute_nbody_noborn, compute_soft_counter_term, &
-       compute_soft_collinear_ct_impl, compute_collinear_counter_term, &
-       compute_real_emission, include_pdf_and_alphas, reweight_scale, &
-       reweight_pdf, fill_pineappl_weights, get_wgt_nbody, &
-       get_wgt_no_nbody, fill_plots, fill_mint_function, &
-       fill_configurations_common, setfksfactor, ran2
+                                 compute_prefactors_n1body, set_cms_stuff, &
+                                 include_multichannel_enhance, compute_born, &
+                                 compute_nbody_noborn, compute_soft_counter_term, &
+                                 compute_soft_collinear_ct_impl, compute_collinear_counter_term, &
+                                 compute_real_emission, include_pdf_and_alphas, reweight_scale, &
+                                 reweight_pdf, fill_pineappl_weights, get_wgt_nbody, &
+                                 get_wgt_no_nbody, fill_plots, fill_mint_function, &
+                                 fill_configurations_common, setfksfactor, ran2
   use madfks_plot_module, only: topout_impl
   implicit none
   private
@@ -48,7 +48,7 @@ module driver_mintfo_module
   logical, save :: born_map_first_time = .true.
   logical, save :: sum_fks_directories = .false.
   integer :: nfksprocess
-  common /c_nfksprocess/ nfksprocess
+  common/c_nfksprocess/nfksprocess
 
   public :: run_mintfo_driver
   public :: init_driver_generated_data
@@ -100,10 +100,6 @@ module driver_mintfo_module
     subroutine find_iproc_map()
     end subroutine find_iproc_map
 
-    subroutine addfil(string)
-      character(len=*) :: string
-    end subroutine addfil
-
     double precision function sigint(xx, vegas_wgt, ifl, f)
       use mint_module, only: ndimmax, nintegrals
       double precision, intent(in) :: xx(ndimmax), vegas_wgt
@@ -138,32 +134,14 @@ contains
       return
     end if
 
-    allocate(generated_mapconfig(0:lmaxconfigs, 0:fks_configs))
+    allocate (generated_mapconfig(0:lmaxconfigs, 0:fks_configs))
     generated_mapconfig = mapconfig_in
     generated_data_initialized = .true.
   end subroutine init_driver_generated_data
 
-
-  subroutine finalize_mintfo_driver()
-    implicit none
-
-    if (allocated(generated_mapconfig)) deallocate(generated_mapconfig)
-    if (allocated(initial_final_fks_map)) then
-      deallocate(initial_final_fks_map)
-    end if
-    if (allocated(born_fks_process_map)) then
-      deallocate(born_fks_process_map)
-    end if
-    generated_data_initialized = .false.
-    sigint_first_time = .true.
-    born_map_first_time = .true.
-    sum_fks_directories = .false.
-  end subroutine finalize_mintfo_driver
-
-
   subroutine run_mintfo_driver(nndim, flat_grid, momcmp_count, &
-       xratmax, abrv, ntot, nsun, nsps, nups, neps, n100, nddp, nqdp, &
-       nini, n10, n1, useitmax)
+                               xratmax, abrv, ntot, nsun, nsps, nups, neps, n100, nddp, nqdp, &
+                               nini, n10, n1, useitmax)
     implicit none
     integer, intent(inout) :: nndim, momcmp_count
     logical, intent(inout) :: flat_grid, useitmax
@@ -173,7 +151,6 @@ contains
     integer, intent(inout) :: nddp, nqdp, nini, n10, n1(0:9)
     integer :: i, j, kchan
     integer :: restart_mode
-    character(len=10) :: dummy_string
     real :: time_before, time_after, time_other, time_total
     logical :: unequal_factorization_scales
 
@@ -227,18 +204,18 @@ contains
     imode = restart_mode
     flat_grid = imode == 0
 
-    ndim = 3 * (nexternal - nincoming) - 4
+    ndim = 3*(nexternal - nincoming) - 4
     if (abs(lpp(1)) >= 1) ndim = ndim + 1
     if (abs(lpp(2)) >= 1) ndim = ndim + 1
     nndim = ndim
 
     if (fixed_fac_scale) then
-      unequal_factorization_scales = abs(&
-           muf1_over_ref * muf1_ref_fixed - &
-           muf2_over_ref * muf2_ref_fixed) > 0d0
+      unequal_factorization_scales = abs( &
+                                     muf1_over_ref*muf1_ref_fixed - &
+                                     muf2_over_ref*muf2_ref_fixed) > 0d0
     else
       unequal_factorization_scales = &
-           abs(muf1_over_ref - muf2_over_ref) > 0d0
+        abs(muf1_over_ref - muf2_over_ref) > 0d0
     end if
     if (unequal_factorization_scales) then
       write (*, *) 'NLO computations require muF1=muF2'
@@ -268,7 +245,6 @@ contains
 
     momcmp_count = 0
     xratmax = 0d0
-    call addfil(dummy_string)
     if (imode == -1 .or. imode == 0) then
       if (imode == 0) then
         doreweight = .false.
@@ -290,27 +266,27 @@ contains
       write (*, *) 'Satistics from MadLoop:'
       write (*, *)
       write (*, *) &
-           '  Total points tried:                              ', ntot
+        '  Total points tried:                              ', ntot
       write (*, *) &
-           '  Stability unknown:                               ', nsun
+        '  Stability unknown:                               ', nsun
       write (*, *) &
-           '  Stable PS point:                                 ', nsps
+        '  Stable PS point:                                 ', nsps
       write (*, *) &
-           '  Unstable PS point (and rescued):                 ', nups
+        '  Unstable PS point (and rescued):                 ', nups
       write (*, *) &
-           '  Exceptional PS point (unstable and not rescued): ', neps
+        '  Exceptional PS point (unstable and not rescued): ', neps
       write (*, *) &
-           '  Double precision used:                           ', nddp
+        '  Double precision used:                           ', nddp
       write (*, *) &
-           '  Quadruple precision used:                        ', nqdp
+        '  Quadruple precision used:                        ', nqdp
       write (*, *) &
-           '  Initialization phase-space points:               ', nini
+        '  Initialization phase-space points:               ', nini
       write (*, *) &
-           '  Unknown return code (100):                       ', n100
+        '  Unknown return code (100):                       ', n100
       write (*, *) &
-           '  Unknown return code (10):                        ', n10
+        '  Unknown return code (10):                        ', n10
       write (*, *) &
-           '  Unit return code distribution (1):               '
+        '  Unit return code distribution (1):               '
       do j = 0, 9
         if (n1(j) /= 0) write (*, *) '#Unit ', j, ' = ', n1(j)
       end do
@@ -319,8 +295,8 @@ contains
     call cpu_time(time_after)
     time_total = time_after - time_before
     time_other = time_total - (tBorn + tGenPS + tReal + tCount + tIS + &
-         tf_nb + tf_all + t_as + tr_s + tr_pdf + t_plot + &
-         t_cuts + t_isum + t_coupl)
+                               tf_nb + tf_all + t_as + tr_s + tr_pdf + t_plot + &
+                               t_cuts + t_isum + t_coupl)
     write (*, *) 'Time spent in Born : ', tBorn
     write (*, *) 'Time spent in PS_Generation : ', tGenPS
     write (*, *) 'Time spent in Reals_evaluation: ', tReal
@@ -339,13 +315,13 @@ contains
     write (*, *) 'Time spent in Other_tasks : ', time_other
     write (*, *) 'Time spent in Total : ', time_total
 
-    open(unit=12, file='res.dat', status='unknown')
+    open (unit=12, file='res.dat', status='unknown')
     do kchan = 0, nchans
       write (12, *) ans_result(1, kchan), unc_result(1, kchan), &
-           ans_result(2, kchan), unc_result(2, kchan), itmax, ncalls0, &
-           time_total
+        ans_result(2, kchan), unc_result(2, kchan), itmax, ncalls0, &
+        time_total
     end do
-    close(12)
+    close (12)
 
     if (momcmp_count /= 0) then
       write (*, *) '     '
@@ -354,17 +330,16 @@ contains
     end if
   end subroutine run_mintfo_driver
 
-
   double precision function sigint_impl(xx, vegas_wgt, ifl, f, &
-       ini_fin_fks, nndim, nbody, p1_cnt, p_born, virtual_over_born, &
-       calculated_born, abrv, wgt_me_born, wgt_me_real, fold, &
-       use_evpr)
+                                        ini_fin_fks, nndim, nbody, p1_cnt, p_born, virtual_over_born, &
+                                        calculated_born, abrv, wgt_me_born, wgt_me_real, fold, &
+                                        use_evpr)
     implicit none
     double precision, intent(in) :: xx(ndimmax), vegas_wgt
     integer, intent(in) :: ifl, ini_fin_fks(maxchannels), nndim
     double precision, intent(out) :: f(nintegrals)
     logical, intent(inout) :: nbody, calculated_born
-    double precision, intent(inout) :: p1_cnt(0:3, nexternal, -2:2)
+    double precision, intent(inout) :: p1_cnt(0:3, nexternal, 0:2)
     double precision, intent(inout) :: p_born(0:3, nexternal - 1)
     double precision, intent(inout) :: virtual_over_born
     character(len=4), intent(in) :: abrv
@@ -399,8 +374,8 @@ contains
     fold = ifl
 
     if (pineappl .and. sum_fks_directories) then
-      write (*, *) 'WARNING: PineAPPL only possible ' // &
-           'with MC over FKS directories', pineappl, sum_fks_directories
+      write (*, *) 'WARNING: PineAPPL only possible '// &
+        'with MC over FKS directories', pineappl, sum_fks_directories
       write (*, *) 'Switching to MC over FKS directories'
       sum_fks_directories = .false.
     end if
@@ -418,10 +393,10 @@ contains
 
     call update_vegas_x_impl(xx, vegas_variables, nndim, abrv)
     call get_mc_integer(max(ini_fin_fks(ichan), 1), &
-         initial_final_fks_map(ini_fin_fks(ichan), 0), picked_integer, &
-         volume)
+                        initial_final_fks_map(ini_fin_fks(ichan), 0), picked_integer, &
+                        volume)
     nfks_picked = &
-         initial_final_fks_map(ini_fin_fks(ichan), picked_integer)
+      initial_final_fks_map(ini_fin_fks(ichan), picked_integer)
 
     if (abrv /= 'real') then
       nbody = .true.
@@ -434,7 +409,7 @@ contains
         jacobian = 0.5d0
       end if
       call generate_momenta(nndim, iconfig, jacobian, vegas_variables, &
-           momentum)
+                            momentum)
       if (p_born(0, 1) >= 0d0) then
         call compute_prefactors_nbody(vegas_wgt)
         call set_cms_stuff(ordinary_event)
@@ -466,7 +441,7 @@ contains
       else
         nfks_min = picked_integer
         nfks_max = picked_integer
-        mc_integer_weight = 1d0 / volume
+        mc_integer_weight = 1d0/volume
       end if
 
       do position = nfks_min, nfks_max
@@ -477,16 +452,16 @@ contains
         jacobian = mc_integer_weight
         call update_fks_dir_impl(ifks)
         call generate_momenta(nndim, iconfig, jacobian, &
-             vegas_variables, momentum)
+                              vegas_variables, momentum)
         if (p_born(0, 1) < 0d0) cycle
 
         call compute_prefactors_n1body(vegas_wgt, jacobian)
         call set_cms_stuff(ordinary_event)
-        passcuts_nbody = passcuts(&
-             p1_cnt(0, 1, ordinary_event), reweight)
+        passcuts_nbody = passcuts( &
+                         p1_cnt(0, 1, ordinary_event), reweight)
         call set_cms_stuff(collinear_event)
         passcuts_coll = (use_evpr .and. passcuts_nbody) .or. &
-             passcuts(p1_cnt(0, 1, collinear_event), reweight)
+                        passcuts(p1_cnt(0, 1, collinear_event), reweight)
         call set_cms_stuff(real_event)
         passcuts_n1body = passcuts(momentum, reweight)
 
@@ -522,9 +497,9 @@ contains
 
     if (pineappl) then
       if (sum_fks_directories) then
-        write (*, *) 'ERROR: PineAPPL only possible ' // &
-             'with MC over FKS directories', pineappl, &
-             sum_fks_directories
+        write (*, *) 'ERROR: PineAPPL only possible '// &
+          'with MC over FKS directories', pineappl, &
+          sum_fks_directories
         stop 1
       end if
       call fill_pineappl_weights(vegas_wgt)
@@ -533,17 +508,16 @@ contains
     if (sum_fks_directories) then
       call get_wgt_nbody(sampled_weight)
       call fill_mc_integer(max(ini_fin_fks(ichan), 1), picked_integer, &
-           abs(sampled_weight))
+                           abs(sampled_weight))
     else
       call get_wgt_no_nbody(sampled_weight)
       call fill_mc_integer(max(ini_fin_fks(ichan), 1), picked_integer, &
-           abs(sampled_weight) * volume)
+                           abs(sampled_weight)*volume)
     end if
 
     call fill_plots()
     call fill_mint_function(f)
   end function sigint_impl
-
 
   subroutine update_fks_dir_impl(nfks)
     implicit none
@@ -557,7 +531,6 @@ contains
     call setfksfactor()
   end subroutine update_fks_dir_impl
 
-
   subroutine ensure_initial_final_map()
     implicit none
     integer :: ifks, emitter_position
@@ -565,7 +538,7 @@ contains
     if (allocated(initial_final_fks_map)) return
     call validate_process_dimensions()
     call validate_fks_metadata()
-    allocate(initial_final_fks_map(0:2, 0:fks_configs))
+    allocate (initial_final_fks_map(0:2, 0:fks_configs))
     initial_final_fks_map = 0
     do ifks = 1, fks_configs
       initial_final_fks_map(0, 0) = initial_final_fks_map(0, 0) + 1
@@ -576,30 +549,17 @@ contains
         emitter_position = initial_final_fks_map(2, 0)
         initial_final_fks_map(2, emitter_position) = ifks
       else if (fks_j_d(ifks) > nincoming .and. &
-          fks_j_d(ifks) <= nexternal) then
+               fks_j_d(ifks) <= nexternal) then
         initial_final_fks_map(1, 0) = initial_final_fks_map(1, 0) + 1
         emitter_position = initial_final_fks_map(1, 0)
         initial_final_fks_map(1, emitter_position) = ifks
       else
         write (*, *) 'ERROR in setup_ini_fin_FKS_map', fks_j_d(ifks), &
-             nincoming, ifks
+          nincoming, ifks
         stop 1
       end if
     end do
   end subroutine ensure_initial_final_map
-
-
-  subroutine setup_ini_fin_fks_map_impl(map)
-    implicit none
-    integer, intent(out) :: map(0:, 0:)
-
-    call ensure_initial_final_map()
-    if (ubound(map, 1) /= 2 .or. ubound(map, 2) /= fks_configs) then
-      call fail_driver('initial/final FKS map has the wrong shape')
-    end if
-    map = initial_final_fks_map
-  end subroutine setup_ini_fin_fks_map_impl
-
 
   subroutine ensure_born_fks_map()
     implicit none
@@ -608,7 +568,7 @@ contains
     if (allocated(born_fks_process_map)) return
     call validate_process_dimensions()
     call validate_fks_metadata()
-    allocate(born_fks_process_map(fks_configs))
+    allocate (born_fks_process_map(fks_configs))
     born_fks_process_map = 0
 
     do ifks = 1, fks_configs
@@ -632,7 +592,7 @@ contains
               born_fks_process_map(ifks) = candidate
               exit
             else if (fks_j_d(candidate) > nincoming .and. &
-                fks_j_d(ifks) > nincoming) then
+                     fks_j_d(ifks) > nincoming) then
               born_fks_process_map(ifks) = candidate
               exit
             end if
@@ -652,7 +612,6 @@ contains
     end do
   end subroutine ensure_born_fks_map
 
-
   subroutine get_born_nfksprocess_impl(nfks_in, nfks_out)
     implicit none
     integer, intent(in) :: nfks_in
@@ -666,14 +625,13 @@ contains
       write (*, *) born_fks_process_map
     end if
     if (born_fks_process_map(nfks_in) == 0) then
-      write (*, *) 'Could not find the correct map to Born ' // &
-           'FKS configuration for the NLO FKS ' // &
-           'configuration', nfks_in
+      write (*, *) 'Could not find the correct map to Born '// &
+        'FKS configuration for the NLO FKS '// &
+        'configuration', nfks_in
       stop 1
     end if
     nfks_out = born_fks_process_map(nfks_in)
   end subroutine get_born_nfksprocess_impl
-
 
   subroutine update_vegas_x_impl(xx, x, nndim, abrv)
     implicit none
@@ -699,10 +657,9 @@ contains
     end if
   end subroutine update_vegas_x_impl
 
-
   subroutine get_user_params_impl(ncall, nitmax, restart_mode, &
-       ini_fin_fks, isum_hel, multi_channel, use_cut, lbw, abrv, nbody, &
-       mc_hel, random_offset_split)
+                                  ini_fin_fks, isum_hel, multi_channel, use_cut, lbw, abrv, nbody, &
+                                  mc_hel, random_offset_split)
     implicit none
     integer, intent(out) :: ncall, nitmax, restart_mode
     integer, intent(inout) :: ini_fin_fks(maxchannels), isum_hel
@@ -723,26 +680,26 @@ contains
     call validate_process_dimensions(require_born=.true.)
     call validate_fks_metadata()
 
-    open(unit=83, file='input_app.txt', status='old')
+    open (unit=83, file='input_app.txt', status='old')
     done = .false.
     nchans = 0
     do while (.not. done)
-      read(83, '(a)', err=222, end=222) buffer
+      read (83, '(a)', err=222, end=222) buffer
       if (buffer(1:7) == 'NPOINTS') then
         buffer = buffer(10:100)
-        read(buffer, *) ncall
+        read (buffer, *) ncall
         write (*, *) 'Number of phase-space points per iteration:', ncall
       else if (buffer(1:11) == 'NITERATIONS') then
-        read(buffer(14:), *) nitmax
+        read (buffer(14:), *) nitmax
         write (*, *) 'Maximum number of iterations is:', nitmax
       else if (buffer(1:8) == 'ACCURACY') then
-        read(buffer(11:), *) accuracy
+        read (buffer(11:), *) accuracy
         write (*, *) 'Desired accuracy is:', accuracy
       else if (buffer(1:10) == 'ADAPT_GRID') then
-        read(buffer(13:), *) use_cut
+        read (buffer(13:), *) use_cut
         write (*, *) 'Using adaptive grids:', use_cut
       else if (buffer(1:12) == 'MULTICHANNEL') then
-        read(buffer(15:), *) parsed_integer
+        read (buffer(15:), *) parsed_integer
         if (parsed_integer == 1) then
           multi_channel = .true.
           write (*, *) 'Using Multi-channel integration'
@@ -751,40 +708,40 @@ contains
           write (*, *) 'Not using Multi-channel integration'
         end if
       else if (buffer(1:12) == 'SUM_HELICITY') then
-        read(buffer(15:), *) parsed_integer
+        read (buffer(15:), *) parsed_integer
         if (nincoming == 1) then
-          write (*, *) 'Sum over helicities in the virtuals' // &
-               ' for decay process'
+          write (*, *) 'Sum over helicities in the virtuals'// &
+            ' for decay process'
           mc_hel = 0
         else if (parsed_integer == 0) then
           mc_hel = 0
-          write (*, *) 'Explicitly summing over helicities' // &
-               ' for the virtuals'
+          write (*, *) 'Explicitly summing over helicities'// &
+            ' for the virtuals'
         else
           mc_hel = 1
           write (*, *) 'Do MC over helicities for the virtuals'
         end if
         isum_hel = 0
       else if (buffer(1:6) == 'NCHANS') then
-        read(buffer(9:), *) nchans
+        read (buffer(9:), *) nchans
         write (*, *) 'Number of channels to integrate together:', nchans
         if (nchans > maxchannels) then
-          write (*, *) 'Too many integration channels to be ' // &
-               'integrated together. Increase maxchannels', nchans, &
-               maxchannels
+          write (*, *) 'Too many integration channels to be '// &
+            'integrated together. Increase maxchannels', nchans, &
+            maxchannels
           stop 1
         end if
       else if (buffer(1:7) == 'CHANNEL') then
         if (nchans <= 0) then
-          write (*, *) '"NCHANS" missing in input files' // &
-               ' (still zero)', nchans
+          write (*, *) '"NCHANS" missing in input files'// &
+            ' (still zero)', nchans
           stop
         end if
-        read(buffer(10:), *) (configurations(kchan), kchan=1,nchans)
+        read (buffer(10:), *) (configurations(kchan), kchan=1, nchans)
         do kchan = 1, nchans
           iconfigs(kchan) = int(configurations(kchan))
-          parsed_integer = nint(configurations(kchan) * 10d0) - &
-               iconfigs(kchan) * 10
+          parsed_integer = nint(configurations(kchan)*10d0) - &
+                           iconfigs(kchan)*10
           if (parsed_integer == 0) then
             ini_fin_fks(kchan) = 0
           else if (parsed_integer == 1) then
@@ -793,7 +750,7 @@ contains
             ini_fin_fks(kchan) = 2
           else
             write (*, *) 'ERROR: invalid configuration number', &
-                 configurations
+              configurations
             stop 1
           end if
           do i = 1, generated_mapconfig(0, 0)
@@ -804,17 +761,17 @@ contains
           end do
         end do
         write (*, *) 'Running Configuration Number(s): ', &
-             (iconfigs(kchan), kchan=1,nchans)
+          (iconfigs(kchan), kchan=1, nchans)
         write (*, *) 'initial-or-final', &
-             (ini_fin_fks(kchan), kchan=1,nchans)
+          (ini_fin_fks(kchan), kchan=1, nchans)
       else if (buffer(1:5) == 'SPLIT') then
-        read(buffer(8:), *) random_offset_split
+        read (buffer(8:), *) random_offset_split
         write (*, *) 'Splitting channel:', random_offset_split
       else if (buffer(1:8) == 'WGT_MULT') then
-        read(buffer(11:), *) wgt_mult
+        read (buffer(11:), *) wgt_mult
         write (*, *) 'Weight multiplier:', wgt_mult
       else if (buffer(1:8) == 'RUN_MODE') then
-        read(buffer(11:), *) abrv_input
+        read (buffer(11:), *) abrv_input
         if (abrv_input(5:5) == '0') then
           nbody = .true.
         else
@@ -828,7 +785,7 @@ contains
           write (*, *) 'Normal integration (Sfunction != 1)'
         end if
       else if (buffer(1:7) == 'RESTART') then
-        read(buffer(10:), *) restart_mode
+        read (buffer(10:), *) restart_mode
         if (restart_mode == 0) then
           write (*, *) 'RESTART: Fresh run'
         else if (restart_mode == -1) then
@@ -842,24 +799,23 @@ contains
       cycle
 222   done = .true.
     end do
-    close(83)
+    close (83)
 
     if (fks_configs == 1) then
       if (pdg_type_d(1, fks_i_d(1)) == -21 .and. abrv /= 'born') then
         if (amp_split_size == amp_split_size_born) then
-          write (*, *) 'Process generated with [LOonly=QCD]. ' // &
-               'Setting abrv to "born".'
+          write (*, *) 'Process generated with [LOonly=QCD]. '// &
+            'Setting abrv to "born".'
           abrv = 'born'
         else
-          write (*, *) 'Process only with virtual corrections' // &
-               'Setting abrv to "bovi".'
+          write (*, *) 'Process only with virtual corrections'// &
+            'Setting abrv to "bovi".'
           abrv = 'bovi'
         end if
       end if
     end if
     lbw(0) = 0
   end subroutine get_user_params_impl
-
 
   subroutine fail_driver(message)
     implicit none

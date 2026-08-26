@@ -9,7 +9,6 @@ module binoth_lha_madloop_backend
   private
 
   logical :: firsttime = .true.
-  logical :: firsttime_conversion = .true.
   logical :: firsttime_run = .true.
   integer :: nbad = 0
   integer :: nsqso = 0
@@ -57,14 +56,13 @@ module binoth_lha_madloop_backend
 
 contains
 
-  subroutine binoth_lha_eval(p, born_wgt, virt_wgt, pmass, amp_split, &
+  subroutine binoth_lha_eval(p, born_wgt, virt_wgt, pmass, &
        amp_split_finite_ml, amp_split_poles_fks)
     implicit none
     double precision, intent(in) :: p(0:3, nexternal-1)
     double precision, intent(inout) :: born_wgt
     double precision, intent(out) :: virt_wgt
     double precision, intent(in) :: pmass(nexternal)
-    double precision, intent(inout) :: amp_split(amp_split_size)
     double precision, intent(inout) :: &
          amp_split_finite_ml(amp_split_size)
     double precision, intent(inout) :: &
@@ -74,10 +72,9 @@ contains
     logical, parameter :: fksprefact = .true.
     integer, parameter :: nbadmax = 5
     double precision :: single_pole, double_pole
-    double precision :: born_wgt_recomputed, born_wgt_recomp_direct
-    double precision :: mu_r_value, ao2pi, conversion, alpha_s
+    double precision :: mu_r_value, ao2pi, alpha_s
     double precision :: madfks_single, madfks_double, tolerance
-    double precision :: target, accum, hel_fact, born_hel_from_virt
+    double precision :: hel_fact, born_hel_from_virt
     double precision :: avg_pole_res(2), pole_diff(2)
     integer :: ret_code, i, j, ioerr, ioerr_counter, dt(8)
     integer :: iamp
@@ -483,61 +480,8 @@ contains
   end subroutine binoth_lha_eval
 
 
-  subroutine binoth_lha_init_impl(filename)
-    implicit none
-    character(len=13), intent(in) :: filename
-
-    ! The Rocket and BlackHat initialization examples remain intentionally
-    ! inactive, as in the legacy MadLoop-selected backend.
-  end subroutine binoth_lha_init_impl
 
 
-  subroutine dr_to_cdr_impl(conversion, i_fks, j_fks, particle_type, &
-       m_type, pmass)
-    implicit none
-    double precision, intent(out) :: conversion
-    integer, intent(in) :: i_fks, j_fks
-    integer, intent(in) :: particle_type(nexternal)
-    integer, intent(in) :: m_type
-    double precision, intent(in) :: pmass(nexternal)
-
-    double precision, parameter :: ca = 3d0
-    double precision, parameter :: cf = 4d0/3d0
-    integer :: i, triplet, octet
-
-    triplet = 0
-    octet = 0
-    conversion = 0d0
-    do i = 1, nexternal
-      if (i /= i_fks .and. i /= j_fks) then
-        if (pmass(i) == 0d0) then
-          if (abs(particle_type(i)) == 3) then
-            conversion = conversion - cf/2d0
-            triplet = triplet + 1
-          else if (particle_type(i) == 8) then
-            conversion = conversion - ca/6d0
-            octet = octet + 1
-          end if
-        end if
-      else if (i == min(i_fks,j_fks)) then
-        if (pmass(j_fks) == 0d0 .and. pmass(i_fks) == 0d0) then
-          if (m_type == 8) then
-            conversion = conversion - ca/6d0
-            octet = octet + 1
-          else if (abs(m_type) == 3) then
-            conversion = conversion - cf/2d0
-            triplet = triplet + 1
-          else
-            write (*,*) 'Error in DRtoCDR, fks_mother must be' // &
-                 'triplet or octet', i, m_type
-            stop
-          end if
-        end if
-      end if
-    end do
-    write (*,*) 'From DR to CDR conversion: ', octet, ' octets and ', &
-         triplet, ' triplets in Born (both massless), sum =', conversion
-  end subroutine dr_to_cdr_impl
 
 
   subroutine wait_retry_seconds(seconds)
@@ -556,37 +500,5 @@ contains
   end subroutine wait_retry_seconds
 
 
-  subroutine get_procnum_impl(filename, procnum)
-    implicit none
-    character(len=13), intent(in) :: filename
-    integer, intent(out) :: procnum
-    integer :: lookhere, procsize
-    character(len=176) :: buff
-    logical :: done
-
-    open (unit=68, file=filename, status='old')
-    done = .false.
-    do while (.not. done)
-      read (68, '(a)', end=889) buff
-      if (index(buff, '->') /= 0) then
-        if (lookhere /= 0 .and. lookhere < 170) then
-          write (*,*) 'Read process number from contract file', procnum
-          close(68)
-          return
-          done = .true.
-        else
-          write (*,*) 'syntax contract file not understandable', lookhere
-          stop
-        end if
-      end if
-    end do
-    stop
-
-    close(68)
-    return
-
-889 write (*,*) 'Error in contract file'
-    stop
-  end subroutine get_procnum_impl
 
 end module binoth_lha_madloop_backend

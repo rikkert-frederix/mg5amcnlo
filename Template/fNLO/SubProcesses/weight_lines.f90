@@ -7,7 +7,7 @@ module weight_lines
   public :: parton_pdg_uborn, parton_pdg, plot_id, niproc, ipr
   public :: ifold_cnt, orderstag, amppos
   public :: momenta, momenta_m, wgt, wgt_ME_tree, bjx, scales2
-  public :: g_strong, wgts, parton_iproc, y_bst, cpower, plot_wgts
+  public :: g_strong, wgts, parton_iproc, y_bst, plot_wgts
   public :: weight_lines_allocated, deallocate_weight_lines
 
   integer :: max_contr, max_wgt, max_iproc, icontr, iwgt
@@ -20,7 +20,7 @@ module weight_lines
   double precision, allocatable :: momenta(:,:,:), momenta_m(:,:,:,:)
   double precision, allocatable :: wgt(:,:), wgt_ME_tree(:,:), bjx(:,:)
   double precision, allocatable :: scales2(:,:), g_strong(:), wgts(:,:)
-  double precision, allocatable :: parton_iproc(:,:), y_bst(:), cpower(:)
+  double precision, allocatable :: parton_iproc(:,:), y_bst(:)
   double precision, allocatable :: plot_wgts(:,:)
 
 contains
@@ -272,13 +272,6 @@ contains
       y_bst(1:max_contr) = temp1
       deallocate(temp1)
 
-      allocate(temp1(max_contr))
-      temp1 = cpower
-      deallocate(cpower)
-      allocate(cpower(n_contr))
-      cpower(1:max_contr) = temp1
-      deallocate(temp1)
-
       allocate(temp2(max_wgt, max_contr))
       temp2 = plot_wgts
       deallocate(plot_wgts)
@@ -320,7 +313,6 @@ contains
     allocate(wgts(1, 1))
     allocate(parton_iproc(1, 1))
     allocate(y_bst(1))
-    allocate(cpower(1))
     allocate(plot_wgts(1, 1))
     max_contr = 1
     max_wgt = 1
@@ -359,7 +351,6 @@ contains
     if (allocated(wgts)) deallocate(wgts)
     if (allocated(parton_iproc)) deallocate(parton_iproc)
     if (allocated(y_bst)) deallocate(y_bst)
-    if (allocated(cpower)) deallocate(cpower)
     if (allocated(plot_wgts)) deallocate(plot_wgts)
   end subroutine deallocate_weight_lines
 

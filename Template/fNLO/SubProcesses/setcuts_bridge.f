@@ -46,7 +46,6 @@ c-----------------------------------------------------------------------
       double precision zero
       parameter (zero=0d0)
       integer i,j
-      integer pow(-nexternal:0,lmaxconfigs)
       double precision pmass(-nexternal:0,lmaxconfigs)
       double precision pwidth(-nexternal:0,lmaxconfigs)
       integer itree(2,-max_branch:-1),iconf
@@ -84,7 +83,6 @@ c-----------------------------------------------------------------------
          do j=-nexternal,0
             pmass(j,i)=0d0
             pwidth(j,i)=0d0
-            pow(j,i)=0
          enddo
       enddo
       include 'born_props.inc'

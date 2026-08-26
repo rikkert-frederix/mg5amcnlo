@@ -1,8 +1,7 @@
 module setrun_module
   use extra_weights, only: dyn_scale, lhaPDFid, lpdfvar, lscalevar, &
-       nmemPDF, validate_extra_weights
+       nmemPDF
   use run_state
-  use rw_routines, only: case_trap2
   implicit none
   private
 
@@ -16,7 +15,6 @@ contains
     integer :: i
     integer :: idum
     double precision :: strong_coupling
-    character(len=132) :: buff
 
     interface
       subroutine setrun_model_strong_coupling(value)
@@ -24,8 +22,6 @@ contains
         double precision, intent(out) :: value
       end subroutine setrun_model_strong_coupling
     end interface
-
-    call validate_extra_weights()
 
     ! Determine whether scale and/or PDF reweighting is needed.
     do_rwgt_scale = .false.
@@ -48,40 +44,11 @@ contains
     dynamical_scale_choice = dyn_scale(1)
     lhaid = lhaPDFid(1)
 
-    ! Backward-compatible scale variables.
     scale = mur_ref_fixed
     q2fact(1) = muf1_ref_fixed**2
     q2fact(2) = muf2_ref_fixed**2
-    scalefact = mur_over_ref
-    ellissextonfact = qes_over_ref
 
     call fill_needed_splittings()
-
-    ! Retain the run-card validation even though fNLO cannot write events.
-    buff = event_norm
-    call case_trap2(buff)
-    event_norm = buff(1:len(event_norm))
-    if (event_norm(1:4) == 'bias') then
-      write(*, *) 'Biased event generation is not available in the ' // &
-           'fixed-order-only template.'
-      stop 1
-    end if
-    if (flavour_bias(2) /= 1) then
-      write(*, *) 'Flavour-biased event generation is not available ' // &
-           'in the fixed-order-only template.'
-      stop 1
-    end if
-    if (event_norm(1:7) /= 'average' .and. &
-        event_norm(1:3) /= 'sum' .and. &
-        event_norm(1:5) /= 'unity') then
-      write(*, *) 'Do not understand the event_norm parameter' // &
-           ' in the run_card.dat. Possible options are' // &
-           ' "average", "sum" or "unity". ' // &
-           'Current input is: ', event_norm
-      stop 1
-    end if
-
-    jet_distance_parameter = 1d0
 
     ! Set alpha_s(mZ).  The model coupling is obtained through the fixed-form
     ! bridge, which is the only code in this unit that includes coupl.inc.

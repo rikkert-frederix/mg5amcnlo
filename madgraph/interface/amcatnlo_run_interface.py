@@ -150,7 +150,22 @@ FNLO_UNSUPPORTED_RUN_CARD_PARAMETERS = frozenset({
     'photons_from_lepton', 'has_bstrahl', 'alphascheme',
     'nlep_run', 'nupq_run', 'ndnq_run', 'w_run',
     'nb_proton1', 'nb_proton2', 'nb_neutron1', 'nb_neutron2',
-    'mass_ion1', 'mass_ion2', 'pdlabel1', 'pdlabel2'})
+    'mass_ion1', 'mass_ion2', 'pdlabel1', 'pdlabel2',
+    'nevents', 'event_norm', 'flavour_bias', 'fo_lhe_weight_ratio',
+    'store_rwgt_info', 'fixed_couplings', 'fixed_extra_scale',
+    'mue_ref_fixed', 'mue_over_ref'})
+
+# RunCardNLO keeps these compatibility aliases in sync with the live fNLO
+# parameters.  The aliases themselves must not become Fortran assignments.
+FNLO_UNUSED_RUN_CARD_PARAMETERS = frozenset({
+    'muf_ref_fixed', 'muf_over_ref',
+    'rw_fscale_down', 'rw_fscale_up',
+    'rw_rscale_down', 'rw_rscale_up',
+    'pdf_set_min', 'pdf_set_max'})
+
+FNLO_OMITTED_RUN_CARD_PARAMETERS = (
+    FNLO_UNSUPPORTED_RUN_CARD_PARAMETERS |
+    FNLO_UNUSED_RUN_CARD_PARAMETERS)
 
 FNLO_BUNDLED_PDF_LABELS = frozenset({
     'nn23lo', 'nn23lo1', 'nn23nlo'})
@@ -201,7 +216,7 @@ def prepare_fixed_order_only_run_card(run_card):
 
     for parameters in run_card.includepath.values():
         parameters[:] = [name for name in parameters
-                         if name not in FNLO_UNSUPPORTED_RUN_CARD_PARAMETERS]
+                         if name not in FNLO_OMITTED_RUN_CARD_PARAMETERS]
 
 
 def compile_dir(*arguments):

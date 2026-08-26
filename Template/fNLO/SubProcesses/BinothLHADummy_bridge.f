@@ -7,6 +7,6 @@ c Legacy OLP ABI for the module-owned dummy implementation.
       double precision p_born(0:3,nexternal-1)
       double precision born_wgt,virt_wgt
 
-      call module_BinothLHA(p_born,born_wgt,virt_wgt)
+      call module_BinothLHA(virt_wgt)
       return
       end

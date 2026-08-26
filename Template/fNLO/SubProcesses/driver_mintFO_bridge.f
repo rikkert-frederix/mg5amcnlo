@@ -45,8 +45,8 @@
       common /tosigint/nndim
       logical nbody
       common /cnbody/nbody
-      double precision p1_cnt(0:3,nexternal,-2:2),wgt_cnt(-2:2)
-      double precision pswgt_cnt(-2:2),jac_cnt(-2:2)
+      double precision p1_cnt(0:3,nexternal,0:2),wgt_cnt(0:2)
+      double precision pswgt_cnt(0:2),jac_cnt(0:2)
       common /counterevnts/p1_cnt,wgt_cnt,pswgt_cnt,jac_cnt
       double precision p_born(0:3,nexternal-1)
       common /pborn/p_born

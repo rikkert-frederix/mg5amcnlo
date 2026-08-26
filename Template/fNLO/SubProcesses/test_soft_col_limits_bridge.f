@@ -116,23 +116,23 @@ c     arrays are deliberately omitted because this test never reads them.
 c-----------------------------------------------------------------------
       implicit none
       include 'nexternal.inc'
-      double precision p1_out(0:3,nexternal,-2:2)
-      double precision jac_out(-2:2)
+      double precision p1_out(0:3,nexternal,0:2)
+      double precision jac_out(0:2)
       double precision p_born_out(0:3,nexternal-1)
       double precision xi_event_out,y_event_out
       double precision p_i_event_out(0:3)
-      double precision p_i_counter_out(0:3,-2:2)
-      double precision xi_counter_out(-2:2)
-      double precision p1_cnt(0:3,nexternal,-2:2)
-      double precision wgt_cnt(-2:2),pswgt_cnt(-2:2),jac_cnt(-2:2)
+      double precision p_i_counter_out(0:3,0:2)
+      double precision xi_counter_out(0:2)
+      double precision p1_cnt(0:3,nexternal,0:2)
+      double precision wgt_cnt(0:2),pswgt_cnt(0:2),jac_cnt(0:2)
       common /counterevnts/p1_cnt,wgt_cnt,pswgt_cnt,jac_cnt
       double precision p_born(0:3,nexternal-1)
       common /pborn/p_born
       double precision xi_i_fks_ev,y_ij_fks_ev
-      double precision p_i_fks_ev(0:3),p_i_fks_cnt(0:3,-2:2)
+      double precision p_i_fks_ev(0:3),p_i_fks_cnt(0:3,0:2)
       common /fksvariables/xi_i_fks_ev,y_ij_fks_ev,p_i_fks_ev,
      $     p_i_fks_cnt
-      double precision xi_i_fks_cnt(-2:2)
+      double precision xi_i_fks_cnt(0:2)
       common /cxiifkscnt/xi_i_fks_cnt
 
       p1_out=p1_cnt

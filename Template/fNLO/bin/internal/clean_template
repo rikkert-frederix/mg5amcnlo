@@ -11,17 +11,6 @@ if [[  ! -d ./bin  ]]; then
     fi
 fi
 
-#  Now let shell know where to find important executables
-
-main=`pwd`
-if [[ $MADGRAPH_BASE != '' ]]; then
-        dirbin=$MADGRAPH_BASE/MG_ME/WebBin
-        mgmedir=$MADGRAPH_BASE/MG_ME
-else
-        dirbin=$main/bin
-        mgmedir=$main/..
-fi
-
 #	Clear out any old information/directories
 
 cp -p HTML/info-default.html HTML/info.html
@@ -69,7 +58,6 @@ rm -f interactions.dat >& /dev/null
 rm -f coupl.inc >& /dev/null
 
 cp -p ../HTML/thinking.gif ../HTML/card.jpg
-ln -sf ../Source/cuts.inc cuts.inc
 ln -sf ../Source/run_card.inc run_card.inc
 
 if [[ -e ../param_card.dat  ]]; then

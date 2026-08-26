@@ -7880,7 +7880,19 @@ C
                          )
 
 
-        if self.opt['export_format'] in ['madevent']:
+        if self.opt.get('fks_template') == 'fNLO':
+            if self.model['running_elements']:
+                fsock.writelines("""
+                            integer maxjetflavor
+                            logical fixed_extra_scale
+                            double precision mue_over_ref,mue_ref_fixed
+                            common /model_setup_running/ maxjetflavor,
+     $                          fixed_extra_scale,mue_over_ref,mue_ref_fixed
+                            data maxjetflavor,fixed_extra_scale,
+     $                          mue_over_ref,mue_ref_fixed
+     $                          /5,.false.,1d0,91.188d0/
+                                 """)
+        elif self.opt['export_format'] in ['madevent']:
             fsock.writelines("""
                             include \'../maxparticles.inc\'
                             include \'../cuts.inc\'
