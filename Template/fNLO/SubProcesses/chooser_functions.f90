@@ -6,7 +6,10 @@ module chooser_functions_module
        fks_j_from_i_d, particle_type_d, pdg_type_d, &
        need_color_links_d
   use weight_lines, only: pdg, pdg_uborn
-  use decay_chain_metadata, only: has_decay_chains
+  use decay_chain_metadata, only: has_decay_chains, born_context, &
+       context_for_fks, context_core_count, core_target_kind, &
+       core_target_id, direct_leg_target, decay_node_target, node_pdg, &
+       decay_leaf_count, leaf_visible_leg
   implicit none
   private
 
@@ -32,6 +35,7 @@ module chooser_functions_module
   integer, allocatable, save :: born_idup_values(:, :)
   integer, allocatable, save :: born_mothup_values(:, :, :)
   integer, allocatable, save :: born_icolup_values(:, :, :)
+  integer, allocatable, save :: decay_born_process_values(:, :)
 
   public :: init_configs_props
   public :: initialize_leshouche_data
@@ -41,6 +45,7 @@ module chooser_functions_module
   public :: get_mother_colour_impl
   public :: set_pdg_impl
   public :: get_born_pdg_impl
+  public :: get_underlying_born_pdg_impl
 
   interface
     double precision function get_mass_from_id(id)
@@ -197,6 +202,7 @@ contains
     end do
     icolup_values = icolup_input(:, :, :, 1:maxflow_used_in)
     leshouche_initialized = .true.
+    if (has_decay_chains()) call initialize_decay_born_process_map()
   end subroutine initialize_leshouche_data
 
 
@@ -587,6 +593,147 @@ contains
     born_pdgs = 21
     born_pdgs(1:nexternal - 1) = born_idup_values(:, process)
   end subroutine get_born_pdg_impl
+
+
+  subroutine get_underlying_born_pdg_impl(configuration, real_process, &
+                                          born_pdgs)
+    integer, intent(in) :: configuration, real_process
+    integer, intent(out) :: born_pdgs(:)
+    integer :: born_process
+
+    if (.not. leshouche_initialized) then
+      call fail_chooser('Les Houches data are not initialized')
+    end if
+    if (.not. allocated(decay_born_process_values)) then
+      call fail_chooser('decay Born-process map is not initialized')
+    end if
+    if (configuration < 1 .or. configuration > fks_configs) then
+      call fail_chooser('FKS configuration is out of range')
+    end if
+    if (real_process < 1 .or. &
+        real_process > niprocs_values(configuration)) then
+      call fail_chooser('real subprocess index is out of range')
+    end if
+    born_process = decay_born_process_values(configuration, real_process)
+    if (born_process == 0) then
+      call fail_chooser('underlying Born subprocess is absent')
+    end if
+    call get_born_pdg_impl(born_process, born_pdgs)
+  end subroutine get_underlying_born_pdg_impl
+
+
+  subroutine initialize_decay_born_process_map()
+    integer :: configuration, real_process
+
+    if (allocated(decay_born_process_values)) return
+    allocate(decay_born_process_values(fks_configs, &
+                                       leshouche_maxproc_used))
+    decay_born_process_values = 0
+    do configuration = 1, fks_configs
+      do real_process = 1, niprocs_values(configuration)
+        decay_born_process_values(configuration, real_process) = &
+             find_decay_born_process(configuration, real_process)
+      end do
+    end do
+  end subroutine initialize_decay_born_process_map
+
+
+  integer function find_decay_born_process(configuration, real_process)
+    integer, intent(in) :: configuration, real_process
+    integer :: real_context, born_context_id, real_count, born_count
+    integer :: emitted_leg, sister_leg, candidate, leaf
+    integer :: real_core_pdgs(nexternal), born_core_pdgs(nexternal)
+    integer :: underlying_core_pdgs(nexternal)
+    integer :: real_visible_pdgs(nexternal)
+    logical :: matches
+
+    real_context = context_for_fks(configuration)
+    born_context_id = born_context()
+    real_count = context_core_count(real_context)
+    born_count = context_core_count(born_context_id)
+    if (real_count /= born_count + 1) then
+      call fail_chooser('real and Born core multiplicities are inconsistent')
+    end if
+
+    real_visible_pdgs = idup_values(configuration, :, real_process)
+    call contract_decay_pdgs(real_context, real_visible_pdgs, &
+                             real_core_pdgs)
+    emitted_leg = fks_i_d(configuration)
+    sister_leg = fks_j_d(configuration)
+    if (emitted_leg /= real_count .or. sister_leg < 1 .or. &
+        sister_leg > born_count) then
+      call fail_chooser('decay FKS indices are inconsistent with the core')
+    end if
+    underlying_core_pdgs = 0
+    underlying_core_pdgs(1:born_count) = real_core_pdgs(1:born_count)
+    underlying_core_pdgs(sister_leg) = fks_parent_pdg(&
+         real_core_pdgs(emitted_leg), real_core_pdgs(sister_leg))
+
+    find_decay_born_process = 0
+    do candidate = 1, size(born_idup_values, 2)
+      call contract_decay_pdgs(born_context_id, &
+                               born_idup_values(:, candidate), &
+                               born_core_pdgs)
+      matches = all(born_core_pdgs(1:born_count) == &
+                    underlying_core_pdgs(1:born_count))
+      do leaf = 1, decay_leaf_count()
+        if (.not. matches) exit
+        matches = born_idup_values(&
+             leaf_visible_leg(born_context_id, leaf), candidate) == &
+             real_visible_pdgs(leaf_visible_leg(real_context, leaf))
+      end do
+      if (matches) then
+        find_decay_born_process = candidate
+        return
+      end if
+    end do
+
+    write (*, '(a,2(1x,i0))') &
+         'No underlying Born subprocess for FKS configuration/process', &
+         configuration, real_process
+    call fail_chooser('cannot match a real subprocess to its Born process')
+  end function find_decay_born_process
+
+
+  subroutine contract_decay_pdgs(context, visible_pdgs, core_pdgs)
+    integer, intent(in) :: context, visible_pdgs(:)
+    integer, intent(out) :: core_pdgs(nexternal)
+    integer :: leg, target
+
+    core_pdgs = 0
+    do leg = 1, context_core_count(context)
+      target = core_target_id(context, leg)
+      select case (core_target_kind(context, leg))
+      case (direct_leg_target)
+        if (target < 1 .or. target > size(visible_pdgs)) then
+          call fail_chooser('direct decay-map target is out of range')
+        end if
+        core_pdgs(leg) = visible_pdgs(target)
+      case (decay_node_target)
+        core_pdgs(leg) = node_pdg(target)
+      case default
+        call fail_chooser('unknown decay-map target kind')
+      end select
+    end do
+  end subroutine contract_decay_pdgs
+
+
+  integer function fks_parent_pdg(emitted_pdg, sister_pdg)
+    integer, intent(in) :: emitted_pdg, sister_pdg
+
+    if (abs(emitted_pdg) == abs(sister_pdg) .and. &
+        abs(emitted_pdg) /= 21) then
+      fks_parent_pdg = 21
+    else if (abs(emitted_pdg) == 21) then
+      fks_parent_pdg = sister_pdg
+    else if (sister_pdg == 21) then
+      fks_parent_pdg = -emitted_pdg
+    else
+      write (*, '(a,2(1x,i0))') &
+           'Cannot combine emitted and sister PDGs', emitted_pdg, sister_pdg
+      call fail_chooser('invalid QCD splitting flavours')
+    end if
+  end function fks_parent_pdg
 
 
   subroutine validate_configs_input(max_branch_used_in, &

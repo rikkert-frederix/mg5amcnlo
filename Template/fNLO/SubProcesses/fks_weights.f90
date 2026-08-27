@@ -7,7 +7,8 @@ module fks_weights_module
   use fks_metadata, only: fks_i_d, fks_j_d
   use setscales_module, only: set_ren_scale, set_fac_scale
   use split_orders, only: amp_split_pos_to_orders
-  use chooser_functions_module, only: set_pdg_impl, get_born_pdg_impl
+  use chooser_functions_module, only: set_pdg_impl, &
+       get_underlying_born_pdg_impl
   use decay_chain_metadata, only: has_decay_chains
   use decay_chain_scales, only: production_qcd_squared_order, &
        decay_qcd_coupling_weight, decay_qcd_coupling_rescaling
@@ -434,7 +435,7 @@ contains
         parton_pdg(k, j, ict) = idup_d(iFKS, k, j)
       end do
       if (has_decay_chains()) then
-        call get_born_pdg_impl(j, born_pdgs)
+        call get_underlying_born_pdg_impl(iFKS, j, born_pdgs)
         parton_pdg_uborn(:, j, ict) = born_pdgs
         cycle
       end if
