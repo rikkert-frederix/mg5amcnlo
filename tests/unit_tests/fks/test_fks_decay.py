@@ -522,9 +522,42 @@ class TestFKSDecayChains(unittest.TestCase):
         self.assertTrue(virtual.get('born_color_basis'))
         self.assertTrue(virtual.get('loop_color_basis'))
 
+    def test_nlo_decay_virtual_composes_multi_diagram_production(self):
+        for optimized in [False, True]:
+            with self.subTest(optimized=optimized):
+                command = self.generate(
+                    'g g > t t~, '
+                    '(t > w+ b QED^2=2 QCD^2=0 [QCD])')
+                matrix_element = fks_helas_objects.FKSHelasMultiProcess(
+                    command._fks_multi_proc,
+                    loop_optimized=optimized)['matrix_elements'][0]
+                virtual = matrix_element.virt_matrix_element
+
+                self.assertEqual(
+                    matrix_element.nlo_decay_metadata[
+                        'virtual_current_count'], 3)
+                self.assertEqual(
+                    [leg.get('id') for leg in
+                     virtual['processes'][0].get_legs_with_decays()],
+                    [21, 21, 5, 24, -6])
+                self.assertEqual(virtual.get_nexternal_ninitial(), (5, 2))
+                self.assertEqual(len(virtual.get_born_diagrams()), 3)
+                self.assertEqual(len(virtual.get_loop_diagrams()), 3)
+                self.assertEqual(
+                    set(virtual.get('born_color_basis')),
+                    set(matrix_element.born_me.get('color_basis')))
+                self.assertEqual(
+                    set(virtual.get('loop_color_basis')),
+                    set(matrix_element.born_me.get('color_basis')))
+                for diagram in virtual.get_loop_diagrams():
+                    for amplitude in diagram.get_loop_amplitudes():
+                        self.assertTrue(any(
+                            mother.get('decay_node_id') == 1
+                            for mother in amplitude.get('mothers')))
+
     def test_nlo_decay_combined_virtual_fortran_is_written(self):
         command = self.generate(
-            'u u~ > t t~, '
+            'g g > t t~, '
             '(t > w+ b QED^2=2 QCD^2=0 [QCD])')
         command.exec_cmd(
             'set loop_optimized_output False',
@@ -565,6 +598,11 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn(
                 'DOUBLE PRECISION FNLO_DECAY_DUMMY_WIDTH_RATIO',
                 loop_source)
+            self.assertIn('CALL VVV1P0_1', loop_source)
+            self.assertGreaterEqual(loop_source.count(
+                'FNLO_DECAY_DUMMY_WIDTH_RATIO()*MDL_MT'), 3)
+            self.assertGreaterEqual(loop_born_source.count(
+                'FNLO_DECAY_DUMMY_WIDTH_RATIO()*MDL_MT'), 3)
             self.assertTrue(os.path.isfile(os.path.join(
                 virtual_dir, 'global_specs.inc')))
 
@@ -574,7 +612,7 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn(
                 'VIRTUAL_COMPOSITION CROSSED_PRODUCTION_CURRENT\n',
                 metadata)
-            self.assertIn('VIRTUAL_CURRENT_COUNT 1\n', metadata)
+            self.assertIn('VIRTUAL_CURRENT_COUNT 3\n', metadata)
 
     def test_nlo_decay_combined_fortran_matrix_elements_are_written(self):
         command = self.generate(
@@ -664,15 +702,6 @@ class TestFKSDecayChains(unittest.TestCase):
                 'u u~ > t t~, '
                 '(t > w+ b, '
                 'w+ > u d~ QED^2=2 QCD^2=0 [real=QCD])')
-
-        multi_diagram = self.generate(
-            'g g > t t~, '
-            '(t > w+ b QED^2=2 QCD^2=0 [QCD])')
-        with self.assertRaisesRegex(
-                fks_common.FKSProcessError,
-                'supports one LO production HELAS diagram'):
-            fks_helas_objects.FKSHelasMultiProcess(
-                multi_diagram._fks_multi_proc, loop_optimized=False)
 
 
 if __name__ == '__main__':

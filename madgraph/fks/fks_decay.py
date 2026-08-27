@@ -822,7 +822,47 @@ def _annotate_widths(matrix_element, context, metadata):
         _set_local_width(wavefunction, width)
 
 
-def _finalize_matrix_element(matrix_element):
+def _cache_crossed_current_base_amplitude(matrix_element):
+    """Build a colour-safe base amplitude for an inverse-rooted current.
+
+    ``get_base_amplitude`` reconstructs graph legs from HELAS
+    ``number_external`` labels.  In a crossed production current an internal
+    line can carry the same label as an external leg which occurs later in the
+    inverse-rooted graph.  The colour replacement map then contracts the
+    external colour index by mistake.  Give non-loop internal lines temporary,
+    unique labels while reconstructing the base graph.  The cached base
+    amplitude retains those harmless internal labels, while the HELAS objects
+    are restored before any calls are written.
+    """
+
+    matrix_element.relabel_helas_objects()
+    wavefunctions = _all_wavefunctions(matrix_element)
+    external_numbers = [
+        wavefunction.get('number_external')
+        for wavefunction in wavefunctions
+        if not wavefunction.get('mothers')]
+    next_number = max(
+        external_numbers + [matrix_element.get_nexternal_ninitial()[0]]) + 1
+    original_numbers = []
+    for wavefunction in wavefunctions:
+        if (not wavefunction.get('mothers') or
+                wavefunction.get('is_loop')):
+            continue
+        original_numbers.append(
+            (wavefunction, wavefunction.get('number_external')))
+        wavefunction.set('number_external', next_number)
+        next_number += 1
+
+    try:
+        base_amplitude = matrix_element.get('base_amplitude')
+    finally:
+        for wavefunction, number_external in original_numbers:
+            wavefunction.set('number_external', number_external)
+    matrix_element.set('base_amplitude', base_amplitude)
+
+
+def _finalize_matrix_element(matrix_element,
+                             normalize_crossed_current=False):
     matrix_element.set('base_amplitude', None)
     if isinstance(matrix_element,
                   loop_helas_objects.LoopHelasMatrixElement):
@@ -838,6 +878,8 @@ def _finalize_matrix_element(matrix_element):
             matrix_element['born_color_basis'].__class__()
         matrix_element['loop_color_basis'] = \
             matrix_element['loop_color_basis'].__class__()
+        if normalize_crossed_current:
+            _cache_crossed_current_base_amplitude(matrix_element)
         matrix_element.process_color()
     else:
         matrix_element.set('color_basis', color_amp.ColorBasis())
@@ -1041,26 +1083,43 @@ def _copy_loop_matrix_element(matrix_element):
     return result
 
 
-def _single_diagram_current_pieces(current):
-    """Return one-current-diagram MEs for safe inverse loop insertion."""
+def _production_current_pieces(current):
+    """Return self-contained one-diagram production-current MEs.
 
-    if len(current.get('diagrams')) != 1:
-        raise fks_common.FKSProcessError(
-            'The NLO-decay virtual compositor currently supports one LO '
-            'production HELAS diagram; use [real=QCD] for multi-diagram '
-            'production processes')
+    Optimized tree HELAS matrix elements store shared external wavefunctions
+    only in the first diagram.  Each current must be independently insertable,
+    so recover the full recursive wavefunction closure after copying it.
+    Splitting also avoids the existing multi-diagram ``insert_decay`` path,
+    which does not replace loop-internal references independently in every
+    copied diagram.
+    """
+
     pieces = []
-    for index, diagram in enumerate(current.get('diagrams')):
-        if len(diagram.get('amplitudes')) != 1:
+    for source_diagram in current.get('diagrams'):
+        if len(source_diagram.get('amplitudes')) != 1:
             raise fks_common.FKSProcessError(
                 'The NLO-decay virtual compositor currently requires one '
                 'production current per HELAS diagram')
+        diagram = copy.deepcopy(source_diagram)
+        complete_wavefunctions = helas_objects.HelasWavefunctionList()
+        seen_wavefunctions = set()
+        for amplitude in diagram.get('amplitudes'):
+            wavefunctions = \
+                helas_objects.HelasWavefunctionList.extract_wavefunctions(
+                    amplitude.get('mothers'))
+            for wavefunction in reversed(wavefunctions):
+                if id(wavefunction) in seen_wavefunctions:
+                    continue
+                seen_wavefunctions.add(id(wavefunction))
+                complete_wavefunctions.append(wavefunction)
+        diagram.set('wavefunctions', complete_wavefunctions)
+
         piece = copy.copy(current)
         piece.set('processes', current.get('processes').__class__([
             _copy_process_tree(process)
             for process in current.get('processes')]))
         piece.set('diagrams', current.get('diagrams').__class__([
-            copy.deepcopy(current.get('diagrams')[index])]))
+            diagram]))
         piece.set('base_amplitude', None)
         pieces.append(piece)
     return pieces
@@ -1177,7 +1236,7 @@ def compose_nlo_decay_virtual(production_amplitude, selector,
 
     current = _production_amplitude_as_parent_current(
         production_amplitude, selector, production_context)
-    pieces = _single_diagram_current_pieces(current)
+    pieces = _production_current_pieces(current)
     composed = [
         _insert_one_production_current(
             decay_virtual, piece, local_context, selector[0])
@@ -1195,9 +1254,12 @@ def compose_nlo_decay_virtual(production_amplitude, selector,
                  combined_born.get('identical_particle_factor'))
     combined.set('has_mirror_process',
                  combined_born.get('has_mirror_process'))
+    combined.nlo_decay_crossed_current = True
     # insert_decay_chains normally performs this final pass.  The inverse
     # compositor calls insert_decay directly, so refresh the numbers, fermion
     # signs and colour-index chains explicitly before rebuilding loop colour.
+    for index, diagram in enumerate(combined.get('diagrams'), 1):
+        diagram.set('number', index)
     for index, wavefunction in enumerate(
             combined.get_all_wavefunctions(), 1):
         wavefunction.set('number', index)
@@ -1208,7 +1270,13 @@ def compose_nlo_decay_virtual(production_amplitude, selector,
     for attribute in ['squared_orders', 'amps_orders']:
         if hasattr(combined, attribute):
             delattr(combined, attribute)
-    _finalize_matrix_element(combined)
+    _finalize_matrix_element(combined, normalize_crossed_current=True)
+
+    if (set(combined.get('born_color_basis')) !=
+            set(combined_born.get('color_basis'))):
+        raise fks_common.FKSProcessError(
+            'The composed decay virtual and full Born have inconsistent '
+            'colour bases')
 
     if (combined.get_nexternal_ninitial() !=
             combined_born.get_nexternal_ninitial()):

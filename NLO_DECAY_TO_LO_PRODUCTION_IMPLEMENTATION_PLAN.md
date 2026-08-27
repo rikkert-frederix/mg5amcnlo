@@ -21,12 +21,13 @@ a full-production virtual would have produced incorrect bookkeeping.
 
 ### Milestone 2: loop-aware production-current composition
 
-The second milestone is now implemented for a single LO production HELAS
-diagram.  It crosses the LO production process into an open current carrying
-the selected resonance, inserts that current into the incoming resonance of
-the decay `LoopHelasMatrixElement`, and rebuilds the complete loop and Born
-colour bases.  Loop, R2, UV and UVCT structures remain intact, while the
-resonance spin and colour indices are contracted at amplitude level.
+The second milestone established the virtual construction for a single LO
+production HELAS diagram.  It crosses the LO production process into an open
+current carrying the selected resonance, inserts that current into the
+incoming resonance of the decay `LoopHelasMatrixElement`, and rebuilds the
+complete loop and Born colour bases.  Loop, R2, UV and UVCT structures remain
+intact, while the resonance spin and colour indices are contracted at
+amplitude level.
 
 The resulting virtual has the same full external process as the combined
 Born, including two production incoming legs.  It occupies the ordinary
@@ -38,6 +39,27 @@ directory compiles successfully with the default MadLoop exporter.
 Phase-space generation, decay-local subtraction and NLO width normalization
 remain deliberately deferred, so the output is still marked as
 matrix-elements-only and is not a runnable prediction.
+
+### Milestone 3: coherent multi-diagram production currents
+
+The third milestone generalizes the virtual construction to every HELAS
+diagram in one concrete LO production amplitude.  This is needed for channels
+such as `g g > t t~`, whose s-, t- and u-channel production diagrams must all
+interfere with every decay-loop contribution.
+
+Each production diagram is copied as a self-contained current, including the
+external wavefunctions which optimized HELAS storage normally shares through
+the first diagram.  It is inserted into a fresh copy of the decay loop, and
+the resulting loop matrix elements are merged before colour processing.  The
+composed virtual Born colour basis is required to equal the independently
+constructed full Born basis.
+
+Inverse rooting can make an internal HELAS `number_external` label alias an
+external colour index which occurs later in the reconstructed graph.  Colour
+processing now builds and caches a base amplitude using temporary unique
+labels for non-loop internal lines, then restores the untouched HELAS objects
+before Fortran calls are written.  This is bookkeeping only and does not alter
+the generated momenta or wavefunctions.
 
 The implementation is split as follows:
 
@@ -124,8 +146,6 @@ This prototype deliberately requires:
 - no additional or nested decays;
 - native MadLoop, serial generation and the real-mass scheme;
 - `real` or `all` NLO mode on the corrected decay;
-- for `[QCD]` in milestone 2, one HELAS diagram/current in the concrete LO
-  production amplitude; `[real=QCD]` does not have this extra restriction;
 - explicit decay Born-order constraints when the usual automatic inference
   cannot determine orders for a one-incoming-particle process;
 - `output fNLO`.
@@ -172,19 +192,21 @@ For a requested `[QCD]` virtual:
 
 1. Cross the selected production resonance and all production incoming legs
    into a one-incoming decay-chain process.
-2. Generate its tree HELAS representation, whose placeholder amplitude
-   exposes the resonance production current.
-3. Insert that current into a copy of every decay-loop, R2 and UVCT diagram at
-   the standalone decay's incoming resonance wavefunction.
-4. Restore the full-process external leg numbers and incoming-state flags.
-5. Apply the local dummy width only to the production--decay connector and
+2. Generate its tree HELAS representation, whose placeholder amplitudes
+   expose the resonance production currents.
+3. Split the HELAS diagrams into self-contained current matrix elements,
+   recovering each diagram's complete recursive wavefunction closure.
+4. Insert each current into a fresh copy of every decay-loop, R2 and UVCT
+   diagram at the standalone decay's incoming resonance wavefunction.
+5. Merge the contributions and restore full-process external leg numbers,
+   incoming-state flags, and unique diagram/amplitude numbering.
+6. Apply the local dummy width only to each production--decay connector and
    zero it on other occurrences of the forced resonance species.
-6. Reconstruct the combined `LoopAmplitude`, split orders, Born/loop colour
-   bases and interference matrix.
+7. Reconstruct a colour-safe combined `LoopAmplitude`, split orders,
+   Born/loop colour bases and interference matrix.
 
-This produces a normal full-process `LoopHelasMatrixElement`.  The current
-prototype rejects production amplitudes with several HELAS diagrams before
-composition; combining their independent colour chains is deferred.
+This produces one normal full-process `LoopHelasMatrixElement` containing the
+coherent sum over all diagrams in the concrete production amplitude.
 
 ## Prototype Output
 
@@ -201,12 +223,14 @@ Each affected `SubProcesses/P*` directory contains:
 
 The standard files make the generated HELAS calls and colour algebra easy to
 inspect and test.  The marker prevents this milestone from being mistaken for
-a numerically complete calculation.
+a numerically complete calculation.  PostScript diagram drawing is skipped for
+the inverse-rooted virtual: the cached base graph is authoritative for colour
+processing, but its synthetic internal labels are not supported by the legacy
+level-based drawer.
 
 ## Deferred Work
 
-- Generalization of the crossed production-current compositor to several
-  production HELAS diagrams and equivalent production subprocesses.
+- Equivalent production subprocesses and their grouping at the virtual level.
 - Context-aware FKS accessors for the internal incoming resonance.
 - Decay-local real-to-Born phase-space mappings inside the full event.
 - Soft kernels using both the resonance and visible-daughter momenta.
@@ -248,3 +272,16 @@ a numerically complete calculation.
 - Default fNLO export writes a standard `P*/V*/loop_matrix.f` and
   `born_matrix.f`, not `NLODecayVirtual/`.
 - The emitted combined virtual MadLoop directory compiles successfully.
+
+## Third-Milestone Acceptance Tests
+
+- `g g > t t~` produces three independent crossed production currents in both
+  optimized and default loop representations.
+- Every decay loop receives one internal production--decay connector for each
+  production current; no loop retains the standalone external resonance.
+- The combined virtual Born and loop bases contain the same two external
+  colour tensors as the independently composed full Born.
+- Default fNLO output writes all three production currents into
+  `loop_matrix.f` and `born_matrix.f` and records
+  `VIRTUAL_CURRENT_COUNT 3`.
+- The emitted multi-diagram MadLoop directory compiles successfully.

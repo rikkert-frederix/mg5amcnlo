@@ -144,6 +144,43 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                     matrix_element.get_max_loop_rank()))
 
     @staticmethod
+    def draw_virtual_diagrams(matrix_element):
+        """Draw ordinary virtual diagrams when their base graph is drawable."""
+
+        if getattr(matrix_element, 'nlo_decay_crossed_current', False):
+            # The inverse-rooted production current uses a colour-safe base
+            # graph with synthetic internal leg labels.  It is authoritative
+            # for colour processing, but the legacy level-based drawer cannot
+            # lay out all multi-current topologies.
+            logger.info(
+                'Skipping diagram drawing for the crossed NLO-decay current')
+            return
+
+        filename = 'loop_matrix.ps'
+        plot = draw.MultiEpsDiagramDrawer(base_objects.DiagramList(
+            matrix_element.get('base_amplitude').get('loop_diagrams')),
+            filename,
+            model=matrix_element.get('processes')[0].get('model'),
+            amplitude='')
+        logger.info(
+            'Drawing loop Feynman diagrams for ' +
+            matrix_element.get('processes')[0].nice_string(
+                print_weighted=False))
+        plot.draw()
+
+        filename = 'born_matrix.ps'
+        plot = draw.MultiEpsDiagramDrawer(
+            matrix_element.get('base_amplitude').get('born_diagrams'),
+            filename,
+            model=matrix_element.get('processes')[0].get('model'),
+            amplitude='')
+        logger.info(
+            'Generating born Feynman diagrams for ' +
+            matrix_element.get('processes')[0].nice_string(
+                print_weighted=False))
+        plot.draw()
+
+    @staticmethod
     def repair_nlo_decay_virtual_links(virtual_root,
                                        virtual_matrix_element):
         """Adjust MadLoop links for the extra prototype directory level.
@@ -3188,23 +3225,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         self.write_ngraphs_file(writers.FortranWriter(filename),
                            len(matrix_element.get_all_amplitudes()))
 
-        filename = "loop_matrix.ps"
-        plot = draw.MultiEpsDiagramDrawer(base_objects.DiagramList(
-              matrix_element.get('base_amplitude').get('loop_diagrams')),
-              filename,
-              model=matrix_element.get('processes')[0].get('model'),
-              amplitude='')
-        logger.info("Drawing loop Feynman diagrams for " + \
-            matrix_element.get('processes')[0].nice_string(print_weighted=False))
-        plot.draw()
-
-        filename = "born_matrix.ps"
-        plot = draw.MultiEpsDiagramDrawer(matrix_element.get('base_amplitude').\
-            get('born_diagrams'),filename,model=matrix_element.get('processes')[0].\
-                                                      get('model'),amplitude='')
-        logger.info("Generating born Feynman diagrams for " + \
-            matrix_element.get('processes')[0].nice_string(print_weighted=False))
-        plot.draw()
+        self.draw_virtual_diagrams(matrix_element)
 
         # We also need to write the overall maximum quantities for this group
         # of processes in 'global_specs.inc'. In aMCatNLO, there is always
@@ -5782,29 +5803,7 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
         self.write_ngraphs_file(writers.FortranWriter(filename),
                            len(matrix_element.get_all_amplitudes()))
 
-        filename = "loop_matrix.ps"
-        #writers.FortranWriter(filename).writelines("""C Post-helas generation loop-drawing is not ready yet.""")
-        plot = draw.MultiEpsDiagramDrawer(base_objects.DiagramList(
-              matrix_element.get('base_amplitude').get('loop_diagrams')),
-              filename,
-              model=matrix_element.get('processes')[0].get('model'),
-              amplitude='')
-        logger.info("Drawing loop Feynman diagrams for " + \
-                     matrix_element.get('processes')[0].nice_string(\
-                                                          print_weighted=False))
-        plot.draw()
-
-        filename = "born_matrix.ps"
-        plot = draw.MultiEpsDiagramDrawer(matrix_element.get('base_amplitude').\
-                                             get('born_diagrams'),
-                                          filename,
-                                          model=matrix_element.get('processes')[0].\
-                                             get('model'),
-                                          amplitude='')
-        logger.info("Generating born Feynman diagrams for " + \
-                     matrix_element.get('processes')[0].nice_string(\
-                                                          print_weighted=False))
-        plot.draw()
+        self.draw_virtual_diagrams(matrix_element)
 
         # We also need to write the overall maximum quantities for this group
         # of processes in 'global_specs.inc'. In aMCatNLO, there is always
