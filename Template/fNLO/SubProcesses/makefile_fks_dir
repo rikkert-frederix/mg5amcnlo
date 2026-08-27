@@ -278,9 +278,10 @@ driver_mintFO_bridge.o: driver_mintFO.o \
 chooser_functions.o: process_dimensions.o fks_metadata.o weight_lines.o \
 	decay_chain_metadata.o
 chooser_functions_bridge.o: chooser_functions.o
-setcuts.o: process_dimensions.o fks_metadata.o \
-	fks_random.o mint_module.o $(LIBDIR)run_state.mod
-setcuts_bridge.o: setcuts.o
+setcuts.o: process_dimensions.o fks_metadata.o decay_chain_metadata.o \
+	decay_chain_kinematics.o fks_random.o mint_module.o \
+	$(LIBDIR)run_state.mod
+setcuts_bridge.o: setcuts.o decay_chain_metadata.o
 genps_born.o: process_dimensions.o FKSParams.o phase_space_kinematics.o \
 	decay_chain_metadata.o decay_chain_kinematics.o \
 	$(LIBDIR)run_state.mod $(LIBDIR)kin_functions_module.mod

@@ -289,6 +289,24 @@ class TestMadEventCmd(unittest.TestCase):
         with open(pjoin(subprocess_dir, 'setcuts_bridge.f')) as stream:
             setcuts_bridge = stream.read().lower()
         self.assertIn('from_decay=.false.', setcuts_bridge)
+        self.assertIn('if (has_decay_chains()) then', setcuts_bridge)
+        self.assertIn('call set_decay_tau_min_impl', setcuts_bridge)
+
+        with open(pjoin(subprocess_dir, 'setcuts.f90')) as stream:
+            setcuts = stream.read().lower()
+        self.assertIn(
+            'do leg = nincoming + 1, context_core_count(context)', setcuts)
+        self.assertIn('case (decay_node_target)', setcuts)
+        self.assertIn('production_mass = production_mass + leg_mass', setcuts)
+
+        with open(pjoin(subprocess_dir, 'genps_born.f90')) as stream:
+            born_phase_space = stream.read().lower()
+        decay_start = born_phase_space.index(
+            'subroutine generate_decay_born_phase_space')
+        decay_end = born_phase_space.index(
+            'end subroutine generate_decay_born_phase_space', decay_start)
+        self.assertIn(
+            'call set_tau_min()', born_phase_space[decay_start:decay_end])
 
         decay_mask_path = pjoin(
             madgraph.MG5DIR, 'Template', 'NLO', 'SubProcesses',

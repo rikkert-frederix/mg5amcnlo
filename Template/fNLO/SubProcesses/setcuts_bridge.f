@@ -27,7 +27,10 @@ c-----------------------------------------------------------------------
 c     born_props.inc is generated for each subprocess.  Materialize its
 c     assignments here, then pass ordinary arrays to the F90 module.
 c-----------------------------------------------------------------------
-      use setcuts_module, only: set_tau_min_impl
+      use setcuts_module, only: set_tau_min_impl,
+     $     set_decay_tau_min_impl
+      use decay_chain_metadata, only: initialize_decay_chain_metadata,
+     $     has_decay_chains
       use fnlo_process_common, only: nexternal,lmaxconfigs,
      $     itree=>config_tree,iconf=>config_index,nfksprocess,
      $     tau_born_lower_bound,tau_lower_bound_resonance,
@@ -42,6 +45,15 @@ c-----------------------------------------------------------------------
       integer i,j
       double precision pmass(-nexternal:0,lmaxconfigs)
       double precision pwidth(-nexternal:0,lmaxconfigs)
+
+      call initialize_decay_chain_metadata()
+      if (has_decay_chains()) then
+         call set_decay_tau_min_impl(nfksprocess,etmin,is_a_j,
+     $        is_a_lp,is_a_lm,is_a_ph,tau_born_lower_bound,
+     $        tau_lower_bound_resonance,tau_lower_bound,cbw_mass,
+     $        cbw_width,cbw_level_max,cbw,cbw_level,s_mass)
+         return
+      endif
 
       do i=1,lmaxconfigs
          do j=-nexternal,0
