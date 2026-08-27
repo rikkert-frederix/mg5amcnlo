@@ -123,6 +123,27 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      self.opt.get('fks_template', 'NLO'))
 
     @staticmethod
+    def write_global_specs(matrix_element, output_path):
+        """Write the loop dimensions needed by default MadLoop output.
+
+        The optimized exporter already provides this helper.  The default FKS
+        exporter also calls it from ``generate_virt_directory`` and needs the
+        same single-process information when a combined NLO-decay virtual is
+        written.
+        """
+
+        with open(output_path, 'w') as stream:
+            stream.write(
+                '      integer MAXNEXTERNAL\n'
+                '      parameter(MAXNEXTERNAL=%d)\n'
+                '      integer OVERALLMAXRANK\n'
+                '      parameter(OVERALLMAXRANK=%d)\n'
+                '      integer NPROCS\n'
+                '      parameter(NPROCS=1)' % (
+                    matrix_element.get_nexternal_ninitial()[0],
+                    matrix_element.get_max_loop_rank()))
+
+    @staticmethod
     def repair_nlo_decay_virtual_links(virtual_root,
                                        virtual_matrix_element):
         """Adjust MadLoop links for the extra prototype directory level.

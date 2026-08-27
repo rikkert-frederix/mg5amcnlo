@@ -25,7 +25,6 @@ from madgraph.fks import fks_common
 from madgraph.fks import fks_decay
 from madgraph.fks import fks_helas_objects
 from madgraph.interface.master_interface import MasterCmd
-from madgraph.iolibs import export_fks
 
 
 class TestFKSDecayChains(unittest.TestCase):
@@ -456,51 +455,126 @@ class TestFKSDecayChains(unittest.TestCase):
         self.assertIn('LOCAL_MAP 2 4 LEG 5\n', info)
         self.assertIn('FKS_MAP 1 2 4 2 2\n', info)
 
-    def test_nlo_decay_virtual_remains_a_decay_building_block(self):
+    def test_nlo_decay_virtual_is_composed_with_lo_production(self):
         command = self.generate(
             'u u~ > t t~, '
             '(t > w+ b QED^2=2 QCD^2=0 [QCD])')
         helas = fks_helas_objects.FKSHelasMultiProcess(
             command._fks_multi_proc, loop_optimized=False)
         matrix_element = helas['matrix_elements'][0]
-        virtual = matrix_element.nlo_decay_virtual_matrix_element
+        virtual = matrix_element.virt_matrix_element
 
-        self.assertIsNone(matrix_element.virt_matrix_element)
         self.assertIsNotNone(virtual)
+        self.assertIsNone(matrix_element.nlo_decay_virtual_matrix_element)
         self.assertIn(virtual, helas.get_virt_matrix_elements())
         self.assertTrue(helas['has_loops'])
         self.assertTrue(matrix_element.nlo_decay_metadata['has_virtual'])
         self.assertEqual(
+            matrix_element.nlo_decay_metadata['virtual_composition'],
+            'CROSSED_PRODUCTION_CURRENT')
+        self.assertEqual(
+            matrix_element.nlo_decay_metadata['virtual_current_count'], 1)
+        self.assertEqual(
             [leg.get('id') for leg in
              virtual['processes'][0].get_legs_with_decays()],
-            [6, 5, 24])
-        self.assertEqual(virtual.get_nexternal_ninitial(), (3, 1))
+            [2, -2, 5, 24, -6])
+        self.assertEqual(virtual.get_nexternal_ninitial(), (5, 2))
         self.assertTrue(virtual.get_loop_diagrams())
         self.assertTrue(virtual.get_born_diagrams())
+        self.assertTrue(virtual.get('born_color_basis'))
+        self.assertTrue(virtual.get('loop_color_basis'))
+        self.assertEqual(
+            [entry[0] for entry in virtual.get_split_orders_mapping()[0]],
+            [(6, 2)])
+
+        external = sorted(set(
+            (wavefunction.get('number_external'),
+             wavefunction.get('leg_state'))
+            for wavefunction in fks_decay._all_wavefunctions(virtual)
+            if (not wavefunction.get('mothers') and
+                not wavefunction.get('is_loop'))))
+        self.assertEqual(external, [
+            (1, False), (2, False), (3, True),
+            (4, True), (5, True)])
+        connectors = [
+            wavefunction for wavefunction in
+            fks_decay._all_wavefunctions(virtual)
+            if wavefunction.get('decay_node_id') == 1]
+        self.assertTrue(connectors)
+        for connector in connectors:
+            self.assertTrue(connector.get('mothers'))
+            self.assertEqual(
+                connector.get('width'),
+                'FNLO_DECAY_DUMMY_WIDTH_RATIO()*mdl_MT')
+
+    def test_nlo_decay_virtual_composes_in_optimized_representation(self):
+        command = self.generate(
+            'u u~ > t t~, '
+            '(t > w+ b QED^2=2 QCD^2=0 [QCD])')
+        helas = fks_helas_objects.FKSHelasMultiProcess(
+            command._fks_multi_proc, loop_optimized=True)
+        virtual = helas['matrix_elements'][0].virt_matrix_element
+
+        self.assertTrue(virtual.optimized_output)
+        self.assertEqual(virtual.get_nexternal_ninitial(), (5, 2))
+        self.assertTrue(virtual.get_loop_diagrams())
+        self.assertTrue(virtual.get_born_diagrams())
+        self.assertTrue(virtual.get('born_color_basis'))
+        self.assertTrue(virtual.get('loop_color_basis'))
+
+    def test_nlo_decay_combined_virtual_fortran_is_written(self):
+        command = self.generate(
+            'u u~ > t t~, '
+            '(t > w+ b QED^2=2 QCD^2=0 [QCD])')
+        command.exec_cmd(
+            'set loop_optimized_output False',
+            printcmd=False, precmd=True)
 
         with tempfile.TemporaryDirectory() as output_dir:
-            virtual_root = os.path.join(output_dir, 'Ptest',
-                                        'NLODecayVirtual')
-            virtual_path = os.path.join(
-                virtual_root,
-                'V%s' % virtual['processes'][0].shell_string())
-            resource_path = os.path.join(
-                virtual_root, 'MadLoop5_resources')
-            os.makedirs(virtual_path)
-            os.makedirs(resource_path)
-            export_fks.ProcessExporterFortranFKS.\
-                repair_nlo_decay_virtual_links(virtual_root, virtual)
-            self.assertEqual(
-                os.readlink(os.path.join(virtual_path, 'coupl.inc')),
-                os.path.join('..', '..', '..', 'coupl.inc'))
-            self.assertEqual(
-                os.readlink(os.path.join(virtual_path, 'coef_specs.inc')),
-                os.path.join('..', '..', '..', '..', 'Source', 'DHELAS',
-                             'coef_specs.inc'))
-            self.assertEqual(
-                os.readlink(os.path.join(
-                    resource_path, 'MadLoopParams.dat')),
-                os.path.join('..', '..', '..', 'MadLoopParams.dat'))
+            process_dir = os.path.join(output_dir, 'PROC')
+            command.exec_cmd(
+                'output fNLO %s' % process_dir,
+                printcmd=False, precmd=True)
+            subprocess_root = os.path.join(process_dir, 'SubProcesses')
+            subprocesses = [
+                os.path.join(subprocess_root, name)
+                for name in os.listdir(subprocess_root)
+                if name.startswith('P') and
+                os.path.isdir(os.path.join(subprocess_root, name))]
+            self.assertEqual(len(subprocesses), 1)
+            subprocess_dir = subprocesses[0]
+            virtuals = [
+                os.path.join(subprocess_dir, name)
+                for name in os.listdir(subprocess_dir)
+                if name.startswith('V') and
+                os.path.isdir(os.path.join(subprocess_dir, name))]
+            self.assertEqual(len(virtuals), 1)
+            self.assertFalse(os.path.exists(os.path.join(
+                subprocess_dir, 'NLODecayVirtual')))
+
+            virtual_dir = virtuals[0]
+            with open(os.path.join(virtual_dir, 'loop_matrix.f')) as stream:
+                loop_source = stream.read()
+            with open(os.path.join(virtual_dir, 'born_matrix.f')) as stream:
+                loop_born_source = stream.read()
+            for source in [loop_source, loop_born_source]:
+                self.assertIn('P(0,5)', source)
+                self.assertIn(
+                    'FNLO_DECAY_DUMMY_WIDTH_RATIO()*MDL_MT', source)
+            self.assertIn('CALL FFV2_0', loop_source)
+            self.assertIn(
+                'DOUBLE PRECISION FNLO_DECAY_DUMMY_WIDTH_RATIO',
+                loop_source)
+            self.assertTrue(os.path.isfile(os.path.join(
+                virtual_dir, 'global_specs.inc')))
+
+            with open(os.path.join(
+                    subprocess_dir, 'nlo_decay_info.dat')) as stream:
+                metadata = stream.read()
+            self.assertIn(
+                'VIRTUAL_COMPOSITION CROSSED_PRODUCTION_CURRENT\n',
+                metadata)
+            self.assertIn('VIRTUAL_CURRENT_COUNT 1\n', metadata)
 
     def test_nlo_decay_combined_fortran_matrix_elements_are_written(self):
         command = self.generate(
@@ -590,6 +664,15 @@ class TestFKSDecayChains(unittest.TestCase):
                 'u u~ > t t~, '
                 '(t > w+ b, '
                 'w+ > u d~ QED^2=2 QCD^2=0 [real=QCD])')
+
+        multi_diagram = self.generate(
+            'g g > t t~, '
+            '(t > w+ b QED^2=2 QCD^2=0 [QCD])')
+        with self.assertRaisesRegex(
+                fks_common.FKSProcessError,
+                'supports one LO production HELAS diagram'):
+            fks_helas_objects.FKSHelasMultiProcess(
+                multi_diagram._fks_multi_proc, loop_optimized=False)
 
 
 if __name__ == '__main__':

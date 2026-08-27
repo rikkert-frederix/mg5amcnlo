@@ -1,6 +1,8 @@
 # NLO Decay Corrections in LO Production for fNLO
 
-## First-Milestone Status
+## Milestone Status
+
+### Milestone 1: decay-owned FKS family and tree composition
 
 The Python process-generation and Fortran-writing prototype described here is
 implemented.  It accepts one corrected decay, makes that decay the owner of
@@ -13,22 +15,39 @@ linked-Born sources have also been syntax-compiled with `gfortran`.  This only
 checks the matrix-element building blocks; it does not make the generated
 process runnable.
 
-For `[QCD]`, MadLoop generation is also performed for the standalone decay.
-That loop object is kept in a dedicated prototype slot so it cannot be
-mistaken for a full-production virtual, and is written below
-`NLODecayVirtual/`.  Its production-current contraction and all phase-space
-and subtraction integration remain deliberately deferred.
+The first implementation kept a `[QCD]` virtual as a standalone decay object
+below `NLODecayVirtual/`; that isolation was important because treating it as
+a full-production virtual would have produced incorrect bookkeeping.
+
+### Milestone 2: loop-aware production-current composition
+
+The second milestone is now implemented for a single LO production HELAS
+diagram.  It crosses the LO production process into an open current carrying
+the selected resonance, inserts that current into the incoming resonance of
+the decay `LoopHelasMatrixElement`, and rebuilds the complete loop and Born
+colour bases.  Loop, R2, UV and UVCT structures remain intact, while the
+resonance spin and colour indices are contracted at amplitude level.
+
+The resulting virtual has the same full external process as the combined
+Born, including two production incoming legs.  It occupies the ordinary
+`virt_matrix_element` slot and is written through the standard MadLoop virtual
+path as `P*/V*/loop_matrix.f` and `born_matrix.f`; the standalone sidecar is no
+longer used for supported processes.  The representative emitted virtual
+directory compiles successfully with the default MadLoop exporter.
+
+Phase-space generation, decay-local subtraction and NLO width normalization
+remain deliberately deferred, so the output is still marked as
+matrix-elements-only and is not a runnable prediction.
 
 The implementation is split as follows:
 
 - `madgraph/interface/amcatnlo_interface.py`: syntax routing, validation and
   construction of the decay-owned `FKSMultiProcess`;
-- `madgraph/fks/fks_decay.py`: LO-production generation, tree-current
-  composition and decay-local metadata;
-- `madgraph/fks/fks_helas_objects.py`: HELAS ownership and the isolated loop
-  slot;
-- `madgraph/iolibs/export_fks.py`: fNLO Fortran files, prototype marker and
-  standalone virtual sidecar;
+- `madgraph/fks/fks_decay.py`: LO-production generation, tree-current and
+  crossed-production-loop composition, and decay-local metadata;
+- `madgraph/fks/fks_helas_objects.py`: decay-owned FKS/HELAS ownership;
+- `madgraph/iolibs/export_fks.py`: combined tree and virtual fNLO Fortran
+  files plus the prototype marker;
 - `tests/unit_tests/fks/test_fks_decay.py`: process, HELAS, metadata and
   Fortran-writer regression coverage.
 
@@ -68,9 +87,16 @@ FKS family:
 The tree Born and real currents can be inserted in the LO production matrix
 element with the existing HELAS decay insertion.  A `LoopHelasMatrixElement`
 cannot be passed to that tree-current insertion: doing so would discard or
-misrepresent its loop-specific structures.  A full implementation therefore
-needs either a loop-aware production/decay compositor or an explicit
-spin-density-matrix contraction.
+misrepresent its loop-specific structures.
+
+Milestone 2 instead reverses which side is made into a current.  The selected
+production resonance is crossed to the initial state as its antiparticle and
+the original incoming production legs are crossed to the final state.  The
+ordinary decay-chain HELAS mode then roots the production diagrams on that
+resonance.  Inserting this tree current into the standalone decay loop mutates
+only the external resonance wavefunction; the loop numerator, R2 and UV
+objects remain loop objects.  Restoring the full external-leg numbering and
+rebuilding the loop colour interference completes the contraction.
 
 ## Prototype Command and Restrictions
 
@@ -98,6 +124,8 @@ This prototype deliberately requires:
 - no additional or nested decays;
 - native MadLoop, serial generation and the real-mass scheme;
 - `real` or `all` NLO mode on the corrected decay;
+- for `[QCD]` in milestone 2, one HELAS diagram/current in the concrete LO
+  production amplitude; `[real=QCD]` does not have this extra restriction;
 - explicit decay Born-order constraints when the usual automatic inference
   cannot determine orders for a one-incoming-particle process;
 - `output fNLO`.
@@ -138,19 +166,25 @@ Later subtraction support must map that local leg to a decay node momentum,
 not to a visible daughter momentum.  The prototype records this mapping but
 does not yet consume it in the fNLO phase-space code.
 
-### Virtual stage in this milestone
+### Virtual stage
 
-The decay virtual remains a standalone `LoopHelasMatrixElement`.  It is moved
-out of the ordinary full-production virtual slot and written below the
-production subprocess as a Fortran building block, including its decay Born,
-loop, R2, UV and UVCT content.  It is intentionally not wired into the
-standard fNLO virtual chooser or combined-order bookkeeping.
+For a requested `[QCD]` virtual:
 
-A later milestone will graft a production current into every occurrence of
-the virtual decay's incoming resonance wavefunction, or implement the
-equivalent production/decay spin-density contraction.  Until then, generated
-outputs carry a prominent matrix-elements-only marker and are not runnable
-predictions.
+1. Cross the selected production resonance and all production incoming legs
+   into a one-incoming decay-chain process.
+2. Generate its tree HELAS representation, whose placeholder amplitude
+   exposes the resonance production current.
+3. Insert that current into a copy of every decay-loop, R2 and UVCT diagram at
+   the standalone decay's incoming resonance wavefunction.
+4. Restore the full-process external leg numbers and incoming-state flags.
+5. Apply the local dummy width only to the production--decay connector and
+   zero it on other occurrences of the forced resonance species.
+6. Reconstruct the combined `LoopAmplitude`, split orders, Born/loop colour
+   bases and interference matrix.
+
+This produces a normal full-process `LoopHelasMatrixElement`.  The current
+prototype rejects production amplitudes with several HELAS diagrams before
+composition; combining their independent colour chains is deferred.
 
 ## Prototype Output
 
@@ -162,8 +196,8 @@ Each affected `SubProcesses/P*` directory contains:
   original FKS indices and visible-leg maps;
 - `NLO_DECAY_MATRIX_ELEMENTS_ONLY`, warning that phase-space/subtraction
   integration is not implemented;
-- for `[QCD]`, an `NLODecayVirtual/` directory containing the standalone
-  MadLoop decay virtual building block.
+- for `[QCD]`, a normal `V*/` directory containing the combined
+  `loop_matrix.f`, `born_matrix.f`, R2 and UV/UVCT machinery.
 
 The standard files make the generated HELAS calls and colour algebra easy to
 inspect and test.  The marker prevents this milestone from being mistaken for
@@ -171,7 +205,8 @@ a numerically complete calculation.
 
 ## Deferred Work
 
-- Loop-aware production/decay composition with spin correlations.
+- Generalization of the crossed production-current compositor to several
+  production HELAS diagrams and equivalent production subprocesses.
 - Context-aware FKS accessors for the internal incoming resonance.
 - Decay-local real-to-Born phase-space mappings inside the full event.
 - Soft kernels using both the resonance and visible-daughter momenta.
@@ -181,7 +216,7 @@ a numerically complete calculation.
   unexpanded NLO physical width.
 - Multiple production subprocesses, equivalent decay flavour grouping,
   additional LO decays and nested corrected decays.
-- Loop-sidecar compilation, pole, soft/collinear-limit and numerical
+- Virtual/Born numerical equivalence, pole, soft/collinear-limit and numerical
   regression tests.
 
 ## First-Milestone Acceptance Tests
@@ -195,7 +230,21 @@ a numerically complete calculation.
   the additional decay radiation.
 - `nlo_decay_info.dat` preserves the original decay-local `i`, `j`, and `ij`.
 - fNLO export writes combined `born.f` and `matrix_N.f` files.
-- Full `[QCD]` additionally writes the standalone decay virtual Fortran
+- Full `[QCD]` additionally writes the combined decay virtual Fortran
   building block.
 - Existing NLO-production/LO-decay and ordinary fNLO generation remain
   unchanged.
+
+## Second-Milestone Acceptance Tests
+
+- The virtual process has the same visible external PDGs and `(nexternal,
+  nincoming)` as the combined Born.
+- Its reconstructed Born has the full production and decay amplitude orders;
+  its loop interference has the additional QCD correction order.
+- Exactly one internal resonance connector carries the local dummy-width
+  prescription; other occurrences of that species have zero width.
+- Both optimized and default `LoopHelasMatrixElement` representations retain
+  loop diagrams and non-empty compatible Born/loop colour bases.
+- Default fNLO export writes a standard `P*/V*/loop_matrix.f` and
+  `born_matrix.f`, not `NLODecayVirtual/`.
+- The emitted combined virtual MadLoop directory compiles successfully.

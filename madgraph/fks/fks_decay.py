@@ -704,6 +704,20 @@ def _copy_process(process):
     return result
 
 
+def _copy_process_tree(process):
+    """Copy a concrete process and its decay tree without copying the model."""
+
+    result = copy.copy(process)
+    result.set('legs', process.get('legs').__class__(
+        [copy.copy(leg) for leg in process.get('legs')]))
+    result.set('decay_chains', process.get('decay_chains').__class__([
+        _copy_process_tree(decay)
+        for decay in process.get('decay_chains')]))
+    result.set('legs_with_decays', base_objects.LegList([
+        copy.copy(leg) for leg in process.get('legs_with_decays')]))
+    return result
+
+
 def _isolate_matrix_element_processes(matrix_element):
     matrix_element.set('processes', base_objects.ProcessList([
         _copy_process(process)
@@ -909,6 +923,301 @@ def _matrix_element_as_decay_current(matrix_element):
         amplitude, gen_color=False)
 
 
+def _production_amplitude_as_parent_current(production_amplitude, selector,
+                                            production_context):
+    """Cross LO production into a current carrying the selected parent.
+
+    A normal decay current is rooted on its physical incoming resonance.  To
+    obtain the inverse object, cross the selected production resonance to the
+    initial state as its antiparticle and cross every original initial leg to
+    the final state.  HELAS can then root every production diagram on the
+    selected resonance while retaining the correct fermion-flow conventions.
+    """
+
+    process = production_amplitude.get('process')
+    model = process.get('model')
+    target = _resolve_selector(process, selector)
+    if target.get('polarization'):
+        raise fks_common.FKSProcessError(
+            'The NLO-decay virtual compositor does not support a polarized '
+            'production resonance')
+
+    crossed_legs = process.get('legs').__class__()
+    root = copy.copy(target)
+    root.set('id', model.get_particle(
+        target.get('id')).get_anti_pdg_code())
+    root.set('state', False)
+    root.set('number', 1)
+    crossed_legs.append(root)
+
+    source_legs = {}
+    for leg in sorted(process.get('legs'),
+                      key=lambda item: item.get('number')):
+        if leg.get('number') == target.get('number'):
+            continue
+        crossed = copy.copy(leg)
+        if not leg.get('state'):
+            crossed.set('id', model.get_particle(
+                leg.get('id')).get_anti_pdg_code())
+        crossed.set('state', True)
+        crossed.set('number', len(crossed_legs) + 1)
+        source_legs[crossed.get('number')] = leg
+        crossed_legs.append(crossed)
+
+    current_process = _copy_process(process)
+    current_process.set('legs', crossed_legs)
+    current_process.set('is_decay_chain', True)
+    current_process.set('perturbation_couplings', [])
+    current_process.set('NLO_mode', 'tree')
+    current_amplitude = diagram_generation.Amplitude(current_process)
+    if not current_amplitude.get('diagrams'):
+        raise fks_common.FKSProcessError(
+            'Could not cross the LO production process into a resonance '
+            'current')
+    current = helas_objects.HelasMatrixElement(
+        current_amplitude, gen_color=False)
+
+    for wavefunction in current.get_all_wavefunctions():
+        if wavefunction.get('mothers'):
+            continue
+        source = source_legs.get(wavefunction.get('number_external'))
+        if source is None:
+            continue
+        target_kind, visible_number = production_context['core_map'][
+            source.get('number')]
+        if target_kind != 'LEG':
+            raise fks_common.FKSProcessError(
+                'A non-resonant production leg did not map to a visible leg')
+        # The crossed state fixes the HELAS particle/antiparticle convention;
+        # leg_state instead records which full-process legs are incoming.
+        wavefunction.set('leg_state', source.get('state'))
+        # A negative node id is a temporary, deepcopy-safe visible-leg tag.
+        wavefunction.set('decay_node_id', -visible_number)
+
+    for diagram in current.get('diagrams'):
+        if len(diagram.get('amplitudes')) != 1:
+            raise fks_common.FKSProcessError(
+                'The NLO-decay virtual compositor currently requires one '
+                'production current per HELAS diagram')
+        amplitude = diagram.get('amplitudes')[0]
+        if (amplitude.get('interaction_id') != 0 or
+                len(amplitude.get('mothers')) != 2 or
+                not amplitude.get('mothers')[1].get('mothers')):
+            raise fks_common.FKSProcessError(
+                'The crossed production process did not produce the expected '
+                'open resonance current')
+        connector = amplitude.get('mothers')[1]
+        mass = connector.get('mass')
+        if mass.lower() == 'zero':
+            raise fks_common.FKSProcessError(
+                'The production/decay connector cannot be massless')
+        _set_local_width(
+            connector, '%s*%s' % (DECAY_DUMMY_WIDTH_FUNCTION, mass))
+        connector.set('decay_node_id', 1)
+
+    return current
+
+
+def _copy_loop_matrix_element(matrix_element):
+    """Copy a loop ME while retaining shared model and particle objects."""
+
+    result = copy.copy(matrix_element)
+    model = matrix_element.get('processes')[0].get('model')
+    memo = {id(model): model}
+    for wavefunction in _all_wavefunctions(matrix_element):
+        for name in ['particle', 'antiparticle']:
+            particle = wavefunction.get(name)
+            memo[id(particle)] = particle
+    result.set('diagrams', matrix_element.get('diagrams').__class__(
+        copy.deepcopy(list(matrix_element.get('diagrams')), memo)))
+    result.set('processes', matrix_element.get('processes').__class__([
+        _copy_process_tree(process)
+        for process in matrix_element.get('processes')]))
+    result.set('base_amplitude', None)
+    result['loop_groups'] = []
+    for attribute in ['squared_orders', 'amps_orders']:
+        if hasattr(result, attribute):
+            delattr(result, attribute)
+    return result
+
+
+def _single_diagram_current_pieces(current):
+    """Return one-current-diagram MEs for safe inverse loop insertion."""
+
+    if len(current.get('diagrams')) != 1:
+        raise fks_common.FKSProcessError(
+            'The NLO-decay virtual compositor currently supports one LO '
+            'production HELAS diagram; use [real=QCD] for multi-diagram '
+            'production processes')
+    pieces = []
+    for index, diagram in enumerate(current.get('diagrams')):
+        if len(diagram.get('amplitudes')) != 1:
+            raise fks_common.FKSProcessError(
+                'The NLO-decay virtual compositor currently requires one '
+                'production current per HELAS diagram')
+        piece = copy.copy(current)
+        piece.set('processes', current.get('processes').__class__([
+            _copy_process_tree(process)
+            for process in current.get('processes')]))
+        piece.set('diagrams', current.get('diagrams').__class__([
+            copy.deepcopy(current.get('diagrams')[index])]))
+        piece.set('base_amplitude', None)
+        pieces.append(piece)
+    return pieces
+
+
+def _tag_decay_virtual_external_legs(virtual, local_context):
+    """Tag standalone decay-final wavefunctions with full visible numbers."""
+
+    for wavefunction in _all_wavefunctions(virtual):
+        if wavefunction.get('mothers') or wavefunction.get('is_loop'):
+            continue
+        local_number = wavefunction.get('number_external')
+        target = local_context['local_map'].get(local_number)
+        if target is None or target[0] == 'NODE':
+            continue
+        if target[0] != 'LEG':
+            raise fks_common.FKSProcessError(
+                'The decay virtual contains an unknown external-leg mapping')
+        wavefunction.set('decay_node_id', -target[1])
+
+
+def _insert_one_production_current(decay_virtual, current,
+                                   local_context, parent_pdg):
+    """Insert one LO production current into a copy of the decay virtual."""
+
+    result = _copy_loop_matrix_element(decay_virtual)
+    _tag_decay_virtual_external_legs(result, local_context)
+    initial_numbers = [
+        leg.get('number')
+        for leg in result.get('processes')[0].get('legs')
+        if not leg.get('state')]
+    if len(initial_numbers) != 1:
+        raise fks_common.FKSProcessError(
+            'The standalone decay virtual must have one incoming resonance')
+    old_wavefunctions = [
+        wavefunction for wavefunction in _all_wavefunctions(result)
+        if (not wavefunction.get('mothers') and
+            not wavefunction.get('is_loop') and
+            wavefunction.get('number_external') == initial_numbers[0])]
+    if not old_wavefunctions:
+        raise fks_common.FKSProcessError(
+            'Could not locate the incoming resonance in the decay virtual')
+
+    numbers = [
+        max(wavefunction.get('number')
+            for wavefunction in result.get_all_wavefunctions()),
+        max(amplitude.get('number')
+            for amplitude in result.get_all_amplitudes())]
+    got_majoranas = any(
+        wavefunction.get('fermionflow') < 0 or
+        (wavefunction.get('self_antipart') and wavefunction.is_fermion())
+        for wavefunction in
+        result.get_all_wavefunctions() + current.get_all_wavefunctions())
+    # Calling insert_decay directly deliberately skips the ordinary process
+    # and identical-decay bookkeeping: this is the inverse operation, and the
+    # correct full process is installed after all production currents merge.
+    result.insert_decay(old_wavefunctions, current, numbers, got_majoranas)
+
+    for wavefunction in _all_wavefunctions(result):
+        if (not wavefunction.get('mothers') and
+                not wavefunction.get('is_loop') and
+                wavefunction.get('decay_node_id') < 0):
+            wavefunction.set(
+                'number_external', -wavefunction.get('decay_node_id'))
+            wavefunction.set('decay_node_id', 0)
+
+    for wavefunction in _all_wavefunctions(result):
+        if abs(wavefunction.get('pdg_code')) != abs(parent_pdg):
+            continue
+        if wavefunction.get('decay_node_id') == 1:
+            mass = wavefunction.get('mass')
+            _set_local_width(
+                wavefunction,
+                '%s*%s' % (DECAY_DUMMY_WIDTH_FUNCTION, mass))
+        else:
+            _set_local_width(wavefunction, 'ZERO')
+    return result
+
+
+def _combined_virtual_process(combined_born, decay_virtual):
+    """Build full-process order bookkeeping for the composed virtual."""
+
+    process = _copy_process_tree(combined_born.get('processes')[0])
+    decay_process = decay_virtual.get('processes')[0]
+    process.set('perturbation_couplings', ['QCD'])
+    process.set('NLO_mode', decay_process.get('NLO_mode'))
+    process.set('has_born', True)
+    process.set('split_orders', misc.make_unique(
+        list(process.get('split_orders')) +
+        list(decay_process.get('split_orders'))))
+
+    born_orders = misc.make_unique([
+        tuple(sorted(diagram.calculate_orders().items()))
+        for diagram in combined_born.get('diagrams')])
+    if len(born_orders) != 1:
+        raise fks_common.FKSProcessError(
+            'The NLO-decay virtual compositor currently requires one Born '
+            'coupling-order configuration')
+    born_sq_orders = dict(
+        (order, 2 * power) for order, power in born_orders[0])
+    for order in process.get('model').get('coupling_orders'):
+        born_sq_orders.setdefault(order, 0)
+    squared_orders = copy.copy(born_sq_orders)
+    squared_orders['QCD'] = squared_orders.get('QCD', 0) + 2
+    process.set('born_sq_orders', born_sq_orders)
+    process.set('squared_orders', squared_orders)
+    return process
+
+
+def compose_nlo_decay_virtual(production_amplitude, selector,
+                              decay_virtual, combined_born,
+                              production_context, local_context):
+    """Contract a decay loop with crossed LO-production currents at HELAS level."""
+
+    current = _production_amplitude_as_parent_current(
+        production_amplitude, selector, production_context)
+    pieces = _single_diagram_current_pieces(current)
+    composed = [
+        _insert_one_production_current(
+            decay_virtual, piece, local_context, selector[0])
+        for piece in pieces]
+    if not composed:
+        raise fks_common.FKSProcessError(
+            'The LO production process did not yield a virtual current')
+
+    combined = composed[0]
+    for contribution in composed[1:]:
+        combined.get('diagrams').extend(contribution.get('diagrams'))
+    combined.set('processes', combined.get('processes').__class__([
+        _combined_virtual_process(combined_born, decay_virtual)]))
+    combined.set('identical_particle_factor',
+                 combined_born.get('identical_particle_factor'))
+    combined.set('has_mirror_process',
+                 combined_born.get('has_mirror_process'))
+    # insert_decay_chains normally performs this final pass.  The inverse
+    # compositor calls insert_decay directly, so refresh the numbers, fermion
+    # signs and colour-index chains explicitly before rebuilding loop colour.
+    for index, wavefunction in enumerate(
+            combined.get_all_wavefunctions(), 1):
+        wavefunction.set('number', index)
+    for index, amplitude in enumerate(combined.get_all_amplitudes(), 1):
+        amplitude.set('number', index)
+        amplitude.calculate_fermionfactor()
+        amplitude.set('color_indices', amplitude.get_color_indices())
+    for attribute in ['squared_orders', 'amps_orders']:
+        if hasattr(combined, attribute):
+            delattr(combined, attribute)
+    _finalize_matrix_element(combined)
+
+    if (combined.get_nexternal_ninitial() !=
+            combined_born.get_nexternal_ninitial()):
+        raise fks_common.FKSProcessError(
+            'The composed decay virtual and full Born have inconsistent '
+            'external-state dimensions')
+    return combined, len(pieces)
+
+
 def _glue_nlo_decay_tree_component(production_amplitude, selector,
                                    decay_current, kind, source_index):
     """Insert one Born/real decay current in a fresh LO production ME."""
@@ -1039,10 +1348,11 @@ def _build_nlo_decay_color_links(combined_born, decay_born,
 
 def compose_nlo_decay_helas_process(fks_process, production_amplitude,
                                     selector):
-    """Compose the tree pieces of a decay-owned FKS process with LO production.
+    """Compose a decay-owned FKS family with one LO production amplitude.
 
-    The virtual is deliberately retained as a standalone decay building block;
-    the fNLO exporter writes it separately for this first milestone.
+    Born and real contributions insert decay currents into production.  The
+    virtual uses the inverse construction: a crossed production current is
+    inserted into the decay loop and then exported as the standard virtual.
     """
 
     if fks_process.extra_cnt_me_list:
@@ -1075,6 +1385,8 @@ def compose_nlo_decay_helas_process(fks_process, production_amplitude,
         'fks_maps': [],
         'color_links': [],
         'has_virtual': bool(fks_process.virt_matrix_element),
+        'virtual_composition': 'NONE',
+        'virtual_current_count': 0,
         'production_legs': [{
             'number': leg.get('number'),
             'pdg': leg.get('id'),
@@ -1082,9 +1394,10 @@ def compose_nlo_decay_helas_process(fks_process, production_amplitude,
             for leg in sorted(
                 production_amplitude.get('process').get('legs'),
                 key=lambda item: item.get('number'))]}
-    prototype_metadata['contexts'].append(_local_decay_context(
+    born_local_context = _local_decay_context(
         decay_born_me, born_component_context, born_component_metadata,
-        1, 'BORN', 1))
+        1, 'BORN', 1)
+    prototype_metadata['contexts'].append(born_local_context)
 
     combined_reals = []
     for index, (real, decay_real_me) in enumerate(
@@ -1112,17 +1425,22 @@ def compose_nlo_decay_helas_process(fks_process, production_amplitude,
         born_component_context, born_component_metadata)
     prototype_metadata['color_links'] = color_records
 
+    combined_virtual = None
+    if fks_process.virt_matrix_element:
+        combined_virtual, current_count = compose_nlo_decay_virtual(
+            production_amplitude, selector,
+            fks_process.virt_matrix_element, combined_born,
+            born_component_context, born_local_context)
+        prototype_metadata['virtual_composition'] = \
+            'CROSSED_PRODUCTION_CURRENT'
+        prototype_metadata['virtual_current_count'] = current_count
+
     fks_process.born_me = combined_born
     fks_process.real_processes = combined_reals
     fks_process.color_links = color_links
     fks_process.nlo_decay_metadata = prototype_metadata
-    fks_process.nlo_decay_virtual_matrix_element = \
-        fks_process.virt_matrix_element
-    # The retained loop object has decay-local external legs.  Keeping it in
-    # the ordinary slot would make later fNLO bookkeeping mistake it for the
-    # full-production virtual.  The prototype slot remains visible to model
-    # and loop-resource generation through FKSHelasMultiProcess.
-    fks_process.virt_matrix_element = None
+    fks_process.nlo_decay_virtual_matrix_element = None
+    fks_process.virt_matrix_element = combined_virtual
     fks_process.decay_grouping_signature = (
         'NLO_DECAY_TO_LO_PRODUCTION', selector)
     return fks_process
@@ -1138,6 +1456,8 @@ def nlo_decay_info_text(metadata):
         'PARENT %d %d' % (
             metadata['parent_pdg'], metadata['parent_occurrence']),
         'HAS_VIRTUAL %d' % int(metadata['has_virtual']),
+        'VIRTUAL_COMPOSITION %s' % metadata['virtual_composition'],
+        'VIRTUAL_CURRENT_COUNT %d' % metadata['virtual_current_count'],
         'COUNTS %d %d %d' % (
             len(metadata['contexts']), len(metadata['fks_maps']),
             len(set(link['generated_index']
@@ -1178,9 +1498,8 @@ def write_nlo_decay_prototype_files(path, metadata):
             as stream:
         stream.write(
             'This output contains NLO-decay matrix-element building blocks.\n'
-            'Phase-space mappings, subtraction integration, and the '\
-            'spin-correlated production/virtual-decay contraction are not '\
-            'implemented yet.\n')
+            'Phase-space mappings, subtraction integration, and NLO width '\
+            'normalization are not implemented yet.\n')
 
 
 def apply_decay_assignment(fks_process, assignment):
