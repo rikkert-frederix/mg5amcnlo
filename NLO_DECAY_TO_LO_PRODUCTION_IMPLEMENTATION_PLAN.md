@@ -118,6 +118,30 @@ This milestone still stops short of a runnable NLO prediction: integrated
 subtraction, virtual-pole cancellation and NLO width normalisation have not
 been implemented.
 
+### Milestone 6: multiple LO production subprocesses and grouping
+
+The sixth milestone removes the single-production-amplitude restriction.
+Multiparticle production definitions are expanded into all concrete LO
+amplitudes, and each amplitude is composed independently with a fresh copy of
+the decay-owned Born, real and virtual FKS family.  The resulting full-event
+objects then pass through the ordinary `FKSHelasProcess` equality and
+`add_process` machinery, so structurally identical matrix elements share one
+subprocess directory and retain every concrete process in their Born, real
+and virtual process lists.
+
+For `p p > t t~, t > W+ b [QCD]`, the default proton definition produces
+nine concrete channels.  They form three matrix-element groups: one `g g`
+group, one group containing the four light `q q~` flavours, and one containing
+the four beam-reversed `q~ q` channels.  The two orientations remain separate
+because their incoming/PDF order is different.  All three generated fNLO
+subprocess directories compile and pass `test_ME`.
+
+Decay Born orders are also inferred directly from the lowest-weight tree
+diagrams when the generic scattering-oriented heuristic cannot determine
+orders for a `1 -> n` child.  Amplitude-level constraints such as `QED=1` are
+now projected to the corresponding squared Born constraint before adding the
+NLO QCD order.
+
 The implementation is split as follows:
 
 - `madgraph/interface/amcatnlo_interface.py`: syntax routing, validation and
@@ -302,13 +326,12 @@ level-based drawer.
 
 ## Deferred Work
 
-- Equivalent production subprocesses and their grouping at the virtual level.
 - Integrated subtraction and virtual-pole cancellation.
 - Independent production and decay renormalisation scales at NLO.
 - A decision between an explicitly expanded width normalisation and use of an
   unexpanded NLO physical width.
-- Multiple production subprocesses, equivalent decay flavour grouping,
-  additional LO decays and nested corrected decays.
+- Equivalent decay flavour grouping, additional LO decays and nested corrected
+  decays.
 - Permutation and symmetry-factor composition when a production final-state
   particle is identical to the decay-owned real-emission particle.
 - Virtual/Born numerical equivalence, pole and width-normalisation regression
@@ -392,6 +415,9 @@ level-based drawer.
   `(t,b)` and `(b,b)` linked-Born terms even though the incoming top is a
   target-aware `NODE`; the top mass removes collinear sectors, not its soft
   eikonal charge.
+- `p p > t t~, t > W+ b [QCD]` expands to nine concrete production channels
+  grouped into three compatible Born/real/virtual matrix elements (`g g`,
+  `q q~` and `q~ q`), with no concrete subprocess dropped or duplicated.
 - The representative `u u~ > t t~, (t > W+ b [real=QCD])` metadata and new
   Fortran phase-space modules compile, and numerical tests verify local
   momentum conservation, fixed parent virtuality, unchanged production

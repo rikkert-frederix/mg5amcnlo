@@ -612,19 +612,26 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
                 amp for amp in fksmulti['real_amplitudes']
                 if amp['diagrams']]
             if getattr(fksmulti, 'nlo_decay_prototype', False):
-                if len(fksmulti.nlo_decay_production_amplitudes) != 1:
+                if not fksmulti.nlo_decay_production_amplitudes:
                     raise fks_common.FKSProcessError(
-                        'The NLO-decay prototype requires exactly one LO '
+                        'The NLO-decay prototype requires at least one LO '
                         'production amplitude')
-                matrix_element = FKSHelasProcess(
-                    proc, [], [],
-                    loop_optimized=self.loop_optimized,
-                    gen_color=True)
-                matrix_element_list = [
-                    fks_decay.compose_nlo_decay_helas_process(
-                        matrix_element,
-                        fksmulti.nlo_decay_production_amplitudes[0],
-                        fksmulti.nlo_decay_selector)]
+                matrix_element_list = []
+                for production_amplitude in \
+                        fksmulti.nlo_decay_production_amplitudes:
+                    # Composition replaces every Born, real and virtual HELAS
+                    # object.  Start from a fresh decay-owned FKS family for
+                    # each concrete production channel, then let the ordinary
+                    # equality/add_process path below group identical MEs.
+                    matrix_element = FKSHelasProcess(
+                        proc, [], [],
+                        loop_optimized=self.loop_optimized,
+                        gen_color=True)
+                    matrix_element_list.append(
+                        fks_decay.compose_nlo_decay_helas_process(
+                            matrix_element,
+                            production_amplitude,
+                            fksmulti.nlo_decay_selector))
             elif proc.decay_chains:
                 assignments = fks_decay.generate_decay_assignments(
                     proc.decay_chains, proc.born_amp.get('process'))

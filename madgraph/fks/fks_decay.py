@@ -201,25 +201,34 @@ def prepare_nlo_decay_definition(decay_definition):
     if not process.get('orders') and not process.get('squared_orders'):
         weighted = diagram_generation.MultiProcess.find_optimal_process_orders(
             process)
-        if not weighted:
-            raise InvalidCmd(
-                'Could not determine the Born coupling orders of the '
-                'corrected decay; specify them explicitly')
-        qed, qcd = fks_common.get_qed_qcd_orders_from_weighted(
-            len(process.get('legs')), model.get('order_hierarchy'),
-            weighted['WEIGHTED'])
-        if qed < 0 or qcd < 0:
-            raise InvalidCmd(
-                'Automatic coupling-order determination for the corrected '
-                'decay produced negative orders')
-        orders = {'QED': qed, 'QCD': qcd}
-        squared_orders = {'QED': 2 * qed, 'QCD': 2 * qcd}
+        if weighted:
+            qed, qcd = fks_common.get_qed_qcd_orders_from_weighted(
+                len(process.get('legs')), model.get('order_hierarchy'),
+                weighted['WEIGHTED'])
+            if qed < 0 or qcd < 0:
+                raise InvalidCmd(
+                    'Automatic coupling-order determination for the '
+                    'corrected decay produced negative orders')
+            orders = {'QED': qed, 'QCD': qcd}
+        else:
+            # The generic weighted-order heuristic is written for scattering
+            # process definitions and can return no answer for a 1 -> n
+            # decay.  Generate its unconstrained tree diagrams directly and
+            # recover the unique lowest-weight Born order from them.
+            orders = _infer_nlo_decay_born_orders(process)
         for order in model.get('coupling_orders'):
             orders.setdefault(order, 0)
-            squared_orders.setdefault(order, 0)
+        squared_orders = dict(
+            (order, 2 * value) for order, value in orders.items())
         process.set('orders', orders)
         process.set('squared_orders', squared_orders)
 
+    # Match the ordinary aMC@NLO order preparation: amplitude-level bounds
+    # imply twice that bound for the squared Born.  This is what makes the
+    # natural decay spelling ``QED=1 [QCD]`` equivalent to ``QED^2=2``.
+    for order, value in process.get('orders').items():
+        if order not in process.get('squared_orders'):
+            process.get('squared_orders')[order] = 2 * value
     for order in model.get('coupling_orders'):
         if order not in process.get('squared_orders'):
             process.get('squared_orders')[order] = 0
@@ -235,6 +244,52 @@ def prepare_nlo_decay_definition(decay_definition):
             process.get('squared_orders').get(order, 0) + 2
 
     return process
+
+
+def _infer_nlo_decay_born_orders(process):
+    """Infer a unique lowest-weight Born order from concrete decay diagrams."""
+
+    model = process.get('model')
+    hierarchy = model.get('order_hierarchy')
+    legs = list(process.get('legs'))
+    order_names = list(model.get('coupling_orders'))
+    candidates = []
+
+    for concrete_ids in itertools.product(*[
+            list(leg.get('ids')) for leg in legs]):
+        initial_ids = [
+            pdg for pdg, leg in zip(concrete_ids, legs)
+            if not leg.get('state')]
+        final_ids = [
+            pdg for pdg, leg in zip(concrete_ids, legs)
+            if leg.get('state')]
+        concrete = process.get_process(initial_ids, final_ids)
+        amplitude = diagram_generation.Amplitude({'process': concrete})
+        for diagram in amplitude.get('diagrams'):
+            diagram.calculate_orders(model)
+            values = dict(
+                (name, diagram.get('orders').get(name, 0))
+                for name in order_names)
+            weighted = sum(
+                hierarchy.get(name, 1) * value
+                for name, value in values.items())
+            candidates.append((weighted, tuple(
+                values[name] for name in order_names)))
+
+    if not candidates:
+        raise InvalidCmd(
+            'Could not determine the Born coupling orders of the corrected '
+            'decay; specify them explicitly')
+    minimum_weight = min(candidate[0] for candidate in candidates)
+    signatures = set(
+        candidate[1] for candidate in candidates
+        if candidate[0] == minimum_weight)
+    if len(signatures) != 1:
+        raise InvalidCmd(
+            'The corrected decay has several lowest-weight Born coupling '
+            'orders; specify the desired orders explicitly')
+    signature = signatures.pop()
+    return dict(zip(order_names, signature))
 
 
 def generate_lo_production_amplitudes(process_definition,

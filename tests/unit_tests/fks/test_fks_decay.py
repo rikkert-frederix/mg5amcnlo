@@ -520,6 +520,91 @@ class TestFKSDecayChains(unittest.TestCase):
         self.assertIn('COLOR_LINK 1 2 3 3 1\n', info)
         self.assertIn('COLOR_LINK 2 2 3 3 1\n', info)
 
+    def test_nlo_decay_groups_multiparticle_production_subprocesses(self):
+        command = self.generate(
+            'p p > t t~, t > w+ b [QCD]')
+        fks_multi = command._fks_multi_proc
+
+        concrete_initials = [
+            tuple(amplitude.get('process').get_initial_ids())
+            for amplitude in fks_multi.nlo_decay_production_amplitudes]
+        self.assertEqual(concrete_initials, [
+            (21, 21), (2, -2), (4, -4), (1, -1), (3, -3),
+            (-2, 2), (-4, 4), (-1, 1), (-3, 3)])
+
+        helas = fks_helas_objects.FKSHelasMultiProcess(
+            fks_multi, loop_optimized=False)
+        self.assertEqual(len(helas['matrix_elements']), 3)
+        groups = {}
+        for matrix_element in helas['matrix_elements']:
+            born_initials = frozenset(
+                tuple(process.get_initial_ids())
+                for process in matrix_element.born_me.get('processes'))
+            groups[born_initials] = matrix_element
+
+            real_initials = frozenset(
+                tuple(process.get_initial_ids())
+                for process in matrix_element.real_processes[0].
+                matrix_element.get('processes'))
+            virtual_initials = frozenset(
+                tuple(process.get_initial_ids())
+                for process in matrix_element.virt_matrix_element.
+                get('processes'))
+            self.assertEqual(real_initials, born_initials)
+            self.assertEqual(virtual_initials, born_initials)
+
+            metadata_initial = tuple(
+                leg['pdg']
+                for leg in matrix_element.nlo_decay_metadata[
+                    'production_legs']
+                if leg['state'] == 'I')
+            self.assertIn(metadata_initial, born_initials)
+
+        expected_groups = set([
+            frozenset([(21, 21)]),
+            frozenset([(2, -2), (4, -4), (1, -1), (3, -3)]),
+            frozenset([(-2, 2), (-4, 4), (-1, 1), (-3, 3)])])
+        self.assertEqual(set(groups), expected_groups)
+        self.assertEqual(
+            groups[frozenset([(21, 21)])].nlo_decay_metadata[
+                'virtual_current_count'], 3)
+        for initial_states, matrix_element in groups.items():
+            if initial_states == frozenset([(21, 21)]):
+                continue
+            self.assertEqual(
+                matrix_element.nlo_decay_metadata['virtual_current_count'], 1)
+
+    def test_nlo_decay_exports_grouped_production_subprocesses(self):
+        command = self.generate(
+            'p p > t t~, t > w+ b [real=QCD]')
+
+        with tempfile.TemporaryDirectory() as output_dir:
+            process_dir = os.path.join(output_dir, 'PROC')
+            command.exec_cmd(
+                'output fNLO %s' % process_dir,
+                printcmd=False, precmd=True)
+            subprocess_root = os.path.join(process_dir, 'SubProcesses')
+            subprocesses = [
+                os.path.join(subprocess_root, name)
+                for name in os.listdir(subprocess_root)
+                if name.startswith('P') and
+                os.path.isdir(os.path.join(subprocess_root, name))]
+            self.assertEqual(len(subprocesses), 3)
+
+            grouped_process_counts = []
+            for subprocess_dir in subprocesses:
+                self.assertTrue(os.path.isfile(os.path.join(
+                    subprocess_dir, 'nlo_decay_info.dat')))
+                self.assertTrue(os.path.isfile(os.path.join(
+                    subprocess_dir, 'matrix_1.f')))
+                with open(os.path.join(
+                        subprocess_dir, 'born.f')) as stream:
+                    process_lines = set(
+                        line.strip() for line in stream
+                        if line.strip().startswith('C     Process:'))
+                grouped_process_counts.append(len(process_lines))
+            self.assertEqual(sorted(grouped_process_counts), [1, 4, 4])
+
     def test_nlo_decay_virtual_is_composed_with_lo_production(self):
         command = self.generate(
             'u u~ > t t~, '
@@ -801,6 +886,15 @@ class TestFKSDecayChains(unittest.TestCase):
             [leg.get('id') for leg in explicit_lo._fks_multi_proc.
              nlo_decay_production_amplitudes[0]['process']['legs']],
             [2, -2, 6, -6])
+
+        amplitude_order = self.generate(
+            'u u~ > t t~, t > w+ b QED=1 [real=QCD]')
+        decay_process = amplitude_order._fks_multi_proc[
+            'born_processes'][0].born_amp.get('process')
+        self.assertEqual(
+            decay_process.get('born_sq_orders'), {'QED': 2, 'QCD': 0})
+        self.assertEqual(
+            decay_process.get('squared_orders'), {'QED': 2, 'QCD': 2})
 
         with self.assertRaisesRegex(
                 InvalidCmd, 'exactly one perturbatively corrected decay'):

@@ -830,11 +830,10 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
             production_amplitudes = \
                 fks_decay.generate_lo_production_amplitudes(
                     myprocdef, ignore_six_quark_processes)
-            if len(production_amplitudes) != 1:
+            if not production_amplitudes:
                 raise self.InvalidCmd(
-                    'The fNLO NLO-decay prototype currently requires one '
-                    'concrete LO production subprocess; generated %d' %
-                    len(production_amplitudes))
+                    'The fNLO NLO-decay prototype generated no concrete LO '
+                    'production subprocesses')
 
             fks_procdef = fks_decay.prepare_nlo_decay_definition(
                 nlo_decay_spec['decay'])
