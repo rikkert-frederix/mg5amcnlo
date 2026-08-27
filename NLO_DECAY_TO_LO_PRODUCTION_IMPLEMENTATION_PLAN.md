@@ -78,6 +78,37 @@ external FKS index, so it remains a target-aware `NODE` partner in
 array until the soft kernel can consume the reconstructed resonance momentum.
 The matrix-elements-only marker therefore remains in place.
 
+### Milestone 5: resonance-preserving decay-local phase space
+
+The fifth milestone consumes the target-aware records in the fNLO Fortran
+runtime.  `nlo_decay_info.dat` format 3 adds an explicit production map for
+each Born/real context and a real-local-to-Born-local decay-leg map.  The
+runtime first generates the undecayed LO production event with the corrected
+parent exactly on shell, then generates its underlying-Born decay.
+
+For each FKS event or counterevent, the parent is boosted to its rest frame.
+The three radiation variables are defined there as
+
+\[
+ \xi_i = \frac{2 E_i^*}{M_D},\qquad
+ y_{ij}=\cos\theta_{ij}^*,\qquad
+ \phi_i=\phi_i^*\text{ about the underlying-Born }ij\text{ direction}.
+\]
+
+Only the corrected decay participates in the real-to-Born map: the emitter,
+radiation and other decay daughters are constructed in the parent rest frame,
+and the recoil boost is applied only to the other daughters of that parent.
+The complete decay is then boosted back.  Incoming momenta and all undecayed
+production spectators are copied unchanged into every event slot, while the
+sum of the mapped daughters remains exactly equal to the stored on-shell
+parent momentum.
+
+The runtime supports both massless and massive final-state FKS sisters.  For a
+massive sister only the real and soft event slots exist, as in the ordinary
+fNLO mapping.  This milestone still stops short of a runnable NLO prediction:
+the internal-parent soft colour charge, integrated subtraction and NLO width
+normalisation have not been implemented.
+
 The implementation is split as follows:
 
 - `madgraph/interface/amcatnlo_interface.py`: syntax routing, validation and
@@ -87,6 +118,10 @@ The implementation is split as follows:
 - `madgraph/fks/fks_helas_objects.py`: decay-owned FKS/HELAS ownership;
 - `madgraph/iolibs/export_fks.py`: combined tree and virtual fNLO Fortran
   files plus the prototype marker;
+- `Template/fNLO/SubProcesses/nlo_decay_metadata.f90`: validation and lookup
+  of target-aware NLO-decay runtime metadata;
+- `Template/fNLO/SubProcesses/nlo_decay_kinematics.f90`: factorised Born
+  generation and parent-rest-frame local FKS kinematics;
 - `tests/unit_tests/fks/test_fks_decay.py`: process, HELAS, metadata and
   Fortran-writer regression coverage.
 
@@ -238,8 +273,8 @@ Each affected `SubProcesses/P*` directory contains:
 - normal `matrix_N.f` files for `P^(0) x D^(R)`;
 - `nlo_decay_info.dat`, recording the corrected node, decay-local contexts,
   original FKS indices, visible-leg targets and internal-node partners;
-- `NLO_DECAY_MATRIX_ELEMENTS_ONLY`, warning that phase-space/subtraction
-  integration is not implemented;
+- `NLO_DECAY_SUBTRACTION_INCOMPLETE`, warning that the local phase-space map
+  is present but subtraction integration is not complete;
 - for `[QCD]`, a normal `V*/` directory containing the combined
   `loop_matrix.f`, `born_matrix.f`, R2 and UV/UVCT machinery.
 
@@ -253,8 +288,6 @@ level-based drawer.
 ## Deferred Work
 
 - Equivalent production subprocesses and their grouping at the virtual level.
-- A decay-local real-to-Born phase-space map using the target-aware FKS
-  records inside the full event.
 - Soft kernels combining the separately reconstructed resonance and visible
   daughter momenta.
 - Integrated subtraction and virtual-pole cancellation.
@@ -320,6 +353,25 @@ level-based drawer.
   incoming top is preserved separately as `NODE 1`.
 - `fks_info.inc` uses visible-event indices and the Born `IJ_VALUES` lookup
   uses the projected leg properties (yielding zero for the massive bottom in
-  the default `loop_sm`), while `nlo_decay_info.dat` format 2 serializes every
+  the default `loop_sm`), while `nlo_decay_info.dat` format 3 serializes every
   local target and partner.
 - Ordinary fNLO and NLO-production-with-LO-decay accessors remain unchanged.
+
+## Fifth-Milestone Acceptance Tests
+
+- Every context explicitly maps the undecayed production legs, with the
+  corrected parent represented by `NODE 1`; every non-radiated real decay leg
+  explicitly maps to its local underlying-Born leg.
+- The generated production incoming momenta and undecayed spectators are
+  bit-for-bit unchanged between the Born, real and available counterevents.
+- In every event slot the sum of the corrected decay daughters equals the
+  same stored parent momentum, whose invariant mass equals the model mass.
+- The generated radiation obeys `xi = 2 E_i*/M` in the corrected-parent rest
+  frame; `y` and `phi` are also constructed in that frame.
+- The soft counterevent recovers the underlying-Born decay momenta, while a
+  massless sister additionally produces local collinear and soft-collinear
+  counterevents.
+- The representative `u u~ > t t~, (t > W+ b [real=QCD])` metadata and new
+  Fortran phase-space modules compile, and a numerical harness verifies local
+  momentum conservation, fixed parent virtuality and unchanged production
+  spectators.

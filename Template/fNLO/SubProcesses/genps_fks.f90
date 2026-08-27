@@ -14,6 +14,9 @@ module genps_fks
   use decay_chain_kinematics, only: get_core_born_momenta, &
        get_core_mass_buffer, active_core_count, expand_real_decay_momenta, &
        store_core_event_momenta, fks_leg_mass
+  use nlo_decay_metadata, only: has_nlo_decay
+  use nlo_decay_kinematics, only: generate_nlo_decay_fks_event, &
+                                  nlo_decay_fks_sister_mass
   ! Generated parameters keep the phase-space normalization bit-identical
   ! to the NLO template's compile-time arithmetic.
   use fnlo_process_common, only: nexternal, nincoming, max_particles, &
@@ -59,10 +62,17 @@ contains
 
     pass = born%valid
     if (pass) then
-      call generate_FKS_kinematics(x, ndim, born%xjac, born%xpswgt, &
-                                   born%stot, born%shat, born%sqrtshat, &
-                                   born%tau, born%ycm, born%ycmhat, born%xbjrk, &
-                                   born%masses, born%external_masses, jac, p, pass)
+      if (has_nlo_decay()) then
+        call generate_nlo_decay_FKS_kinematics(x, ndim, born%xjac, &
+             born%xpswgt, born%shat, born%sqrtshat, born%ycm, born%xbjrk, &
+             jac, p, pass)
+      else
+        call generate_FKS_kinematics(x, ndim, born%xjac, born%xpswgt, &
+                                     born%stot, born%shat, born%sqrtshat, &
+                                     born%tau, born%ycm, born%ycmhat, &
+                                     born%xbjrk, born%masses, &
+                                     born%external_masses, jac, p, pass)
+      end if
     end if
 
     if (.not. pass .or. born%xjac < 0d0) then
@@ -85,6 +95,96 @@ contains
     call cpu_time(tAfter)
     tGenPS = tGenPS + (tAfter - tBefore)
   end subroutine generate_momenta
+
+
+  subroutine generate_nlo_decay_FKS_kinematics(x, ndim, xjac0, xpswgt0, &
+       shat_born, sqrtshat_born, ycm_born, xbjrk_born, jac, p, pass)
+    implicit none
+    integer, intent(in) :: ndim
+    double precision, intent(in) :: x(99), xjac0, xpswgt0
+    double precision, intent(in) :: shat_born, sqrtshat_born, ycm_born
+    double precision, intent(in) :: xbjrk_born(2)
+    double precision, intent(out) :: jac, p(0:3, nexternal)
+    logical, intent(out) :: pass
+
+    integer :: event_position, event_slot, solution_sign
+    integer :: event_generation_order(4)
+    double precision :: visible(0:3, nexternal), event_masses(-max_branch:max_particles)
+    double precision :: xiimax, xinorm, xi_i, xi_hat, y_ij
+    double precision :: p_i_hat(0:3), xjac, xpswgt
+    logical :: event_pass, real_pass, massive_sister, skip_counterevents
+
+    event_generation_order = (/real_event, soft_counterevent, &
+         collinear_counterevent, soft_collinear_counterevent/)
+    pass = .false.
+    real_pass = .false.
+    skip_counterevents = .false.
+    massive_sister = nlo_decay_fks_sister_mass(nfksprocess) > 0d0
+    xi_hat = 0d0
+    xij_aor = (0d0, 0d0)
+    ybst_til_tolab = -ycm_born - 0.5d0*log(ebeam(1)/ebeam(2))
+    ybst_til_tocm = 0d0
+    event_masses = 0d0
+    event_masses(1:nexternal) = particle_masses
+    do event_slot = first_counterevent, real_event
+      event_fks_momentum(0, event_slot) = -1d0
+      event_xi_max(event_slot) = -1d0
+      stored_event_jacobian(event_slot) = -1d0
+      stored_event_momenta(:, :, event_slot) = 0d0
+      stored_event_momenta(0, 1, event_slot) = -99d0
+      event_shat(event_slot) = shat_born
+      event_sqrt_shat(event_slot) = sqrtshat_born
+      event_bjorken_x(:, event_slot) = xbjrk_born
+    end do
+
+    do event_position = 1, size(event_generation_order)
+      event_slot = event_generation_order(event_position)
+      if (skip_counterevents) exit
+      if (massive_sister .and. &
+          (event_slot == collinear_counterevent .or. &
+           event_slot == soft_collinear_counterevent)) cycle
+
+      xjac = xjac0
+      xpswgt = xpswgt0
+      xiimax = -1d0
+      xinorm = -1d0
+      xi_i = -1d0
+      y_ij = -2d0
+      p_i_hat = -1d0
+      solution_sign = 1
+      call generate_nlo_decay_fks_event(nfksprocess, event_slot, x, ndim, &
+           xjac, xpswgt, visible, xiimax, xinorm, xi_i, xi_hat, y_ij, &
+           p_i_hat, solution_sign, event_pass)
+      if (event_pass .and. xjac > 0d0) then
+        call phspncheck_nocms(nexternal, sqrtshat_born, event_masses, &
+                              visible, event_pass)
+        if (.not. event_pass) xjac = -197d0
+      end if
+      if (event_pass .and. xjac > 0d0) then
+        call compute_flux(shat_born, sqrtshat_born, event_masses(1), &
+                          event_masses(2), xpswgt, xjac)
+      else
+        xjac = -196d0
+      end if
+      call store_FKS_event(event_slot, xiimax, xinorm, xi_i, xi_hat, &
+                           p_i_hat, y_ij, visible, p, xjac, jac)
+
+      if (event_slot == real_event) then
+        real_pass = event_pass .and. xjac > 0d0
+        if (solution_sign == -1) skip_counterevents = .true.
+      end if
+    end do
+
+    if (skip_counterevents) then
+      do event_slot = first_counterevent, last_counterevent
+        stored_event_jacobian(event_slot) = -299d0
+        stored_event_momenta(0, 1, event_slot) = -99d0
+      end do
+    end if
+    nocntevents = all(stored_event_jacobian( &
+         first_counterevent:last_counterevent) <= 0d0)
+    pass = real_pass
+  end subroutine generate_nlo_decay_FKS_kinematics
 
   subroutine generate_FKS_kinematics(x, ndim, xjac0, xpswgt0, &
     & stot, shat_born, sqrtshat_born, tau_born, ycm_born, ycmhat, &

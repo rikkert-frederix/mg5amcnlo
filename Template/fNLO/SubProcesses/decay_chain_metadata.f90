@@ -2,6 +2,7 @@ module decay_chain_metadata
   use process_dimensions, only: nexternal, nincoming, fks_configs, &
                                 validate_process_dimensions
   use fks_metadata, only: validate_fks_metadata, fks_i_d, fks_j_d
+  use nlo_decay_metadata, only: has_nlo_decay
   implicit none
   private
 
@@ -352,6 +353,10 @@ contains
     real_phase_space_dimension = 3*(nexternal - nincoming) - 4
     if (enabled) real_phase_space_dimension = &
          real_phase_space_dimension - number_of_nodes
+    ! Fixing the one corrected parent on shell removes one invariant-mass
+    ! integration exactly as for an ordinary forced decay node.
+    if (has_nlo_decay()) real_phase_space_dimension = &
+         real_phase_space_dimension - 1
   end function real_phase_space_dimension
 
 

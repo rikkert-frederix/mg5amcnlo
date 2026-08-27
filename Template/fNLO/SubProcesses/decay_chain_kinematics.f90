@@ -28,6 +28,9 @@ module decay_chain_kinematics
   public :: active_core_count, fks_leg_mass
   public :: map_core_color_pair
   public :: contract_visible_momenta
+  ! These Lorentz-covariant building blocks are also used by the dedicated
+  ! NLO-decay phase-space path.  They do not depend on decay-chain metadata.
+  public :: generate_nbody, boost_from_rest, minkowski_square
 
   interface
     double precision function get_mass_from_id(id)

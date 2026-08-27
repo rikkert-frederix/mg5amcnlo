@@ -439,8 +439,8 @@ class TestFKSDecayChains(unittest.TestCase):
                 self.assertEqual(wavefunction.get('width'), expected)
 
         metadata = matrix_element.nlo_decay_metadata
-        self.assertEqual(metadata['status'], 'MATRIX_ELEMENTS_ONLY')
-        self.assertEqual(metadata['format'], 2)
+        self.assertEqual(metadata['status'], 'LOCAL_PHASE_SPACE_ONLY')
+        self.assertEqual(metadata['format'], 3)
         self.assertEqual(metadata['parent_pdg'], 6)
         self.assertEqual(len(metadata['fks_maps']), 1)
         fks_mapping = metadata['fks_maps'][0]
@@ -459,6 +459,14 @@ class TestFKSDecayChains(unittest.TestCase):
         self.assertEqual(fks_mapping['partners'], [
             {'local': 1, 'kind': 'NODE', 'target': 1},
             {'local': 2, 'kind': 'LEG', 'target': 3}])
+        self.assertEqual(fks_mapping['real_to_born'], {
+            1: 1, 2: 2, 3: 3})
+        self.assertEqual(metadata['contexts'][0]['production_map'], {
+            1: ('LEG', 1), 2: ('LEG', 2),
+            3: ('NODE', 1), 4: ('LEG', 5)})
+        self.assertEqual(metadata['contexts'][1]['production_map'], {
+            1: ('LEG', 1), 2: ('LEG', 2),
+            3: ('NODE', 1), 4: ('LEG', 6)})
 
         projected = matrix_element.get_fks_info_list()[0]
         self.assertEqual(
@@ -483,8 +491,10 @@ class TestFKSDecayChains(unittest.TestCase):
             [tuple(link['link']) for link in matrix_element.color_links],
             [(3, 3)])
         info = fks_decay.nlo_decay_info_text(metadata)
-        self.assertIn('FORMAT 2\n', info)
+        self.assertIn('FORMAT 3\n', info)
         self.assertIn('COUNTS 2 1 1 2\n', info)
+        self.assertIn('PRODUCTION_MAP 1 3 NODE 1\n', info)
+        self.assertIn('PRODUCTION_MAP 2 4 LEG 6\n', info)
         self.assertIn('LOCAL_MAP 2 1 NODE 1\n', info)
         self.assertIn('LOCAL_MAP 2 4 LEG 5\n', info)
         self.assertIn('FKS_MAP 1 2 4 2 2\n', info)
@@ -493,6 +503,9 @@ class TestFKSDecayChains(unittest.TestCase):
         self.assertIn('FKS_TARGET 1 IJ 2 LEG 3\n', info)
         self.assertIn('FKS_PARTNER 1 1 NODE 1\n', info)
         self.assertIn('FKS_PARTNER 1 2 LEG 3\n', info)
+        self.assertIn('REAL_BORN_MAP 1 1 1\n', info)
+        self.assertIn('REAL_BORN_MAP 1 2 2\n', info)
+        self.assertIn('REAL_BORN_MAP 1 3 3\n', info)
 
     def test_nlo_decay_virtual_is_composed_with_lo_production(self):
         command = self.generate(
@@ -715,14 +728,38 @@ class TestFKSDecayChains(unittest.TestCase):
 
             with open(os.path.join(
                     subprocess_dir,
-                    'NLO_DECAY_MATRIX_ELEMENTS_ONLY')) as stream:
-                self.assertIn('not implemented yet', stream.read())
+                    'NLO_DECAY_SUBTRACTION_INCOMPLETE')) as stream:
+                marker = stream.read()
+            self.assertIn('resonance-preserving phase-space map', marker)
+            self.assertIn('subtraction', marker)
             with open(os.path.join(
                     subprocess_dir, 'nlo_decay_info.dat')) as stream:
                 metadata = stream.read()
-            self.assertIn('FORMAT 2\n', metadata)
+            self.assertIn('FORMAT 3\n', metadata)
+            self.assertIn('STATUS LOCAL_PHASE_SPACE_ONLY\n', metadata)
+            self.assertIn('PRODUCTION_MAP 1 3 NODE 1\n', metadata)
+            self.assertIn('PRODUCTION_MAP 2 4 LEG 6\n', metadata)
             self.assertIn('FKS_TARGET 1 I 4 LEG 5\n', metadata)
             self.assertIn('FKS_PARTNER 1 1 NODE 1\n', metadata)
+            self.assertIn('REAL_BORN_MAP 1 2 2\n', metadata)
+            for runtime_source in [
+                    'nlo_decay_metadata.f90',
+                    'nlo_decay_kinematics.f90']:
+                self.assertTrue(os.path.isfile(os.path.join(
+                    subprocess_dir, runtime_source)))
+            with open(os.path.join(
+                    subprocess_dir, 'nlo_decay_kinematics.f90')) as stream:
+                kinematics = stream.read().lower()
+            flat_kinematics = ' '.join(kinematics.split())
+            self.assertIn(
+                'corrected-parent rest frame', flat_kinematics)
+            self.assertIn(
+                'no production momentum participates', flat_kinematics)
+            with open(os.path.join(
+                    subprocess_dir, 'genps_fks.f90')) as stream:
+                phase_space = stream.read().lower()
+            self.assertIn(
+                'generate_nlo_decay_fks_kinematics', phase_space)
             self.assertTrue(os.path.isfile(os.path.join(
                 process_dir, 'Cards', 'decay_card.dat')))
             self.assertTrue(os.path.islink(os.path.join(

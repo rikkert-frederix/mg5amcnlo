@@ -1,6 +1,7 @@
 module decay_chain_parameters
   use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
   use decay_chain_metadata, only: has_decay_chains, decay_node_count, node_pdg
+  use nlo_decay_metadata, only: has_nlo_decay, corrected_parent_pdg
   implicit none
   private
 
@@ -29,8 +30,8 @@ contains
     character(len=32) :: keyword, momentum_mode
 
     if (initialized) return
-    if (.not. has_decay_chains()) then
-      call fail_parameters('decay_chain_info.dat is absent')
+    if (.not. has_decay_chains() .and. .not. has_nlo_decay()) then
+      call fail_parameters('decay metadata are absent')
     end if
 
     inquire(file='decay_card.dat', exist=exists)
@@ -173,14 +174,23 @@ contains
         call fail_parameters('decay scales must be finite and positive')
       end if
     end do
-    do node = 1, decay_node_count()
-      if (find_pdg(node_pdg(node), width_pdgs) == 0) then
-        call fail_parameters('a decay node has no physical width')
+    if (has_decay_chains()) then
+      do node = 1, decay_node_count()
+        if (find_pdg(node_pdg(node), width_pdgs) == 0) then
+          call fail_parameters('a decay node has no physical width')
+        end if
+        if (find_pdg(node_pdg(node), scale_pdgs) == 0) then
+          call fail_parameters('a decay node has no renormalisation scale')
+        end if
+      end do
+    else if (has_nlo_decay()) then
+      if (find_pdg(corrected_parent_pdg(), width_pdgs) == 0) then
+        call fail_parameters('the corrected decay has no physical width')
       end if
-      if (find_pdg(node_pdg(node), scale_pdgs) == 0) then
-        call fail_parameters('a decay node has no renormalisation scale')
+      if (find_pdg(corrected_parent_pdg(), scale_pdgs) == 0) then
+        call fail_parameters('the corrected decay has no renormalisation scale')
       end if
-    end do
+    end if
     initialized = .true.
   end subroutine initialize_decay_chain_parameters
 

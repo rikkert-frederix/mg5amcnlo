@@ -11,6 +11,12 @@ module genps_born
   use decay_chain_kinematics, only: initialize_decay_chain_kinematics, &
        minimum_core_final_mass, core_mass, &
        generate_core_born_and_decays
+  use nlo_decay_metadata, only: initialize_nlo_decay_metadata, &
+                                has_nlo_decay, &
+                                nlo_decay_production_count
+  use nlo_decay_kinematics, only: initialize_nlo_decay_kinematics, &
+       nlo_decay_minimum_production_mass, nlo_decay_production_mass, &
+       fill_nlo_decay_born_masses, generate_nlo_decay_born_momenta
   use fnlo_process_common, only: i_fks, j_fks, iconfig0, this_config, &
                                  softtest, colltest, &
                                  tau_born_lower_bound, &
@@ -66,7 +72,11 @@ contains
     implicit none
     if (born_cache_initialized) return
     call validate_process_dimensions()
+    call initialize_nlo_decay_metadata()
     call initialize_decay_chain_metadata()
+    if (has_nlo_decay() .and. has_decay_chains()) then
+      call fail_born_state('LO- and NLO-decay metadata cannot coexist')
+    end if
     call validate_bound_born_state()
 
     if (.not. allocated(saved_particle_masses)) then
@@ -114,7 +124,10 @@ contains
     this_config = iconfig
     config_index = iconfig
     iconfig0 = iconfig
-    if (has_decay_chains()) then
+    if (has_nlo_decay()) then
+      call generate_nlo_decay_born_phase_space(ndim, x, point)
+      return
+    else if (has_decay_chains()) then
       call generate_decay_born_phase_space(ndim, x, point)
       return
     end if
@@ -273,6 +286,93 @@ contains
     born_lab_momenta = visible_born
     point%valid = .true.
   end subroutine generate_decay_born_phase_space
+
+
+  subroutine generate_nlo_decay_born_phase_space(ndim, x, point)
+    implicit none
+    integer, intent(in) :: ndim
+    double precision, intent(inout) :: x(99)
+    type(born_phase_space), intent(inout) :: point
+
+    integer :: core_count, final_count, leg
+    double precision :: minimum_mass
+    double precision :: visible_born(0:3, nexternal - 1)
+    logical :: pass
+
+    call initialize_nlo_decay_kinematics()
+    core_count = nlo_decay_production_count()
+    final_count = core_count - nincoming
+    saved_particle_masses = 0d0
+    saved_external_masses = 0d0
+    call fill_nlo_decay_born_masses(saved_external_masses)
+    saved_particle_masses(1:nexternal - 1) = saved_external_masses
+
+    if (nincoming == 2) then
+      saved_stot = 4d0*ebeam(1)*ebeam(2)
+    else
+      saved_stot = nlo_decay_production_mass(1)**2
+    end if
+    saved_initial_mass = 0d0
+    do leg = 1, nincoming
+      saved_initial_mass = saved_initial_mass + &
+           nlo_decay_production_mass(leg)
+    end do
+    minimum_mass = nlo_decay_minimum_production_mass()
+    saved_final_mass = minimum_mass
+    if (saved_stot < max(saved_initial_mass, minimum_mass)**2) then
+      write (*, *) 'Fatal error in NLO-decay phase space: insufficient energy'
+      stop 1
+    end if
+
+    tau_born_lower_bound = minimum_mass**2/saved_stot
+    tau_lower_bound_resonance = tau_born_lower_bound
+    tau_lower_bound = tau_born_lower_bound
+    point%stot = saved_stot
+    if (abs(lpp(1)) >= 1 .and. abs(lpp(2)) >= 1 .and. &
+        .not. (softtest .or. colltest)) then
+      if (final_count == 1) then
+        call compute_tau_one_body(minimum_mass, saved_stot, point%tau, &
+                                  point%xjac)
+      else
+        call generate_tau(saved_stot, -1, x(ndim - 4), point%tau, &
+                          point%xjac)
+      end if
+      call generate_y(point%tau, x(ndim - 3), point%ycm, point%ycmhat, &
+                      point%xjac)
+    else
+      call compute_tau_y_epem(j_fks, final_count == 1, minimum_mass, &
+                              saved_stot, point%tau, point%ycm, &
+                              point%ycmhat)
+    end if
+    if (point%xjac < 0d0) then
+      call invalidate_born_phase_space()
+      return
+    end if
+
+    point%xbjrk(1) = sqrt(point%tau)*exp(point%ycm)
+    point%xbjrk(2) = sqrt(point%tau)*exp(-point%ycm)
+    if (final_count == 1) then
+      point%shat = minimum_mass**2
+      point%sqrtshat = minimum_mass
+    else
+      point%shat = point%tau*saved_stot
+      point%sqrtshat = sqrt(point%shat)
+    end if
+
+    pass = .true.
+    call generate_nlo_decay_born_momenta(x, point%shat, point%sqrtshat, &
+         point%xjac, point%xpswgt, visible_born, pass)
+    if (.not. pass .or. point%xjac < 0d0) then
+      point%xjac = -144d0
+      call invalidate_born_phase_space()
+      return
+    end if
+    if (final_count == 1) point%xpswgt = &
+         point%xpswgt/(2d0*minimum_mass)
+    born_momenta = visible_born
+    born_lab_momenta = visible_born
+    point%valid = .true.
+  end subroutine generate_nlo_decay_born_phase_space
 
   subroutine invalidate_born_phase_space()
     implicit none

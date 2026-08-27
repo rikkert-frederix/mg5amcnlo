@@ -1341,6 +1341,8 @@ def _local_decay_context(decay_matrix_element, component_context,
         'id': context_id,
         'kind': kind,
         'source_index': source_index,
+        'production_count': component_context['core_count'],
+        'production_map': copy.deepcopy(component_context['core_map']),
         'local_count': len(local_legs),
         'visible_count': component_context['visible_count'],
         'local_legs': [{
@@ -1391,6 +1393,34 @@ def _build_nlo_decay_fks_mapping(configuration, real_context,
             'The selected decay-local FKS j leg is absent from the '
             'emitter partner list')
 
+    # Serialize the canonical decay-local real-to-Born map explicitly.  The
+    # Fortran phase-space code must never infer this relation from flattened
+    # visible indices: those also contain production spectators and change
+    # when the real-emission leg is inserted.
+    real_to_born = {}
+    born_numbers = set(leg['number'] for leg in born_context['local_legs'])
+    for leg in real_context['local_legs']:
+        real_number = leg['number']
+        if real_number == info['i']:
+            continue
+        shift = 0
+        if real_number > info['j']:
+            shift += 1
+        if real_number > info['i']:
+            shift += 1
+        if (real_number > info['ij'] and
+                info['ij'] <= max(info['i'], info['j'])):
+            shift -= 1
+        born_number = real_number - shift
+        if born_number not in born_numbers:
+            raise fks_common.FKSProcessError(
+                'Cannot map NLO-decay real leg %s to its local Born' %
+                real_number)
+        real_to_born[real_number] = born_number
+    if real_to_born.get(info['j']) != info['ij']:
+        raise fks_common.FKSProcessError(
+            'The NLO-decay local real-to-Born map does not map j to ij')
+
     return {
         'configuration': configuration,
         'real_context': real_context['id'],
@@ -1398,7 +1428,8 @@ def _build_nlo_decay_fks_mapping(configuration, real_context,
         'j': info['j'],
         'ij': info['ij'],
         'targets': targets,
-        'partners': partners}
+        'partners': partners,
+        'real_to_born': real_to_born}
 
 
 def _visible_fks_legs(matrix_element):
@@ -1616,8 +1647,8 @@ def compose_nlo_decay_helas_process(fks_process, production_amplitude,
             production_amplitude, selector, born_current, 'BORN', 1)
 
     prototype_metadata = {
-        'format': 2,
-        'status': 'MATRIX_ELEMENTS_ONLY',
+        'format': 3,
+        'status': 'LOCAL_PHASE_SPACE_ONLY',
         'correction': 'QCD',
         'parent_pdg': selector[0],
         'parent_occurrence': selector[1],
@@ -1687,7 +1718,7 @@ def compose_nlo_decay_helas_process(fks_process, production_amplitude,
 
 
 def nlo_decay_info_text(metadata):
-    """Serialize matrix-elements-only NLO-decay prototype metadata."""
+    """Serialize target-aware NLO-decay runtime metadata."""
 
     lines = [
         'FORMAT %d' % metadata['format'],
@@ -1711,6 +1742,10 @@ def nlo_decay_info_text(metadata):
         lines.append('CONTEXT %d %s %d %d %d' % (
             context['id'], context['kind'], context['source_index'],
             context['local_count'], context['visible_count']))
+        for production_leg in sorted(context['production_map']):
+            kind, target = context['production_map'][production_leg]
+            lines.append('PRODUCTION_MAP %d %d %s %d' % (
+                context['id'], production_leg, kind, target))
         for leg in context['local_legs']:
             lines.append('LOCAL_LEG %d %d %d %s' % (
                 context['id'], leg['number'], leg['pdg'], leg['state']))
@@ -1731,6 +1766,10 @@ def nlo_decay_info_text(metadata):
             lines.append('FKS_PARTNER %d %d %s %d' % (
                 mapping['configuration'], partner['local'],
                 partner['kind'], partner['target']))
+        for real_leg in sorted(mapping['real_to_born']):
+            lines.append('REAL_BORN_MAP %d %d %d' % (
+                mapping['configuration'], real_leg,
+                mapping['real_to_born'][real_leg]))
     for link in metadata['color_links']:
         lines.append('COLOR_LINK %d %d %d %d %d' % (
             link['local_first'], link['local_second'],
@@ -1741,16 +1780,17 @@ def nlo_decay_info_text(metadata):
 
 
 def write_nlo_decay_prototype_files(path, metadata):
-    """Write metadata and an explicit non-runnable prototype marker."""
+    """Write metadata and an explicit incomplete-subtraction marker."""
 
     with open(os.path.join(path, 'nlo_decay_info.dat'), 'w') as stream:
         stream.write(nlo_decay_info_text(metadata))
-    with open(os.path.join(path, 'NLO_DECAY_MATRIX_ELEMENTS_ONLY'), 'w') \
+    with open(os.path.join(path, 'NLO_DECAY_SUBTRACTION_INCOMPLETE'), 'w') \
             as stream:
         stream.write(
-            'This output contains NLO-decay matrix-element building blocks.\n'
-            'Phase-space mappings, subtraction integration, and NLO width '\
-            'normalization are not implemented yet.\n')
+            'This output contains NLO-decay matrix elements and a local, '\
+            'resonance-preserving phase-space map.\n'
+            'Node-aware soft subtraction, integrated subtraction, and NLO '\
+            'width normalization are not implemented yet.\n')
 
 
 def apply_decay_assignment(fks_process, assignment):
