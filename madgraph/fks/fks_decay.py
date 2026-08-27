@@ -62,6 +62,31 @@ def get_perturbed_decay_definitions(process_definition):
         if decay.get('perturbation_couplings')]
 
 
+def _find_decay_definition_path(decay_chains, target, prefix=()):
+    """Return the index path of ``target`` in a decay-definition tree."""
+
+    for index, decay in enumerate(decay_chains):
+        path = prefix + (index,)
+        if decay is target:
+            return path
+        nested = _find_decay_definition_path(
+            decay.get('decay_chains'), target, path)
+        if nested is not None:
+            return nested
+    return None
+
+
+def _decay_definition_at_path(decay_chains, path):
+    """Return the decay definition selected by an index path."""
+
+    if not path:
+        raise fks_common.FKSProcessError('An empty decay path is invalid')
+    decay = decay_chains[path[0]]
+    for index in path[1:]:
+        decay = decay.get('decay_chains')[index]
+    return decay
+
+
 def validate_nlo_decay_to_lo_generation(process_definition, options,
                                         correction_orders,
                                         ewsudakov=False):
@@ -79,12 +104,10 @@ def validate_nlo_decay_to_lo_generation(process_definition, options,
             'perturbatively corrected decay; found %d' % len(corrected))
 
     decay, depth = corrected[0]
-    all_decays = list(_iter_decay_definitions(
-        process_definition.get('decay_chains')))
-    if depth != 1 or len(all_decays) != 1 or decay.get('decay_chains'):
-        raise InvalidCmd(
-            'The fNLO NLO-decay prototype currently supports one root-level '
-            'decay and no additional or nested decays')
+    decay_path = _find_decay_definition_path(
+        process_definition.get('decay_chains'), decay)
+    if decay_path is None:
+        raise InvalidCmd('Could not locate the perturbatively corrected decay')
     if (process_definition.get('perturbation_couplings') and
             process_definition.get('NLO_mode') != 'LOonly'):
         raise InvalidCmd(
@@ -115,14 +138,39 @@ def validate_nlo_decay_to_lo_generation(process_definition, options,
         raise InvalidCmd(
             'The fNLO NLO-decay prototype requires one concrete decay parent')
     parent_pdg = parent_ids[0]
+    root_decay = process_definition.get('decay_chains')[decay_path[0]]
+    root_parent_ids = list(root_decay.get('legs')[0].get('ids'))
+    if len(root_parent_ids) != 1:
+        raise InvalidCmd(
+            'The fNLO NLO-decay prototype requires one concrete root decay '
+            'parent on the branch containing the corrected decay')
+    root_parent_pdg = root_parent_ids[0]
     matching_legs = [
         leg for leg in process_definition.get_final_legs()
-        if parent_pdg in leg.get('ids')]
+        if root_parent_pdg in leg.get('ids')]
     if (len(matching_legs) != 1 or
-            list(matching_legs[0].get('ids')) != [parent_pdg]):
+            list(matching_legs[0].get('ids')) != [root_parent_pdg]):
         raise InvalidCmd(
             'The fNLO NLO-decay prototype requires exactly one concrete '
-            'production occurrence of decay parent %s' % parent_pdg)
+            'production occurrence of root decay parent %s' %
+            root_parent_pdg)
+
+    branch = root_decay
+    for child_index in decay_path[1:]:
+        child = branch.get('decay_chains')[child_index]
+        child_ids = list(child.get('legs')[0].get('ids'))
+        if len(child_ids) != 1:
+            raise InvalidCmd(
+                'Every parent on a nested NLO-decay branch must be concrete')
+        occurrences = [
+            leg for leg in branch.get_final_legs()
+            if child_ids[0] in leg.get('ids')]
+        if (len(occurrences) != 1 or
+                list(occurrences[0].get('ids')) != child_ids):
+            raise InvalidCmd(
+                'The nested corrected-decay branch is ambiguous for parent '
+                '%s' % child_ids[0])
+        branch = child
 
     particle = process_definition.get('model').get_particle(parent_pdg)
     if particle is None or particle.get('mass').lower() == 'zero':
@@ -131,8 +179,11 @@ def validate_nlo_decay_to_lo_generation(process_definition, options,
 
     return {
         'decay': decay,
-        'selector': (parent_pdg, 1),
+        'selector': (root_parent_pdg, 1),
+        'decay_path': decay_path,
+        'depth': depth,
         'parent_pdg': parent_pdg,
+        'root_parent_pdg': root_parent_pdg,
         'mode': decay.get('NLO_mode'),
         'correction': 'QCD'}
 
@@ -179,7 +230,7 @@ def _clone_process_definition(process):
     result = copy.copy(process)
     result.set('legs', process.get('legs').__class__(
         [copy.copy(leg) for leg in process.get('legs')]))
-    result.set('decay_chains', base_objects.ProcessDefinitionList([
+    result.set('decay_chains', process.get('decay_chains').__class__([
         _clone_process_definition(decay)
         for decay in process.get('decay_chains')]))
     return result
@@ -243,6 +294,17 @@ def prepare_nlo_decay_definition(decay_definition):
         process.get('squared_orders')[order] = \
             process.get('squared_orders').get(order, 0) + 2
 
+    return process
+
+
+def prepare_nlo_decay_full_definition(process_definition, decay_path):
+    """Return the full decay tree with the corrected node made Born-only."""
+
+    process = _clone_process_definition(process_definition)
+    corrected = _decay_definition_at_path(
+        process.get('decay_chains'), decay_path)
+    corrected.set('perturbation_couplings', [])
+    corrected.set('NLO_mode', 'tree')
     return process
 
 
@@ -790,6 +852,165 @@ def _copy_process_tree(process):
     return result
 
 
+def _remove_decay_at_path(process, path):
+    """Copy ``process`` and remove the nested decay selected by ``path``."""
+
+    if not path:
+        raise fks_common.FKSProcessError(
+            'Cannot remove the root of a concrete decay process')
+    result = _copy_process_tree(process)
+    parent = result
+    for index in path[:-1]:
+        parent = parent.get('decay_chains')[index]
+    parent.get('decay_chains').pop(path[-1])
+    result.set('legs_with_decays', base_objects.LegList())
+    return result
+
+
+def _single_concrete_decay_matrix_element(process, description):
+    """Build the unique HELAS current of an already concrete decay tree."""
+
+    elements = _concrete_decay_matrix_elements(process)
+    if len(elements) != 1:
+        raise fks_common.FKSProcessError(
+            '%s produced %d concrete matrix elements instead of one' %
+            (description, len(elements)))
+    return elements[0]
+
+
+def _flatten_decay_environment(matrix_element):
+    """Expose a pre-decayed tree ME as one flat production amplitude."""
+
+    process = matrix_element.get('processes')[0]
+    visible = sorted(process.get_legs_with_decays(),
+                     key=lambda leg: leg.get('number'))
+    flat_process = _copy_process(process)
+    flat_legs = fks_common.to_fks_legs(
+        base_objects.LegList([copy.copy(leg) for leg in visible]),
+        process.get('model'))
+    for number, leg in enumerate(flat_legs, 1):
+        leg.set('number', number)
+    flat_process.set('legs', flat_legs)
+    flat_process.set('decay_chains',
+                     flat_process.get('decay_chains').__class__())
+    flat_process.set('legs_with_decays', base_objects.LegList())
+    flat_process.set('is_decay_chain', False)
+
+    amplitude = matrix_element.get('base_amplitude')
+    amplitude = copy.copy(amplitude)
+    amplitude.set('diagrams', amplitude.get('diagrams').__class__([
+        copy.copy(diagram) for diagram in amplitude.get('diagrams')]))
+    order_signatures = misc.make_unique([
+        tuple(sorted(diagram.get('orders').items()))
+        for diagram in amplitude.get('diagrams')])
+    if len(order_signatures) != 1:
+        raise fks_common.FKSProcessError(
+            'The LO decay environment has several coupling-order '
+            'configurations')
+    orders = dict(order_signatures[0])
+    orders.pop('WEIGHTED', None)
+    squared_orders = dict(
+        (name, 2 * value) for name, value in orders.items())
+    for name in flat_process.get('model').get('coupling_orders'):
+        orders.setdefault(name, 0)
+        squared_orders.setdefault(name, 0)
+    flat_process.set('orders', orders)
+    flat_process.set('squared_orders', squared_orders)
+    flat_process.set('born_sq_orders', copy.copy(squared_orders))
+    amplitude.set('process', flat_process)
+    return amplitude
+
+
+def _environment_assignment(full_assignment, decay_path, root_selector):
+    """Remove the corrected node while retaining all surrounding LO decays."""
+
+    selected = [
+        attachment for attachment in full_assignment['attachments']
+        if attachment['selector'] == root_selector]
+    if len(selected) != 1:
+        raise fks_common.FKSProcessError(
+            'The corrected decay branch does not identify one root attachment')
+    selected = selected[0]
+    root_process = selected['decay_me'].get('processes')[0]
+    if len(decay_path) == 1:
+        corrected_process = root_process
+    else:
+        corrected_process = _decay_definition_at_path(
+            root_process.get('decay_chains'), decay_path[1:])
+
+    attachments = []
+    for attachment in full_assignment['attachments']:
+        if attachment is not selected:
+            attachments.append(copy.copy(attachment))
+            continue
+        if len(decay_path) == 1:
+            continue
+        truncated = _remove_decay_at_path(root_process, decay_path[1:])
+        attachments.append({
+            'selector': attachment['selector'],
+            'decay_me': _single_concrete_decay_matrix_element(
+                truncated, 'The truncated NLO-decay environment')})
+    return ({
+        'attachments': attachments,
+        'ordering_for_pol': copy.copy(
+            full_assignment.get('ordering_for_pol', {}))},
+            corrected_process)
+
+
+def generate_nlo_decay_composition_inputs(full_process_definition,
+                                          production_amplitude,
+                                          decay_path, root_selector,
+                                          corrected_parent_pdg):
+    """Enumerate concrete LO surroundings for one corrected decay node."""
+
+    lo_definition = prepare_nlo_decay_full_definition(
+        full_process_definition, decay_path)
+    assignments = generate_decay_assignments(
+        lo_definition.get('decay_chains'),
+        production_amplitude.get('process'))
+    if not assignments:
+        raise fks_common.FKSProcessError(
+            'No concrete decay assignment contains the corrected decay')
+
+    results = []
+    root_decay_ids = get_root_decay_ids(
+        lo_definition.get('decay_chains'))
+    for full_assignment in assignments:
+        environment_assignment, corrected_process = _environment_assignment(
+            full_assignment, decay_path, root_selector)
+        environment = helas_objects.HelasMatrixElement(
+            production_amplitude, decay_ids=root_decay_ids,
+            gen_color=False)
+        environment_metadata = _build_decay_metadata(
+            environment_assignment,
+            production_amplitude.get('process').get('model'))
+        environment_context = _make_context(
+            environment, environment_assignment, environment_metadata,
+            1, 'BORN', 1)
+        environment_metadata['contexts'].append(environment_context)
+        flat_amplitude = _flatten_decay_environment(environment)
+        matching = sorted([
+            leg for leg in flat_amplitude.get('process').get_final_legs()
+            if leg.get('id') == corrected_parent_pdg],
+            key=lambda leg: leg.get('number'))
+        if len(matching) != 1:
+            raise fks_common.FKSProcessError(
+                'The concrete LO decay environment contains %d occurrences '
+                'of corrected parent %s; exactly one is required' %
+                (len(matching), corrected_parent_pdg))
+        selector = (corrected_parent_pdg, 1)
+        results.append({
+            'production_amplitude': flat_amplitude,
+            'root_amplitude': production_amplitude,
+            'selector': selector,
+            'root_selector': root_selector,
+            'decay_path': decay_path,
+            'full_assignment': full_assignment,
+            'corrected_process': corrected_process,
+            'root_process': production_amplitude.get('process')})
+    return results
+
+
 def _isolate_matrix_element_processes(matrix_element):
     matrix_element.set('processes', base_objects.ProcessList([
         _copy_process(process)
@@ -853,23 +1074,44 @@ def _annotate_widths(matrix_element, context, metadata):
     wavefunctions = _all_wavefunctions(matrix_element)
     cache = {}
     connector_ids = {}
+    forced_species = set(metadata['forced_species'])
+    for wavefunction in wavefunctions:
+        if abs(wavefunction.get('pdg_code')) in forced_species:
+            wavefunction.set('decay_node_id', 0)
     for node in metadata['nodes']:
-        expected = frozenset(
-            context['leaf_map'][leaf_id]
-            for leaf_id in _tree_leaf_ids(node['id'], metadata))
+        full_topology = 'node_visible_map' in context
+        if full_topology:
+            expected = frozenset(
+                context['node_visible_map'][node['id']])
+        else:
+            expected = frozenset(
+                context['leaf_map'][leaf_id]
+                for leaf_id in _tree_leaf_ids(node['id'], metadata))
+        inverse_expected = frozenset()
+        if (full_topology and isinstance(
+                matrix_element,
+                loop_helas_objects.LoopHelasMatrixElement)):
+            inverse_expected = frozenset(
+                range(1, context['visible_count'] + 1)) - expected
+
+        def descendants_match(wavefunction):
+            descendants = _external_descendants(wavefunction, cache)
+            return (descendants == expected or
+                    (inverse_expected and descendants == inverse_expected))
+
         matches = [
             wavefunction for wavefunction in wavefunctions
-            if wavefunction.get('onshell') is True and
+            if (full_topology or wavefunction.get('onshell') is True) and
             wavefunction.get('pdg_code') == node['pdg'] and
-            _external_descendants(wavefunction, cache) == expected]
+            descendants_match(wavefunction)]
         if not matches:
             # Fermion-flow conventions can reverse the displayed PDG of a
             # current.  The external descendants still identify it uniquely.
             matches = [
                 wavefunction for wavefunction in wavefunctions
-                if wavefunction.get('onshell') is True and
+                if (full_topology or wavefunction.get('onshell') is True) and
                 abs(wavefunction.get('pdg_code')) == abs(node['pdg']) and
-                _external_descendants(wavefunction, cache) == expected]
+                descendants_match(wavefunction)]
         if not matches:
             raise fks_common.FKSProcessError(
                 'Could not identify the HELAS connector for decay node %s' %
@@ -878,7 +1120,6 @@ def _annotate_widths(matrix_element, context, metadata):
             wavefunction.set('decay_node_id', node['id'])
             connector_ids[id(wavefunction)] = node
 
-    forced_species = set(metadata['forced_species'])
     for wavefunction in wavefunctions:
         if abs(wavefunction.get('pdg_code')) not in forced_species:
             continue
@@ -961,7 +1202,7 @@ def _finalize_matrix_element(matrix_element,
 
 
 def _make_context(matrix_element, assignment, metadata, context_id,
-                  kind, source_index):
+                  kind, source_index, finalize=True):
     _isolate_matrix_element_processes(matrix_element)
     process = matrix_element.get('processes')[0]
     core_legs = [copy.copy(leg) for leg in process.get('legs')]
@@ -1020,7 +1261,8 @@ def _make_context(matrix_element, assignment, metadata, context_id,
                               key=lambda item: item.get('number'))],
         '_core_legs': core_legs}
     _annotate_widths(matrix_element, context, metadata)
-    _finalize_matrix_element(matrix_element)
+    if finalize:
+        _finalize_matrix_element(matrix_element)
     return context
 
 
@@ -1035,6 +1277,82 @@ def _matrix_element_as_decay_current(matrix_element):
             'Could not regenerate the corrected decay as a HELAS current')
     return helas_objects.HelasMatrixElement(
         amplitude, gen_color=False)
+
+
+def _normalized_crossed_diagram_tag(diagram, model, source_by_number,
+                                    target_source, ninitial):
+    """Tag a crossed current after restoring its physical external legs."""
+
+    candidate = copy.deepcopy(diagram)
+    vertices = candidate.get('vertices')
+    if (not vertices or vertices[-1].get('id') != 0 or
+            len(vertices[-1].get('legs')) != 2):
+        raise fks_common.FKSProcessError(
+            'A crossed production diagram has no open-current vertex')
+    root_vertex = vertices.pop()
+    root_numbers = [leg.get('number') for leg in root_vertex.get('legs')]
+    if 1 not in root_numbers:
+        raise fks_common.FKSProcessError(
+            'A crossed production current has no external root')
+    connector_number = [number for number in root_numbers if number != 1][0]
+    if not vertices:
+        raise fks_common.FKSProcessError(
+            'A crossed production current has no physical vertices')
+    connector = vertices[-1].get('legs')[-1]
+    if connector.get('number') != connector_number:
+        raise fks_common.FKSProcessError(
+            'The crossed production connector is not the final current')
+    # For a repeated fermion/gluon line the base diagram can reuse the same
+    # Leg object for the incoming and outgoing occurrence of this vertex.
+    # Detach the outgoing endpoint before turning it into the physical root.
+    connector = copy.copy(connector)
+    vertices[-1].get('legs')[-1] = connector
+    for name in ['state', 'onshell', 'polarization']:
+        connector.set(name, copy.copy(target_source.get(name)))
+    connector.set('id', target_source.get('id'))
+    connector.set('number', 1000 + target_source.get('number'))
+
+    produced = set()
+    for vertex_index, vertex in enumerate(vertices):
+        inputs = (vertex.get('legs') if vertex_index == len(vertices) - 1
+                  else vertex.get('legs')[:-1])
+        for leg in inputs:
+            candidate_number = leg.get('number')
+            if candidate_number in produced:
+                continue
+            source = source_by_number.get(candidate_number)
+            if source is None:
+                continue
+            for name in ['state', 'onshell', 'polarization']:
+                leg.set(name, copy.copy(source.get(name)))
+            source_id = source.get('id')
+            if not source.get('state'):
+                source_id = model.get_particle(
+                    source_id).get_anti_pdg_code()
+            leg.set('id', source_id)
+            leg.set('number', 1000 + source.get('number'))
+        if vertex_index != len(vertices) - 1:
+            produced.add(vertex.get('legs')[-1].get('number'))
+    return diagram_generation.DiagramTag(
+        candidate, model, ninitial)
+
+
+def _normalized_source_diagram_tag(diagram, model, ninitial):
+    """Tag a physical diagram with collision-free external-leg labels."""
+
+    candidate = copy.deepcopy(diagram)
+    vertices = candidate.get('vertices')
+    produced = set()
+    for vertex_index, vertex in enumerate(vertices):
+        inputs = (vertex.get('legs') if vertex_index == len(vertices) - 1
+                  else vertex.get('legs')[:-1])
+        for leg in inputs:
+            number = leg.get('number')
+            if number not in produced:
+                leg.set('number', 1000 + number)
+        if vertex_index != len(vertices) - 1:
+            produced.add(vertex.get('legs')[-1].get('number'))
+    return diagram_generation.DiagramTag(candidate, model, ninitial)
 
 
 def _production_amplitude_as_parent_current(production_amplitude, selector,
@@ -1088,6 +1406,23 @@ def _production_amplitude_as_parent_current(production_amplitude, selector,
         raise fks_common.FKSProcessError(
             'Could not cross the LO production process into a resonance '
             'current')
+    source_tags = [
+        _normalized_source_diagram_tag(diagram, model,
+                                       process.get_ninitial())
+        for diagram in production_amplitude.get('diagrams')]
+    normalized = []
+    for diagram in current_amplitude.get('diagrams'):
+        tag = _normalized_crossed_diagram_tag(
+            diagram, model, source_legs, target, process.get_ninitial())
+        if tag in source_tags:
+            normalized.append(diagram)
+    current_amplitude.set(
+        'diagrams', current_amplitude.get('diagrams').__class__(normalized))
+    if len(normalized) != len(production_amplitude.get('diagrams')):
+        raise fks_common.FKSProcessError(
+            'Crossing the LO decay environment retained %d of %d physical '
+            'production diagrams' %
+            (len(normalized), len(production_amplitude.get('diagrams'))))
     current = helas_objects.HelasMatrixElement(
         current_amplitude, gen_color=False)
 
@@ -1218,6 +1553,11 @@ def _tag_decay_virtual_external_legs(virtual, local_context):
         if wavefunction.get('mothers') or wavefunction.get('is_loop'):
             continue
         local_number = wavefunction.get('number_external')
+        visible_target = local_context.get(
+            'visible_external_map', {}).get(local_number)
+        if visible_target is not None:
+            wavefunction.set('decay_node_id', -visible_target)
+            continue
         target = local_context['local_map'].get(local_number)
         if target is None or target[0] == 'NODE':
             continue
@@ -1400,43 +1740,305 @@ def _glue_nlo_decay_tree_component(production_amplitude, selector,
     return production_me, context, metadata
 
 
-def _local_decay_context(decay_matrix_element, component_context,
-                         component_metadata, context_id, kind,
+def _attach_corrected_downstream_decays(matrix_element, corrected_process):
+    """Attach the concrete LO subtree below the corrected decay node."""
+
+    decay_chains = corrected_process.get('decay_chains')
+    if not decay_chains:
+        return matrix_element
+    assignments = generate_decay_assignments(
+        decay_chains, matrix_element.get('processes')[0])
+    if len(assignments) != 1:
+        raise fks_common.FKSProcessError(
+            'A concrete corrected decay produced %d downstream assignments; '
+            'exactly one is required' % len(assignments))
+    metadata = _build_decay_metadata(
+        assignments[0], matrix_element.get('processes')[0].get('model'))
+    context = _make_context(
+        matrix_element, assignments[0], metadata, 1, 'BORN', 1,
+        finalize=False)
+    metadata['contexts'].append(context)
+    return matrix_element
+
+
+def _concrete_decay_node_id(process, target_process, node_id, metadata):
+    """Return the metadata node belonging to a concrete process object."""
+
+    if process is target_process:
+        return node_id
+    nested = list(process.get('decay_chains'))
+    node = metadata['nodes'][node_id - 1]
+    for leg, child in zip(process.get_final_legs(), node['children']):
+        match = None
+        for index, decay in enumerate(nested):
+            if decay.get_initial_ids()[0] == leg.get('id'):
+                match = nested.pop(index)
+                break
+        if match is None:
+            continue
+        if child[0] != 'NODE':
+            raise fks_common.FKSProcessError(
+                'A concrete nested decay is absent from its topology')
+        result = _concrete_decay_node_id(
+            match, target_process, child[1], metadata)
+        if result is not None:
+            return result
+    return None
+
+
+def _build_nlo_decay_topology(composition):
+    """Build the complete static Born decay forest for an NLO decay."""
+
+    model = composition['root_process'].get('model')
+    metadata = _build_decay_metadata(composition['full_assignment'], model)
+    corrected_node = None
+    for attachment in composition['full_assignment']['attachments']:
+        process = attachment['decay_me'].get('processes')[0]
+        corrected_node = _concrete_decay_node_id(
+            process, composition['corrected_process'],
+            attachment['root_node_id'], metadata)
+        if corrected_node is not None:
+            break
+    if corrected_node is None:
+        raise fks_common.FKSProcessError(
+            'Could not identify the corrected node in the full decay tree')
+    if (metadata['nodes'][corrected_node - 1]['pdg'] !=
+            composition['selector'][0]):
+        raise fks_common.FKSProcessError(
+            'The corrected-node PDG disagrees with the composition selector')
+    metadata['corrected_node'] = corrected_node
+    return metadata
+
+
+def _component_to_topology_nodes(component_metadata, topology_metadata):
+    """Map corrected-current subtree nodes onto full-topology node IDs."""
+
+    mapping = {1: topology_metadata['corrected_node']}
+
+    def align(component_node_id, topology_node_id):
+        component_node = component_metadata['nodes'][component_node_id - 1]
+        topology_node = topology_metadata['nodes'][topology_node_id - 1]
+        component_children = [
+            child_id for kind, child_id in component_node['children']
+            if kind == 'NODE']
+        topology_children = [
+            child_id for kind, child_id in topology_node['children']
+            if kind == 'NODE']
+        if len(component_children) != len(topology_children):
+            raise fks_common.FKSProcessError(
+                'The corrected current has a different nested-decay tree')
+        for component_child, topology_child in zip(
+                component_children, topology_children):
+            if (component_metadata['nodes'][component_child - 1]['pdg'] !=
+                    topology_metadata['nodes'][topology_child - 1]['pdg']):
+                raise fks_common.FKSProcessError(
+                    'A corrected-current child has the wrong decay parent')
+            mapping[component_child] = topology_child
+            align(component_child, topology_child)
+
+    align(1, topology_metadata['corrected_node'])
+    if len(mapping) != len(component_metadata['nodes']):
+        raise fks_common.FKSProcessError(
+            'The corrected-current node map is incomplete')
+    return mapping
+
+
+def _root_decay_nodes(process, assignment):
+    """Map original production-leg numbers to full-topology root nodes."""
+
+    result = {}
+    for attachment in assignment['attachments']:
+        leg = _resolve_selector(process, attachment['selector'])
+        if leg.get('number') in result:
+            raise fks_common.FKSProcessError(
+                'Two decay roots are attached to one production leg')
+        result[leg.get('number')] = attachment['root_node_id']
+    return result
+
+
+def _local_decay_context(decay_matrix_element, decay_current,
+                         component_context, component_metadata,
+                         topology_metadata, root_process, full_assignment,
+                         combined_matrix_element, context_id, kind,
                          source_index):
-    """Map standalone decay legs to the combined visible matrix element."""
+    """Map a local corrected decay into an arbitrary full decay forest."""
 
     process = decay_matrix_element.get('processes')[0]
     local_legs = sorted(process.get('legs'),
                         key=lambda leg: leg.get('number'))
     final_legs = [leg for leg in local_legs if leg.get('state')]
-    leaf_ids = _tree_leaf_ids(1, component_metadata)
-    if len(final_legs) != len(leaf_ids):
+    children = component_metadata['nodes'][0]['children']
+    if len(final_legs) != len(children):
         raise fks_common.FKSProcessError(
             'The corrected-decay leg map is inconsistent with its HELAS '
             'current')
 
+    node_mapping = _component_to_topology_nodes(
+        component_metadata, topology_metadata)
+    corrected_node = topology_metadata['corrected_node']
     local_map = {}
+    component_direct_targets = {}
     for leg in local_legs:
         if not leg.get('state'):
-            local_map[leg.get('number')] = ('NODE', 1)
-    for leg, leaf_id in zip(final_legs, leaf_ids):
-        local_map[leg.get('number')] = (
-            'LEG', component_context['leaf_map'][leaf_id])
+            local_map[leg.get('number')] = ('NODE', corrected_node)
+    for leg, (child_kind, child_id) in zip(final_legs, children):
+        if child_kind == 'NODE':
+            expected_pdg = component_metadata['nodes'][child_id - 1]['pdg']
+            target = ('NODE', node_mapping[child_id])
+        else:
+            expected_pdg = component_metadata['leaves'][child_id - 1]['pdg']
+            component_direct_targets[leg.get('number')] = \
+                component_context['leaf_map'][child_id]
+            target = ('LEG', 0)
+        if leg.get('id') != expected_pdg:
+            raise fks_common.FKSProcessError(
+                'The corrected-decay child PDG does not match its local leg')
+        local_map[leg.get('number')] = target
+
+    local_leaf_ids = {}
+    if kind == 'BORN':
+        topology_children = topology_metadata['nodes'][
+            corrected_node - 1]['children']
+        if len(topology_children) != len(final_legs):
+            raise fks_common.FKSProcessError(
+                'The corrected Born decay disagrees with the full topology')
+        available_leaves = [
+            child_id for child_kind, child_id in topology_children
+            if child_kind == 'LEAF']
+        expected_nodes = set(
+            child_id for child_kind, child_id in topology_children
+            if child_kind == 'NODE')
+        found_nodes = set()
+        for leg, component_child in zip(final_legs, children):
+            target = local_map[leg.get('number')]
+            if component_child[0] == 'NODE':
+                if target[0] != 'NODE' or target[1] not in expected_nodes:
+                    raise fks_common.FKSProcessError(
+                        'A corrected Born child maps to the wrong decay node')
+                found_nodes.add(target[1])
+            elif target[0] != 'LEG':
+                raise fks_common.FKSProcessError(
+                    'A direct corrected Born child maps to a decay node')
+            else:
+                matches = [
+                    leaf_id for leaf_id in available_leaves
+                    if topology_metadata['leaves'][leaf_id - 1]['pdg'] ==
+                    leg.get('id')]
+                if not matches:
+                    raise fks_common.FKSProcessError(
+                        'A corrected Born leaf is absent from the topology')
+                leaf_id = matches[0]
+                available_leaves.remove(leaf_id)
+                local_leaf_ids[leg.get('number')] = leaf_id
+        if available_leaves or found_nodes != expected_nodes:
+            raise fks_common.FKSProcessError(
+                'The corrected Born children do not cover their topology')
+
+    root_nodes = _root_decay_nodes(root_process, full_assignment)
+    production_map = {}
+    leaf_map = {}
+    node_visible_map = dict(
+        (node['id'], []) for node in topology_metadata['nodes'])
+    local_targets = {}
+    production_targets = {}
+    expected_pdgs = []
+
+    def emit(pdg, category, identifier, ancestors):
+        visible = len(expected_pdgs) + 1
+        expected_pdgs.append(pdg)
+        for node_id in ancestors:
+            node_visible_map[node_id].append(visible)
+        if category == 'LOCAL':
+            local_targets[identifier] = visible
+            leaf_id = local_leaf_ids.get(identifier)
+            if leaf_id is not None:
+                leaf_map[leaf_id] = visible
+        elif category == 'PRODUCTION':
+            production_targets[identifier] = visible
+        elif category == 'LEAF':
+            leaf_map[identifier] = visible
+        else:
+            raise fks_common.FKSProcessError(
+                'Unknown NLO-decay visible-token category')
+
+    def expand_node(node_id, ancestors):
+        descendants = ancestors + [node_id]
+        if node_id == corrected_node:
+            for leg in final_legs:
+                target_kind, target_id = local_map[leg.get('number')]
+                if target_kind == 'NODE':
+                    expand_node(target_id, descendants)
+                else:
+                    emit(leg.get('id'), 'LOCAL', leg.get('number'),
+                         descendants)
+            return
+        node = topology_metadata['nodes'][node_id - 1]
+        for target_kind, target_id in node['children']:
+            if target_kind == 'NODE':
+                expand_node(target_id, descendants)
+            else:
+                leaf = topology_metadata['leaves'][target_id - 1]
+                emit(leaf['pdg'], 'LEAF', target_id, descendants)
+
+    for leg in sorted(root_process.get('legs'),
+                      key=lambda item: item.get('number')):
+        node_id = root_nodes.get(leg.get('number'))
+        if node_id is None:
+            production_map[leg.get('number')] = ('LEG', 0)
+            emit(leg.get('id'), 'PRODUCTION', leg.get('number'), [])
+        else:
+            production_map[leg.get('number')] = ('NODE', node_id)
+            expand_node(node_id, [])
+
+    actual_legs = sorted(
+        combined_matrix_element.get('processes')[0].get_legs_with_decays(),
+        key=lambda leg: leg.get('number'))
+    actual_pdgs = [leg.get('id') for leg in actual_legs]
+    if expected_pdgs != actual_pdgs:
+        raise fks_common.FKSProcessError(
+            'The full NLO-decay topology does not reproduce the combined '
+            'process legs: %s != %s' % (expected_pdgs, actual_pdgs))
+    for leg_number, target in production_targets.items():
+        production_map[leg_number] = ('LEG', target)
+    for leg_number, target in local_targets.items():
+        if (leg_number in component_direct_targets and
+                component_direct_targets[leg_number] != target):
+            raise fks_common.FKSProcessError(
+                'The local and full-topology visible maps disagree')
+        local_map[leg_number] = ('LEG', target)
+
+    visible_external_map = {}
+    current_process = decay_current.get('processes')[0]
+    current_visible = sorted([
+        leg for leg in current_process.get_legs_with_decays()
+        if leg.get('state')], key=lambda leg: leg.get('number'))
+    leaf_ids = _tree_leaf_ids(1, component_metadata)
+    if len(current_visible) != len(leaf_ids):
+        raise fks_common.FKSProcessError(
+            'The decorated corrected decay has an inconsistent visible '
+            'external state')
+    for leg, leaf_id in zip(current_visible, leaf_ids):
+        visible_external_map[leg.get('number')] = \
+            component_context['leaf_map'][leaf_id]
 
     return {
         'id': context_id,
         'kind': kind,
         'source_index': source_index,
-        'production_count': component_context['core_count'],
-        'production_map': copy.deepcopy(component_context['core_map']),
+        'production_count': len(root_process.get('legs')),
+        'production_map': production_map,
         'local_count': len(local_legs),
-        'visible_count': component_context['visible_count'],
+        'visible_count': len(actual_legs),
         'local_legs': [{
             'number': leg.get('number'),
             'pdg': leg.get('id'),
             'state': 'F' if leg.get('state') else 'I'}
             for leg in local_legs],
-        'local_map': local_map}
+        'local_map': local_map,
+        'leaf_map': leaf_map,
+        'node_visible_map': node_visible_map,
+        'visible_external_map': visible_external_map,
+        '_local_leaf_ids': local_leaf_ids}
 
 
 def _nlo_decay_local_target(context, local_number, description):
@@ -1655,10 +2257,13 @@ def _build_nlo_decay_color_links(combined_born, decay_born,
     local_legs = sorted(local_process.get('legs'),
                         key=lambda leg: leg.get('number'))
     final_legs = [leg for leg in local_legs if leg.get('state')]
-    leaf_ids = _tree_leaf_ids(1, component_metadata)
-    final_to_leaf = dict(
-        (leg.get('number'), leaf_id)
-        for leg, leaf_id in zip(final_legs, leaf_ids))
+    children = component_metadata['nodes'][0]['children']
+    if len(final_legs) != len(children):
+        raise fks_common.FKSProcessError(
+            'The corrected-decay colour map has inconsistent children')
+    final_to_child = dict(
+        (leg.get('number'), child)
+        for leg, child in zip(final_legs, children))
 
     def visible_leg(local_number):
         leg = [leg for leg in local_legs
@@ -1669,7 +2274,14 @@ def _build_nlo_decay_color_links(combined_born, decay_born,
                     'A coloured corrected-decay parent has no unique '
                     'visible colour carrier')
             return component_context['leaf_map'][carrier_leaf]
-        return component_context['leaf_map'][final_to_leaf[local_number]]
+        child_kind, child_id = final_to_child[local_number]
+        if child_kind == 'LEAF':
+            return component_context['leaf_map'][child_id]
+        carrier = component_metadata['nodes'][child_id - 1]['carrier_leaf']
+        if not carrier:
+            raise fks_common.FKSProcessError(
+                'A decay-local colour endpoint has no visible carrier')
+        return component_context['leaf_map'][carrier]
 
     visible_pairs = []
     records = []
@@ -1704,14 +2316,17 @@ def _build_nlo_decay_color_links(combined_born, decay_born,
     return color_links, records
 
 
-def compose_nlo_decay_helas_process(fks_process, production_amplitude,
-                                    selector):
+def compose_nlo_decay_helas_process(fks_process, composition):
     """Compose a decay-owned FKS family with one LO production amplitude.
 
     Born and real contributions insert decay currents into production.  The
     virtual uses the inverse construction: a crossed production current is
     inserted into the decay loop and then exported as the standard virtual.
     """
+
+    production_amplitude = composition['production_amplitude']
+    selector = composition['selector']
+    corrected_process = composition['corrected_process']
 
     if fks_process.extra_cnt_me_list:
         raise fks_common.FKSProcessError(
@@ -1729,14 +2344,19 @@ def compose_nlo_decay_helas_process(fks_process, production_amplitude,
         tuple(link['link']) for link in fks_process.color_links]
 
     born_current = _matrix_element_as_decay_current(decay_born_me)
+    born_current = _attach_corrected_downstream_decays(
+        born_current, corrected_process)
     combined_born, born_component_context, born_component_metadata = \
         _glue_nlo_decay_tree_component(
             production_amplitude, selector, born_current, 'BORN', 1)
 
-    production_process = production_amplitude.get('process')
+    topology_metadata = _build_nlo_decay_topology(composition)
+    root_amplitude = composition['root_amplitude']
+    production_process = composition['root_process']
     decay_process = decay_born_me.get('processes')[0]
-    prototype_metadata = {
-        'format': 4,
+    prototype_metadata = topology_metadata
+    prototype_metadata.update({
+        'format': 5,
         'status': 'INTEGRATION_READY',
         'correction': 'QCD',
         'parent_pdg': selector[0],
@@ -1748,7 +2368,7 @@ def compose_nlo_decay_helas_process(fks_process, production_amplitude,
         'virtual_composition': 'NONE',
         'virtual_current_count': 0,
         'production_born_qcd_order': _born_qcd_squared_order(
-            production_process, production_amplitude, 'production'),
+            production_process, root_amplitude, 'production'),
         'decay_born_qcd_order': _born_qcd_squared_order(
             decay_process, decay_born_me.get('base_amplitude'),
             'corrected decay'),
@@ -1757,17 +2377,20 @@ def compose_nlo_decay_helas_process(fks_process, production_amplitude,
             'pdg': leg.get('id'),
             'state': 'F' if leg.get('state') else 'I'}
             for leg in sorted(
-                production_amplitude.get('process').get('legs'),
-                key=lambda item: item.get('number'))]}
+                production_process.get('legs'),
+                key=lambda item: item.get('number'))]})
     born_local_context = _local_decay_context(
-        decay_born_me, born_component_context, born_component_metadata,
-        1, 'BORN', 1)
+        decay_born_me, born_current, born_component_context,
+        born_component_metadata, prototype_metadata, production_process,
+        composition['full_assignment'], combined_born, 1, 'BORN', 1)
     prototype_metadata['contexts'].append(born_local_context)
 
     combined_reals = []
     for index, (real, decay_real_me) in enumerate(
             zip(fks_process.real_processes, decay_real_mes), 1):
         real_current = _matrix_element_as_decay_current(decay_real_me)
+        real_current = _attach_corrected_downstream_decays(
+            real_current, corrected_process)
         combined_real, component_context, component_metadata = \
             _glue_nlo_decay_tree_component(
                 production_amplitude, selector, real_current, 'REAL', index)
@@ -1775,15 +2398,30 @@ def compose_nlo_decay_helas_process(fks_process, production_amplitude,
         combined_reals.append(real)
         context_id = len(prototype_metadata['contexts']) + 1
         real_local_context = _local_decay_context(
-            decay_real_me, component_context, component_metadata,
-            context_id, 'REAL', index)
+            decay_real_me, real_current, component_context,
+            component_metadata, prototype_metadata, production_process,
+            composition['full_assignment'], combined_real, context_id,
+            'REAL', index)
         prototype_metadata['contexts'].append(real_local_context)
         for info in real.fks_infos:
             configuration = len(prototype_metadata['fks_maps']) + 1
-            prototype_metadata['fks_maps'].append(
-                _build_nlo_decay_fks_mapping(
-                    configuration, real_local_context,
-                    born_local_context, real, info))
+            mapping = _build_nlo_decay_fks_mapping(
+                configuration, real_local_context,
+                born_local_context, real, info)
+            prototype_metadata['fks_maps'].append(mapping)
+            for real_leg, born_leg in mapping['real_to_born'].items():
+                leaf_id = born_local_context['_local_leaf_ids'].get(born_leg)
+                if leaf_id is None:
+                    continue
+                kind, target = real_local_context['local_map'][real_leg]
+                if kind != 'LEG':
+                    raise fks_common.FKSProcessError(
+                        'A direct corrected-decay leaf became a nested node')
+                previous = real_local_context['leaf_map'].get(leaf_id)
+                if previous is not None and previous != target:
+                    raise fks_common.FKSProcessError(
+                        'Real contexts disagree on a corrected-decay leaf')
+                real_local_context['leaf_map'][leaf_id] = target
 
     color_links, color_records = _build_nlo_decay_color_links(
         combined_born, born_current, local_color_pairs,
@@ -1792,13 +2430,30 @@ def compose_nlo_decay_helas_process(fks_process, production_amplitude,
 
     combined_virtual = None
     if fks_process.virt_matrix_element:
+        decay_virtual = fks_process.virt_matrix_element
+        if corrected_process.get('decay_chains'):
+            decay_virtual = _copy_loop_matrix_element(decay_virtual)
+            decay_virtual = _attach_corrected_downstream_decays(
+                decay_virtual, corrected_process)
         combined_virtual, current_count = compose_nlo_decay_virtual(
             production_amplitude, selector,
-            fks_process.virt_matrix_element, combined_born,
+            decay_virtual, combined_born,
             born_component_context, born_local_context)
         prototype_metadata['virtual_composition'] = \
             'CROSSED_PRODUCTION_CURRENT'
         prototype_metadata['virtual_current_count'] = current_count
+
+    _annotate_widths(combined_born, born_local_context, prototype_metadata)
+    for real, context in zip(
+            combined_reals, prototype_metadata['contexts'][1:]):
+        _annotate_widths(
+            real.matrix_element, context, prototype_metadata)
+    if combined_virtual is not None:
+        _annotate_widths(
+            combined_virtual, born_local_context, prototype_metadata)
+
+    for context in prototype_metadata['contexts']:
+        context.pop('_local_leaf_ids', None)
 
     fks_process.born_me = combined_born
     fks_process.real_processes = combined_reals
@@ -1806,8 +2461,25 @@ def compose_nlo_decay_helas_process(fks_process, production_amplitude,
     fks_process.nlo_decay_metadata = prototype_metadata
     fks_process.nlo_decay_virtual_matrix_element = None
     fks_process.virt_matrix_element = combined_virtual
+    decay_trees = tuple((
+        attachment['selector'],
+        _process_grouping_signature(
+            attachment['decay_me'].get('processes')[0],
+            production_process.get('model')))
+        for attachment in composition['full_assignment']['attachments'])
+    topology_signature = tuple((
+        node['id'], node['parent'], node['pdg'], node['qcd_order'],
+        tuple(node['children'])) for node in prototype_metadata['nodes'])
+    context_signature = tuple((
+        context['kind'], context['source_index'],
+        tuple(sorted(context['production_map'].items())),
+        tuple(sorted(context['local_map'].items())),
+        tuple(sorted(context['leaf_map'].items())))
+        for context in prototype_metadata['contexts'])
     fks_process.decay_grouping_signature = (
-        'NLO_DECAY_TO_LO_PRODUCTION', selector)
+        'NLO_DECAY_TO_LO_PRODUCTION', decay_trees,
+        prototype_metadata['corrected_node'], topology_signature,
+        context_signature)
     return fks_process
 
 
@@ -1826,12 +2498,27 @@ def nlo_decay_info_text(metadata):
         'QCD_ORDERS %d %d' % (
             metadata['production_born_qcd_order'],
             metadata['decay_born_qcd_order']),
+        'FORCED_SPECIES %d%s' % (
+            len(metadata['forced_species']), ''.join(
+                ' %d' % pdg for pdg in metadata['forced_species'])),
+        'TOPOLOGY %d %d %d' % (
+            len(metadata['nodes']), len(metadata['leaves']),
+            metadata['corrected_node']),
         'COUNTS %d %d %d %d' % (
             len(metadata['contexts']), len(metadata['fks_maps']),
             len(set(link['generated_index']
                     for link in metadata['color_links'])),
             sum(len(mapping['partners'])
                 for mapping in metadata['fks_maps']))]
+    for node in metadata['nodes']:
+        children = ''.join(
+            ' %s %d' % child for child in node['children'])
+        lines.append('NODE %d %d %d %d %d %d%s' % (
+            node['id'], node['parent'], node['pdg'], node['qcd_order'],
+            node['carrier_leaf'], len(node['children']), children))
+    for leaf in metadata['leaves']:
+        lines.append('DECAY_LEAF %d %d %d' % (
+            leaf['id'], leaf['parent'], leaf['pdg']))
     for leg in metadata['production_legs']:
         lines.append('PRODUCTION_LEG %d %d %s' % (
             leg['number'], leg['pdg'], leg['state']))
@@ -1850,6 +2537,12 @@ def nlo_decay_info_text(metadata):
             kind, target = context['local_map'][local_leg]
             lines.append('LOCAL_MAP %d %d %s %d' % (
                 context['id'], local_leg, kind, target))
+        for leaf_id in sorted(context['leaf_map']):
+            if (metadata['leaves'][leaf_id - 1]['parent'] ==
+                    metadata['corrected_node']):
+                continue
+            lines.append('LEAF_MAP %d %d %d' % (
+                context['id'], leaf_id, context['leaf_map'][leaf_id]))
     for mapping in metadata['fks_maps']:
         lines.append('FKS_MAP %d %d %d %d %d' % (
             mapping['configuration'], mapping['real_context'],

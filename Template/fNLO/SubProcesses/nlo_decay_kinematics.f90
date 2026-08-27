@@ -16,7 +16,12 @@ module nlo_decay_kinematics
        nlo_decay_local_target_kind, nlo_decay_local_target_id, &
        nlo_decay_fks_i, nlo_decay_fks_j, nlo_decay_fks_ij, &
        nlo_decay_real_to_born, nlo_decay_leg_target, &
-       nlo_decay_node_target
+       nlo_decay_node_target, nlo_decay_corrected_node, &
+       nlo_decay_node_count, nlo_decay_leaf_count, &
+       nlo_decay_node_pdg, nlo_decay_node_child_count, &
+       nlo_decay_node_child_kind, nlo_decay_node_child_id, &
+       nlo_decay_leaf_pdg, nlo_decay_leaf_visible, &
+       nlo_decay_leaf_child, nlo_decay_node_child
   use fnlo_process_common, only: soft_counterevent, collinear_counterevent, &
        soft_collinear_counterevent, real_event, softtest, colltest, &
        xi_i_fks_fix, y_ij_fks_fix, xij_aor
@@ -28,8 +33,11 @@ module nlo_decay_kinematics
   double precision, save :: massive_xjac_cache = 1d0
   double precision, allocatable, save :: production_masses(:)
   double precision, allocatable, save :: born_local_masses(:)
+  double precision, allocatable, save :: node_masses(:)
+  double precision, allocatable, save :: leaf_masses(:)
   double precision, allocatable, save :: production_born(:, :)
   double precision, allocatable, save :: born_local(:, :)
+  integer, allocatable, save :: node_random_start(:)
   double precision, allocatable, save :: local_event_cache(:, :, :)
   double precision, allocatable, save :: local_fks_momentum_cache(:, :)
   integer, allocatable, save :: local_event_configuration(:)
@@ -59,7 +67,7 @@ module nlo_decay_kinematics
 contains
 
   subroutine initialize_nlo_decay_kinematics()
-    integer :: context, leg
+    integer :: context, leg, node, target
 
     if (initialized) return
     call validate_process_dimensions()
@@ -70,34 +78,64 @@ contains
 
     allocate(production_masses(nlo_decay_production_count()))
     allocate(born_local_masses(nexternal))
+    allocate(node_masses(nlo_decay_node_count()))
+    allocate(leaf_masses(nlo_decay_leaf_count()))
     allocate(production_born(0:3, nexternal))
     allocate(born_local(0:3, nexternal))
+    allocate(node_random_start(nlo_decay_node_count()))
     allocate(local_event_cache(0:3, nexternal, 0:real_event))
     allocate(local_fks_momentum_cache(0:3, 0:real_event))
     allocate(local_event_configuration(0:real_event))
     allocate(local_event_valid(0:real_event))
     production_masses = 0d0
     born_local_masses = 0d0
+    node_masses = 0d0
+    leaf_masses = 0d0
     production_born = 0d0
     born_local = 0d0
+    node_random_start = 0
     local_event_cache = 0d0
     local_fks_momentum_cache = -1d0
     local_event_configuration = 0
     local_event_valid = .false.
     parent_born = 0d0
 
+    do node = 1, nlo_decay_node_count()
+      node_masses(node) = abs(get_mass_from_id(nlo_decay_node_pdg(node)))
+      if (node_masses(node) <= 0d0) then
+        call fail_kinematics('a forced decay parent has zero model mass')
+      end if
+    end do
+    do leg = 1, nlo_decay_leaf_count()
+      leaf_masses(leg) = abs(get_mass_from_id(nlo_decay_leaf_pdg(leg)))
+    end do
+
     parent_mass = abs(get_mass_from_id(corrected_parent_pdg()))
     if (parent_mass <= 0d0) then
       call fail_kinematics('the corrected parent has zero model mass')
     end if
     do leg = 1, nlo_decay_production_count()
-      production_masses(leg) = &
-           abs(get_mass_from_id(nlo_decay_production_pdg(leg)))
+      if (nlo_decay_production_target_kind( &
+              nlo_decay_born_context(), leg) == nlo_decay_node_target) then
+        target = nlo_decay_production_target_id( &
+             nlo_decay_born_context(), leg)
+        production_masses(leg) = node_masses(target)
+      else
+        production_masses(leg) = &
+             abs(get_mass_from_id(nlo_decay_production_pdg(leg)))
+      end if
     end do
     context = nlo_decay_born_context()
     do leg = 1, nlo_decay_local_count(context)
-      born_local_masses(leg) = &
-           abs(get_mass_from_id(nlo_decay_local_pdg(context, leg)))
+      if (nlo_decay_local_target_kind(context, leg) == &
+          nlo_decay_node_target .and. &
+          nlo_decay_local_is_final(context, leg)) then
+        target = nlo_decay_local_target_id(context, leg)
+        born_local_masses(leg) = node_masses(target)
+      else
+        born_local_masses(leg) = &
+             abs(get_mass_from_id(nlo_decay_local_pdg(context, leg)))
+      end if
       if (.not. nlo_decay_local_is_final(context, leg) .and. &
           abs(born_local_masses(leg) - parent_mass) > &
           1d-10*max(1d0, parent_mass)) then
@@ -121,14 +159,13 @@ contains
 
 
   integer function decay_born_random_dimension()
-    integer :: context, final_count, leg
+    integer :: node
     call require_enabled()
-    context = nlo_decay_born_context()
-    final_count = 0
-    do leg = 1, nlo_decay_local_count(context)
-      if (nlo_decay_local_is_final(context, leg)) final_count = final_count + 1
+    decay_born_random_dimension = 0
+    do node = 1, nlo_decay_node_count()
+      decay_born_random_dimension = decay_born_random_dimension + &
+           3*nlo_decay_node_child_count(node) - 4
     end do
-    decay_born_random_dimension = 3*final_count - 4
   end function decay_born_random_dimension
 
 
@@ -202,6 +239,9 @@ contains
     call check_event_slot(event_slot)
     if (.not. local_event_valid(event_slot) .or. &
         local_event_configuration(event_slot) /= configuration) then
+      write (*, *) 'NLO-decay event cache request:', configuration, &
+           event_slot, local_event_valid(event_slot), &
+           local_event_configuration(event_slot)
       call fail_kinematics('decay-local event momenta are unavailable')
     end if
     momenta = local_event_cache(:, :, event_slot)
@@ -263,7 +303,7 @@ contains
 
   subroutine fill_nlo_decay_born_masses(masses)
     double precision, intent(out) :: masses(nexternal - 1)
-    integer :: context, leg, target
+    integer :: context, leg, target, leaf
 
     call require_enabled()
     masses = 0d0
@@ -282,6 +322,10 @@ contains
         masses(target) = born_local_masses(leg)
       end if
     end do
+    do leaf = 1, nlo_decay_leaf_count()
+      target = nlo_decay_leaf_visible(context, leaf)
+      if (target /= 0) masses(target) = leaf_masses(leaf)
+    end do
   end subroutine fill_nlo_decay_born_masses
 
 
@@ -292,18 +336,16 @@ contains
     double precision, intent(out) :: visible(0:3, nexternal - 1)
     logical, intent(out) :: pass
 
-    integer :: context, final_count, leg, final_index, decay_final_count
-    integer :: decay_index
+    integer :: context, final_count, leg, decay_index
     double precision :: system(0:3), final_masses(nexternal)
     double precision :: final_momenta(0:3, nexternal)
-    double precision :: decay_masses(nexternal)
-    double precision :: decay_momenta(0:3, nexternal)
 
     call require_enabled()
     pass = .false.
     visible = 0d0
     production_born = 0d0
     born_local = 0d0
+    node_random_start = 0
     parent_born = 0d0
     local_event_cache = 0d0
     local_fks_momentum_cache = -1d0
@@ -326,46 +368,127 @@ contains
       production_born(:, nincoming + leg) = final_momenta(:, leg)
     end do
 
-    do leg = 1, nlo_decay_production_count()
-      if (nlo_decay_production_target_kind(context, leg) == &
-          nlo_decay_node_target) then
-        parent_born = production_born(:, leg)
-      end if
-    end do
+    decay_index = production_random_dimension() + 1
+    call expand_born_context(context, x, decay_index, visible, xjac, &
+                             xpswgt, pass)
+    if (.not. pass) return
     if (abs(minkowski_square(parent_born) - parent_mass**2) > &
         1d-8*max(1d0, parent_mass**2)) then
       call fail_kinematics('generated corrected parent is off shell')
     end if
-
-    decay_final_count = 0
-    do leg = 1, nlo_decay_local_count(context)
-      if (nlo_decay_local_is_final(context, leg)) then
-        decay_final_count = decay_final_count + 1
-        decay_masses(decay_final_count) = born_local_masses(leg)
-      end if
-    end do
-    decay_index = production_random_dimension() + 1
-    call generate_nbody(parent_born, decay_final_count, decay_masses, x, &
-                        decay_index, decay_momenta, xjac, xpswgt, pass)
-    if (.not. pass) return
-    final_index = 0
-    do leg = 1, nlo_decay_local_count(context)
-      if (nlo_decay_local_is_final(context, leg)) then
-        final_index = final_index + 1
-        born_local(:, leg) = decay_momenta(:, final_index)
-      else
-        born_local(:, leg) = parent_born
-      end if
-    end do
-    if (decay_index + decay_born_random_dimension() /= &
-        production_random_dimension() + decay_born_random_dimension() + 1) then
+    if (decay_index /= production_random_dimension() + &
+        decay_born_random_dimension() + 1) then
       call fail_kinematics('Born random-variable accounting is inconsistent')
     end if
 
-    call flatten_context(context, born_local, visible)
     xpswgt = xpswgt*nlo_decay_nwa_weight()
     pass = .true.
   end subroutine generate_nlo_decay_born_momenta
+
+
+  subroutine expand_born_context(context, x, index, visible, xjac, &
+                                 xpswgt, pass)
+    integer, intent(in) :: context
+    double precision, intent(in) :: x(99)
+    integer, intent(inout) :: index
+    double precision, intent(out) :: visible(0:3, nexternal - 1)
+    double precision, intent(inout) :: xjac, xpswgt
+    logical, intent(out) :: pass
+    integer :: leg, target
+
+    visible = 0d0
+    pass = .true.
+    do leg = 1, nlo_decay_production_count()
+      target = nlo_decay_production_target_id(context, leg)
+      if (nlo_decay_production_target_kind(context, leg) == &
+          nlo_decay_leg_target) then
+        visible(:, target) = production_born(:, leg)
+      else
+        call expand_born_node(context, target, production_born(:, leg), x, &
+             index, visible, xjac, xpswgt, pass)
+        if (.not. pass) return
+      end if
+    end do
+  end subroutine expand_born_context
+
+
+  recursive subroutine expand_born_node(context, node, parent, x, index, &
+                                        visible, xjac, xpswgt, pass)
+    integer, intent(in) :: context, node
+    double precision, intent(in) :: parent(0:3), x(99)
+    integer, intent(inout) :: index
+    double precision, intent(inout) :: visible(0:3, nexternal - 1)
+    double precision, intent(inout) :: xjac, xpswgt
+    logical, intent(out) :: pass
+    integer :: child_count, child, child_kind, identifier
+    integer :: leg, final_count, final_index, target
+    double precision :: child_masses(nexternal)
+    double precision :: child_momenta(0:3, nexternal)
+
+    node_random_start(node) = index
+    if (node == nlo_decay_corrected_node()) then
+      final_count = 0
+      do leg = 1, nlo_decay_local_count(context)
+        if (nlo_decay_local_is_final(context, leg)) then
+          final_count = final_count + 1
+          child_masses(final_count) = born_local_masses(leg)
+        else
+          born_local(:, leg) = parent
+        end if
+      end do
+      if (final_count /= nlo_decay_node_child_count(node)) then
+        call fail_kinematics('corrected-node child count is inconsistent')
+      end if
+      call generate_nbody(parent, final_count, child_masses, x, index, &
+           child_momenta, xjac, xpswgt, pass)
+      if (.not. pass) return
+      index = index + 3*final_count - 4
+      final_index = 0
+      do leg = 1, nlo_decay_local_count(context)
+        if (.not. nlo_decay_local_is_final(context, leg)) cycle
+        final_index = final_index + 1
+        born_local(:, leg) = child_momenta(:, final_index)
+        target = nlo_decay_local_target_id(context, leg)
+        if (nlo_decay_local_target_kind(context, leg) == &
+            nlo_decay_node_target) then
+          call expand_born_node(context, target, born_local(:, leg), x, &
+               index, visible, xjac, xpswgt, pass)
+          if (.not. pass) return
+        else
+          visible(:, target) = born_local(:, leg)
+        end if
+      end do
+      parent_born = parent
+      return
+    end if
+
+    child_count = nlo_decay_node_child_count(node)
+    do child = 1, child_count
+      identifier = nlo_decay_node_child_id(node, child)
+      child_kind = nlo_decay_node_child_kind(node, child)
+      if (child_kind == nlo_decay_node_child) then
+        child_masses(child) = node_masses(identifier)
+      else
+        child_masses(child) = leaf_masses(identifier)
+      end if
+    end do
+    call generate_nbody(parent, child_count, child_masses, x, index, &
+         child_momenta, xjac, xpswgt, pass)
+    if (.not. pass) return
+    index = index + 3*child_count - 4
+    do child = 1, child_count
+      identifier = nlo_decay_node_child_id(node, child)
+      child_kind = nlo_decay_node_child_kind(node, child)
+      if (child_kind == nlo_decay_node_child) then
+        call expand_born_node(context, identifier, child_momenta(:, child), &
+             x, index, visible, xjac, xpswgt, pass)
+        if (.not. pass) return
+      else
+        target = nlo_decay_leaf_visible(context, identifier)
+        visible(:, target) = child_momenta(:, child)
+      end if
+    end do
+  end subroutine expand_born_node
 
 
   subroutine generate_nlo_decay_fks_event(configuration, event_slot, x, ndim, &
@@ -464,7 +587,8 @@ contains
     local_fks_momentum_cache(:, event_slot) = reference_rest
     local_event_configuration(event_slot) = configuration
     local_event_valid(event_slot) = .true.
-    call flatten_context(context, local_event, visible)
+    call expand_event_context(context, local_event, x, visible, pass)
+    if (.not. pass) return
     pass = .true.
   end subroutine generate_nlo_decay_fks_event
 
@@ -865,28 +989,89 @@ contains
   end subroutine emitted_angle
 
 
-  subroutine flatten_context(context, local_momenta, visible)
+  subroutine expand_event_context(context, local_momenta, x, visible, pass)
     integer, intent(in) :: context
     double precision, intent(in) :: local_momenta(0:3, nexternal)
+    double precision, intent(in) :: x(99)
     double precision, intent(out) :: visible(0:, :)
     integer :: leg, target
+    logical, intent(out) :: pass
 
     visible = 0d0
+    pass = .true.
     do leg = 1, nlo_decay_production_count()
       if (nlo_decay_production_target_kind(context, leg) == &
           nlo_decay_leg_target) then
         target = nlo_decay_production_target_id(context, leg)
         visible(:, target) = production_born(:, leg)
+      else
+        target = nlo_decay_production_target_id(context, leg)
+        call expand_event_node(context, target, production_born(:, leg), &
+             local_momenta, x, visible, pass)
+        if (.not. pass) return
       end if
     end do
-    do leg = 1, nlo_decay_local_count(context)
-      if (nlo_decay_local_target_kind(context, leg) == &
-          nlo_decay_leg_target) then
+  end subroutine expand_event_context
+
+
+  recursive subroutine expand_event_node(context, node, parent, &
+                                         local_momenta, x, visible, pass)
+    integer, intent(in) :: context, node
+    double precision, intent(in) :: parent(0:3)
+    double precision, intent(in) :: local_momenta(0:3, nexternal), x(99)
+    double precision, intent(inout) :: visible(0:, :)
+    logical, intent(out) :: pass
+    integer :: leg, target, child, child_count, child_kind, identifier
+    double precision :: child_masses(nexternal)
+    double precision :: child_momenta(0:3, nexternal)
+    double precision :: unused_jacobian, unused_weight
+
+    pass = .true.
+    if (node == nlo_decay_corrected_node()) then
+      do leg = 1, nlo_decay_local_count(context)
+        if (.not. nlo_decay_local_is_final(context, leg)) cycle
         target = nlo_decay_local_target_id(context, leg)
-        visible(:, target) = local_momenta(:, leg)
+        if (nlo_decay_local_target_kind(context, leg) == &
+            nlo_decay_node_target) then
+          call expand_event_node(context, target, local_momenta(:, leg), &
+               local_momenta, x, visible, pass)
+          if (.not. pass) return
+        else
+          visible(:, target) = local_momenta(:, leg)
+        end if
+      end do
+      return
+    end if
+
+    child_count = nlo_decay_node_child_count(node)
+    do child = 1, child_count
+      identifier = nlo_decay_node_child_id(node, child)
+      child_kind = nlo_decay_node_child_kind(node, child)
+      if (child_kind == nlo_decay_node_child) then
+        child_masses(child) = node_masses(identifier)
+      else
+        child_masses(child) = leaf_masses(identifier)
       end if
     end do
-  end subroutine flatten_context
+    unused_jacobian = 1d0
+    unused_weight = 1d0
+    call generate_nbody(parent, child_count, child_masses, x, &
+         node_random_start(node), child_momenta, unused_jacobian, &
+         unused_weight, pass)
+    if (.not. pass) return
+    do child = 1, child_count
+      identifier = nlo_decay_node_child_id(node, child)
+      child_kind = nlo_decay_node_child_kind(node, child)
+      if (child_kind == nlo_decay_node_child) then
+        call expand_event_node(context, identifier, child_momenta(:, child), &
+             local_momenta, x, visible, pass)
+        if (.not. pass) return
+      else
+        target = nlo_decay_leaf_visible(context, identifier)
+        visible(:, target) = child_momenta(:, child)
+      end if
+    end do
+  end subroutine expand_event_node
 
 
   subroutine fill_production_incoming(shat, sqrtshat, momenta, pass)
@@ -968,10 +1153,15 @@ contains
 
 
   double precision function nlo_decay_nwa_weight()
+    integer :: node
     double precision :: denominator_scale
-    denominator_scale = decay_dummy_width_ratio()*parent_mass**2
-    nlo_decay_nwa_weight = denominator_scale**2/ &
-         (2d0*parent_mass*decay_physical_width(corrected_parent_pdg()))
+    nlo_decay_nwa_weight = 1d0
+    do node = 1, nlo_decay_node_count()
+      denominator_scale = decay_dummy_width_ratio()*node_masses(node)**2
+      nlo_decay_nwa_weight = nlo_decay_nwa_weight*denominator_scale**2/ &
+           (2d0*node_masses(node)* &
+            decay_physical_width(nlo_decay_node_pdg(node)))
+    end do
   end function nlo_decay_nwa_weight
 
 

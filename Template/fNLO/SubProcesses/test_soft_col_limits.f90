@@ -152,7 +152,7 @@ contains
     integer :: i, j, k, l, jj, bs_min, bs_max, iconfig_in, nsofttests
     integer :: ncolltests, imax, iflag, iret, ntry, fks_conf_number
     integer :: fks_loop_min, fks_loop_max, fks_loop, iamp
-    integer :: i_fks, j_fks, nfksprocess
+    integer :: i_fks, j_fks, nfksprocess, limit_test_mode
     double precision :: wgt, fx, totmass, sister_mass, initial_ebeam(2)
     double precision :: xi_i_fks_fix_save, y_ij_fks_fix_save
     double precision :: xi_i_fks_fix, y_ij_fks_fix
@@ -168,6 +168,13 @@ contains
         write (*, *) 'Process generated with [LOonly=QCD]. No tests to do.'
         return
       end if
+    end if
+    ! Preserve the legacy test_ME input contract.  The retained fNLO driver
+    ! implements the matrix-element-over-matrix-element mode only.
+    write (*, *) 'Enter 2 to compute ME/ME(limit)'
+    read (*, *) limit_test_mode
+    if (limit_test_mode /= 2) then
+      call fail_test_limits('fNLO supports only the ME/ME limit test')
     end if
     write (*, *) 'Enter xi_i, y_ij to be used in coll/soft tests'
     write (*, *) ' Enter -2 to generate them randomly'

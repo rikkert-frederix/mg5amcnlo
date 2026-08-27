@@ -7,6 +7,8 @@ module nlo_decay_metadata
 
   integer, parameter, public :: nlo_decay_leg_target = 1
   integer, parameter, public :: nlo_decay_node_target = 2
+  integer, parameter, public :: nlo_decay_leaf_child = 1
+  integer, parameter, public :: nlo_decay_node_child = 2
 
   logical, save :: initialized = .false.
   logical, save :: enabled = .false.
@@ -19,6 +21,9 @@ module nlo_decay_metadata
   integer, save :: number_of_generated_color_links = 0
   integer, save :: number_of_color_link_records = 0
   integer, save :: number_of_production_legs = 0
+  integer, save :: number_of_nodes = 0
+  integer, save :: number_of_leaves = 0
+  integer, save :: corrected_node_value = 0
   integer, save :: born_context_id = 0
   integer, save :: production_born_qcd_order_value = -1
   integer, save :: decay_born_qcd_order_value = -1
@@ -52,6 +57,16 @@ module nlo_decay_metadata
   integer, allocatable, save :: color_visible_first_values(:)
   integer, allocatable, save :: color_visible_second_values(:)
   integer, allocatable, save :: color_generated_index_values(:)
+  integer, allocatable, save :: node_parent_values(:)
+  integer, allocatable, save :: node_pdg_values(:)
+  integer, allocatable, save :: node_qcd_orders(:)
+  integer, allocatable, save :: node_carrier_values(:)
+  integer, allocatable, save :: node_child_counts(:)
+  integer, allocatable, save :: node_child_kinds(:, :)
+  integer, allocatable, save :: node_child_ids(:, :)
+  integer, allocatable, save :: leaf_parent_values(:)
+  integer, allocatable, save :: leaf_pdg_values(:)
+  integer, allocatable, save :: leaf_visible_values(:, :)
 
   public :: initialize_nlo_decay_metadata, has_nlo_decay
   public :: corrected_parent_pdg, corrected_parent_occurrence
@@ -69,6 +84,11 @@ module nlo_decay_metadata
   public :: nlo_decay_partner_count, nlo_decay_partner_local
   public :: nlo_decay_map_color_link
   public :: nlo_decay_real_to_born
+  public :: nlo_decay_corrected_node, nlo_decay_node_count
+  public :: nlo_decay_leaf_count, nlo_decay_node_pdg
+  public :: nlo_decay_node_qcd_order, nlo_decay_node_child_count
+  public :: nlo_decay_node_child_kind, nlo_decay_node_child_id
+  public :: nlo_decay_leaf_pdg, nlo_decay_leaf_visible
 
 contains
 
@@ -77,9 +97,12 @@ contains
     integer :: unit_number, ios, production_records, color_record
     integer :: context, configuration, leg, pdg, source, local_count
     integer :: visible_count, local_i, local_j, local_ij, target
-    integer :: target_position
+    integer :: target_position, node, leaf, parent, qcd_order, carrier
+    integer :: child, child_count, visible
     character(len=512) :: line
     character(len=32) :: keyword, kind, state, name
+    character(len=16) :: child_words(nexternal)
+    integer :: child_ids(nexternal)
 
     if (initialized) return
     call validate_process_dimensions()
@@ -118,6 +141,9 @@ contains
         read(line, *, iostat=ios) keyword, &
              production_born_qcd_order_value, &
              decay_born_qcd_order_value
+      case ('TOPOLOGY')
+        read(line, *, iostat=ios) keyword, number_of_nodes, &
+             number_of_leaves, corrected_node_value
       case ('PRODUCTION_LEG')
         production_records = production_records + 1
       case ('COLOR_LINK')
@@ -126,8 +152,8 @@ contains
       if (ios /= 0) call fail_metadata('malformed metadata header')
     end do
 
-    if (metadata_format /= 4) then
-      call fail_metadata('FORMAT 4 is required; regenerate the process')
+    if (metadata_format /= 5) then
+      call fail_metadata('FORMAT 5 is required; regenerate the process')
     end if
     if (corrected_parent_pdg_value == 0 .or. &
         corrected_parent_occurrence_value < 1) then
@@ -143,6 +169,11 @@ contains
     if (production_records < nincoming + 1 .or. &
         production_records > nexternal) then
       call fail_metadata('invalid production-leg count')
+    end if
+    if (number_of_nodes < 1 .or. number_of_leaves < 1 .or. &
+        corrected_node_value < 1 .or. &
+        corrected_node_value > number_of_nodes) then
+      call fail_metadata('invalid decay topology counts')
     end if
     number_of_production_legs = production_records
 
@@ -177,6 +208,16 @@ contains
     allocate(color_visible_first_values(number_of_color_link_records))
     allocate(color_visible_second_values(number_of_color_link_records))
     allocate(color_generated_index_values(number_of_color_link_records))
+    allocate(node_parent_values(number_of_nodes))
+    allocate(node_pdg_values(number_of_nodes))
+    allocate(node_qcd_orders(number_of_nodes))
+    allocate(node_carrier_values(number_of_nodes))
+    allocate(node_child_counts(number_of_nodes))
+    allocate(node_child_kinds(nexternal, number_of_nodes))
+    allocate(node_child_ids(nexternal, number_of_nodes))
+    allocate(leaf_parent_values(number_of_leaves))
+    allocate(leaf_pdg_values(number_of_leaves))
+    allocate(leaf_visible_values(number_of_leaves, number_of_contexts))
 
     production_pdg_values = 0
     production_final_values = .false.
@@ -207,6 +248,16 @@ contains
     color_visible_first_values = 0
     color_visible_second_values = 0
     color_generated_index_values = 0
+    node_parent_values = -1
+    node_pdg_values = 0
+    node_qcd_orders = -1
+    node_carrier_values = 0
+    node_child_counts = 0
+    node_child_kinds = 0
+    node_child_ids = 0
+    leaf_parent_values = 0
+    leaf_pdg_values = 0
+    leaf_visible_values = 0
 
     rewind(unit_number)
     end_seen = .false.
@@ -222,8 +273,48 @@ contains
       select case (trim(keyword))
       case ('FORMAT', 'STATUS', 'CORRECTION', 'PARENT', 'HAS_VIRTUAL', &
             'VIRTUAL_COMPOSITION', 'VIRTUAL_CURRENT_COUNT', &
-            'QCD_ORDERS', 'COUNTS')
+            'QCD_ORDERS', 'FORCED_SPECIES', 'TOPOLOGY', 'COUNTS')
         continue
+      case ('NODE')
+        child_words = ''
+        child_ids = 0
+        read(line, *, iostat=ios) keyword, node, parent, pdg, qcd_order, &
+             carrier, child_count
+        if (ios /= 0) call fail_metadata('malformed NODE record')
+        call check_node(node)
+        if (node_parent_values(node) /= -1) then
+          call fail_metadata('duplicate NODE record')
+        end if
+        if (child_count < 2 .or. child_count > nexternal) then
+          call fail_metadata('invalid decay-node child count')
+        end if
+        read(line, *, iostat=ios) keyword, node, parent, pdg, qcd_order, &
+             carrier, child_count, (child_words(child), child_ids(child), &
+             child=1, child_count)
+        node_parent_values(node) = parent
+        node_pdg_values(node) = pdg
+        node_qcd_orders(node) = qcd_order
+        node_carrier_values(node) = carrier
+        node_child_counts(node) = child_count
+        do child = 1, child_count
+          select case (trim(child_words(child)))
+          case ('LEAF')
+            node_child_kinds(child, node) = nlo_decay_leaf_child
+          case ('NODE')
+            node_child_kinds(child, node) = nlo_decay_node_child
+          case default
+            call fail_metadata('invalid decay-node child kind')
+          end select
+          node_child_ids(child, node) = child_ids(child)
+        end do
+      case ('DECAY_LEAF')
+        read(line, *, iostat=ios) keyword, leaf, parent, pdg
+        call check_leaf(leaf)
+        if (leaf_parent_values(leaf) /= 0) then
+          call fail_metadata('duplicate DECAY_LEAF record')
+        end if
+        leaf_parent_values(leaf) = parent
+        leaf_pdg_values(leaf) = pdg
       case ('PRODUCTION_LEG')
         read(line, *, iostat=ios) keyword, leg, pdg, state
         call check_production_leg(leg)
@@ -270,6 +361,14 @@ contains
         end if
         local_target_kinds(leg, context) = target_kind(kind)
         local_target_ids(leg, context) = target
+      case ('LEAF_MAP')
+        read(line, *, iostat=ios) keyword, context, leaf, visible
+        call check_context(context)
+        call check_leaf(leaf)
+        if (leaf_visible_values(leaf, context) /= 0) then
+          call fail_metadata('duplicate LEAF_MAP record')
+        end if
+        leaf_visible_values(leaf, context) = visible
       case ('FKS_MAP')
         read(line, *, iostat=ios) keyword, configuration, context, &
              local_i, local_j, local_ij
@@ -357,8 +456,67 @@ contains
 
   subroutine validate_metadata_values()
     integer :: leg, context, configuration, target, born_count
-    integer :: node_maps, expected_visible
+    integer :: node_maps, expected_visible, node, child, identifier, leaf
     logical :: visible_used(nexternal), born_local_used(nexternal)
+    logical :: root_used(number_of_nodes)
+    logical :: node_referenced(number_of_nodes)
+    logical :: leaf_referenced(number_of_leaves)
+
+    node_referenced = .false.
+    leaf_referenced = .false.
+    do node = 1, number_of_nodes
+      if (node_parent_values(node) < 0 .or. node_pdg_values(node) == 0 .or. &
+          node_qcd_orders(node) < 0 .or. node_child_counts(node) < 2) then
+        call fail_metadata('incomplete NODE metadata')
+      end if
+      if (node_parent_values(node) >= node) then
+        call fail_metadata('decay nodes are not in parent-before-child order')
+      end if
+      if (node_carrier_values(node) < 0 .or. &
+          node_carrier_values(node) > number_of_leaves) then
+        call fail_metadata('decay-node carrier leaf is out of range')
+      end if
+      do child = 1, node_child_counts(node)
+        identifier = node_child_ids(child, node)
+        select case (node_child_kinds(child, node))
+        case (nlo_decay_node_child)
+          call check_node(identifier)
+          if (identifier <= node .or. &
+              node_parent_values(identifier) /= node .or. &
+              node_referenced(identifier)) then
+            call fail_metadata('invalid nested decay-node reference')
+          end if
+          node_referenced(identifier) = .true.
+        case (nlo_decay_leaf_child)
+          call check_leaf(identifier)
+          if (leaf_parent_values(identifier) /= node .or. &
+              leaf_referenced(identifier)) then
+            call fail_metadata('invalid decay-leaf reference')
+          end if
+          leaf_referenced(identifier) = .true.
+        case default
+          call fail_metadata('invalid decay-node child kind')
+        end select
+      end do
+    end do
+    do node = 1, number_of_nodes
+      if ((node_parent_values(node) == 0 .and. node_referenced(node)) .or. &
+          (node_parent_values(node) /= 0 .and. &
+           .not. node_referenced(node))) then
+        call fail_metadata('decay-node parentage is incomplete')
+      end if
+    end do
+    do leaf = 1, number_of_leaves
+      if (leaf_parent_values(leaf) < 1 .or. &
+          leaf_parent_values(leaf) > number_of_nodes .or. &
+          leaf_pdg_values(leaf) == 0 .or. .not. leaf_referenced(leaf)) then
+        call fail_metadata('incomplete DECAY_LEAF metadata')
+      end if
+    end do
+    if (node_pdg_values(corrected_node_value) /= &
+        corrected_parent_pdg_value) then
+      call fail_metadata('corrected node and PARENT records disagree')
+    end if
 
     if (production_born_qcd_order_value < 0 .or. &
         decay_born_qcd_order_value < 0 .or. &
@@ -419,7 +577,7 @@ contains
       end if
 
       visible_used = .false.
-      node_maps = 0
+      root_used = .false.
       do leg = 1, number_of_production_legs
         target = production_target_ids(leg, context)
         select case (production_target_kinds(leg, context))
@@ -427,18 +585,23 @@ contains
           call mark_visible_target(target, context_visible_counts(context), &
                                    visible_used)
         case (nlo_decay_node_target)
-          if (.not. production_final_values(leg) .or. target /= 1 .or. &
-              production_pdg_values(leg) /= corrected_parent_pdg_value) then
-            call fail_metadata('invalid corrected production node target')
+          call check_node(target)
+          if (.not. production_final_values(leg) .or. &
+              node_parent_values(target) /= 0 .or. &
+              production_pdg_values(leg) /= node_pdg_values(target) .or. &
+              root_used(target)) then
+            call fail_metadata('invalid production decay-node target')
           end if
-          node_maps = node_maps + 1
+          root_used(target) = .true.
         case default
           call fail_metadata('invalid production target kind')
         end select
       end do
-      if (node_maps /= 1) then
-        call fail_metadata('corrected parent is not mapped exactly once')
-      end if
+      do node = 1, number_of_nodes
+        if (node_parent_values(node) == 0 .and. .not. root_used(node)) then
+          call fail_metadata('a root decay node is absent from the context')
+        end if
+      end do
 
       node_maps = 0
       do leg = 1, context_local_counts(context)
@@ -451,17 +614,41 @@ contains
           call mark_visible_target(target, context_visible_counts(context), &
                                    visible_used)
         case (nlo_decay_node_target)
-          if (local_final_values(leg, context) .or. target /= 1 .or. &
-              local_pdg_values(leg, context) /= corrected_parent_pdg_value) then
+          call check_node(target)
+          if (local_final_values(leg, context)) then
+            if (node_parent_values(target) /= corrected_node_value .or. &
+                local_pdg_values(leg, context) /= node_pdg_values(target)) then
+              call fail_metadata('invalid local nested-node target')
+            end if
+          else if (target /= corrected_node_value .or. &
+                   local_pdg_values(leg, context) /= &
+                   corrected_parent_pdg_value) then
             call fail_metadata('invalid local corrected-parent target')
+          else
+            node_maps = node_maps + 1
           end if
-          node_maps = node_maps + 1
         case default
           call fail_metadata('invalid local target kind')
         end select
       end do
-      if (node_maps /= 1 .or. &
-          .not. all(visible_used(1:context_visible_counts(context)))) then
+      if (node_maps /= 1) then
+        call fail_metadata('corrected parent is not mapped exactly once')
+      end if
+      do leaf = 1, number_of_leaves
+        target = leaf_visible_values(leaf, context)
+        if (leaf_parent_values(leaf) == corrected_node_value) then
+          if (target /= 0) then
+            call fail_metadata('a direct corrected leaf has a LEAF_MAP')
+          end if
+          cycle
+        end if
+        if (target == 0) then
+          call fail_metadata('a static decay leaf has no visible target')
+        end if
+        call mark_visible_target(target, context_visible_counts(context), &
+                                 visible_used)
+      end do
+      if (.not. all(visible_used(1:context_visible_counts(context)))) then
         call fail_metadata('context does not cover the visible event')
       end if
     end do
@@ -585,7 +772,10 @@ contains
     node_leg = 0
     do local_first = 1, context_local_counts(born_context_id)
       if (local_target_kinds(local_first, born_context_id) == &
-          nlo_decay_node_target) node_leg = local_first
+          nlo_decay_node_target .and. &
+          .not. local_final_values(local_first, born_context_id)) then
+        node_leg = local_first
+      end if
     end do
     if (node_leg == 0) then
       call fail_metadata('Born decay context has no parent node')
@@ -992,12 +1182,109 @@ contains
   end function nlo_decay_real_to_born
 
 
+  integer function nlo_decay_corrected_node()
+    call require_enabled()
+    nlo_decay_corrected_node = corrected_node_value
+  end function nlo_decay_corrected_node
+
+
+  integer function nlo_decay_node_count()
+    call require_enabled()
+    nlo_decay_node_count = number_of_nodes
+  end function nlo_decay_node_count
+
+
+  integer function nlo_decay_leaf_count()
+    call require_enabled()
+    nlo_decay_leaf_count = number_of_leaves
+  end function nlo_decay_leaf_count
+
+
+  integer function nlo_decay_node_pdg(node)
+    integer, intent(in) :: node
+    call require_enabled()
+    call check_node(node)
+    nlo_decay_node_pdg = node_pdg_values(node)
+  end function nlo_decay_node_pdg
+
+
+  integer function nlo_decay_node_qcd_order(node)
+    integer, intent(in) :: node
+    call require_enabled()
+    call check_node(node)
+    nlo_decay_node_qcd_order = node_qcd_orders(node)
+  end function nlo_decay_node_qcd_order
+
+
+  integer function nlo_decay_node_child_count(node)
+    integer, intent(in) :: node
+    call require_enabled()
+    call check_node(node)
+    nlo_decay_node_child_count = node_child_counts(node)
+  end function nlo_decay_node_child_count
+
+
+  integer function nlo_decay_node_child_kind(node, child)
+    integer, intent(in) :: node, child
+    call require_enabled()
+    call check_node(node)
+    if (child < 1 .or. child > node_child_counts(node)) then
+      call fail_metadata('decay-node child is out of range')
+    end if
+    nlo_decay_node_child_kind = node_child_kinds(child, node)
+  end function nlo_decay_node_child_kind
+
+
+  integer function nlo_decay_node_child_id(node, child)
+    integer, intent(in) :: node, child
+    call require_enabled()
+    call check_node(node)
+    if (child < 1 .or. child > node_child_counts(node)) then
+      call fail_metadata('decay-node child is out of range')
+    end if
+    nlo_decay_node_child_id = node_child_ids(child, node)
+  end function nlo_decay_node_child_id
+
+
+  integer function nlo_decay_leaf_pdg(leaf)
+    integer, intent(in) :: leaf
+    call require_enabled()
+    call check_leaf(leaf)
+    nlo_decay_leaf_pdg = leaf_pdg_values(leaf)
+  end function nlo_decay_leaf_pdg
+
+
+  integer function nlo_decay_leaf_visible(context, leaf)
+    integer, intent(in) :: context, leaf
+    call require_enabled()
+    call check_context(context)
+    call check_leaf(leaf)
+    nlo_decay_leaf_visible = leaf_visible_values(leaf, context)
+  end function nlo_decay_leaf_visible
+
+
   subroutine check_production_leg(leg)
     integer, intent(in) :: leg
     if (leg < 1 .or. leg > number_of_production_legs) then
       call fail_metadata('production leg is out of range')
     end if
   end subroutine check_production_leg
+
+
+  subroutine check_node(node)
+    integer, intent(in) :: node
+    if (node < 1 .or. node > number_of_nodes) then
+      call fail_metadata('decay node is out of range')
+    end if
+  end subroutine check_node
+
+
+  subroutine check_leaf(leaf)
+    integer, intent(in) :: leaf
+    if (leaf < 1 .or. leaf > number_of_leaves) then
+      call fail_metadata('decay leaf is out of range')
+    end if
+  end subroutine check_leaf
 
 
   subroutine check_context(context)

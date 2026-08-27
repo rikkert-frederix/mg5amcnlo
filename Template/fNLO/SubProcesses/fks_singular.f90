@@ -17,8 +17,9 @@ module fks_singular_module
        map_core_color_pair
   use decay_chain_scales, only: corrected_born_qcd_squared_order
   use nlo_decay_metadata, only: has_nlo_decay, &
-       nlo_decay_context_for_fks, nlo_decay_local_count, &
-       nlo_decay_local_pdg, nlo_decay_fks_i, nlo_decay_fks_j, &
+       nlo_decay_born_context, nlo_decay_context_for_fks, &
+       nlo_decay_local_count, nlo_decay_local_pdg, &
+       nlo_decay_local_is_final, nlo_decay_fks_i, nlo_decay_fks_j, &
        nlo_decay_partner_count, nlo_decay_partner_local, &
        nlo_decay_map_color_link
   use nlo_decay_kinematics, only: get_nlo_decay_event_momenta, &
@@ -1552,6 +1553,8 @@ contains
     double precision dfac1
     integer fac_i, fac_j, i_fks_pdg, j_fks_pdg, iden(nexternal)
     integer real_particle_count, born_particle_count, born_pdg(nexternal)
+    integer decay_context, decay_born_context, decay_i, decay_j
+    integer decay_leg, decay_other
 
 
 
@@ -1620,9 +1623,18 @@ contains
 !
 ! We set fkssymmetryfactorBorn to zero when i_fks not a gluon
 !
-      i_fks_pdg = pdg_type(i_fks)
-      j_fks_pdg = pdg_type(j_fks)
-      if (has_decay_chains()) then
+      if (has_nlo_decay()) then
+        decay_context = nlo_decay_context_for_fks(nfksprocess)
+        decay_born_context = nlo_decay_born_context()
+        decay_i = nlo_decay_fks_i(nfksprocess)
+        decay_j = nlo_decay_fks_j(nfksprocess)
+        i_fks_pdg = nlo_decay_local_pdg(decay_context, decay_i)
+        j_fks_pdg = nlo_decay_local_pdg(decay_context, decay_j)
+      else
+        i_fks_pdg = pdg_type(i_fks)
+        j_fks_pdg = pdg_type(j_fks)
+      end if
+      if (has_decay_chains() .and. .not. has_nlo_decay()) then
         real_particle_count = active_core_count(nfksprocess)
         born_particle_count = context_core_count(born_context())
         born_pdg = 0
@@ -1636,10 +1648,31 @@ contains
 
       fac_i_FKS(nFKSprocess) = 0
       fac_j_FKS(nFKSprocess) = 0
-      do i = nincoming + 1, real_particle_count
-        if (i_fks_pdg .eq. pdg_type(i)) fac_i_FKS(nFKSprocess) = fac_i_FKS(nFKSprocess) + 1
-        if (j_fks_pdg .eq. pdg_type(i)) fac_j_FKS(nFKSprocess) = fac_j_FKS(nFKSprocess) + 1
-      end do
+      if (has_nlo_decay()) then
+        ! The NWA labels particles by their production/decay history.  Only
+        ! permutations inside the corrected decay belong to this FKS family;
+        ! equal-PDG legs from production or another decay are spectators.
+        do decay_leg = 1, nlo_decay_local_count(decay_context)
+          if (.not. nlo_decay_local_is_final(decay_context, decay_leg)) cycle
+          if (i_fks_pdg .eq. &
+              nlo_decay_local_pdg(decay_context, decay_leg)) then
+            fac_i_FKS(nFKSprocess) = fac_i_FKS(nFKSprocess) + 1
+          end if
+          if (j_fks_pdg .eq. &
+              nlo_decay_local_pdg(decay_context, decay_leg)) then
+            fac_j_FKS(nFKSprocess) = fac_j_FKS(nFKSprocess) + 1
+          end if
+        end do
+      else
+        do i = nincoming + 1, real_particle_count
+          if (i_fks_pdg .eq. pdg_type(i)) then
+            fac_i_FKS(nFKSprocess) = fac_i_FKS(nFKSprocess) + 1
+          end if
+          if (j_fks_pdg .eq. pdg_type(i)) then
+            fac_j_FKS(nFKSprocess) = fac_j_FKS(nFKSprocess) + 1
+          end if
+        end do
+      end if
 ! Overwrite if initial state singularity
       if (j_fks .le. nincoming) fac_j_FKS(nFKSprocess) = 1
 
@@ -1671,9 +1704,20 @@ contains
       end if
 
       ngluons_FKS(nFKSprocess) = 0
-      do i = nincoming + 1, real_particle_count
-        if (pdg_type(i) .eq. 21) ngluons_FKS(nFKSprocess) = ngluons_FKS(nFKSprocess) + 1
-      end do
+      if (has_nlo_decay()) then
+        do decay_leg = 1, nlo_decay_local_count(decay_context)
+          if (.not. nlo_decay_local_is_final(decay_context, decay_leg)) cycle
+          if (nlo_decay_local_pdg(decay_context, decay_leg) .eq. 21) then
+            ngluons_FKS(nFKSprocess) = ngluons_FKS(nFKSprocess) + 1
+          end if
+        end do
+      else
+        do i = nincoming + 1, real_particle_count
+          if (pdg_type(i) .eq. 21) then
+            ngluons_FKS(nFKSprocess) = ngluons_FKS(nFKSprocess) + 1
+          end if
+        end do
+      end if
 
 ! Set color types of i_fks, j_fks and fks_mother.
       i_type = particle_type(i_fks)
@@ -1689,33 +1733,72 @@ contains
       do i = 1, nexternal
         iden(i) = 1
       end do
-      do i = nincoming + 2, real_particle_count
-        do j = nincoming + 1, i - 1
-          if (pdg_type(j) .eq. pdg_type(i)) then
-            iden(j) = iden(j) + 1
-            iden_real_FKS(nFKSprocess) = iden_real_FKS(nFKSprocess)*iden(j)
-            exit
-          end if
+      if (has_nlo_decay()) then
+        do decay_leg = 2, nlo_decay_local_count(decay_context)
+          if (.not. nlo_decay_local_is_final(decay_context, decay_leg)) cycle
+          do decay_other = 1, decay_leg - 1
+            if (.not. nlo_decay_local_is_final( &
+                decay_context, decay_other)) cycle
+            if (nlo_decay_local_pdg(decay_context, decay_other) .eq. &
+                nlo_decay_local_pdg(decay_context, decay_leg)) then
+              iden(decay_other) = iden(decay_other) + 1
+              iden_real_FKS(nFKSprocess) = &
+                   iden_real_FKS(nFKSprocess)*iden(decay_other)
+              exit
+            end if
+          end do
         end do
-      end do
+      else
+        do i = nincoming + 2, real_particle_count
+          do j = nincoming + 1, i - 1
+            if (pdg_type(j) .eq. pdg_type(i)) then
+              iden(j) = iden(j) + 1
+              iden_real_FKS(nFKSprocess) = &
+                   iden_real_FKS(nFKSprocess)*iden(j)
+              exit
+            end if
+          end do
+        end do
+      end if
 ! Compute the identical particle symmetry factor that is in the
 ! Born matrix elements.
       iden_born_FKS(nFKSprocess) = 1
       call weight_lines_allocated(nexternal, max_contr, max_wgt, max_iproc)
       call set_pdg_impl(0, nFKSprocess, idup)
-      if (.not. has_decay_chains()) born_pdg = pdg_uborn(:, 0)
+      if (.not. has_decay_chains() .and. .not. has_nlo_decay()) then
+        born_pdg = pdg_uborn(:, 0)
+      end if
       do i = 1, nexternal
         iden(i) = 1
       end do
-      do i = nincoming + 2, born_particle_count
-        do j = nincoming + 1, i - 1
-          if (born_pdg(j) .eq. born_pdg(i)) then
-            iden(j) = iden(j) + 1
-            iden_born_FKS(nFKSprocess) = iden_born_FKS(nFKSprocess)*iden(j)
-            exit
-          end if
+      if (has_nlo_decay()) then
+        do decay_leg = 2, nlo_decay_local_count(decay_born_context)
+          if (.not. nlo_decay_local_is_final( &
+              decay_born_context, decay_leg)) cycle
+          do decay_other = 1, decay_leg - 1
+            if (.not. nlo_decay_local_is_final( &
+                decay_born_context, decay_other)) cycle
+            if (nlo_decay_local_pdg(decay_born_context, decay_other) .eq. &
+                nlo_decay_local_pdg(decay_born_context, decay_leg)) then
+              iden(decay_other) = iden(decay_other) + 1
+              iden_born_FKS(nFKSprocess) = &
+                   iden_born_FKS(nFKSprocess)*iden(decay_other)
+              exit
+            end if
+          end do
         end do
-      end do
+      else
+        do i = nincoming + 2, born_particle_count
+          do j = nincoming + 1, i - 1
+            if (born_pdg(j) .eq. born_pdg(i)) then
+              iden(j) = iden(j) + 1
+              iden_born_FKS(nFKSprocess) = &
+                   iden_born_FKS(nFKSprocess)*iden(j)
+              exit
+            end if
+          end do
+        end do
+      end if
     end if
 
     i_type = i_type_FKS(nFKSprocess)

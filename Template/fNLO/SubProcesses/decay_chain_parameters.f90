@@ -1,7 +1,8 @@
 module decay_chain_parameters
   use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
   use decay_chain_metadata, only: has_decay_chains, decay_node_count, node_pdg
-  use nlo_decay_metadata, only: has_nlo_decay, corrected_parent_pdg
+  use nlo_decay_metadata, only: has_nlo_decay, corrected_parent_pdg, &
+       nlo_decay_node_count, nlo_decay_node_pdg
   implicit none
   private
 
@@ -195,17 +196,24 @@ contains
         end if
       end do
     else if (has_nlo_decay()) then
-      width_index = find_pdg(corrected_parent_pdg(), width_pdgs)
-      if (width_index == 0) then
-        call fail_parameters('the corrected decay has no physical width')
-      end if
-      if (.not. width_is_nlo(width_index)) then
-        call fail_parameters(&
-             'the corrected decay requires an NLO_DECAY_WIDTH record')
-      end if
-      if (find_pdg(corrected_parent_pdg(), scale_pdgs) == 0) then
-        call fail_parameters('the corrected decay has no renormalisation scale')
-      end if
+      do node = 1, nlo_decay_node_count()
+        pdg = nlo_decay_node_pdg(node)
+        width_index = find_pdg(pdg, width_pdgs)
+        if (width_index == 0) then
+          call fail_parameters('an NLO-decay topology node has no width')
+        end if
+        if (abs(pdg) == abs(corrected_parent_pdg())) then
+          if (.not. width_is_nlo(width_index)) then
+            call fail_parameters(&
+                 'the corrected species requires an NLO_DECAY_WIDTH record')
+          end if
+        else if (width_is_nlo(width_index)) then
+          call fail_parameters('an uncorrected node has an NLO width record')
+        end if
+        if (find_pdg(pdg, scale_pdgs) == 0) then
+          call fail_parameters('an NLO-decay node has no renormalisation scale')
+        end if
+      end do
     end if
     initialized = .true.
   end subroutine initialize_decay_chain_parameters

@@ -170,6 +170,38 @@ pass `test_ME`, and cancel virtual poles at all 20 test points with a
 `Gamma_t^NLO = 1.3646(38) GeV`, the complete NLO-decay integration gives
 `463.9(45) pb`, consistent with the corresponding `463.9(46) pb` LO result.
 
+### Milestone 8: complete LO decay forests and factorized symmetry
+
+The eighth milestone permits the single corrected decay to occur at any
+unambiguous position in a concrete decay tree.  Other production resonances
+may have independent LO decays, the corrected node may itself have nested LO
+decays, and it may be nested below one or more LO ancestors.  Metadata format
+5 serializes the complete decay forest, its leaves, the corrected-node ID,
+and the context-dependent visible maps.
+
+Born phase space now expands that forest recursively.  Each forced node is
+generated on shell, contributes its own decay phase-space dimensions and
+narrow-width factor, and uses its own decay scale and width record.  During a
+real or counterevent only the corrected node receives the FKS map; all other
+decays are regenerated with the same Born random variables and their fixed
+on-shell parent momenta.  Both a corrected top followed by an LO `W` decay
+and an NLO-corrected `W` below an LO top have passed compiled soft/collinear,
+pole-cancellation, and low-statistics integration checks.
+
+Identical-particle factors are evaluated in the corrected decay's local
+factorized subprocess.  In particular, a production gluon and a gluon emitted
+by the corrected decay are history-labelled particles and do not acquire a
+spurious `2!` suppression.  The full decay topology and all visible maps are
+part of matrix-element grouping, so only genuinely identical composed
+matrix elements are merged.
+
+The acceptance test combines these features in one cut-based run: it uses a
+production gluon, an NLO-corrected `W` nested in a top decay, an additional
+anti-top decay, and non-zero jet transverse-momentum and rapidity cuts.  It
+requires finite non-zero NLO output, passing soft and collinear limits, and no
+NLO-decay runtime errors.  The fNLO limit-test driver also consumes and
+validates the legacy `ME/ME` selector used by the production test harness.
+
 The implementation is split as follows:
 
 - `madgraph/interface/amcatnlo_interface.py`: syntax routing, validation and
@@ -350,10 +382,7 @@ synthetic internal labels are not supported by the legacy level-based drawer.
 
 ## Deferred Work
 
-- Equivalent decay flavour grouping, additional LO decays and nested corrected
-  decays.
-- Permutation and symmetry-factor composition when a production final-state
-  particle is identical to the decay-owned real-emission particle.
+- More than one perturbatively corrected decay in the same event.
 - Automated computation of the NLO total width when the model or input card
   does not already provide one.
 

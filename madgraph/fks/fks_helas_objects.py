@@ -619,19 +619,26 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
                 matrix_element_list = []
                 for production_amplitude in \
                         fksmulti.nlo_decay_production_amplitudes:
-                    # Composition replaces every Born, real and virtual HELAS
-                    # object.  Start from a fresh decay-owned FKS family for
-                    # each concrete production channel, then let the ordinary
-                    # equality/add_process path below group identical MEs.
-                    matrix_element = FKSHelasProcess(
-                        proc, [], [],
-                        loop_optimized=self.loop_optimized,
-                        gen_color=True)
-                    matrix_element_list.append(
-                        fks_decay.compose_nlo_decay_helas_process(
-                            matrix_element,
+                    compositions = \
+                        fks_decay.generate_nlo_decay_composition_inputs(
+                            fksmulti.nlo_decay_full_process_definition,
                             production_amplitude,
-                            fksmulti.nlo_decay_selector))
+                            fksmulti.nlo_decay_path,
+                            fksmulti.nlo_decay_selector,
+                            fksmulti.nlo_decay_parent_pdg)
+                    for composition in compositions:
+                        # Composition replaces every Born, real and virtual
+                        # HELAS object.  Start from a fresh decay-owned FKS
+                        # family for each concrete LO environment, then let
+                        # the ordinary equality/add_process path below group
+                        # identical matrix elements.
+                        matrix_element = FKSHelasProcess(
+                            proc, [], [],
+                            loop_optimized=self.loop_optimized,
+                            gen_color=True)
+                        matrix_element_list.append(
+                            fks_decay.compose_nlo_decay_helas_process(
+                                matrix_element, composition))
             elif proc.decay_chains:
                 assignments = fks_decay.generate_decay_assignments(
                     proc.decay_chains, proc.born_amp.get('process'))

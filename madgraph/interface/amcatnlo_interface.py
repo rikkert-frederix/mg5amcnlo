@@ -842,7 +842,10 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
             fksproc.nlo_decay_production_amplitudes = \
                 production_amplitudes
             fksproc.nlo_decay_selector = nlo_decay_spec['selector']
+            fksproc.nlo_decay_path = nlo_decay_spec['decay_path']
             fksproc.nlo_decay_parent_pdg = nlo_decay_spec['parent_pdg']
+            fksproc.nlo_decay_root_parent_pdg = \
+                nlo_decay_spec['root_parent_pdg']
             fksproc.nlo_decay_mode = nlo_decay_spec['mode']
             fksproc.nlo_decay_full_process_definition = myprocdef
             self._fks_multi_proc = fksproc

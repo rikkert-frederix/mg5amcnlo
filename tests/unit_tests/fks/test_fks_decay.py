@@ -447,7 +447,7 @@ class TestFKSDecayChains(unittest.TestCase):
 
         metadata = matrix_element.nlo_decay_metadata
         self.assertEqual(metadata['status'], 'INTEGRATION_READY')
-        self.assertEqual(metadata['format'], 4)
+        self.assertEqual(metadata['format'], 5)
         self.assertEqual(metadata['production_born_qcd_order'], 4)
         self.assertEqual(metadata['decay_born_qcd_order'], 0)
         self.assertEqual(metadata['parent_pdg'], 6)
@@ -510,7 +510,10 @@ class TestFKSDecayChains(unittest.TestCase):
              'visible_first': 3, 'visible_second': 3,
              'generated_index': 1}])
         info = fks_decay.nlo_decay_info_text(metadata)
-        self.assertIn('FORMAT 4\n', info)
+        self.assertIn('FORMAT 5\n', info)
+        self.assertIn('FORCED_SPECIES 1 6\n', info)
+        self.assertIn('TOPOLOGY 1 2 1\n', info)
+        self.assertIn('NODE 1 0 6 0 2 2 LEAF 1 LEAF 2\n', info)
         self.assertIn('QCD_ORDERS 4 0\n', info)
         self.assertIn('COUNTS 2 1 1 2\n', info)
         self.assertIn('PRODUCTION_MAP 1 3 NODE 1\n', info)
@@ -857,7 +860,7 @@ class TestFKSDecayChains(unittest.TestCase):
             with open(os.path.join(
                     subprocess_dir, 'nlo_decay_info.dat')) as stream:
                 metadata = stream.read()
-            self.assertIn('FORMAT 4\n', metadata)
+            self.assertIn('FORMAT 5\n', metadata)
             self.assertIn('STATUS INTEGRATION_READY\n', metadata)
             self.assertIn('QCD_ORDERS 4 0\n', metadata)
             self.assertIn('PRODUCTION_MAP 1 3 NODE 1\n', metadata)
@@ -894,7 +897,155 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertTrue(os.path.islink(os.path.join(
                 subprocess_dir, 'decay_card.dat')))
 
-    def test_nlo_decay_prototype_restrictions(self):
+    def test_nlo_decay_additional_and_nested_decay_trees(self):
+        cases = [{
+            'process': (
+                'u u~ > t t~, '
+                '(t > w+ b QED=1 [real=QCD]), (t~ > w- b~)'),
+            'born': [2, -2, 5, 24, -24, -5],
+            'real': [2, -2, 5, 24, 21, -24, -5],
+            'corrected': 6,
+            'parents': {-6: 0, 6: 0},
+            'forced_species': [6]}, {
+            'process': (
+                'u u~ > t t~, '
+                '(t > w+ b, '
+                'w+ > u d~ QED=1 [real=QCD]), (t~ > w- b~)'),
+            'born': [2, -2, 2, -1, 5, -24, -5],
+            'real': [2, -2, 2, -1, 21, 5, -24, -5],
+            'corrected': 24,
+            'parents': {-6: 0, 6: 0, 24: 6},
+            'forced_species': [6, 24]}, {
+            'process': (
+                'u u~ > t t~, '
+                '(t > w+ b QED=1 [real=QCD], '
+                'w+ > u d~), (t~ > w- b~)'),
+            'born': [2, -2, 5, 2, -1, -24, -5],
+            'real': [2, -2, 5, 2, -1, 21, -24, -5],
+            'corrected': 6,
+            'parents': {-6: 0, 6: 0, 24: 6},
+            'forced_species': [6, 24]}]
+
+        for case in cases:
+            with self.subTest(process=case['process']):
+                command = self.generate(case['process'])
+                helas = fks_helas_objects.FKSHelasMultiProcess(
+                    command._fks_multi_proc, loop_optimized=False)
+                self.assertEqual(len(helas['matrix_elements']), 1)
+                matrix_element = helas['matrix_elements'][0]
+                metadata = matrix_element.nlo_decay_metadata
+
+                self.assertEqual([
+                    leg.get('id') for leg in matrix_element.born_me[
+                        'processes'][0].get_legs_with_decays()], case['born'])
+                self.assertEqual([
+                    leg.get('id') for leg in matrix_element.real_processes[0].
+                    matrix_element['processes'][0].get_legs_with_decays()],
+                    case['real'])
+                nodes_by_pdg = dict(
+                    (node['pdg'], node) for node in metadata['nodes'])
+                self.assertEqual(set(nodes_by_pdg), set(case['parents']))
+                actual_parents = {}
+                for pdg, node in nodes_by_pdg.items():
+                    parent = node['parent']
+                    actual_parents[pdg] = (
+                        metadata['nodes'][parent - 1]['pdg']
+                        if parent else 0)
+                self.assertEqual(actual_parents, case['parents'])
+                self.assertEqual(
+                    metadata['corrected_node'],
+                    nodes_by_pdg[case['corrected']]['id'])
+                self.assertEqual(
+                    metadata['forced_species'], case['forced_species'])
+                self.assertEqual(metadata['format'], 5)
+
+                for context in metadata['contexts']:
+                    production_nodes = [
+                        target for kind, target in
+                        context['production_map'].values()
+                        if kind == 'NODE']
+                    self.assertEqual(
+                        set(production_nodes),
+                        set(node['id'] for node in metadata['nodes']
+                            if node['parent'] == 0))
+                    self.assertEqual(
+                        context['local_map'][1],
+                        ('NODE', metadata['corrected_node']))
+
+    def test_nlo_decay_virtual_supports_nested_corrections(self):
+        cases = [(
+            'u u~ > t t~, '
+            '(t > w+ b, w+ > u d~ QED=1 [QCD]), (t~ > w- b~)',
+            24), (
+            'u u~ > t t~, '
+            '(t > w+ b QED=1 [QCD], w+ > u d~), (t~ > w- b~)',
+            6)]
+
+        for process, corrected_pdg in cases:
+            with self.subTest(process=process):
+                command = self.generate(process)
+                matrix_element = fks_helas_objects.FKSHelasMultiProcess(
+                    command._fks_multi_proc,
+                    loop_optimized=False)['matrix_elements'][0]
+                virtual = matrix_element.virt_matrix_element
+                metadata = matrix_element.nlo_decay_metadata
+
+                self.assertIsNotNone(virtual)
+                self.assertTrue(virtual.get_loop_diagrams())
+                self.assertTrue(virtual.get_born_diagrams())
+                self.assertEqual(
+                    virtual.get_nexternal_ninitial(),
+                    matrix_element.born_me.get_nexternal_ninitial())
+                self.assertEqual(
+                    metadata['nodes'][metadata['corrected_node'] - 1]['pdg'],
+                    corrected_pdg)
+                self.assertEqual(
+                    metadata['virtual_composition'],
+                    'CROSSED_PRODUCTION_CURRENT')
+                self.assertGreater(metadata['virtual_current_count'], 0)
+
+    def test_nlo_decay_symmetry_is_local_to_the_corrected_decay(self):
+        command = self.generate(
+            'u u~ > t t~ g, t > w+ b QED=1 [real=QCD]')
+        matrix_element = fks_helas_objects.FKSHelasMultiProcess(
+            command._fks_multi_proc,
+            loop_optimized=False)['matrix_elements'][0]
+        real = matrix_element.real_processes[0].matrix_element
+        metadata = matrix_element.nlo_decay_metadata
+
+        born_pdgs = [
+            leg.get('id') for leg in matrix_element.born_me[
+                'processes'][0].get_legs_with_decays()]
+        real_pdgs = [
+            leg.get('id') for leg in
+            real['processes'][0].get_legs_with_decays()]
+        self.assertEqual(born_pdgs.count(21), 1)
+        self.assertEqual(real_pdgs.count(21), 2)
+        # The production and decay gluons belong to different factorized
+        # subprocesses; inserting the decay must not create a spurious 2!.
+        self.assertEqual(
+            matrix_element.born_me['identical_particle_factor'], 1)
+        self.assertEqual(real['identical_particle_factor'], 1)
+
+        real_context = next(
+            context for context in metadata['contexts']
+            if context['kind'] == 'REAL')
+        local_final_pdgs = [
+            leg['pdg'] for leg in real_context['local_legs']
+            if leg['state'] == 'F']
+        self.assertEqual(local_final_pdgs.count(21), 1)
+        emitted_target = metadata['fks_maps'][0]['targets']['i']
+        self.assertEqual(emitted_target[0], 'LEG')
+        self.assertEqual(real_pdgs[emitted_target[1] - 1], 21)
+        production_gluons = [
+            target for number, (kind, target) in
+            real_context['production_map'].items()
+            if (kind == 'LEG' and
+                metadata['production_legs'][number - 1]['pdg'] == 21)]
+        self.assertEqual(len(production_gluons), 1)
+        self.assertNotEqual(production_gluons[0], emitted_target[1])
+
+    def test_nlo_decay_generation_restrictions(self):
         command = self.generate(
             'u u~ > t t~, '
             '(t > w+ b QED^2=2 QCD^2=0 [real=QCD])')
@@ -932,14 +1083,6 @@ class TestFKSDecayChains(unittest.TestCase):
                 'u u~ > t t~, '
                 '(t > w+ b QED^2=2 QCD^2=0 [real=QCD]), '
                 '(t~ > w- b~ QED^2=2 QCD^2=0 [real=QCD])')
-
-        with self.assertRaisesRegex(
-                InvalidCmd, 'one root-level decay'):
-            self.generate(
-                'u u~ > t t~, '
-                '(t > w+ b, '
-                'w+ > u d~ QED^2=2 QCD^2=0 [real=QCD])')
-
 
 if __name__ == '__main__':
     import unittest as unittest_main

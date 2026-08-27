@@ -6,7 +6,9 @@ module decay_chain_scales
        use_decayed_production_ren_scale_momenta
   use decay_chain_kinematics, only: contract_visible_momenta
   use nlo_decay_metadata, only: has_nlo_decay, corrected_parent_pdg, &
-       nlo_decay_production_born_qcd_order, nlo_decay_born_qcd_order
+       nlo_decay_production_born_qcd_order, nlo_decay_born_qcd_order, &
+       nlo_decay_node_count, nlo_decay_node_pdg, &
+       nlo_decay_node_qcd_order, nlo_decay_corrected_node
   use nlo_decay_kinematics, only: get_nlo_decay_production_momenta
   use alfas_functions_module, only: alphas
   implicit none
@@ -31,9 +33,12 @@ contains
         decay_qcd_squared_order = total_qcd_order - &
              nlo_decay_production_born_qcd_order()
       else
-        decay_qcd_squared_order = nlo_decay_born_qcd_order()
+        do node = 1, nlo_decay_node_count()
+          decay_qcd_squared_order = decay_qcd_squared_order + &
+               2*nlo_decay_node_qcd_order(node)
+        end do
       end if
-      if (decay_qcd_squared_order < nlo_decay_born_qcd_order()) then
+      if (decay_qcd_squared_order < nlo_decay_born_total_qcd_order()) then
         call fail_scales('total QCD order is below the NLO-decay Born order')
       end if
       return
@@ -53,7 +58,7 @@ contains
       production_qcd_squared_order = &
            nlo_decay_production_born_qcd_order()
       if (total_qcd_order - production_qcd_squared_order < &
-          nlo_decay_born_qcd_order()) then
+          nlo_decay_born_total_qcd_order()) then
         call fail_scales('NLO-decay QCD orders are inconsistent')
       end if
       return
@@ -70,18 +75,30 @@ contains
 
   double precision function decay_qcd_coupling_weight(qcd_power)
     integer, intent(in), optional :: qcd_power
-    integer :: node, qcd_order
+    integer :: node, qcd_order, total_power, corrected_power
     double precision :: coupling, scale
     double precision, parameter :: pi = 3.14159265358979323846d0
 
     decay_qcd_coupling_weight = 1d0
     if (has_nlo_decay()) then
-      qcd_order = decay_qcd_squared_order()
-      if (present(qcd_power)) qcd_order = qcd_power
-      if (qcd_order == 0) return
-      scale = decay_renormalization_scale(corrected_parent_pdg())
-      coupling = sqrt(4d0*pi*alphas(scale))
-      decay_qcd_coupling_weight = coupling**qcd_order
+      total_power = decay_qcd_squared_order()
+      if (present(qcd_power)) total_power = qcd_power
+      corrected_power = total_power - nlo_decay_static_qcd_order()
+      if (corrected_power < nlo_decay_born_qcd_order()) then
+        call fail_scales('corrected-decay QCD power is below its Born order')
+      end if
+      do node = 1, nlo_decay_node_count()
+        if (node == nlo_decay_corrected_node()) then
+          qcd_order = corrected_power
+        else
+          qcd_order = 2*nlo_decay_node_qcd_order(node)
+        end if
+        if (qcd_order == 0) cycle
+        scale = decay_renormalization_scale(nlo_decay_node_pdg(node))
+        coupling = sqrt(4d0*pi*alphas(scale))
+        decay_qcd_coupling_weight = decay_qcd_coupling_weight* &
+             coupling**qcd_order
+      end do
       return
     end if
     if (.not. has_decay_chains()) return
@@ -94,6 +111,23 @@ contains
            coupling**(2*qcd_order)
     end do
   end function decay_qcd_coupling_weight
+
+
+  integer function nlo_decay_static_qcd_order()
+    integer :: node
+    nlo_decay_static_qcd_order = 0
+    do node = 1, nlo_decay_node_count()
+      if (node == nlo_decay_corrected_node()) cycle
+      nlo_decay_static_qcd_order = nlo_decay_static_qcd_order + &
+           2*nlo_decay_node_qcd_order(node)
+    end do
+  end function nlo_decay_static_qcd_order
+
+
+  integer function nlo_decay_born_total_qcd_order()
+    nlo_decay_born_total_qcd_order = nlo_decay_static_qcd_order() + &
+         nlo_decay_born_qcd_order()
+  end function nlo_decay_born_total_qcd_order
 
 
   double precision function decay_qcd_coupling_rescaling(production_g, &

@@ -393,21 +393,20 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         nlo_width_species = set()
         for metadata_path in metadata_paths:
             if os.path.basename(metadata_path) == 'nlo_decay_info.dat':
-                records = []
+                parent_records = []
                 with open(metadata_path) as metadata_file:
                     for line in metadata_file:
                         if line.startswith('PARENT '):
-                            records.append(line.split())
-                if len(records) != 1 or len(records[0]) != 3:
+                            parent_records.append(line.split())
+                if (len(parent_records) != 1 or
+                        len(parent_records[0]) != 3):
                     raise MadGraph5Error(
                         'Expected one PARENT record in %s' % metadata_path)
-                parent_pdg = abs(int(records[0][1]))
+                parent_pdg = abs(int(parent_records[0][1]))
                 if parent_pdg == 0:
                     raise MadGraph5Error(
                         'Malformed PARENT record in %s' % metadata_path)
-                species.add(parent_pdg)
                 nlo_width_species.add(parent_pdg)
-                continue
 
             records = []
             with open(metadata_path) as metadata_file:

@@ -739,6 +739,115 @@ class MECmdShell(IOTests.IOTestManager):
         check_html_page(self, pjoin(self.path, 'HTML', 'run_01', 'results.html'))
 
 
+    @set_global()
+    def test_calculate_xsect_nlo_decay_with_cuts_and_identical_gluon(self):
+        """Integrate an NLO decay with non-inclusive, resonance-aware cuts."""
+
+        cwd = os.getcwd()
+        interface = MGCmd.MasterCmd()
+        interface.no_notification()
+        interface.exec_cmd(
+            'import model loop_sm', errorhandling=False,
+            printcmd=False, precmd=True, postcmd=True)
+        interface.exec_cmd(
+            'generate u u~ > t t~ g, '
+            '(t > w+ b, '
+            'w+ > u d~ QED^2=2 QCD^2=0 [QCD]), '
+            '(t~ > w- b~)',
+            errorhandling=False, printcmd=False, precmd=True, postcmd=True)
+        interface.exec_cmd(
+            'output fNLO %s -f' % self.path,
+            errorhandling=False, printcmd=False, precmd=True, postcmd=True)
+        self.assertEqual(cwd, os.getcwd())
+
+        self.cmd_line = NLOCmd.aMCatNLOCmdShell(me_dir=self.path)
+        self.cmd_line.no_notification()
+        self.cmd_line.run_cmd(
+            'set automatic_html_opening False --no_save')
+        run_card_path = pjoin(self.path, 'Cards', 'run_card.dat')
+        run_card = banner.RunCardNLO(run_card_path)
+        run_card['req_acc_fo'] = -1.
+        run_card['npoints_fo_grid'] = 80
+        run_card['niters_fo_grid'] = 1
+        run_card['npoints_fo'] = 120
+        run_card['niters_fo'] = 1
+        run_card['fixed_ren_scale'] = True
+        run_card['fixed_fac_scale'] = True
+        run_card['mur_ref_fixed'] = 173.
+        run_card['muf_ref_fixed'] = 173.
+        run_card['ptj'] = 20.
+        run_card['etaj'] = 4.
+        run_card.write(
+            run_card_path,
+            template=pjoin(self.path, 'Cards', 'run_card_default.dat'))
+
+        with open(run_card_path) as stream:
+            run_card = stream.read()
+        self.assertRegex(run_card, r'\b20(?:\.0*)?\s*=\s*ptj\b')
+        self.assertRegex(run_card, r'\b4(?:\.0*)?\s*=\s*etaj\b')
+
+        metadata_files = []
+        subprocess_root = pjoin(self.path, 'SubProcesses')
+        for name in os.listdir(subprocess_root):
+            metadata_path = pjoin(
+                subprocess_root, name, 'nlo_decay_info.dat')
+            if os.path.isfile(metadata_path):
+                metadata_files.append(metadata_path)
+        self.assertTrue(metadata_files)
+        for metadata_path in metadata_files:
+            with open(metadata_path) as stream:
+                metadata = stream.read()
+            self.assertIn('FORMAT 5\n', metadata)
+            self.assertIn('STATUS INTEGRATION_READY\n', metadata)
+            self.assertIn('PARENT 24 1\n', metadata)
+            self.assertIn('FORCED_SPECIES 2 6 24\n', metadata)
+            self.assertIn('TOPOLOGY 3 5 ', metadata)
+
+        self.do('calculate_xsect NLO -f')
+
+        event_dir = pjoin(self.path, 'Events', 'run_01')
+        for filename in [
+                'MADatNLO.HwU', 'res_0.txt', 'res_1.txt', 'summary.txt',
+                'run_01_tag_1_banner.txt', 'alllogs_0.html',
+                'alllogs_1.html']:
+            self.assertTrue(os.path.exists(pjoin(event_dir, filename)))
+
+        with open(pjoin(event_dir, 'summary.txt')) as stream:
+            summary = stream.read()
+        result = re.search(
+            r'Total cross section:\s*([-+0-9.eE]+)\s*\+-\s*([-+0-9.eE]+)',
+            summary)
+        self.assertIsNotNone(result)
+        cross_section, error = map(float, result.groups())
+        self.assertTrue(math.isfinite(cross_section))
+        self.assertTrue(math.isfinite(error))
+        self.assertNotEqual(cross_section, 0.)
+        self.assertGreaterEqual(error, 0.)
+
+        test_me_logs = []
+        for root, _, filenames in os.walk(pjoin(self.path, 'SubProcesses')):
+            for filename in filenames:
+                if filename == 'test_ME.log':
+                    test_me_logs.append(pjoin(root, filename))
+        self.assertTrue(test_me_logs)
+        for test_me_log in test_me_logs:
+            with open(test_me_log, errors='replace') as stream:
+                test_me = stream.read()
+            self.assertRegex(test_me, r'Soft test\s+1 PASSED')
+            self.assertRegex(test_me, r'Collinear test\s+1 PASSED')
+            self.assertNotRegex(test_me, r'Soft test\s+1 FAILED')
+            self.assertNotRegex(test_me, r'Collinear test\s+1 FAILED')
+
+        for root, _, filenames in os.walk(pjoin(self.path, 'SubProcesses')):
+            for filename in filenames:
+                if not filename.startswith('log'):
+                    continue
+                with open(pjoin(root, filename), errors='replace') as stream:
+                    log = stream.read()
+                self.assertNotIn('ERROR in nlo_decay', log)
+                self.assertNotIn('Fatal error in NLO-decay', log)
+
+
     def test_calculate_xsect_lo(self):
         """test the param_card created is correct"""
         
