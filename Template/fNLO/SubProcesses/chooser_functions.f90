@@ -6,6 +6,7 @@ module chooser_functions_module
        fks_j_from_i_d, particle_type_d, pdg_type_d, &
        need_color_links_d
   use weight_lines, only: pdg, pdg_uborn
+  use decay_chain_metadata, only: has_decay_chains
   implicit none
   private
 
@@ -39,6 +40,7 @@ module chooser_functions_module
   public :: leshouche_inc_chooser_impl
   public :: get_mother_colour_impl
   public :: set_pdg_impl
+  public :: get_born_pdg_impl
 
   interface
     double precision function get_mass_from_id(id)
@@ -528,6 +530,7 @@ contains
     integer, intent(in) :: ict, ifks
     integer, intent(in) :: idup(:, :)
     integer :: particle
+    integer :: born_pdgs(nexternal)
 
     call validate_process_dimensions()
     call validate_fks_metadata()
@@ -535,6 +538,11 @@ contains
     do particle = 1, nexternal
       pdg(particle, ict) = idup(particle, 1)
     end do
+    if (has_decay_chains()) then
+      call get_born_pdg_impl(1, born_pdgs)
+      pdg_uborn(:, ict) = born_pdgs
+      return
+    end if
     do particle = 1, nexternal
       if (particle < fks_j_d(ifks)) then
         pdg_uborn(particle, ict) = pdg(particle, ict)
@@ -561,6 +569,24 @@ contains
       end if
     end do
   end subroutine set_pdg_impl
+
+
+  subroutine get_born_pdg_impl(process, born_pdgs)
+    integer, intent(in) :: process
+    integer, intent(out) :: born_pdgs(:)
+
+    if (.not. leshouche_initialized) then
+      call fail_chooser('Les Houches data are not initialized')
+    end if
+    if (size(born_pdgs) /= nexternal) then
+      call fail_chooser('Born PDG output has the wrong size')
+    end if
+    if (process < 1 .or. process > size(born_idup_values, 2)) then
+      call fail_chooser('Born subprocess index is out of range')
+    end if
+    born_pdgs = 21
+    born_pdgs(1:nexternal - 1) = born_idup_values(:, process)
+  end subroutine get_born_pdg_impl
 
 
   subroutine validate_configs_input(max_branch_used_in, &

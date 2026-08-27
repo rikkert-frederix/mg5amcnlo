@@ -30,6 +30,7 @@ import madgraph.various.misc as misc
 from madgraph import InvalidCmd
 
 DECAY_DUMMY_WIDTH_RATIO = 0.1
+DECAY_DUMMY_WIDTH_FUNCTION = 'FNLO_DECAY_DUMMY_WIDTH_RATIO()'
 
 
 def _iter_decay_definitions(decay_chains):
@@ -257,6 +258,30 @@ def get_root_decay_ids(decay_chains):
     return result
 
 
+def _decay_node_qcd_order(process):
+    """Return the unique amplitude-level QCD order of one decay node."""
+
+    undecayed = copy.copy(process)
+    undecayed.set('legs', process.get('legs').__class__(
+        [copy.copy(leg) for leg in process.get('legs')]))
+    undecayed.set('decay_chains', process.get('decay_chains').__class__())
+    undecayed.set('legs_with_decays', base_objects.LegList())
+    amplitude = diagram_generation.Amplitude(undecayed)
+    qcd_orders = set(
+        diagram.get('orders').get('QCD', 0)
+        for diagram in amplitude.get('diagrams'))
+    if not qcd_orders:
+        raise fks_common.FKSProcessError(
+            'No diagrams remain for decay node %s' %
+            process.nice_string().replace('\n', ' '))
+    if len(qcd_orders) != 1:
+        raise fks_common.FKSProcessError(
+            'Every fNLO decay node must have one QCD coupling order so '
+            'that its renormalisation scale is unambiguous; found %s for %s' %
+            (sorted(qcd_orders), process.nice_string().replace('\n', ' ')))
+    return qcd_orders.pop()
+
+
 def _append_decay_tree(process, parent_id, metadata, model):
     """Append one concrete process tree and return its node ID."""
 
@@ -265,6 +290,7 @@ def _append_decay_tree(process, parent_id, metadata, model):
         'id': node_id,
         'parent': parent_id,
         'pdg': process.get_initial_ids()[0],
+        'qcd_order': _decay_node_qcd_order(process),
         'carrier_leaf': 0,
         'children': []}
     metadata['nodes'].append(node)
@@ -322,8 +348,7 @@ def _append_decay_tree(process, parent_id, metadata, model):
 
 def _build_decay_metadata(assignment, model):
     metadata = {
-        'format': 1,
-        'dummy_width_ratio': DECAY_DUMMY_WIDTH_RATIO,
+        'format': 4,
         'nodes': [],
         'leaves': [],
         'contexts': [],
@@ -456,7 +481,7 @@ def _annotate_widths(matrix_element, context, metadata):
             if mass.lower() == 'zero':
                 raise fks_common.FKSProcessError(
                     'A decay connector cannot have zero mass')
-            width = '%.1fd0*%s' % (DECAY_DUMMY_WIDTH_RATIO, mass)
+            width = '%s*%s' % (DECAY_DUMMY_WIDTH_FUNCTION, mass)
         else:
             width = 'ZERO'
         _set_local_width(wavefunction, width)
@@ -469,6 +494,10 @@ def _finalize_matrix_element(matrix_element):
         matrix_element['loop_groups'] = []
         for diagram in matrix_element.get_loop_diagrams():
             for amplitude in diagram.get_loop_amplitudes():
+                # set_mothers_and_pairing rebuilds the mothers but appends to
+                # the pairing list.  Clear both cached descriptions before
+                # recomputing them after decay insertion.
+                amplitude.set('pairing', [])
                 amplitude.set_mothers_and_pairing()
         matrix_element['born_color_basis'] = \
             matrix_element['born_color_basis'].__class__()
@@ -534,6 +563,12 @@ def _make_context(matrix_element, assignment, metadata, context_id,
         'visible_count': len(visible_legs),
         'core_map': core_map,
         'leaf_map': leaf_map,
+        'core_legs': [{
+            'number': leg.get('number'),
+            'pdg': leg.get('id'),
+            'state': 'F' if leg.get('state') else 'I'}
+            for leg in sorted(core_legs,
+                              key=lambda item: item.get('number'))],
         '_core_legs': core_legs}
     _annotate_widths(matrix_element, context, metadata)
     _finalize_matrix_element(matrix_element)
@@ -711,11 +746,9 @@ def set_required_color_links(fks_process):
 
 
 def decay_chain_info_text(metadata):
-    """Serialize decay metadata in its deterministic version-one format."""
+    """Serialize topology metadata in its deterministic version-four format."""
 
-    lines = [
-        'FORMAT %d' % metadata['format'],
-        'DUMMY_WIDTH_RATIO %.1f' % metadata['dummy_width_ratio']]
+    lines = ['FORMAT %d' % metadata['format']]
     species = metadata['forced_species']
     lines.append('FORCED_SPECIES %d%s' % (
         len(species), ''.join(' %d' % pdg for pdg in species)))
@@ -728,8 +761,8 @@ def decay_chain_info_text(metadata):
     for node in metadata['nodes']:
         children = ''.join(
             ' %s %d' % child for child in node['children'])
-        lines.append('NODE %d %d %d %d %d%s' % (
-            node['id'], node['parent'], node['pdg'],
+        lines.append('NODE %d %d %d %d %d %d%s' % (
+            node['id'], node['parent'], node['pdg'], node['qcd_order'],
             node['carrier_leaf'], len(node['children']), children))
     for leaf in metadata['leaves']:
         lines.append('DECAY_LEAF %d %d %d' % (
@@ -738,6 +771,10 @@ def decay_chain_info_text(metadata):
         lines.append('CONTEXT %d %s %d %d %d' % (
             context['id'], context['kind'], context['source_index'],
             context['core_count'], context['visible_count']))
+        for core_leg in context['core_legs']:
+            lines.append('CORE_LEG %d %d %d %s' % (
+                context['id'], core_leg['number'], core_leg['pdg'],
+                core_leg['state']))
         for core_leg in sorted(context['core_map']):
             kind, target = context['core_map'][core_leg]
             lines.append('CORE_MAP %d %d %s %d' % (
@@ -764,3 +801,55 @@ def write_decay_chain_info(path, metadata):
     filename = os.path.join(path, 'decay_chain_info.dat')
     with open(filename, 'w') as stream:
         stream.write(decay_chain_info_text(metadata))
+
+
+def decay_card_text(widths, renormalization_scales,
+                    dummy_width_ratio=DECAY_DUMMY_WIDTH_RATIO,
+                    production_scale_momenta='CORE'):
+    """Return a deterministic runtime card for on-shell decay parameters."""
+
+    absolute_widths = dict(
+        (abs(pdg), value) for pdg, value in widths.items())
+    absolute_scales = dict(
+        (abs(pdg), value)
+        for pdg, value in renormalization_scales.items())
+    if (len(absolute_widths) != len(widths) or
+            len(absolute_scales) != len(renormalization_scales)):
+        raise ValueError(
+            'Decay-card parameters contain duplicate absolute PDG codes')
+    if 0 in absolute_widths or 0 in absolute_scales:
+        raise ValueError('Decay-card PDG codes must be nonzero')
+    if set(absolute_widths) != set(absolute_scales):
+        raise ValueError(
+            'Decay widths and renormalisation scales must cover the same PDGs')
+    production_scale_momenta = production_scale_momenta.upper()
+    if production_scale_momenta not in ('CORE', 'DECAYED'):
+        raise ValueError(
+            'Production scale momenta must be CORE or DECAYED')
+    lines = [
+        '# FNLO_DECAY_CARD',
+        '# Runtime parameters for fixed-on-shell decay chains.',
+        '# DECAY_WIDTH entries are physical total widths in GeV.',
+        '# DECAY_REN_SCALE entries are independent decay scales in GeV.',
+        'FORMAT 2',
+        'DUMMY_WIDTH_RATIO %.16e' % dummy_width_ratio,
+        'PRODUCTION_REN_SCALE_MOMENTA %s' % production_scale_momenta]
+    for pdg in sorted(absolute_widths):
+        lines.append('DECAY_WIDTH %d %.16e' % (
+            pdg, absolute_widths[pdg]))
+        lines.append('DECAY_REN_SCALE %d %.16e' % (
+            pdg, absolute_scales[pdg]))
+    lines.append('END')
+    return '\n'.join(lines) + '\n'
+
+
+def write_decay_card(path, widths, renormalization_scales,
+                     dummy_width_ratio=DECAY_DUMMY_WIDTH_RATIO,
+                     production_scale_momenta='CORE'):
+    """Write ``decay_card.dat`` containing runtime decay parameters."""
+
+    filename = os.path.join(path, 'decay_card.dat')
+    with open(filename, 'w') as stream:
+        stream.write(decay_card_text(
+            widths, renormalization_scales, dummy_width_ratio,
+            production_scale_momenta))

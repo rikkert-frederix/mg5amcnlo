@@ -125,6 +125,7 @@ class Banner(dict):
       'mg5proccard':'proc_card_mg5.dat',
       'mgproccard': 'proc_card.dat',
       'foanalyse': 'FO_analyse_card.dat',
+      'mgdecaycard': 'decay_card.dat',
       'init': '',
       'mggenerationinfo':'',
       'scalesfunctionalform':'',
@@ -485,6 +486,8 @@ class Banner(dict):
                 tag = 'madspin'
             elif 'FO_analyse_card' in card_name:
                 tag = 'foanalyse'
+            elif 'decay_card' in card_name:
+                tag = 'mgdecaycard'
             elif 'reweight_card' in card_name:
                 tag='reweight_card'
             elif 'madanalysis5_parton_card' in card_name:

@@ -107,6 +107,18 @@ class TestMadEventCmd(unittest.TestCase):
                          'shower_card.dat')
         self.assertEqual(detect(pjoin(card_dir, 'FO_analyse_card.dat')),
                          'FO_analyse_card.dat')
+
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as card:
+            card.write('# FNLO_DECAY_CARD\nFORMAT 2\n'
+                       'DUMMY_WIDTH_RATIO 0.1\n'
+                       'PRODUCTION_REN_SCALE_MOMENTA CORE\n'
+                       'DECAY_WIDTH 6 1.4915\n'
+                       'DECAY_REN_SCALE 6 173.0\nEND\n')
+            decay_card_path = card.name
+        try:
+            self.assertEqual(detect(decay_card_path), 'decay_card.dat')
+        finally:
+            os.remove(decay_card_path)
         
         #MA5 card        
         card_dir= pjoin(root_path,'input_files')

@@ -8,6 +8,10 @@ module check_poles_module
   use fks_random_module, only: random_unit_interval
   use FKSParams, only: IRPoleCheckThreshold, FKSParamReader
   use fks_singular_module, only: setfksfactor
+  use decay_chain_metadata, only: initialize_decay_chain_metadata, &
+                                  has_decay_chains
+  use decay_chain_kinematics, only: initialize_decay_chain_kinematics, &
+       minimum_core_final_mass, generate_core_born_and_decays
   use fnlo_process_common, only: calculatedborn => calculated_born, &
                                  nfksprocess, qes2, force_polecheck, &
                                  polecheck_passed, &
@@ -137,19 +141,23 @@ contains
     double precision :: renormalization_scale, energy
     double precision :: born_weight, virtual_weight, total_mass
     double precision :: strong_coupling
+    double precision :: decay_variables(99), decay_jacobian, decay_weight
     integer :: npoints, npoints_checked, nfail
     integer :: particle, component
+    logical :: decay_point_is_valid
 
     call init_process_dimensions_bridge()
     call init_born_dimensions_bridge()
     call init_fks_metadata_bridge()
     call validate_process_and_born_dimensions()
     call validate_fks_metadata()
+    call initialize_decay_chain_metadata()
 
     force_polecheck = .true.
 
     call setrun()
     call setpara('param_card.dat')
+    if (has_decay_chains()) call initialize_decay_chain_kinematics()
     call init_fks_singular_bridge()
     call setcuts()
     call printout()
@@ -165,7 +173,11 @@ contains
     ichan = 1
     iconfigs(1) = iconfig
 
-    total_mass = sum(generated_masses)
+    if (has_decay_chains()) then
+      total_mass = minimum_core_final_mass()
+    else
+      total_mass = sum(generated_masses)
+    end if
     if (abs(lpp(1)) == 1 .and. abs(lpp(2)) == 1) then
       energy = max((ebeam(1) + ebeam(2)) / 20d0, 2d0 * total_mass)
     else if (lpp(1) == 2 .and. lpp(2) == 2) then
@@ -222,7 +234,17 @@ contains
 200 continue
     calculatedborn = .false.
 
-    if (nincoming == 1) then
+    if (has_decay_chains()) then
+      do particle = 1, size(decay_variables)
+        decay_variables(particle) = random_unit_interval(iconfig)
+      end do
+      decay_jacobian = 1d0
+      decay_weight = 1d0
+      call generate_core_born_and_decays(decay_variables, energy**2, &
+           energy, decay_jacobian, decay_weight, p_born, &
+           decay_point_is_valid)
+      if (.not. decay_point_is_valid) go to 200
+    else if (nincoming == 1) then
       call rambo_impl(0, nexternal - nincoming - 1, &
            generated_masses(1), rambo_masses, rambo_momenta)
       p_born(0, 1) = generated_masses(1)
@@ -276,12 +298,14 @@ contains
       stop
     end if
 
-    do component = 0, 3
-      do particle = nincoming + 1, nexternal - 1
-        p_born(component, particle) = &
-             rambo_momenta(component, particle - nincoming)
+    if (.not. has_decay_chains()) then
+      do component = 0, 3
+        do particle = nincoming + 1, nexternal - 1
+          p_born(component, particle) = &
+               rambo_momenta(component, particle - nincoming)
+        end do
       end do
-    end do
+    end if
 
     call update_as_param()
     call sborn(p_born, born_weight)

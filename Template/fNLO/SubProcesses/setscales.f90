@@ -10,9 +10,11 @@ module setscales_module
   use alfas_functions_module, only: alphas
   use kin_functions_module, only: et => et_impl
   use fixed_order_user_hooks, only: fixed_user_scale
+  use decay_chain_scales, only: select_production_core_momenta, &
+       select_production_ren_scale_momenta
   use fnlo_process_common, only: mur_id_str, muf1_id_str, &
                                  muf2_id_str, qes_id_str, temp_scale_id, &
-                                 calculated_born
+                                 calculated_born, nfksprocess
   implicit none
   private
 
@@ -42,6 +44,8 @@ contains
     implicit none
     double precision, intent(in) :: xp(0:, :)
     double precision :: dummy, dummy_qes, dummies(2)
+    double precision :: core_momenta(0:3, nexternal)
+    double precision :: ren_scale_momenta(0:3, nexternal)
     real :: time_before, time_after
     logical :: reset_momenta
 
@@ -49,6 +53,9 @@ contains
     if (size(xp, 2) /= nexternal) then
       call fail_setscales('set_alphas received the wrong momentum shape')
     end if
+    call select_production_core_momenta(xp, nfksprocess, core_momenta)
+    call select_production_ren_scale_momenta(&
+         xp, nfksprocess, ren_scale_momenta)
 
     call cpu_time(time_before)
     reset_momenta = .false.
@@ -56,20 +63,20 @@ contains
       first_set_alphas = .false.
       reset_momenta = .true.
 
-      call set_ren_scale_impl(xp, dummy)
+      call set_ren_scale_impl(ren_scale_momenta, dummy)
       if (dummy < 0.2d0) then
         write(*, *) 'Error in set_alphaS: muR too soft', dummy
         stop 1
       end if
 
-      call set_fac_scale_impl(xp, dummies)
+      call set_fac_scale_impl(core_momenta, dummies)
       if (dummies(1) < 0.2d0 .or. dummies(2) < 0.2d0) then
         write(*, *) 'Error in set_alphaS: muF too soft', dummies(1), &
              dummies(2)
         stop 1
       end if
 
-      call set_qes_scale_impl(xp, dummy_qes)
+      call set_qes_scale_impl(core_momenta, dummy_qes)
       ! Preserve the historical check, which uses the compatibility
       ! renormalization scale stored in SCALE.
       if (scale < 0.2d0) then
@@ -99,9 +106,9 @@ contains
       write(*, *) 'alpha_s=', current_g**2 / (16d0 * atan(1d0))
     end if
 
-    call set_qes_scale_impl(xp, dummy_qes)
-    call set_fac_scale_impl(xp, dummies)
-    call set_ren_scale_impl(xp, dummy)
+    call set_qes_scale_impl(core_momenta, dummy_qes)
+    call set_fac_scale_impl(core_momenta, dummies)
+    call set_ren_scale_impl(ren_scale_momenta, dummy)
 
     call update_model_momenta_bridge(xp, reset_momenta)
 
@@ -313,14 +320,21 @@ contains
     implicit none
     double precision, intent(in) :: pp(0:, :)
     double precision, intent(out) :: mur
+    double precision :: scale_momenta(0:3, nexternal)
 
-    call set_ren_scale_impl(pp, mur)
+    call validate_momenta(pp, 'set_ren_scale')
+    call select_production_ren_scale_momenta(&
+         pp, nfksprocess, scale_momenta)
+    call set_ren_scale_impl(scale_momenta, mur)
   end subroutine set_ren_scale
   subroutine set_fac_scale(pp, muf)
     implicit none
     double precision, intent(in) :: pp(0:, :)
     double precision, intent(out) :: muf(2)
+    double precision :: core_momenta(0:3, nexternal)
 
-    call set_fac_scale_impl(pp, muf)
+    call validate_momenta(pp, 'set_fac_scale')
+    call select_production_core_momenta(pp, nfksprocess, core_momenta)
+    call set_fac_scale_impl(core_momenta, muf)
   end subroutine set_fac_scale
 end module setscales_module

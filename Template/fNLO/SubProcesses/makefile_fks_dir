@@ -37,7 +37,9 @@ endif
 FILES= fnlo_process_common.o process_dimensions.o			\
 	 process_dimensions_bridge.o					\
 	 fks_metadata.o fks_metadata_bridge.o				\
-	 phase_space_kinematics.o					\
+	 decay_chain_metadata.o decay_chain_parameters.o		\
+	 decay_chain_parameters_bridge.o phase_space_kinematics.o	\
+	 decay_chain_kinematics.o decay_chain_scales.o			\
 	 fks_diagnostics.o fks_qcd_splitting.o fks_soft_kernels.o	\
 	 fks_channel_map.o fks_random.o				\
 	 $(patsubst %.f,%.o,$(wildcard parton_lum_*.f)) 			\
@@ -198,13 +200,21 @@ fnlo_process_common.o: $(LIBDIR)extra_weights.mod
 $(FNLO_PROCESS_COMMON_USERS): fnlo_process_common.o
 fks_metadata.o: process_dimensions.o
 fks_metadata_bridge.o: fks_metadata.o
+decay_chain_metadata.o: process_dimensions.o fks_metadata.o
+decay_chain_parameters.o: decay_chain_metadata.o
+decay_chain_parameters_bridge.o: decay_chain_parameters.o
 phase_space_kinematics.o: process_dimensions.o \
 	$(LIBDIR)kin_functions_module.mod
+decay_chain_kinematics.o: process_dimensions.o decay_chain_metadata.o \
+	decay_chain_parameters.o phase_space_kinematics.o
+decay_chain_scales.o: process_dimensions.o decay_chain_metadata.o \
+	decay_chain_parameters.o decay_chain_kinematics.o \
+	$(LIBDIR)alfas_functions_module.mod
 fks_diagnostics.o: process_dimensions.o fnlo_process_common.o
 fks_soft_kernels.o: process_dimensions.o $(LIBDIR)kin_functions_module.mod
 fks_channel_map.o: process_dimensions.o fks_metadata.o
 fks_random.o: $(LIBDIR)ranmar_module.mod
-setscales.o: process_dimensions.o \
+setscales.o: process_dimensions.o decay_chain_scales.o \
 	dummy_fct.o fastjet_wrapper.o $(LIBDIR)alfas_functions_module.mod \
 	$(LIBDIR)kin_functions_module.mod
 setscales_bridge.o: setscales.o
@@ -233,18 +243,21 @@ BinothLHA_bridge.o: BinothLHA.o
 fks_model_state.o: process_dimensions.o
 fks_singular.o: process_dimensions.o fks_model_state.o fks_metadata.o \
 	mint_module.o FKSParams.o splitorders_stuff.o fks_Sij.o \
-	chooser_functions.o phase_space_kinematics.o \
+	chooser_functions.o phase_space_kinematics.o decay_chain_metadata.o \
+	decay_chain_kinematics.o decay_chain_scales.o \
 	fks_qcd_splitting.o fks_soft_kernels.o \
 	fks_random.o \
 	$(LIBDIR)run_state.mod \
 	$(LIBDIR)timing_state.mod \
 	$(LIBDIR)kin_functions_module.mod
 fks_weights.o: process_dimensions.o fks_model_state.o fks_metadata.o \
+	decay_chain_metadata.o decay_chain_scales.o \
 	weight_lines.o mint_module.o FKSParams.o setscales.o \
 	splitorders_stuff.o chooser_functions.o madfks_plot.o \
 	$(LIBDIR)run_state.mod $(LIBDIR)timing_state.mod \
 	$(LIBDIR)extra_weights.mod $(LIBDIR)alfas_functions_module.mod
 fks_contributions.o: process_dimensions.o fks_model_state.o \
+	decay_chain_metadata.o decay_chain_kinematics.o \
 	fks_singular.o fks_weights.o mint_module.o splitorders_stuff.o \
 	madfks_plot.o $(LIBDIR)timing_state.mod $(LIBDIR)extra_weights.mod
 fks_singular_bridge.o: fks_model_state.o fks_singular.o \
@@ -252,6 +265,7 @@ fks_singular_bridge.o: fks_model_state.o fks_singular.o \
 	fks_metadata_bridge.o
 fks_random_bridge.o: fks_random.o mint_module.o
 driver_mintFO.o: process_dimensions.o fks_metadata.o fks_channel_map.o \
+	decay_chain_metadata.o \
 	fks_random.o genps_fks.o \
 	weight_lines.o mint_module.o FKSParams.o MC_integer.o setscales.o \
 	splitorders_stuff.o cuts.o fks_singular.o fks_weights.o \
@@ -260,18 +274,22 @@ driver_mintFO.o: process_dimensions.o fks_metadata.o fks_channel_map.o \
 	$(LIBDIR)extra_weights.mod $(LIBDIR)run_printout_module.mod
 driver_mintFO_bridge.o: driver_mintFO.o \
 	$(LIBDIR)fnlo_runtime_common.mod
-chooser_functions.o: process_dimensions.o fks_metadata.o weight_lines.o
+chooser_functions.o: process_dimensions.o fks_metadata.o weight_lines.o \
+	decay_chain_metadata.o
 chooser_functions_bridge.o: chooser_functions.o
 setcuts.o: process_dimensions.o fks_metadata.o \
 	fks_random.o mint_module.o $(LIBDIR)run_state.mod
 setcuts_bridge.o: setcuts.o
 genps_born.o: process_dimensions.o FKSParams.o phase_space_kinematics.o \
+	decay_chain_metadata.o decay_chain_kinematics.o \
 	$(LIBDIR)run_state.mod $(LIBDIR)kin_functions_module.mod
 genps_fks.o: genps_born.o process_dimensions.o boostwdir2.o FKSParams.o \
-	phase_space_kinematics.o fks_diagnostics.o \
+	phase_space_kinematics.o fks_diagnostics.o decay_chain_metadata.o \
+	decay_chain_kinematics.o \
 	$(LIBDIR)run_state.mod $(LIBDIR)timing_state.mod \
 	$(LIBDIR)kin_functions_module.mod
 symmetry_fks_v3.o: process_dimensions.o fks_metadata.o genps_fks.o \
+	decay_chain_metadata.o \
 	mint_module.o fks_random.o setscales.o cuts.o \
 	write_ajob.o fks_singular.o \
 	$(LIBDIR)run_state.mod $(LIBDIR)run_printout_module.mod \
@@ -279,6 +297,7 @@ symmetry_fks_v3.o: process_dimensions.o fks_metadata.o genps_fks.o \
 symmetry_fks_v3_bridge.o: symmetry_fks_v3.o \
 	process_dimensions_bridge.o fks_metadata_bridge.o
 test_soft_col_limits.o: process_dimensions.o fks_metadata.o \
+	decay_chain_metadata.o decay_chain_kinematics.o \
 	splitorders_stuff.o genps_fks.o fks_diagnostics.o fks_random.o \
 	mint_module.o fks_singular.o $(LIBDIR)run_state.mod
 test_soft_col_limits_bridge.o: test_soft_col_limits.o \
@@ -287,6 +306,7 @@ test_soft_col_limits_bridge.o: test_soft_col_limits.o \
 madfks_plot.o: boostwdir2.o mint_module.o process_dimensions.o
 madfks_plot_bridge.o: madfks_plot.o
 check_poles.o: process_dimensions.o fks_metadata.o mint_module.o \
+	decay_chain_metadata.o decay_chain_kinematics.o \
 	FKSParams.o fks_random.o fks_singular.o $(LIBDIR)run_state.mod \
 	$(LIBDIR)run_printout_module.mod
 check_poles_bridge.o: check_poles.o

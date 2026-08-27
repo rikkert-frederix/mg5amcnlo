@@ -1,2 +1,7 @@
 This directory contains the cards used by the MadGraph5_aMC@NLO
 fNLO fixed-order calculation.
+
+Processes with on-shell decay chains additionally contain decay_card.dat.
+That card controls the physical widths, dummy-width ratio, decay
+renormalization scales, and the production renormalization-scale momentum
+choice.

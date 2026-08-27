@@ -7,7 +7,10 @@ module fks_weights_module
   use fks_metadata, only: fks_i_d, fks_j_d
   use setscales_module, only: set_ren_scale, set_fac_scale
   use split_orders, only: amp_split_pos_to_orders
-  use chooser_functions_module, only: set_pdg_impl
+  use chooser_functions_module, only: set_pdg_impl, get_born_pdg_impl
+  use decay_chain_metadata, only: has_decay_chains
+  use decay_chain_scales, only: production_qcd_squared_order, &
+       decay_qcd_coupling_weight, decay_qcd_coupling_rescaling
   use madfks_plot_module, only: outfun_impl
   use fks_model_state_module, only: g => strong_coupling, external_masses
   use fnlo_process_common, only: nfksprocess, soft_counterevent, &
@@ -90,6 +93,10 @@ contains
     implicit none
     integer i, j, jfks1, ifks1, jfks2, ifks2
     double precision p1(0:3, nexternal), p2(0:3, nexternal), pb1(0:3, nexternal), pb2(0:3, nexternal)
+    if (has_decay_chains()) then
+      momenta_equal_uborn = momenta_equal(p1, p2)
+      return
+    end if
 ! Fill the underlying Born momenta pb1 and pb2
     do i = 1, nexternal
       do j = 0, 3, 3 ! skip x and y components, since they are not used in
@@ -229,7 +236,7 @@ contains
     g_strong(icontr) = g
     nFKS(icontr) = nFKSprocess
     y_bst(icontr) = ybst_til_tolab(event_slot)
-    qcdpower(icontr) = QCD_power
+    qcdpower(icontr) = production_qcd_squared_order(QCD_power)
     orderstag(icontr) = orders_tag
     amppos(icontr) = amp_pos
     ipr(icontr) = 0
@@ -261,6 +268,10 @@ contains
                   .gt. 0d0) then
             momenta(j, i, icontr) = &
               stored_event_momenta(j, i, soft_collinear_counterevent)
+          elseif (has_decay_chains() .and. i < nexternal) then
+            momenta(j, i, icontr) = p_born(j, i)
+          elseif (has_decay_chains()) then
+            momenta(j, i, icontr) = 0d0
           elseif (i .lt. fks_i_d(nFKSprocess)) then
             momenta(j, i, icontr) = p_born(j, i)
           elseif (i .eq. fks_i_d(nFKSprocess)) then
@@ -291,9 +302,11 @@ contains
     integer i, j, iamp, icontr_orig
     logical virt_found
     double precision xlum, mu2_r, mu2_f, mu2_q, wgt_wo_pdf, conv
+    double precision decay_coupling_weight, decay_rescaling
     parameter(conv=389379660d0) ! conversion to picobarns
     call cpu_time(tBefore)
     if (icontr .eq. 0) return
+    decay_coupling_weight = decay_qcd_coupling_weight()
     virt_found = .false.
 ! number of contributions before they are (possibly) increased through a
 ! call to separate_flavour_config().
@@ -329,23 +342,27 @@ contains
         end if
       end if
       wgt_wo_pdf = (wgt(1, i) + wgt(2, i)*log(mu2_r/mu2_q) &
-                    + wgt(3, i)*log(mu2_f/mu2_q))*g_strong(i)**QCDpower(i)
+                    + wgt(3, i)*log(mu2_f/mu2_q)) &
+                    *g_strong(i)**QCDpower(i)*decay_coupling_weight
       wgts(iwgt, i) = xlum*wgt_wo_pdf
       do j = 1, subproc_iproc
         parton_iproc(j, i) = parton_iproc(j, i)*wgt_wo_pdf
       end do
       if (itype(i) .eq. virtual_contribution .and. .not. virt_found) then
         virt_found = .true.
+        decay_rescaling = decay_qcd_coupling_rescaling(g_strong(i))
 ! Special for the soft-virtual needed for the virt-tricks. The
 ! *_wgt_mint variable should be directly passed to the mint-integrator
 ! and not be part of the plots nor computation of the cross section.
-        virt_wgt_mint(0) = virt_wgt_mint(0)*xlum
-        born_wgt_mint(0) = born_wgt_mint(0)*xlum
+        virt_wgt_mint(0) = virt_wgt_mint(0)*xlum*decay_rescaling
+        born_wgt_mint(0) = born_wgt_mint(0)*xlum*decay_rescaling
         do iamp = 1, amp_split_size
           call amp_split_pos_to_orders(iamp, orders)
           QCD_power = orders(qcd_pos)
-          virt_wgt_mint(iamp) = virt_wgt_mint(iamp)*xlum
-          born_wgt_mint(iamp) = born_wgt_mint(iamp)*xlum
+          virt_wgt_mint(iamp) = &
+               virt_wgt_mint(iamp)*xlum*decay_rescaling
+          born_wgt_mint(iamp) = &
+               born_wgt_mint(iamp)*xlum*decay_rescaling
         end do
       end if
     end do
@@ -400,6 +417,7 @@ contains
     use weight_lines
     implicit none
     integer j, k, iproc, ict, iFKS
+    integer born_pdgs(nexternal)
     double precision pd(0:maxproc), conv
     parameter(conv=389379660d0) ! conversion to picobarns
 ! save also the separate contributions to the PDFs and the corresponding
@@ -414,6 +432,13 @@ contains
       end if
       do k = 1, nexternal
         parton_pdg(k, j, ict) = idup_d(iFKS, k, j)
+      end do
+      if (has_decay_chains()) then
+        call get_born_pdg_impl(j, born_pdgs)
+        parton_pdg_uborn(:, j, ict) = born_pdgs
+        cycle
+      end if
+      do k = 1, nexternal
         if (k .lt. fks_j_d(iFKS)) then
           parton_pdg_uborn(k, j, ict) = idup_d(iFKS, k, j)
         elseif (k .eq. fks_j_d(iFKS)) then
@@ -451,11 +476,14 @@ contains
     implicit none
     real :: tBefore, tAfter
     integer i, kr, kf, iwgt_save, dd
-    double precision xlum(maxscales), pi, mu2_r(maxscales), c_mu2_r, c_mu2_f, mu2_f(maxscales), mu2_q, g(maxscales), conv
+    double precision xlum(maxscales), pi, mu2_r(maxscales), c_mu2_r, c_mu2_f
+    double precision mu2_f(maxscales), mu2_q, g(maxscales), conv
+    double precision decay_coupling_weight
     parameter(pi=3.1415926535897932385d0)
     parameter(conv=389379660d0) ! conversion to picobarns
     call cpu_time(tBefore)
     if (icontr .eq. 0) return
+    decay_coupling_weight = decay_qcd_coupling_weight()
 ! currently we have 'iwgt' weights in the wgts() array.
     iwgt_save = iwgt
 ! loop over all the contributions in the weight lines module
@@ -498,7 +526,7 @@ contains
             wgts(iwgt, i) = xlum(kf) &
                             *(wgt(1, i) + wgt(2, i)*log(mu2_r(kr)/mu2_q) &
                               + wgt(3, i)*log(mu2_f(kf)/mu2_q)) &
-                            *g(kr)**QCDpower(i)
+                            *g(kr)**QCDpower(i)*decay_coupling_weight
           end do
         end do
       end do
@@ -519,6 +547,7 @@ contains
     real :: tBefore, tAfter
     integer n, i, nn
     double precision xlum, pi, mu2_r, mu2_f, mu2_q, g, conv
+    double precision decay_coupling_weight
     parameter(pi=3.1415926535897932385d0)
     parameter(conv=389379660d0) ! conversion to picobarns
     call cpu_time(tBefore)
@@ -531,6 +560,7 @@ contains
         iwgt = iwgt + 1
         call weight_lines_allocated(nexternal, max_contr, iwgt, max_iproc)
         call InitPDFm(nn, n)
+        decay_coupling_weight = decay_qcd_coupling_weight()
         do i = 1, icontr
           nFKSprocess = nFKS(i)
           mu2_q = scales2(1, i)
@@ -550,7 +580,10 @@ contains
 ! Recompute the strong coupling: alpha_s in the PDF might change
           g = sqrt(4d0*pi*alphas(sqrt(mu2_r)))
 ! add the weights to the array
-          wgts(iwgt, i) = xlum*(wgt(1, i) + wgt(2, i)*log(mu2_r/mu2_q) + wgt(3, i)*log(mu2_f/mu2_q))*g**QCDpower(i)
+          wgts(iwgt, i) = xlum &
+               *(wgt(1, i) + wgt(2, i)*log(mu2_r/mu2_q) &
+               + wgt(3, i)*log(mu2_f/mu2_q)) &
+               *g**QCDpower(i)*decay_coupling_weight
         end do
       end do
     end do

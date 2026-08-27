@@ -6,6 +6,8 @@ module fks_contributions_module
   use split_orders, only: get_orders_tag, amp_split_pos_to_orders
   use madfks_plot_module, only: initplot_impl
   use fks_model_state_module, only: g => strong_coupling, external_masses
+  use decay_chain_metadata, only: has_decay_chains
+  use decay_chain_kinematics, only: fks_leg_mass
   use fks_singular_module, only: evaluate_fks_sij, sreal, sreal_deg, &
                                  bornsoftvirtual
   use fks_weights_module, only: add_wgt, real_contribution, &
@@ -22,7 +24,7 @@ module fks_contributions_module
                                  event_shat, &
                                  stored_event_jacobian => event_jacobian, &
                                  stored_event_momenta => event_momenta, &
-                                 p_born, i_fks, j_fks, &
+                                 p_born, nfksprocess, i_fks, j_fks, &
                                  f_b, f_nb, f_r, f_s, f_c, f_dc, f_sc, &
                                  f_dsc, &
                                  xiscut_used, xibsvcut_used, delta_used, &
@@ -50,6 +52,15 @@ module fks_contributions_module
   public :: include_multichannel_enhance
 
 contains
+
+  logical function fks_sister_is_massless()
+    if (has_decay_chains()) then
+      fks_sister_is_massless = &
+           fks_leg_mass(nfksprocess, j_fks) == 0d0
+    else
+      fks_sister_is_massless = external_masses(j_fks) == 0d0
+    end if
+  end function fks_sister_is_massless
 
   subroutine compute_born
 ! This subroutine computes the Born matrix elements and adds its value
@@ -227,7 +238,7 @@ contains
     call cpu_time(tBefore)
     if (f_c .eq. 0d0 .and. f_dc .eq. 0d0) return
     if (event_y(real_event) .le. 1d0 - deltaS .or. &
-        external_masses(j_fks) .ne. 0.d0) return
+        .not. fks_sister_is_massless()) return
     s_c = evaluate_fks_sij(collinear_counterevent, &
             stored_event_momenta(:, :, collinear_counterevent), &
             i_fks, j_fks, event_xi(collinear_counterevent), one)
@@ -280,7 +291,7 @@ contains
     if (f_sc .eq. 0d0 .and. f_dsc(1) .eq. 0d0 .and. f_dsc(2) .eq. 0d0 .and. f_dsc(3) .eq. 0d0 .and. f_dsc(4) .eq. 0d0) return
     if (event_xi_hat(real_event)*event_xi_max(collinear_counterevent) &
         .ge. xiScut_used .or. event_y(real_event) .le. 1d0 - deltaS &
-        .or. external_masses(j_fks) .ne. 0.d0) return
+        .or. .not. fks_sister_is_massless()) return
     s_sc = evaluate_fks_sij(soft_collinear_counterevent, &
              stored_event_momenta(:, :, soft_collinear_counterevent), &
              i_fks, j_fks, zero, one)
@@ -443,7 +454,7 @@ contains
       f_s = (prefact + prefact_cnt_ssc)* &
             stored_event_jacobian(soft_counterevent)* &
             fkssymmetryfactor*vegas_wgt
-      if (external_masses(j_fks) .eq. 0d0) then
+      if (fks_sister_is_massless()) then
 ! For the soft-collinear, these should be itwo. But they are always
 ! equal to ione, so no need to define separate factors.
         prefact_c = event_xi_norm(collinear_counterevent)/ &

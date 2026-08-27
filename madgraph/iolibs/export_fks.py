@@ -265,6 +265,152 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             pjoin(self.get_fks_template_dir(), 'Source', 'PDF', 'pdf.inc'),
             pjoin(self.dir_path, 'Source', 'PDF', 'pdf.inc'))
 
+    def configure_fnlo_decay_chain_cards(self):
+        """Create runtime decay data and disable unsafe helicity filters.
+
+        MadLoop's numerical helicity filter and the FKS Monte-Carlo helicity
+        sum assume an ordinary, undecayed external-state layout.  Applying
+        either optimization to the flattened decay-chain matrix element can
+        remove physical helicities.  Decay-chain outputs therefore use the
+        exact helicity sum for both the virtual and FKS contributions.
+        """
+
+        if self.opt.get('fks_template') != 'fNLO':
+            return
+
+        metadata_pattern = pjoin(
+            self.dir_path, 'SubProcesses', 'P*', 'decay_chain_info.dat')
+        metadata_paths = glob.glob(metadata_pattern)
+        if not metadata_paths:
+            return
+
+        species = set()
+        for metadata_path in metadata_paths:
+            records = []
+            with open(metadata_path) as metadata_file:
+                for line in metadata_file:
+                    if line.startswith('FORCED_SPECIES '):
+                        records.append(line.split())
+            if len(records) != 1:
+                raise MadGraph5Error(
+                    'Expected one FORCED_SPECIES record in %s' %
+                    metadata_path)
+            count = int(records[0][1])
+            pdgs = [abs(int(value)) for value in records[0][2:]]
+            if count != len(pdgs) or any(pdg == 0 for pdg in pdgs):
+                raise MadGraph5Error(
+                    'Malformed FORCED_SPECIES record in %s' % metadata_path)
+            species.update(pdgs)
+
+        param_card_path = pjoin(self.dir_path, 'Cards', 'param_card.dat')
+        param_card = check_param_card.ParamCard(param_card_path)
+        widths = {}
+        renormalization_scales = {}
+        for pdg in sorted(species):
+            parameter = param_card['decay'].get((pdg,))
+            if parameter is None:
+                raise MadGraph5Error(
+                    'No total width for PDG %d is defined in %s' %
+                    (pdg, param_card_path))
+            try:
+                widths[pdg] = float(parameter.value)
+            except (TypeError, ValueError):
+                raise MadGraph5Error(
+                    'The physical width for PDG %d must be numerical before '
+                    'exporting an fNLO decay chain; found %s' %
+                    (pdg, parameter.value))
+            if widths[pdg] <= 0.0:
+                logger.warning(
+                    'The generated decay_card.dat contains a non-positive '
+                    'width for PDG %d. Set its physical total width before '
+                    'running the process.', pdg)
+            particle = self.model.get_particle(pdg)
+            mass_name = particle.get('mass') if particle else None
+            mass_value = self.model.get('parameter_dict').get(mass_name)
+            try:
+                mass_value = complex(mass_value)
+            except (TypeError, ValueError):
+                raise MadGraph5Error(
+                    'Could not determine the default decay scale for PDG %d' %
+                    pdg)
+            if abs(mass_value.imag) > 1e-12 or mass_value.real <= 0.0:
+                raise MadGraph5Error(
+                    'The default decay scale for PDG %d must be real and '
+                    'positive; found %s' % (pdg, mass_value))
+            renormalization_scales[pdg] = mass_value.real
+        fks_decay.write_decay_card(
+            pjoin(self.dir_path, 'Cards'), widths,
+            renormalization_scales)
+
+        madloop_card = pjoin(
+            self.dir_path, 'Cards', 'MadLoopParams.dat')
+        madloop_params = banner_mod.MadLoopParam(madloop_card)
+        madloop_params.set('HelicityFilterLevel', 0)
+        for output_path in [
+                madloop_card,
+                pjoin(self.dir_path, 'Cards',
+                      'MadLoopParams_default.dat'),
+                pjoin(self.dir_path, 'SubProcesses',
+                      'MadLoopParams.dat')]:
+            madloop_params.write(output_path, template=madloop_card)
+
+        fks_card_path = pjoin(
+            self.dir_path, 'Cards', 'FKS_params.dat')
+        with open(fks_card_path) as fks_card_file:
+            fks_card = fks_card_file.read()
+        fks_card, replacements = re.subn(
+            r'(#NHelForMCoverHels[ \t]*\n)[ \t]*!?-?\d+',
+            r'\g<1>-1', fks_card)
+        if replacements != 1:
+            raise MadGraph5Error(
+                'Could not set NHelForMCoverHels in %s' % fks_card_path)
+        with open(fks_card_path, 'w') as fks_card_file:
+            fks_card_file.write(fks_card)
+
+    @staticmethod
+    def declare_fnlo_decay_width_accessor(subprocess_path):
+        """Declare the runtime dummy-width function in generated HELAS code."""
+
+        function = fks_decay.DECAY_DUMMY_WIDTH_FUNCTION[:-2]
+        declaration = ('      DOUBLE PRECISION %s\n'
+                       '      EXTERNAL %s\n' % (function, function))
+        implicit_none = re.compile(
+            r'^[ \t]*IMPLICIT[ \t]+NONE[ \t]*$', re.I)
+        procedure_end = re.compile(
+            r'^[ \t]*END(?:[ \t]+(?:SUBROUTINE|FUNCTION|PROGRAM)'
+            r'[^\n]*)?[ \t]*$', re.I)
+        for root, _, filenames in os.walk(subprocess_path):
+            for filename in filenames:
+                if not filename.endswith(('.f', '.f90')):
+                    continue
+                source_path = pjoin(root, filename)
+                with open(source_path) as source_file:
+                    source = source_file.read()
+                if fks_decay.DECAY_DUMMY_WIDTH_FUNCTION not in source:
+                    continue
+                if declaration in source:
+                    continue
+                lines = source.splitlines(True)
+                replacements = 0
+                for line_index in range(len(lines) - 1, -1, -1):
+                    if not implicit_none.match(lines[line_index].rstrip('\n')):
+                        continue
+                    end_index = line_index + 1
+                    while (end_index < len(lines) and
+                           not procedure_end.match(
+                               lines[end_index].rstrip('\n'))):
+                        end_index += 1
+                    procedure = ''.join(lines[line_index:end_index + 1])
+                    if fks_decay.DECAY_DUMMY_WIDTH_FUNCTION in procedure:
+                        lines.insert(line_index + 1, declaration)
+                        replacements += 1
+                if replacements == 0:
+                    raise MadGraph5Error(
+                        'Could not declare %s in %s' %
+                        (function, source_path))
+                with open(source_path, 'w') as source_file:
+                    source_file.write(''.join(lines))
+
 #===============================================================================
 # copy the Template in a new directory.
 #===============================================================================
@@ -702,8 +848,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         os.chdir(borndir)
         logger.info('Writing files in %s (%d / %d)' % (borndir, me_number + 1, me_ntot))
 
-        if (self.opt.get('fks_template') == 'fNLO' and
-                getattr(matrix_element, 'decay_metadata', None) is not None):
+        decay_enabled = (
+            self.opt.get('fks_template') == 'fNLO' and
+            getattr(matrix_element, 'decay_metadata', None) is not None)
+        if decay_enabled:
             fks_decay.write_decay_chain_info(
                 os.getcwd(), matrix_element.decay_metadata)
 
@@ -1009,6 +1157,11 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               'fnlo_process_common.f',
                               'fks_metadata.f90',
                               'fks_metadata_bridge.f',
+                              'decay_chain_metadata.f90',
+                              'decay_chain_parameters.f90',
+                              'decay_chain_parameters_bridge.f90',
+                              'decay_chain_kinematics.f90',
+                              'decay_chain_scales.f90',
                               'phase_space_kinematics.f90',
                               'fks_diagnostics.f90',
                               'fks_qcd_splitting.f90',
@@ -1098,6 +1251,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         for file in linkfiles:
             ln('../' + file , '.')
         os.system("ln -s ../../Cards/param_card.dat .")
+        if decay_enabled:
+            os.system("ln -s ../../Cards/decay_card.dat .")
 
         #copy the makefile 
         os.system("ln -s ../makefile_fks_dir ./makefile")
@@ -1119,6 +1274,9 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             os.system("ln -s ../BinothLHA_OLP.f ./BinothLHA.f")
         else:
             os.system("ln -s ../BinothLHA_user.f ./BinothLHA.f")
+
+        if decay_enabled:
+            self.declare_fnlo_decay_width_accessor(os.getcwd())
 
         # Return to SubProcesses dir
         os.chdir(os.path.pardir)
@@ -1211,6 +1369,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         output_dependencies = mg5options['output_dependencies']
         
         fixed_order_only = self.opt.get('fks_template') == 'fNLO'
+        if fixed_order_only:
+            self.configure_fnlo_decay_chain_cards()
         has_ew_sudakov = ('ewsudakov' in matrix_elements.keys() and
                           matrix_elements['ewsudakov'])
         process_lines = []
@@ -1324,6 +1484,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         cards = ['run_card', 'FO_analyse_card']
         if not self.proc_characteristic['fixed_order_only']:
             cards.append('shower_card')
+        if os.path.exists(pjoin(self.dir_path, 'Cards', 'decay_card.dat')):
+            cards.append('decay_card')
         for card in cards:
             try:
                 shutil.copy(pjoin(self.dir_path, 'Cards',
@@ -4054,6 +4216,13 @@ Parameters              %(params)s\n\
 
         replace_dict = {}
         fixed_order_only = self.opt.get('fks_template') == 'fNLO'
+        decay_metadata = getattr(fksborn, 'decay_metadata', None)
+        decay_visible_count = None
+        if decay_metadata is not None:
+            decay_visible_count = max(
+                context['visible_count']
+                for context in decay_metadata['contexts']
+                if context['kind'] == 'REAL')
         fks_info_list = fksborn.get_fks_info_list()
         split_orders = fksborn.born_me['processes'][0]['split_orders']
         replace_dict['nconfs'] = max(len(fks_info_list), 1)
@@ -4109,14 +4278,38 @@ Parameters              %(params)s\n\
                 tag_lines = []
                 split_type_lines = []
             for i, info in enumerate(fks_info_list):
+                real_process = fksborn.real_processes[info['n_me'] - 1]
+                colors = list(real_process.colors)
+                pdgs = list(info['pdgs'])
+                if decay_visible_count is not None:
+                    colors.extend([1] * (decay_visible_count - len(colors)))
+                    pdgs.extend([0] * (decay_visible_count - len(pdgs)))
                 col_lines.append( \
                     'DATA (PARTICLE_TYPE_D(%d, IPOS), IPOS=1, NEXTERNAL) / %s /' \
-                    % (i + 1, ', '.join('%d' % col for col in fksborn.real_processes[info['n_me']-1].colors) ))
+                    % (i + 1, ', '.join('%d' % col for col in colors)))
                 pdg_lines.append( \
                     'DATA (PDG_TYPE_D(%d, IPOS), IPOS=1, NEXTERNAL) / %s /' \
-                    % (i + 1, ', '.join('%d' % pdg for pdg in info['pdgs'])))
-                fks_j_from_i_lines.extend(self.get_fks_j_from_i_lines(fksborn.real_processes[info['n_me']-1],\
-                                                i + 1))
+                    % (i + 1, ', '.join('%d' % pdg for pdg in pdgs)))
+                if decay_visible_count is None:
+                    fks_j_from_i_lines.extend(
+                        self.get_fks_j_from_i_lines(real_process, i + 1))
+                else:
+                    for particle in range(1, decay_visible_count + 1):
+                        partners = real_process.fks_j_from_i.get(
+                            particle, [])
+                        if partners:
+                            fks_j_from_i_lines.append(
+                                'DATA (FKS_J_FROM_I_D(%d, %d, JPOS), '
+                                'JPOS = 0, %d) / %d, %s /' % (
+                                    i + 1, particle, len(partners),
+                                    len(partners), ', '.join(
+                                        '%d' % partner
+                                        for partner in partners)))
+                        else:
+                            fks_j_from_i_lines.append(
+                                'DATA FKS_J_FROM_I_D(%d, %d, 0) / 0 /' %
+                                (i + 1, particle))
+                    fks_j_from_i_lines.append('')
                 if not fixed_order_only:
                     charge_lines.append(\
                         'DATA (PARTICLE_CHARGE_D(%d, IPOS), IPOS=1, NEXTERNAL) / %s /'\
@@ -4394,7 +4587,9 @@ Parameters              %(params)s\n\
         ######first get the configurations
         s_and_t_channels = []
         mapconfigs = []
-        lines.extend(['C     %s' % proc.nice_string() for proc in me.get('processes')])
+        for process in me.get('processes'):
+            lines.extend('C     %s' % line
+                         for line in process.nice_string().splitlines())
         base_diagrams = me.get('base_amplitude').get('diagrams')
         minvert = min([max([len(vert.get('legs')) for vert in \
                             diag.get('vertices')]) for diag in base_diagrams])

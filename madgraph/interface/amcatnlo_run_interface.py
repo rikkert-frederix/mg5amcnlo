@@ -3734,6 +3734,8 @@ RESTART = %(mint_mode)s
 
         if mode in ['NLO', 'LO']:
             files_to_arxiv.append(pjoin('Cards','FO_analyse_card.dat'))
+        if os.path.exists(pjoin(self.me_dir, 'Cards', 'decay_card.dat')):
+            files_to_arxiv.append(pjoin('Cards', 'decay_card.dat'))
 
         if not os.path.exists(pjoin(evt_path,'RunMaterial')):
             os.mkdir(pjoin(evt_path,'RunMaterial'))
@@ -5470,6 +5472,11 @@ RESTART = %(mint_mode)s
                      pjoin(cwd, 'leshouche_info.dat'),
                      pjoin(cwd, 'FKS_params.dat')]
 
+        for decay_file in ['decay_card.dat', 'decay_chain_info.dat']:
+            decay_path = pjoin(cwd, decay_file)
+            if os.path.exists(decay_path):
+                input_files.append(decay_path)
+
         # For GoSam interface, we must copy the SLHA card as well
         if os.path.exists(pjoin(self.me_dir,'OLP_virtuals','gosam.rc')):
             input_files.append(pjoin(self.me_dir, 'Cards', 'param_card.dat'))
@@ -6185,6 +6192,9 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
             options['parton'] = True
             ignore = ['shower_card.dat', 'madspin_card.dat']
             cards.append('FO_analyse_card.dat')
+            decay_card = pjoin(self.me_dir, 'Cards', 'decay_card.dat')
+            if os.path.exists(decay_card):
+                cards.append('decay_card.dat')
         else:
             if switch['madspin'] != 'OFF':
                 cards.append('madspin_card.dat')

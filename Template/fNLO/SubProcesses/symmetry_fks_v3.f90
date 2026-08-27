@@ -1,4 +1,6 @@
 module symmetry_fks_module
+  use decay_chain_metadata, only: has_decay_chains, &
+                                  real_phase_space_dimension
   use process_dimensions, only: nexternal, nincoming, ngraphs, &
        fks_configs, validate_process_and_born_dimensions
   use fks_metadata, only: validate_fks_metadata, fks_i_d, fks_j_d
@@ -149,7 +151,7 @@ contains
     iconfigs(1) = iconfig
     call setfksfactor()
 
-    ndim = 3 * (nexternal - nincoming) - 4
+    ndim = real_phase_space_dimension()
     if (abs(lpp(1)) >= 1) ndim = ndim + 1
     if (abs(lpp(2)) >= 1) ndim = ndim + 1
     if (ndim < 1) call fail_symmetry('invalid integration dimension')
@@ -191,6 +193,17 @@ contains
     do j = 1, nexternal - 1
       write (*,'(i4,4e15.5)') j, p_born(:, j)
     end do
+
+    ! A visible-particle permutation need not preserve which daughters came
+    ! from which on-shell decay node.  Keep every integration channel instead
+    ! of applying the production-process symmetry test to decay chains.
+    if (has_decay_chains()) then
+      write (*,*) 'Decay chains: external-particle symmetry reduction disabled'
+      write (*,*) 'Found ', 0, ' matches. ', born_mapconfig(0), &
+           ' channels remain for integration.'
+      call write_bash(use_config)
+      return
+    end if
 
     do k = 1, nexternal - 1
       icb(k) = k

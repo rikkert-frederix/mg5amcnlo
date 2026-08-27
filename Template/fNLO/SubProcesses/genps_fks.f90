@@ -9,10 +9,15 @@ module genps_fks
   use fks_diagnostics, only: xmom_compare
   use genps_born, only: born_phase_space, generate_born_phase_space, &
                         invalidate_born_phase_space
+  use decay_chain_metadata, only: has_decay_chains, context_for_fks, &
+                                  real_phase_space_dimension
+  use decay_chain_kinematics, only: get_core_born_momenta, &
+       get_core_mass_buffer, active_core_count, expand_real_decay_momenta, &
+       store_core_event_momenta, fks_leg_mass
   ! Generated parameters keep the phase-space normalization bit-identical
   ! to the NLO template's compile-time arithmetic.
   use fnlo_process_common, only: nexternal, nincoming, max_particles, &
-                                 max_branch, nocntevents, nbody, &
+                                 max_branch, nfksprocess, nocntevents, nbody, &
                                  soft_counterevent, collinear_counterevent, &
                                  soft_collinear_counterevent, real_event, &
                                  first_counterevent, last_counterevent, &
@@ -94,11 +99,14 @@ contains
     logical pass
 
     integer icountevts, event_position
-    integer ixEi, ixyij, ixpi, imother
+    integer ixEi, ixpi, imother
     double precision xmrec2, m_j_fks, phi_i_fks, rat_xi, &
       & xi_i_fks, y_ij_fks, xi_i_hat, xiimax, xinorm, xjac, xpswgt, &
-      & xp(0:3, nexternal), p_i_fks(0:3)
+      & xp(0:3, nexternal), visible_xp(0:3, nexternal), p_i_fks(0:3)
+    double precision :: core_born(0:3, nexternal - 1)
+    double precision :: core_mass_values(nexternal)
     integer i
+    integer :: core_particle_count
     integer, parameter :: event_generation_order(4) = (/ &
       real_event, soft_counterevent, collinear_counterevent, &
       soft_collinear_counterevent /)
@@ -142,15 +150,24 @@ contains
 ! These will correspond to the vegas x's for the FKS variables xi_i,
 ! y_ij and phi_i (changing this also requires changing folding parameters)
     ixEi = ndim - 2
-    ixyij = ndim - 1
     ixpi = ndim
 !
     imother = min(j_fks, i_fks)
-    m_j_fks = particle_masses(j_fks)
+    if (has_decay_chains()) then
+      core_particle_count = active_core_count(nfksprocess)
+      call get_core_born_momenta(core_born)
+      call get_core_mass_buffer(context_for_fks(nfksprocess), &
+                                core_mass_values)
+      m_j_fks = fks_leg_mass(nfksprocess, j_fks)
+    else
+      core_particle_count = nexternal
+      core_born = born_lab_momenta
+      m_j_fks = particle_masses(j_fks)
+    end if
 !
 ! For final state j_fks, compute the recoil invariant mass
     if (j_fks .gt. nincoming) then
-      call get_recoil(born_lab_momenta, imother, shat_born, xmrec2, pass)
+      call get_recoil(core_born, imother, shat_born, xmrec2, pass)
       if (.not. pass) then
         xjac0 = -44
         return
@@ -175,15 +192,21 @@ contains
 !
 ! Put the Born momenta in the xp momenta, making sure that the mapping
 ! is correct; put i_fks momenta equal to zero.
-      if (i_fks .gt. 1) then
-        xp(:, 1:i_fks - 1) = born_lab_momenta(:, 1:i_fks - 1)
-        m(1:i_fks - 1) = m_born(1:i_fks - 1)
-      end if
+      xp = 0d0
+      if (i_fks .gt. 1) xp(:, 1:i_fks - 1) = core_born(:, 1:i_fks - 1)
       xp(:, i_fks) = 0d0
-      m(i_fks) = 0d0
-      if (i_fks .lt. nexternal) then
-        xp(:, i_fks + 1:nexternal) = born_lab_momenta(:, i_fks:nexternal - 1)
-        m(i_fks + 1:nexternal) = m_born(i_fks:nexternal - 1)
+      if (i_fks .lt. core_particle_count) &
+        xp(:, i_fks + 1:core_particle_count) = &
+             core_born(:, i_fks:core_particle_count - 1)
+      if (has_decay_chains()) then
+        m = 0d0
+        m(1:core_particle_count) = core_mass_values(1:core_particle_count)
+      else
+        m(i_fks) = 0d0
+        if (i_fks .gt. 1) m(1:i_fks - 1) = m_born(1:i_fks - 1)
+        if (i_fks .lt. core_particle_count) &
+          m(i_fks + 1:core_particle_count) = &
+               m_born(i_fks:core_particle_count - 1)
       end if
 !
 ! set-up phi_i_fks
@@ -205,17 +228,17 @@ contains
         if (m_j_fks .eq. 0d0) then
           isolsign = 1
           call generate_momenta_massless_final(icountevts, i_fks, j_fks &
-            & , born_lab_momenta(0:3, imother), event_shat(icountevts) &
+            & , core_born(0:3, imother), event_shat(icountevts) &
             & , event_sqrt_shat(icountevts), x(ixEi), xmrec2, xp &
             & , phi_i_fks, xiimax, xinorm, xi_i_fks, y_ij_fks, xi_i_hat &
-            & , p_i_fks, xjac, xpswgt, pass)
+            & , p_i_fks, xjac, xpswgt, core_particle_count, pass)
         elseif (m_j_fks .gt. 0d0) then
           call generate_momenta_massive_final(icountevts, isolsign &
-            & , rat_xi, i_fks, j_fks, born_lab_momenta(0:3, imother) &
+            & , rat_xi, i_fks, j_fks, core_born(0:3, imother) &
             & , event_shat(icountevts), event_sqrt_shat(icountevts) &
             & , m_j_fks, x(ixEi), xmrec2, xp, phi_i_fks &
             & , xiimax, xinorm, xi_i_fks, y_ij_fks, xi_i_hat, p_i_fks, xjac &
-            & , xpswgt, pass)
+            & , xpswgt, core_particle_count, pass)
         end if
       elseif (j_fks .le. nincoming) then
         isolsign = 1
@@ -224,7 +247,8 @@ contains
           & , event_shat(icountevts), stot, event_sqrt_shat(icountevts) &
           & , ybst_til_tocm(icountevts), event_bjorken_x(:, icountevts) &
           & , p_i_fks, xiimax, xinorm &
-          & , xi_i_fks, y_ij_fks, xi_i_hat, xpswgt, xjac, pass)
+          & , xi_i_fks, y_ij_fks, xi_i_hat, xpswgt, xjac, &
+          & core_particle_count, pass)
       else
         write (*, *) 'Error #2 in genps_fks.f', j_fks
         stop
@@ -236,7 +260,8 @@ contains
 !
 ! All done, so check four-momentum conservation
       if (pass .and. xjac .gt. 0.d0) then
-        call phspncheck_nocms(nexternal, event_sqrt_shat(icountevts), m, xp, pass)
+        call phspncheck_nocms(core_particle_count, &
+                              event_sqrt_shat(icountevts), m, xp, pass)
         if (.not. pass) xjac = -199
       end if
       if (pass) then
@@ -244,8 +269,15 @@ contains
                           m(1), m(2), xpswgt, xjac)
       end if
 !
+      if (has_decay_chains() .and. pass .and. xjac > 0d0) then
+        call store_core_event_momenta(icountevts, xp)
+        call expand_real_decay_momenta(nfksprocess, x, xp, visible_xp, pass)
+        if (.not. pass) xjac = -198d0
+      else
+        visible_xp = xp
+      end if
       call store_FKS_event(icountevts, xiimax, xinorm, &
-        & xi_i_fks, xi_i_hat, p_i_fks, y_ij_fks, xp, p, xjac, jac)
+        & xi_i_fks, xi_i_hat, p_i_fks, y_ij_fks, visible_xp, p, xjac, jac)
       if (icountevts .eq. real_event .and. isolsign .eq. -1) &
         skip_counterevents = .true.
     end do counterevent_loop
@@ -263,10 +295,12 @@ contains
 
     nocntevents = all(stored_event_jacobian( &
                         first_counterevent:last_counterevent) .le. 0.d0)
-    call xmom_compare(i_fks, j_fks, &
-                      stored_event_jacobian(first_counterevent:last_counterevent), &
-                      stored_event_momenta(:, :, first_counterevent:last_counterevent), &
-                      particle_masses, pass)
+    if (.not. has_decay_chains()) then
+      call xmom_compare(i_fks, j_fks, &
+                        stored_event_jacobian(first_counterevent:last_counterevent), &
+                        stored_event_momenta(:, :, first_counterevent:last_counterevent), &
+                        particle_masses, pass)
+    end if
 !
     return
   end subroutine generate_FKS_kinematics
@@ -288,7 +322,7 @@ contains
 ! The pi-dependent factor inserted below is due to the fact that the
 ! weight computed above is relevant to R_n, as defined in Kajantie's
 ! book, eq.(III.3.1), while we need the full n-body phase space
-    flux = flux/(2d0*pi)**(3*(nexternal - nincoming) - 4)
+    flux = flux/(2d0*pi)**real_phase_space_dimension()
 ! This extra pi-dependent factor is due to the fact that the phase-space
 ! part relevant to i_fks and j_fks does contain all the pi's needed for
 ! the correct normalization of the phase space
@@ -352,10 +386,10 @@ contains
   subroutine generate_momenta_massless_final(icountevts, i_fks, j_fks &
     & , p_born_imother, shat, sqrtshat, x, xmrec2, xp, phi_i_fks, xiimax &
     & , xinorm, xi_i_fks, y_ij_fks, xi_i_hat, p_i_fks, xjac, xpswgt &
-    & , pass)
+    & , particle_count, pass)
     implicit none
 ! arguments
-    integer icountevts, i_fks, j_fks
+    integer icountevts, i_fks, j_fks, particle_count
     double precision shat, sqrtshat, x(2), xmrec2, xp(0:3, nexternal) &
       & , y_ij_fks, p_born_imother(0:3), phi_i_fks, xi_i_hat
     double precision xiimax, xinorm, xi_i_fks, p_i_fks(0:3), xjac, xpswgt
@@ -570,7 +604,7 @@ contains
       xdir(j) = xp_mother(j)/x3len_fks_mother
     end do
 ! Perform the boost here
-    do i = nincoming + 1, nexternal
+    do i = nincoming + 1, particle_count
       if (i .ne. i_fks .and. i .ne. j_fks .and. shybst .ne. 0.d0) &
         & call boostwdir2_in_place(chybst, shybst, chybstmo, xdir, &
         & xp(0, i))
@@ -603,10 +637,11 @@ contains
   subroutine generate_momenta_massive_final(icountevts, isolsign &
     & , rat_xi, i_fks, j_fks, p_born_imother, shat &
     & , sqrtshat, m_j_fks, x, xmrec2, xp, phi_i_fks, xiimax, xinorm &
-    & , xi_i_fks, y_ij_fks, xi_i_hat, p_i_fks, xjac, xpswgt, pass)
+    & , xi_i_fks, y_ij_fks, xi_i_hat, p_i_fks, xjac, xpswgt, &
+    & particle_count, pass)
     implicit none
 ! arguments
-    integer icountevts, i_fks, j_fks, isolsign
+    integer icountevts, i_fks, j_fks, isolsign, particle_count
     double precision shat, sqrtshat, x(2), xmrec2, xp(0:3, nexternal) &
       & , y_ij_fks, p_born_imother(0:3), m_j_fks, phi_i_fks, xi_i_hat
     double precision xiimax, xinorm, xi_i_fks, p_i_fks(0:3), xjac, xpswgt
@@ -882,7 +917,7 @@ contains
       xdir(j) = xp_mother(j)/x3len_fks_mother
     end do
 ! Boost the momenta
-    do i = nincoming + 1, nexternal
+    do i = nincoming + 1, particle_count
       if (i .ne. i_fks .and. i .ne. j_fks .and. shybst .ne. 0.d0) &
         & call boostwdir2_in_place(chybst, shybst, chybstmo, xdir, &
         & xp(0, i))
@@ -901,10 +936,10 @@ contains
   subroutine generate_momenta_initial(icountevts, i_fks, j_fks, &
     & xbjrk_born, tau_born, ycm_born, ycmhat, shat_born, phi_i_fks, xp, x &
     & , shat, stot, sqrtshat, cm_boost, xbjrk, p_i_fks, xiimax, xinorm &
-    & , xi_i_fks, y_ij_fks, xi_i_hat, xpswgt, xjac, pass)
+    & , xi_i_fks, y_ij_fks, xi_i_hat, xpswgt, xjac, particle_count, pass)
     implicit none
 ! arguments
-    integer icountevts, i_fks, j_fks
+    integer icountevts, i_fks, j_fks, particle_count
     double precision xbjrk_born(2), tau_born, ycm_born, ycmhat, shat_born &
       & , phi_i_fks, xpswgt, xjac, xiimax, xinorm, xp(0:3, nexternal), stot &
       & , x(2), y_ij_fks, xi_i_hat
@@ -1224,7 +1259,7 @@ contains
     shy_lbst = -xi_i_fks*yijdir/bstfact
     chy_lbst = (2 - xi_i_fks)/bstfact
 ! Boost the momenta
-    do i = 3, nexternal
+    do i = 3, particle_count
       if (i .ne. i_fks .and. shy_tbst .ne. 0.d0) &
         & call boostwdir2_in_place(chy_tbst, shy_tbst, chy_tbstmo, &
         & xdir_t, xp(0, i))

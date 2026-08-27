@@ -5,10 +5,17 @@ module genps_born
   use run_state
   use kin_functions_module, only: dot => dot_impl
   use phase_space_kinematics, only: phspncheck_born, phase_space_lambda
+  use decay_chain_metadata, only: initialize_decay_chain_metadata, &
+                                  has_decay_chains, born_context, &
+                                  context_core_count
+  use decay_chain_kinematics, only: initialize_decay_chain_kinematics, &
+       minimum_core_final_mass, core_mass, &
+       generate_core_born_and_decays
   use fnlo_process_common, only: i_fks, j_fks, iconfig0, this_config, &
                                  softtest, colltest, &
                                  tau_born_lower_bound, &
                                  tau_lower_bound_resonance, &
+                                 tau_lower_bound, &
                                  config_mass, config_width, config_forest, &
                                  config_tree, config_index, born_tree, &
                                  born_ns_channel => born_ns, &
@@ -59,6 +66,7 @@ contains
     implicit none
     if (born_cache_initialized) return
     call validate_process_dimensions()
+    call initialize_decay_chain_metadata()
     call validate_bound_born_state()
 
     if (.not. allocated(saved_particle_masses)) then
@@ -101,9 +109,16 @@ contains
     point%external_masses => saved_external_masses
     saved_external_masses = 0d0
 
+    ! The decay map is channel-independent, but multichannel enhancement
+    ! still needs to know which generated Born channel is being integrated.
     this_config = iconfig
     config_index = iconfig
     iconfig0 = iconfig
+    if (has_decay_chains()) then
+      call generate_decay_born_phase_space(ndim, x, point)
+      return
+    end if
+
     do i = -max_branch, -1
       do j = 1, 2
         config_tree(j, i) = config_forest(j, i, iconfig, 0)
@@ -172,6 +187,92 @@ contains
     end if
     point%valid = .true.
   end subroutine generate_born_phase_space
+
+
+  subroutine generate_decay_born_phase_space(ndim, x, point)
+    implicit none
+    integer, intent(in) :: ndim
+    double precision, intent(inout) :: x(99)
+    type(born_phase_space), intent(inout) :: point
+
+    integer :: context, core_count, final_count, leg
+    double precision :: minimum_mass, visible_born(0:3, nexternal - 1)
+    logical :: pass
+
+    call initialize_decay_chain_kinematics()
+    context = born_context()
+    core_count = context_core_count(context)
+    final_count = core_count - nincoming
+    saved_particle_masses = 0d0
+    saved_external_masses = 0d0
+    do leg = 1, core_count
+      saved_particle_masses(leg) = core_mass(context, leg)
+      saved_external_masses(leg) = saved_particle_masses(leg)
+    end do
+
+    if (nincoming == 2) then
+      saved_stot = 4d0*ebeam(1)*ebeam(2)
+    else
+      saved_stot = saved_particle_masses(1)**2
+    end if
+    saved_initial_mass = sum(saved_particle_masses(1:nincoming))
+    minimum_mass = minimum_core_final_mass()
+    saved_final_mass = minimum_mass
+    if (saved_stot < max(saved_initial_mass, minimum_mass)**2) then
+      write (*, *) 'Fatal error in decay phase space: insufficient energy'
+      stop 1
+    end if
+
+    tau_born_lower_bound = minimum_mass**2/saved_stot
+    tau_lower_bound_resonance = tau_born_lower_bound
+    tau_lower_bound = tau_born_lower_bound
+    point%stot = saved_stot
+    if (abs(lpp(1)) >= 1 .and. abs(lpp(2)) >= 1 .and. &
+        .not. (softtest .or. colltest)) then
+      if (final_count == 1) then
+        call compute_tau_one_body(minimum_mass, saved_stot, point%tau, &
+                                  point%xjac)
+      else
+        call generate_tau(saved_stot, -1, x(ndim - 4), point%tau, &
+                          point%xjac)
+      end if
+      call generate_y(point%tau, x(ndim - 3), point%ycm, point%ycmhat, &
+                      point%xjac)
+    else
+      call compute_tau_y_epem(j_fks, final_count == 1, minimum_mass, &
+                              saved_stot, point%tau, point%ycm, &
+                              point%ycmhat)
+    end if
+    if (point%xjac < 0d0) then
+      call invalidate_born_phase_space()
+      return
+    end if
+
+    point%xbjrk(1) = sqrt(point%tau)*exp(point%ycm)
+    point%xbjrk(2) = sqrt(point%tau)*exp(-point%ycm)
+    if (final_count == 1) then
+      point%shat = minimum_mass**2
+      point%sqrtshat = minimum_mass
+    else
+      point%shat = point%tau*saved_stot
+      point%sqrtshat = sqrt(point%shat)
+    end if
+
+    pass = .true.
+    call generate_core_born_and_decays(x, point%shat, point%sqrtshat, &
+                                        point%xjac, point%xpswgt, &
+                                        visible_born, pass)
+    if (.not. pass .or. point%xjac < 0d0) then
+      point%xjac = -143d0
+      call invalidate_born_phase_space()
+      return
+    end if
+    if (final_count == 1) point%xpswgt = &
+         point%xpswgt/(2d0*minimum_mass)
+    born_momenta = visible_born
+    born_lab_momenta = visible_born
+    point%valid = .true.
+  end subroutine generate_decay_born_phase_space
 
   subroutine invalidate_born_phase_space()
     implicit none

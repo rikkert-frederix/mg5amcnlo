@@ -22,6 +22,7 @@ module driver_mintfo_module
                        muf2_over_ref, muf1_ref_fixed, muf2_ref_fixed, &
                        do_rwgt_scale, do_rwgt_pdf
   use genps_fks, only: generate_momenta
+  use decay_chain_metadata, only: real_phase_space_dimension
   use setscales_module, only: set_alphas
   use split_orders, only: check_amp_split
   use cuts_module, only: passcuts
@@ -185,7 +186,7 @@ contains
     imode = restart_mode
     flat_grid = imode == 0
 
-    ndim = 3*(nexternal - nincoming) - 4
+    ndim = real_phase_space_dimension()
     if (abs(lpp(1)) >= 1) ndim = ndim + 1
     if (abs(lpp(2)) >= 1) ndim = ndim + 1
     nndim = ndim

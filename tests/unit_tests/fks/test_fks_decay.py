@@ -67,8 +67,8 @@ class TestFKSDecayChains(unittest.TestCase):
 
     def assert_local_widths(self, matrix_element, expected_nodes):
         expected_widths = {
-            6: '0.1d0*mdl_MT',
-            24: '0.1d0*mdl_MW'}
+            6: 'FNLO_DECAY_DUMMY_WIDTH_RATIO()*mdl_MT',
+            24: 'FNLO_DECAY_DUMMY_WIDTH_RATIO()*mdl_MW'}
         found_nodes = set()
         for wavefunction in matrix_element.get_all_wavefunctions():
             pdg = abs(wavefunction.get('pdg_code'))
@@ -121,9 +121,9 @@ class TestFKSDecayChains(unittest.TestCase):
              matrix_element.born_me['processes'][0].get_legs_with_decays()],
             [2, -2, 2, -1, 5, -6])
         self.assertEqual(
-            [(node['pdg'], node['carrier_leaf'])
+            [(node['pdg'], node['qcd_order'], node['carrier_leaf'])
              for node in matrix_element.decay_metadata['nodes']],
-            [(6, 3), (24, 0)])
+            [(6, 0, 3), (24, 0, 0)])
 
         self.assert_local_widths(matrix_element.born_me, [1, 2])
         for real in matrix_element.real_processes:
@@ -158,6 +158,41 @@ class TestFKSDecayChains(unittest.TestCase):
                     as stream:
                 self.assertEqual(stream.read(), metadata_text)
 
+        card_text = fks_decay.decay_card_text(
+            {6: 1.4915, 24: 2.0476}, {6: 173.0, 24: 80.419})
+        self.assertEqual(card_text, (
+            '# FNLO_DECAY_CARD\n'
+            '# Runtime parameters for fixed-on-shell decay chains.\n'
+            '# DECAY_WIDTH entries are physical total widths in GeV.\n'
+            '# DECAY_REN_SCALE entries are independent decay scales in GeV.\n'
+            'FORMAT 2\n'
+            'DUMMY_WIDTH_RATIO 1.0000000000000001e-01\n'
+            'PRODUCTION_REN_SCALE_MOMENTA CORE\n'
+            'DECAY_WIDTH 6 1.4915000000000000e+00\n'
+            'DECAY_REN_SCALE 6 1.7300000000000000e+02\n'
+            'DECAY_WIDTH 24 2.0476000000000001e+00\n'
+            'DECAY_REN_SCALE 24 8.0418999999999997e+01\n'
+            'END\n'))
+
+        decayed_scale_text = fks_decay.decay_card_text(
+            {6: 1.4915}, {6: 173.0},
+            production_scale_momenta='decayed')
+        self.assertIn(
+            'PRODUCTION_REN_SCALE_MOMENTA DECAYED\n',
+            decayed_scale_text)
+
+    def test_qcd_decay_order_is_stored_per_node(self):
+        command = self.generate(
+            'u u~ > t t~ [real=QCD], '
+            '(t > w+ b, w+ > u d~ g)')
+        helas = fks_helas_objects.FKSHelasMultiProcess(
+            command._fks_multi_proc, loop_optimized=False)
+        matrix_element = helas['matrix_elements'][0]
+        self.assertEqual(
+            [(node['pdg'], node['qcd_order'])
+             for node in matrix_element.decay_metadata['nodes']],
+            [(6, 0), (24, 1)])
+
     def test_two_decays_and_both_madloop_modes(self):
         command = self.generate(
             'u u~ > t t~ [QCD], '
@@ -184,6 +219,11 @@ class TestFKSDecayChains(unittest.TestCase):
                 'born_color_basis'])
             self.assertTrue(matrix_element.virt_matrix_element[
                 'loop_color_basis'])
+            for diagram in matrix_element.virt_matrix_element.get_loop_diagrams():
+                for amplitude in diagram.get_loop_amplitudes():
+                    self.assertEqual(
+                        sum(amplitude.get('pairing')),
+                        len(amplitude.get('mothers')))
             if optimized:
                 self.assertEqual(
                     fks_decay.decay_chain_info_text(

@@ -10,6 +10,14 @@ Process information is available in index.html. Run settings are in
 Cards/run_card.dat, and fixed-order histogram settings are in
 Cards/FO_analyse_card.dat.
 
+Decay-chain outputs also contain Cards/decay_card.dat. It sets the physical
+total width and an independent renormalization scale for each decaying
+particle species. The generated scales default to the corresponding particle
+masses. PRODUCTION_REN_SCALE_MOMENTA selects whether the production
+renormalization scale uses the undecayed production momenta (CORE, the
+default) or the fully decayed momenta (DECAYED). Production factorization and
+Ellis-Sexton scales always use the production momenta.
+
 calculate_xsect
 ---------------
 

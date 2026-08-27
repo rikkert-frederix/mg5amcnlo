@@ -1,4 +1,8 @@
 module test_soft_col_limits_module
+  use decay_chain_metadata, only: real_phase_space_dimension, &
+                                  has_decay_chains
+  use decay_chain_kinematics, only: fks_leg_mass, &
+                                    minimum_core_final_mass
   use process_dimensions, only: nexternal, nincoming, fks_configs, &
                                 nsplitorders, amp_split_size, order_names, &
                                 validate_process_and_born_dimensions
@@ -146,7 +150,7 @@ contains
     integer :: ncolltests, imax, iflag, iret, ntry, fks_conf_number
     integer :: fks_loop_min, fks_loop_max, fks_loop, iamp
     integer :: i_fks, j_fks, nfksprocess
-    double precision :: wgt, fx, totmass
+    double precision :: wgt, fx, totmass, sister_mass
     double precision :: xi_i_fks_fix_save, y_ij_fks_fix_save
     double precision :: xi_i_fks_fix, y_ij_fks_fix
     logical :: calculated_born, softtest, colltest
@@ -200,7 +204,7 @@ contains
       write (*, *) 'with PDGs:       i=', pdg_type_d(nfksprocess, i_fks), &
         '  j=', pdg_type_d(nfksprocess, j_fks)
 !
-      ndim = 3*(nexternal - nincoming) - 4
+      ndim = real_phase_space_dimension()
       if (abs(lpp(1)) .ge. 1) ndim = ndim + 1
       if (abs(lpp(2)) .ge. 1) ndim = ndim + 1
       if (ndim < 1 .or. ndim > random_vector_size) then
@@ -234,6 +238,9 @@ contains
           end if
         end if
       end do
+      if (has_decay_chains()) then
+        totmass = max(totmass, minimum_core_final_mass())
+      end if
       if (lpp(1) .ne. 0) ebeam(1) = max(ebeam(1) &
         &      /20d0, totmass)
       if (lpp(2) .ne. 0) ebeam(2) = max(ebeam(2) &
@@ -519,7 +526,12 @@ contains
         write (*, *) ''
         write (*, *) ''
 
-        if (generated_masses(j_fks) .ne. 0d0) then
+        if (has_decay_chains()) then
+          sister_mass = fks_leg_mass(nfksprocess, j_fks)
+        else
+          sister_mass = generated_masses(j_fks)
+        end if
+        if (sister_mass .ne. 0d0) then
           write (*, *) 'No collinear test for massive j_fks'
           cycle born_configuration_loop
         end if

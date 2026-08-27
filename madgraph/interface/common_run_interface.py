@@ -1181,6 +1181,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
            delphes_trigger.dat
            shower_card.dat [aMCatNLO]
            FO_analyse_card.dat [aMCatNLO]
+           decay_card.dat [fNLO decay chains]
            madspin_card.dat [MS]
            transfer_card.dat [MW]
            madweight_card.dat [MW]
@@ -1210,6 +1211,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                     'MSTP',
                     'b_stable',
                     'FO_ANALYSIS_FORMAT',
+                    'FNLO_DECAY_CARD',
                     'MSTU',
                     'Begin Minpts',
                     'gridpack',
@@ -1234,6 +1236,8 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         text = [t.lower() for t in text]
         if '<mgversion>' in text or '<mg5proccard>' in text:
             return 'banner'
+        elif 'fnlo_decay_card' in text:
+            return 'decay_card.dat'
         elif 'particlepropagator' in text or 'executionpath' in text or 'treewriter' in text:
             return 'delphes_card.dat'
         elif 'cen_max_tracker' in text:
@@ -5156,6 +5160,9 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         self.paths['shower_default'] = pjoin(self.me_dir,'Cards','shower_card_default.dat')
         self.paths['FO_analyse'] = pjoin(self.me_dir,'Cards','FO_analyse_card.dat')
         self.paths['FO_analyse_default'] = pjoin(self.me_dir,'Cards','FO_analyse_card_default.dat')
+        self.paths['decay'] = pjoin(self.me_dir, 'Cards', 'decay_card.dat')
+        self.paths['decay_default'] = pjoin(
+            self.me_dir, 'Cards', 'decay_card_default.dat')
         self.paths['pythia'] =pjoin(self.me_dir, 'Cards','pythia_card.dat')
         self.paths['pythia8'] = pjoin(self.me_dir, 'Cards','pythia8_card.dat')
         self.paths['pythia8_default'] = pjoin(self.me_dir, 'Cards','pythia8_card_default.dat')
