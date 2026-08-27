@@ -333,6 +333,48 @@ class TestFKSDecayChains(unittest.TestCase):
                 decays == expected_decays
                 for decays in decays_by_core_process.values()))
 
+    def test_equivalent_qcd_production_flavours_share_subprocesses(self):
+        command = self.generate(
+            'p p > t t~ [QCD], t > j j b')
+        helas = fks_helas_objects.FKSHelasMultiProcess(
+            command._fks_multi_proc, loop_optimized=False)
+
+        # These three matrix elements become the three P* directories: gg,
+        # q q~ and q~ q.  Up- and down-type light flavours differ in electric
+        # charge, but their pure-QCD production matrix elements are identical.
+        self.assertEqual(len(helas['matrix_elements']), 3)
+        initial_state_groups = []
+        for matrix_element in helas['matrix_elements']:
+            initial_state_groups.append(frozenset(
+                tuple(leg.get('id') for leg in
+                      process.get_legs_with_decays()[:2])
+                for process in matrix_element.born_me['processes']))
+        self.assertEqual(set(initial_state_groups), set([
+            frozenset([(21, 21)]),
+            frozenset([(2, -2), (4, -4), (1, -1), (3, -3)]),
+            frozenset([(-2, 2), (-4, 4), (-1, 1), (-3, 3)])]))
+
+    def test_inequivalent_production_couplings_remain_separate(self):
+        command = self.generate(
+            'p p > z [QCD], z > e+ e-')
+        helas = fks_helas_objects.FKSHelasMultiProcess(
+            command._fks_multi_proc, loop_optimized=False)
+
+        # Removing electric charge from the metadata-layout key must not
+        # override the ordinary matrix-element tags.  The distinct up- and
+        # down-type Z couplings still require separate generated code.
+        initial_state_groups = []
+        for matrix_element in helas['matrix_elements']:
+            initial_state_groups.append(frozenset(
+                tuple(leg.get('id') for leg in
+                      process.get_legs_with_decays()[:2])
+                for process in matrix_element.born_me['processes']))
+        self.assertEqual(set(initial_state_groups), set([
+            frozenset([(2, -2), (4, -4)]),
+            frozenset([(1, -1), (3, -3)]),
+            frozenset([(-2, 2), (-4, 4)]),
+            frozenset([(-1, 1), (-3, 3)])]))
+
     def test_interface_and_generation_restrictions(self):
         command = self.generate(
             'u u~ > t t~ [real=QCD], (t > w+ b)')

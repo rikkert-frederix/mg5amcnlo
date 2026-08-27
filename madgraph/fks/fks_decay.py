@@ -118,6 +118,28 @@ def _particle_grouping_signature(pdg, model):
         particle.get('self_antipart'))
 
 
+def _core_particle_grouping_signature(pdg, model):
+    """Return the properties needed to share direct core-leg metadata.
+
+    Electric charge is deliberately absent.  It is not used by the decay
+    metadata layout, and the ordinary Born, virtual and real matrix-element
+    tags still verify the interactions and couplings before two FKS processes
+    are combined.  Keeping charge here would unnecessarily split otherwise
+    identical pure-QCD channels such as ``u u~ > t t~`` and
+    ``d d~ > t t~``.
+    """
+
+    particle = model.get_particle(pdg)
+    if particle is None:
+        raise fks_common.FKSProcessError(
+            'Cannot identify core particle %s while grouping processes' %
+            pdg)
+    return (
+        particle.get('spin'), particle.get('color'),
+        particle.get('mass'), particle.get('width'),
+        particle.get('is_part'), particle.get('self_antipart'))
+
+
 def _process_grouping_signature(process, model):
     """Describe a decay tree up to interchangeable external flavours."""
 
@@ -145,9 +167,11 @@ def _process_grouping_signature(process, model):
 def _metadata_grouping_signature(metadata, model):
     """Describe metadata that one subprocess directory may safely share.
 
-    Concrete leaf and direct-core PDGs may differ when their particles have
-    the same properties.  The ordinary HELAS comparison separately verifies
-    the interactions and complete matrix elements.
+    Concrete leaf PDGs may differ when their particles have the same grouping
+    properties.  Direct-core PDGs may additionally differ in electric charge,
+    which is irrelevant to the metadata layout.  The ordinary HELAS
+    comparison separately verifies the interactions and complete matrix
+    elements.
     """
 
     nodes = tuple((
@@ -165,7 +189,7 @@ def _metadata_grouping_signature(metadata, model):
         tuple(sorted(context['leaf_map'].items())),
         tuple((
             leg['number'], leg['state'],
-            _particle_grouping_signature(leg['pdg'], model))
+            _core_particle_grouping_signature(leg['pdg'], model))
             for leg in context['core_legs']))
         for context in metadata['contexts'])
     fks_maps = tuple((
