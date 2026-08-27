@@ -230,23 +230,24 @@ class TestFKSDecayChains(unittest.TestCase):
                         matrix_element.decay_metadata),
                     self.golden('decay_chain_info_two_tops.dat'))
 
-    def test_concrete_assignments_are_not_combined(self):
+    def test_only_equivalent_concrete_assignments_are_combined(self):
         command = self.generate(
             'u u~ > z z [real=QCD], (z > l+ l-)')
         helas = fks_helas_objects.FKSHelasMultiProcess(
             command._fks_multi_proc)
-        self.assertEqual(len(helas['matrix_elements']), 3)
-        signatures = [matrix_element.decay_signature
-                      for matrix_element in helas['matrix_elements']]
-        self.assertEqual(len(set(signatures)), 3)
-        visible_processes = [tuple(
-            leg.get('id') for leg in matrix_element.born_me[
-                'processes'][0].get_legs_with_decays())
+        self.assertEqual(len(helas['matrix_elements']), 2)
+        self.assertEqual(
+            sum(len(matrix_element.born_me['processes'])
+                for matrix_element in helas['matrix_elements']),
+            3)
+        visible_processes = [[tuple(
+            leg.get('id') for leg in process.get_legs_with_decays())
+            for process in matrix_element.born_me['processes']]
             for matrix_element in helas['matrix_elements']]
-        self.assertEqual(visible_processes, [
+        self.assertEqual(visible_processes, [[
             (2, -2, -11, 11, -11, 11),
-            (2, -2, -11, 11, -13, 13),
-            (2, -2, -13, 13, -13, 13)])
+            (2, -2, -13, 13, -13, 13)], [
+            (2, -2, -11, 11, -13, 13)]])
 
     def test_mixed_decayed_and_undecayed_processes(self):
         command = self.generate(
@@ -274,6 +275,63 @@ class TestFKSDecayChains(unittest.TestCase):
                 'exactly one colour-carrying child'):
             fks_helas_objects.FKSHelasMultiProcess(
                 command._fks_multi_proc)
+
+    def test_flat_singlet_subdecay_uses_generated_topology(self):
+        command = self.generate(
+            'u u~ > t t~ [real=QCD], (t > b j j)')
+        helas = fks_helas_objects.FKSHelasMultiProcess(
+            command._fks_multi_proc, loop_optimized=False)
+
+        self.assertEqual(len(helas['matrix_elements']), 1)
+        matrix_element = helas['matrix_elements'][0]
+        visible_processes = [tuple(
+            leg.get('id') for leg in process.get_legs_with_decays())
+            for process in matrix_element.born_me['processes']]
+        self.assertEqual(visible_processes, [
+            (2, -2, 5, 2, -1, -6),
+            (2, -2, 5, 4, -3, -6)])
+        for real in matrix_element.real_processes:
+            self.assertEqual(len(real.matrix_element['processes']), 2)
+
+        metadata = matrix_element.decay_metadata
+        self.assertEqual(metadata['forced_species'], [6])
+        self.assertEqual(
+            [(node['pdg'], node['qcd_order'], node['carrier_leaf'])
+             for node in metadata['nodes']],
+            [(6, 0, 1)])
+        self.assertEqual(metadata['leaves'][0]['pdg'], 5)
+
+        # The generated HELAS topology is t -> b W with W -> j j.  The
+        # b is visible leg 3 and carries the production top colour; the
+        # two W daughters (legs 4 and 5) must not enter colour links.
+        visible_links = [tuple(link['link'])
+                         for link in matrix_element.color_links]
+        self.assertIn((3, 3), visible_links)
+        self.assertTrue(all(
+            4 not in link and 5 not in link for link in visible_links))
+
+    def test_grouped_decay_flavours_cover_every_real_subprocess(self):
+        command = self.generate(
+            'g g > t t~ [real=QCD], (t > b j j)')
+        helas = fks_helas_objects.FKSHelasMultiProcess(
+            command._fks_multi_proc, loop_optimized=False)
+
+        self.assertEqual(len(helas['matrix_elements']), 1)
+        matrix_element = helas['matrix_elements'][0]
+        expected_decays = set([(2, -1), (4, -3)])
+        for real in matrix_element.real_processes:
+            decays_by_core_process = {}
+            for process in real.matrix_element['processes']:
+                pdgs = tuple(
+                    leg.get('id')
+                    for leg in process.get_legs_with_decays())
+                core_process = pdgs[:3] + pdgs[5:]
+                decays_by_core_process.setdefault(
+                    core_process, set()).add(pdgs[3:5])
+            self.assertTrue(decays_by_core_process)
+            self.assertTrue(all(
+                decays == expected_decays
+                for decays in decays_by_core_process.values()))
 
     def test_interface_and_generation_restrictions(self):
         command = self.generate(

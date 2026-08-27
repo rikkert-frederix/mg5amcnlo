@@ -103,8 +103,23 @@ def _concrete_decay_matrix_elements(decay_definition):
     return decay_process.combine_decay_chain_processes(combine=False)
 
 
-def _process_signature(process):
-    """Canonical, hashable description of one concrete decay tree."""
+def _particle_grouping_signature(pdg, model):
+    """Return the properties relevant when grouping external flavours."""
+
+    particle = model.get_particle(pdg)
+    if particle is None:
+        raise fks_common.FKSProcessError(
+            'Cannot identify decay particle %s while grouping processes' %
+            pdg)
+    return (
+        particle.get('spin'), particle.get('color'),
+        particle.get('mass'), particle.get('width'),
+        particle.get('charge'), particle.get('is_part'),
+        particle.get('self_antipart'))
+
+
+def _process_grouping_signature(process, model):
+    """Describe a decay tree up to interchangeable external flavours."""
 
     nested = list(process.get('decay_chains'))
     children = []
@@ -115,14 +130,62 @@ def _process_signature(process):
                 match = nested.pop(index)
                 break
         if match is None:
-            children.append(('LEAF', leg.get('id'),
-                             tuple(leg.get('polarization'))))
+            children.append((
+                'LEAF', _particle_grouping_signature(leg.get('id'), model),
+                tuple(leg.get('polarization'))))
         else:
-            children.append(('NODE', _process_signature(match)))
+            children.append((
+                'NODE', _process_grouping_signature(match, model)))
     if nested:
         raise fks_common.FKSProcessError(
-            'Unmatched nested decay while building a decay signature')
+            'Unmatched nested decay while grouping decay processes')
     return (process.get_initial_ids()[0], tuple(children))
+
+
+def _metadata_grouping_signature(metadata, model):
+    """Describe metadata that one subprocess directory may safely share.
+
+    Concrete leaf and direct-core PDGs may differ when their particles have
+    the same properties.  The ordinary HELAS comparison separately verifies
+    the interactions and complete matrix elements.
+    """
+
+    nodes = tuple((
+        node['id'], node['parent'], node['pdg'], node['qcd_order'],
+        node['carrier_leaf'], tuple(node['children']))
+        for node in metadata['nodes'])
+    leaves = tuple((
+        leaf['id'], leaf['parent'],
+        _particle_grouping_signature(leaf['pdg'], model))
+        for leaf in metadata['leaves'])
+    contexts = tuple((
+        context['id'], context['kind'], context['source_index'],
+        context['core_count'], context['visible_count'],
+        tuple(sorted(context['core_map'].items())),
+        tuple(sorted(context['leaf_map'].items())),
+        tuple((
+            leg['number'], leg['state'],
+            _particle_grouping_signature(leg['pdg'], model))
+            for leg in context['core_legs']))
+        for context in metadata['contexts'])
+    fks_maps = tuple((
+        mapping['configuration'], mapping['real_context'], mapping['i'],
+        mapping['j'], mapping['ij'])
+        for mapping in metadata['fks_maps'])
+    return (
+        metadata['format'], tuple(metadata['forced_species']), nodes, leaves,
+        contexts, fks_maps)
+
+
+def _decay_grouping_signature(assignment, metadata, model):
+    """Return the complete compatibility key for decay-ME grouping."""
+
+    decay_trees = tuple((
+        attachment['selector'],
+        _process_grouping_signature(
+            attachment['decay_me'].get('processes')[0], model))
+        for attachment in assignment['attachments'])
+    return (decay_trees, _metadata_grouping_signature(metadata, model))
 
 
 def _decay_sort_key(matrix_element, polarization):
@@ -235,13 +298,8 @@ def generate_decay_assignments(decay_chains, core_process):
                 'decay_me': decay_me})
         attachments.sort(key=lambda item: (
             item['selector'][0], item['selector'][1]))
-        signature = tuple((
-            item['selector'],
-            _process_signature(item['decay_me'].get('processes')[0]))
-            for item in attachments)
         assignments.append({
             'attachments': attachments,
-            'signature': signature,
             'ordering_for_pol': ordering_for_pol})
 
     return assignments
@@ -282,7 +340,7 @@ def _decay_node_qcd_order(process):
     return qcd_orders.pop()
 
 
-def _append_decay_tree(process, parent_id, metadata, model):
+def _append_decay_tree(process, parent_id, metadata):
     """Append one concrete process tree and return its node ID."""
 
     node_id = len(metadata['nodes']) + 1
@@ -310,38 +368,11 @@ def _append_decay_tree(process, parent_id, metadata, model):
                 'pdg': leg.get('id')})
             node['children'].append(('LEAF', leaf_id))
         else:
-            child_id = _append_decay_tree(match, node_id, metadata, model)
+            child_id = _append_decay_tree(match, node_id, metadata)
             node['children'].append(('NODE', child_id))
     if nested:
         raise fks_common.FKSProcessError(
             'Unmatched nested decay while constructing decay metadata')
-
-    parent_color = model.get_particle(node['pdg']).get_color()
-    if parent_color != 1:
-        if abs(parent_color) == 6:
-            raise fks_common.FKSProcessError(
-                'Decays of colour-sextet resonances are not supported')
-        colored_children = []
-        for kind, child_id in node['children']:
-            if kind == 'NODE':
-                child = metadata['nodes'][child_id - 1]
-                child_pdg = child['pdg']
-                carrier = child['carrier_leaf']
-            else:
-                child = metadata['leaves'][child_id - 1]
-                child_pdg = child['pdg']
-                carrier = child_id
-            child_color = model.get_particle(child_pdg).get_color()
-            if child_color != 1:
-                colored_children.append((child_color, carrier))
-        if (len(colored_children) != 1 or
-                colored_children[0][0] != parent_color or
-                not colored_children[0][1]):
-            raise fks_common.FKSProcessError(
-                'The coloured decay parent %s must have exactly one '
-                'colour-carrying child in representation %s' %
-                (node['pdg'], parent_color))
-        node['carrier_leaf'] = colored_children[0][1]
 
     return node_id
 
@@ -357,7 +388,10 @@ def _build_decay_metadata(assignment, model):
     for attachment in assignment['attachments']:
         process = attachment['decay_me'].get('processes')[0]
         attachment['root_node_id'] = _append_decay_tree(
-            process, 0, metadata, model)
+            process, 0, metadata)
+        _set_decay_carriers(
+            attachment['decay_me'], attachment['root_node_id'], metadata,
+            model)
     metadata['forced_species'] = sorted(set(
         abs(node['pdg']) for node in metadata['nodes']))
     return metadata
@@ -372,6 +406,121 @@ def _tree_leaf_ids(node_id, metadata):
         else:
             result.append(child_id)
     return result
+
+
+def _tree_node_ids(node_id, metadata):
+    """Return all decay nodes below ``node_id``, including itself."""
+
+    result = [node_id]
+    node = metadata['nodes'][node_id - 1]
+    for kind, child_id in node['children']:
+        if kind == 'NODE':
+            result.extend(_tree_node_ids(child_id, metadata))
+    return result
+
+
+def _wavefunction_color(wavefunction, model):
+    particle = model.get_particle(wavefunction.get('pdg_code'))
+    if particle is None:
+        raise fks_common.FKSProcessError(
+            'Cannot determine the colour representation of decay '
+            'wavefunction %s' % wavefunction.get('pdg_code'))
+    return particle.get_color()
+
+
+def _topology_carrier_external(wavefunction, parent_color, model):
+    """Follow one colour representation through colour-singlet emissions.
+
+    A production colour charge can be assigned to one visible decay product
+    only when each vertex on its path has one child in the parent's colour
+    representation and every other child is a singlet.  Looking at the HELAS
+    topology, rather than the flat process legs, allows e.g. ``t > b j j``
+    when the two light jets descend from an intermediate colour-singlet W.
+    """
+
+    mothers = wavefunction.get('mothers')
+    if not mothers:
+        if (_wavefunction_color(wavefunction, model) == parent_color and
+                wavefunction.get('number_external')):
+            return wavefunction.get('number_external')
+        return 0
+
+    colored_mothers = [
+        mother for mother in mothers
+        if _wavefunction_color(mother, model) != 1]
+    if (len(colored_mothers) != 1 or
+            _wavefunction_color(colored_mothers[0], model) != parent_color):
+        return 0
+    return _topology_carrier_external(
+        colored_mothers[0], parent_color, model)
+
+
+def _set_decay_carriers(matrix_element, root_node_id, metadata, model):
+    """Set visible colour carriers after inspecting every decay diagram."""
+
+    process = matrix_element.get('processes')[0]
+    visible_legs = sorted([
+        leg for leg in process.get_legs_with_decays() if leg.get('state')],
+        key=lambda leg: leg.get('number'))
+    leaf_ids = _tree_leaf_ids(root_node_id, metadata)
+    expected_pdgs = [
+        metadata['leaves'][leaf_id - 1]['pdg'] for leaf_id in leaf_ids]
+    actual_pdgs = [leg.get('id') for leg in visible_legs]
+    if expected_pdgs != actual_pdgs:
+        raise fks_common.FKSProcessError(
+            'Decay topology does not reproduce the visible process legs: '
+            '%s != %s' % (expected_pdgs, actual_pdgs))
+    external_to_leaf = dict(
+        (leg.get('number'), leaf_id)
+        for leg, leaf_id in zip(visible_legs, leaf_ids))
+    leaf_to_external = dict(
+        (leaf_id, leg.get('number'))
+        for leg, leaf_id in zip(visible_legs, leaf_ids))
+
+    diagrams = matrix_element.get('diagrams')
+    for node_id in _tree_node_ids(root_node_id, metadata):
+        node = metadata['nodes'][node_id - 1]
+        parent_color = model.get_particle(node['pdg']).get_color()
+        if parent_color == 1:
+            continue
+        if abs(parent_color) == 6:
+            raise fks_common.FKSProcessError(
+                'Decays of colour-sextet resonances are not supported')
+
+        expected_external = frozenset(
+            leaf_to_external[descendant]
+            for descendant in _tree_leaf_ids(node_id, metadata))
+        carriers = set()
+        for diagram in diagrams:
+            cache = {}
+            matches = [
+                wavefunction for wavefunction in
+                diagram.get('wavefunctions')
+                if wavefunction.get('mothers') and
+                wavefunction.get('pdg_code') == node['pdg'] and
+                _external_descendants(wavefunction, cache) ==
+                expected_external]
+            if not matches:
+                matches = [
+                    wavefunction for wavefunction in
+                    diagram.get('wavefunctions')
+                    if wavefunction.get('mothers') and
+                    abs(wavefunction.get('pdg_code')) == abs(node['pdg']) and
+                    _external_descendants(wavefunction, cache) ==
+                    expected_external]
+            if len(matches) != 1:
+                carriers.add(0)
+                continue
+            carrier_external = _topology_carrier_external(
+                matches[0], parent_color, model)
+            carriers.add(external_to_leaf.get(carrier_external, 0))
+
+        if len(carriers) != 1 or 0 in carriers:
+            raise fks_common.FKSProcessError(
+                'The coloured decay parent %s must have exactly one '
+                'colour-carrying child in representation %s in every '
+                'generated decay diagram' % (node['pdg'], parent_color))
+        node['carrier_leaf'] = carriers.pop()
 
 
 def _copy_process(process):
@@ -621,7 +770,8 @@ def apply_decay_assignment(fks_process, assignment):
                 'j': info['j'],
                 'ij': info['ij']})
 
-    fks_process.decay_signature = assignment['signature']
+    fks_process.decay_grouping_signature = _decay_grouping_signature(
+        assignment, metadata, model)
     fks_process.decay_metadata = metadata
 
 

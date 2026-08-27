@@ -723,7 +723,7 @@ class FKSHelasProcess(object):
         sets reals and color links. Real_me_list and real_amp_list are the lists of pre-genrated
         matrix elements in 1-1 correspondence with the amplitudes"""
         
-        self.decay_signature = ()
+        self.decay_grouping_signature = None
         self.decay_metadata = None
         self._decay_color_links_set = False
         defer_real_color = opts.pop('defer_real_color', False)
@@ -780,7 +780,12 @@ class FKSHelasProcess(object):
                                 self.real_processes.append(fksreal_me)
                                 real_amps_new.append(proc)
 
-            fksproc.real_amps = real_amps_new
+            # Several concrete decay assignments are constructed from the
+            # same FKSProcess.  Do not let the first one replace the complete
+            # real-amplitude list with its representatives, since every later
+            # assignment must see the same production-flavour subprocesses.
+            if not fksproc.decay_chains:
+                fksproc.real_amps = real_amps_new
             if fksproc.virt_amp:
                 if fksproc.decay_chains:
                     self.virt_matrix_element = \
@@ -917,7 +922,8 @@ class FKSHelasProcess(object):
     def __eq__(self, other):
         """the equality between two FKSHelasProcesses is defined up to the 
         color links"""
-        if self.decay_signature != other.decay_signature:
+        if (self.decay_grouping_signature !=
+                other.decay_grouping_signature):
             return False
         #first compare the born
         selftag = helas_objects.IdentifyMETag.\
@@ -971,16 +977,18 @@ class FKSHelasProcess(object):
         corresponding real processes may not be in the same order. This is 
         taken care of by constructing the list of self_reals.
         """
-        if self.decay_signature != other.decay_signature:
+        if (self.decay_grouping_signature !=
+                other.decay_grouping_signature):
             raise fks_common.FKSProcessError(
-                'Cannot combine different decay assignments')
+                'Cannot combine incompatible decay assignments')
 
         # first add the born process
         #need to store pdg lists rather than processes in order to keep mirror processes different
-        this_pdgs = [[leg['id'] for leg in proc['legs']] \
+        this_pdgs = [[leg['id'] for leg in proc.get_legs_with_decays()] \
                 for proc in self.born_me['processes']]
         for oth_proc in other.born_me['processes']:
-            oth_pdgs = [leg['id'] for leg in oth_proc['legs']]
+            oth_pdgs = [leg['id']
+                        for leg in oth_proc.get_legs_with_decays()]
             if oth_pdgs not in this_pdgs:
                 self.born_me['processes'].append(oth_proc)
                 this_pdgs.append(oth_pdgs)
@@ -1001,10 +1009,12 @@ class FKSHelasProcess(object):
             except ValueError:
                 raise fks_common.FKSProcessError('add_process: error in combination of real MEs')
             #need to store pdg lists rather than processes in order to keep mirror processes different
-            this_pdgs = [[leg['id'] for leg in proc['legs']] \
+            this_pdgs = [[leg['id']
+                          for leg in proc.get_legs_with_decays()] \
                     for proc in this_real.matrix_element['processes']]
             for oth_proc in oth_real.matrix_element['processes']:
-                oth_pdgs = [leg['id'] for leg in oth_proc['legs']]
+                oth_pdgs = [leg['id']
+                            for leg in oth_proc.get_legs_with_decays()]
                 if oth_pdgs not in this_pdgs:
                     this_real.matrix_element['processes'].append(oth_proc)
                     this_pdgs.append(oth_pdgs)

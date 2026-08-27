@@ -66,7 +66,11 @@ Add a small helper module, `madgraph/fks/fks_decay.py`, to isolate the new logic
   - every real matrix element;
   - extra underlying-Born counterterm matrix elements, if present;
   - the Born, loop, R2, UV, and UVCT content of `LoopHelasMatrixElement`.
-- Produce one `FKSHelasProcess` per concrete decay assignment, just as LO decay chains can produce multiple combined matrix elements.
+- Construct one `FKSHelasProcess` per concrete decay assignment, then use the
+  ordinary Born/virtual/real matrix-element tags to combine assignments that
+  are identical up to interchangeable external flavours. Require matching
+  decay topology, particle properties, metadata maps, and FKS maps before
+  sharing a subprocess directory.
 - Construct affected matrix elements with colour generation disabled, insert all decays, invalidate cached base amplitudes/loop groups, renumber HELAS objects, and build colour information once afterward.
 - Support both optimized and unoptimized MadLoop output. Add a loop-specific finalization hook around the inherited decay insertion to clear `loop_groups`, relabel loop objects, and rebuild the loop–Born colour matrix.
 
@@ -94,10 +98,20 @@ For decay-enabled processes, replace the current all-coloured-pairs construction
 1. Derive the union of core Born pairs actually requested by colour-dependent FKS configurations, using `need_color_links` and the corresponding `fks_j_from_i` lists.
 2. Resolve each coloured core leg to one visible colour carrier:
    - an undecayed coloured leg maps to itself;
-   - a coloured resonance must have exactly one immediate coloured child with the same colour representation;
-   - recurse through nested coloured decays until reaching a visible carrier;
-   - colour-singlet branches, including \(W\to q\bar q\), do not contribute to the parent’s production colour charge.
-3. Reject a coloured resonance with zero or multiple coloured child branches. This intentionally excludes colour-splitting decays such as an octet decaying to \(q\bar q\) or any sextet decaying.
+   - after generating the concrete decay matrix element, inspect the HELAS
+     connector topology in every diagram;
+   - follow a coloured connector only when it has exactly one immediate
+     branch in the same colour representation and all other immediate
+     branches are colour singlets;
+   - recurse along that branch until reaching one visible carrier;
+   - colour-singlet branches, including an internal \(W\to q\bar q\) in a
+     flat decay such as \(t\to b j j\), do not contribute to the parent’s
+     production colour charge.
+3. Reject a coloured resonance if any generated decay diagram has no unique
+   carrier, or if different diagrams resolve to different carriers. This
+   intentionally excludes genuine colour-splitting decays such as an octet
+   decaying to \(q\bar q\), coloured radiation such as \(t\to t g\), and any
+   sextet decay.
 4. Map each required core pair to its visible carrier pair, deduplicate the result, and call `insert_color_links` only for those pairs.
 5. Permit a diagonal massless visible pair when it represents the self-link of a massive core resonance, e.g. \(T_t^2\to T_b^2\).
 6. Store the mapping from the core pair to the generated `b_sf_NNN` index.
@@ -148,6 +162,9 @@ The exporter only writes this file; no Fortran source, include file, template, o
   - verify decay daughters never appear in production FKS metadata.
 - HELAS tests:
   - Born, all reals, extra counterterms, and loop objects contain the same selected decay assignment;
+  - equivalent concrete flavours such as \(t\to b u\bar d\) and
+    \(t\to b c\bar s\) share one matrix element and subprocess directory,
+    while inequivalent flavour assignments remain separate;
   - nested \(t\to bW\), \(W\to q\bar q\) works;
   - both \(t\) and \(\bar t\) can decay in the same process;
   - optimized and unoptimized loop objects survive insertion and colour rebuilding;
@@ -157,6 +174,9 @@ The exporter only writes this file; no Fortran source, include file, template, o
   - simultaneous \(t/\bar t\) decays map to distinct \(b/\bar b\) carriers;
   - \(W\to q\bar q\) introduces no production colour links;
   - a massive top self-link can generate a massless \(b,b\) linked Born;
+  - a flat \(t\to b j j\) decay is accepted when the generated diagrams show
+    that the two light jets descend from a colour-singlet W, and only the b
+    carries the production top colour;
   - a coloured parent with multiple coloured child branches is rejected;
   - the number of generated `b_sf_NNN` files equals the unique required mapped pairs.
 - Export tests:
