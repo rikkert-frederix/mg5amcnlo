@@ -25,6 +25,7 @@ from madgraph.fks import fks_common
 from madgraph.fks import fks_decay
 from madgraph.fks import fks_helas_objects
 from madgraph.interface.master_interface import MasterCmd
+from madgraph.iolibs import export_fks
 
 
 class TestFKSDecayChains(unittest.TestCase):
@@ -374,6 +375,221 @@ class TestFKSDecayChains(unittest.TestCase):
             massless.exec_cmd(
                 'generate u u~ > z g [real=QCD], (g > u u~)',
                 printcmd=False, precmd=True)
+
+    def test_nlo_decay_owns_fks_and_is_glued_to_lo_production(self):
+        command = self.generate(
+            'u u~ > t t~, '
+            '(t > w+ b QED^2=2 QCD^2=0 [real=QCD])')
+        fks_multi = command._fks_multi_proc
+
+        self.assertTrue(fks_multi.nlo_decay_prototype)
+        self.assertEqual(fks_multi.nlo_decay_selector, (6, 1))
+        self.assertEqual(fks_multi.nlo_decay_mode, 'real')
+        self.assertEqual(len(fks_multi['born_processes']), 1)
+
+        # The FKS family belongs to the decay before HELAS composition.
+        fks_process = fks_multi['born_processes'][0]
+        self.assertEqual(
+            [leg.get('id') for leg in
+             fks_process.born_amp['process']['legs']],
+            [6, 5, 24])
+        self.assertEqual(len(fks_process.real_amps), 1)
+        self.assertEqual(
+            [leg.get('id') for leg in
+             fks_process.real_amps[0].process['legs']],
+            [6, 5, 24, 21])
+        self.assertEqual(
+            [(info['i'], info['j'], info['ij'])
+             for info in fks_process.real_amps[0].fks_infos],
+            [(4, 2, 2)])
+
+        helas = fks_helas_objects.FKSHelasMultiProcess(
+            fks_multi, loop_optimized=False)
+        self.assertEqual(len(helas['matrix_elements']), 1)
+        matrix_element = helas['matrix_elements'][0]
+
+        self.assertEqual(
+            [leg.get('id') for leg in matrix_element.born_me[
+                'processes'][0].get_legs_with_decays()],
+            [2, -2, 5, 24, -6])
+        self.assertEqual(
+            [leg.get('id') for leg in matrix_element.real_processes[0].
+             matrix_element['processes'][0].get_legs_with_decays()],
+            [2, -2, 5, 24, 21, -6])
+        self.assertEqual(
+            matrix_element.born_me.get_nexternal_ninitial(), (5, 2))
+        self.assertEqual(
+            matrix_element.real_processes[0].matrix_element.
+            get_nexternal_ninitial(), (6, 2))
+        for component in [
+                matrix_element.born_me,
+                matrix_element.real_processes[0].matrix_element]:
+            top_wavefunctions = [
+                wavefunction for wavefunction in
+                component.get_all_wavefunctions()
+                if abs(wavefunction.get('pdg_code')) == 6]
+            self.assertTrue(top_wavefunctions)
+            self.assertEqual(
+                set(wavefunction.get('decay_node_id')
+                    for wavefunction in top_wavefunctions),
+                set([0, 1]))
+            for wavefunction in top_wavefunctions:
+                expected = (
+                    'FNLO_DECAY_DUMMY_WIDTH_RATIO()*mdl_MT'
+                    if wavefunction.get('decay_node_id') else 'ZERO')
+                self.assertEqual(wavefunction.get('width'), expected)
+
+        metadata = matrix_element.nlo_decay_metadata
+        self.assertEqual(metadata['status'], 'MATRIX_ELEMENTS_ONLY')
+        self.assertEqual(metadata['parent_pdg'], 6)
+        self.assertEqual(metadata['fks_maps'], [{
+            'configuration': 1,
+            'real_context': 2,
+            'i': 4,
+            'j': 2,
+            'ij': 2}])
+        self.assertEqual(
+            [tuple(link['link']) for link in matrix_element.color_links],
+            [(3, 3)])
+        info = fks_decay.nlo_decay_info_text(metadata)
+        self.assertIn('LOCAL_MAP 2 1 NODE 1\n', info)
+        self.assertIn('LOCAL_MAP 2 4 LEG 5\n', info)
+        self.assertIn('FKS_MAP 1 2 4 2 2\n', info)
+
+    def test_nlo_decay_virtual_remains_a_decay_building_block(self):
+        command = self.generate(
+            'u u~ > t t~, '
+            '(t > w+ b QED^2=2 QCD^2=0 [QCD])')
+        helas = fks_helas_objects.FKSHelasMultiProcess(
+            command._fks_multi_proc, loop_optimized=False)
+        matrix_element = helas['matrix_elements'][0]
+        virtual = matrix_element.nlo_decay_virtual_matrix_element
+
+        self.assertIsNone(matrix_element.virt_matrix_element)
+        self.assertIsNotNone(virtual)
+        self.assertIn(virtual, helas.get_virt_matrix_elements())
+        self.assertTrue(helas['has_loops'])
+        self.assertTrue(matrix_element.nlo_decay_metadata['has_virtual'])
+        self.assertEqual(
+            [leg.get('id') for leg in
+             virtual['processes'][0].get_legs_with_decays()],
+            [6, 5, 24])
+        self.assertEqual(virtual.get_nexternal_ninitial(), (3, 1))
+        self.assertTrue(virtual.get_loop_diagrams())
+        self.assertTrue(virtual.get_born_diagrams())
+
+        with tempfile.TemporaryDirectory() as output_dir:
+            virtual_root = os.path.join(output_dir, 'Ptest',
+                                        'NLODecayVirtual')
+            virtual_path = os.path.join(
+                virtual_root,
+                'V%s' % virtual['processes'][0].shell_string())
+            resource_path = os.path.join(
+                virtual_root, 'MadLoop5_resources')
+            os.makedirs(virtual_path)
+            os.makedirs(resource_path)
+            export_fks.ProcessExporterFortranFKS.\
+                repair_nlo_decay_virtual_links(virtual_root, virtual)
+            self.assertEqual(
+                os.readlink(os.path.join(virtual_path, 'coupl.inc')),
+                os.path.join('..', '..', '..', 'coupl.inc'))
+            self.assertEqual(
+                os.readlink(os.path.join(virtual_path, 'coef_specs.inc')),
+                os.path.join('..', '..', '..', '..', 'Source', 'DHELAS',
+                             'coef_specs.inc'))
+            self.assertEqual(
+                os.readlink(os.path.join(
+                    resource_path, 'MadLoopParams.dat')),
+                os.path.join('..', '..', '..', 'MadLoopParams.dat'))
+
+    def test_nlo_decay_combined_fortran_matrix_elements_are_written(self):
+        command = self.generate(
+            'u u~ > t t~, '
+            '(t > w+ b QED^2=2 QCD^2=0 [real=QCD])')
+
+        with tempfile.TemporaryDirectory() as output_dir:
+            process_dir = os.path.join(output_dir, 'PROC')
+            command.exec_cmd(
+                'output fNLO %s' % process_dir,
+                printcmd=False, precmd=True)
+            subprocess_root = os.path.join(process_dir, 'SubProcesses')
+            subprocesses = [
+                name for name in os.listdir(subprocess_root)
+                if name.startswith('P') and
+                os.path.isdir(os.path.join(subprocess_root, name))]
+            self.assertEqual(len(subprocesses), 1)
+            subprocess_dir = os.path.join(
+                subprocess_root, subprocesses[0])
+            born_path = os.path.join(subprocess_dir, 'born.f')
+            real_path = os.path.join(subprocess_dir, 'matrix_1.f')
+
+            with open(born_path) as stream:
+                born_source = stream.read()
+            with open(real_path) as stream:
+                real_source = stream.read()
+            self.assertIn('SUBROUTINE SBORN(P,ANS_SUMMED)', born_source)
+            self.assertIn('SUBROUTINE SMATRIX1(P,ANS_SUMMED)', real_source)
+            self.assertIn('P(0,5),MDL_MT', born_source)
+            self.assertIn('P(0,6),MDL_MT', real_source)
+            self.assertEqual(
+                born_source.count(
+                    'FNLO_DECAY_DUMMY_WIDTH_RATIO()*MDL_MT'), 1)
+            self.assertEqual(
+                real_source.count(
+                    'FNLO_DECAY_DUMMY_WIDTH_RATIO()*MDL_MT'), 2)
+            self.assertIn(
+                'DOUBLE PRECISION FNLO_DECAY_DUMMY_WIDTH_RATIO',
+                born_source)
+            self.assertIn(
+                'EXTERNAL FNLO_DECAY_DUMMY_WIDTH_RATIO', real_source)
+
+            with open(os.path.join(
+                    subprocess_dir,
+                    'NLO_DECAY_MATRIX_ELEMENTS_ONLY')) as stream:
+                self.assertIn('not implemented yet', stream.read())
+            self.assertTrue(os.path.isfile(os.path.join(
+                subprocess_dir, 'nlo_decay_info.dat')))
+            self.assertTrue(os.path.isfile(os.path.join(
+                process_dir, 'Cards', 'decay_card.dat')))
+            self.assertTrue(os.path.islink(os.path.join(
+                subprocess_dir, 'decay_card.dat')))
+
+    def test_nlo_decay_prototype_restrictions(self):
+        command = self.generate(
+            'u u~ > t t~, '
+            '(t > w+ b QED^2=2 QCD^2=0 [real=QCD])')
+        with self.assertRaisesRegex(
+                InvalidCmd, 'can only be exported with "output fNLO"'):
+            command.check_output([])
+        command.check_output(['fNLO'])
+        with self.assertRaisesRegex(
+                InvalidCmd, 'generate/add-process combinations'):
+            command.exec_cmd(
+                'add process d d~ > t t~ [real=QCD]',
+                printcmd=False, precmd=True)
+
+        explicit_lo = self.generate(
+            'u u~ > t t~ [LOonly], '
+            '(t > w+ b QED^2=2 QCD^2=0 [real=QCD])')
+        self.assertTrue(explicit_lo._fks_multi_proc.nlo_decay_prototype)
+        self.assertEqual(
+            [leg.get('id') for leg in explicit_lo._fks_multi_proc.
+             nlo_decay_production_amplitudes[0]['process']['legs']],
+            [2, -2, 6, -6])
+
+        with self.assertRaisesRegex(
+                InvalidCmd, 'exactly one perturbatively corrected decay'):
+            self.generate(
+                'u u~ > t t~, '
+                '(t > w+ b QED^2=2 QCD^2=0 [real=QCD]), '
+                '(t~ > w- b~ QED^2=2 QCD^2=0 [real=QCD])')
+
+        with self.assertRaisesRegex(
+                InvalidCmd, 'one root-level decay'):
+            self.generate(
+                'u u~ > t t~, '
+                '(t > w+ b, '
+                'w+ > u d~ QED^2=2 QCD^2=0 [real=QCD])')
 
 
 if __name__ == '__main__':

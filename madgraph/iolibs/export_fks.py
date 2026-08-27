@@ -122,6 +122,48 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         return pjoin(self.mgme_dir, 'Template',
                      self.opt.get('fks_template', 'NLO'))
 
+    @staticmethod
+    def repair_nlo_decay_virtual_links(virtual_root,
+                                       virtual_matrix_element):
+        """Adjust MadLoop links for the extra prototype directory level.
+
+        ``generate_virt_directory`` normally writes ``P*/V*``.  The decay
+        loop is intentionally isolated as ``P*/NLODecayVirtual/V*``; links
+        reaching the subprocess and output roots therefore need one extra
+        ``..``.  Links internal to ``NLODecayVirtual`` remain untouched.
+        """
+
+        virtual_name = 'V%s' % virtual_matrix_element.get(
+            'processes')[0].shell_string()
+        virtual_path = os.path.join(virtual_root, virtual_name)
+        subprocess_files = [
+            'MadLoopCommons.f', 'MadLoopParamReader.f',
+            'MadLoopParams.inc', 'cts_mpc.h', 'cts_mprec.h',
+            'coupl.inc', 'mp_coupl.inc', 'mp_coupl_same_name.inc']
+        replacements = dict(
+            (name, os.path.join('..', '..', '..', name))
+            for name in subprocess_files)
+        replacements.update({
+            'makefile': os.path.join('..', '..', '..', 'makefile_loop'),
+            'mpmodule.mod': os.path.join(
+                '..', '..', '..', '..', 'lib', 'mpmodule.mod'),
+            'coef_specs.inc': os.path.join(
+                '..', '..', '..', '..', 'Source', 'DHELAS',
+                'coef_specs.inc')})
+
+        for name, target in replacements.items():
+            link_path = os.path.join(virtual_path, name)
+            if os.path.lexists(link_path):
+                os.remove(link_path)
+            os.symlink(target, link_path)
+
+        resource_link = os.path.join(
+            virtual_root, 'MadLoop5_resources', 'MadLoopParams.dat')
+        if os.path.lexists(resource_link):
+            os.remove(resource_link)
+        os.symlink(os.path.join('..', '..', '..', 'MadLoopParams.dat'),
+                   resource_link)
+
     def validate_fnlo_matrix_element(self, matrix_element):
         """Validate the physics restrictions of the reduced fNLO output.
 
@@ -156,7 +198,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                     (len(real_amplitude_orders), len(real_squared_orders)))
 
         virtual_matrix_element = getattr(
-            matrix_element, 'virt_matrix_element', None)
+            matrix_element, 'nlo_decay_virtual_matrix_element', None)
+        if virtual_matrix_element is None:
+            virtual_matrix_element = getattr(
+                matrix_element, 'virt_matrix_element', None)
         if virtual_matrix_element:
             virtual_squared_orders, _ = \
                 virtual_matrix_element.get_split_orders_mapping()
@@ -278,14 +323,32 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         if self.opt.get('fks_template') != 'fNLO':
             return
 
-        metadata_pattern = pjoin(
-            self.dir_path, 'SubProcesses', 'P*', 'decay_chain_info.dat')
-        metadata_paths = glob.glob(metadata_pattern)
+        metadata_paths = []
+        for metadata_name in [
+                'decay_chain_info.dat', 'nlo_decay_info.dat']:
+            metadata_paths.extend(glob.glob(pjoin(
+                self.dir_path, 'SubProcesses', 'P*', metadata_name)))
         if not metadata_paths:
             return
 
         species = set()
         for metadata_path in metadata_paths:
+            if os.path.basename(metadata_path) == 'nlo_decay_info.dat':
+                records = []
+                with open(metadata_path) as metadata_file:
+                    for line in metadata_file:
+                        if line.startswith('PARENT '):
+                            records.append(line.split())
+                if len(records) != 1 or len(records[0]) != 3:
+                    raise MadGraph5Error(
+                        'Expected one PARENT record in %s' % metadata_path)
+                parent_pdg = abs(int(records[0][1]))
+                if parent_pdg == 0:
+                    raise MadGraph5Error(
+                        'Malformed PARENT record in %s' % metadata_path)
+                species.add(parent_pdg)
+                continue
+
             records = []
             with open(metadata_path) as metadata_file:
                 for line in metadata_file:
@@ -851,9 +914,15 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         decay_enabled = (
             self.opt.get('fks_template') == 'fNLO' and
             getattr(matrix_element, 'decay_metadata', None) is not None)
+        nlo_decay_prototype = (
+            self.opt.get('fks_template') == 'fNLO' and
+            getattr(matrix_element, 'nlo_decay_metadata', None) is not None)
         if decay_enabled:
             fks_decay.write_decay_chain_info(
                 os.getcwd(), matrix_element.decay_metadata)
+        if nlo_decay_prototype:
+            fks_decay.write_nlo_decay_prototype_files(
+                os.getcwd(), matrix_element.nlo_decay_metadata)
 
 ## write the files corresponding to the born process in the P* directory
         self.generate_born_fks_files(matrix_element,
@@ -865,11 +934,29 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             filename = 'OLE_order.lh'
             self.write_lh_order(filename, [matrix_element.born_me.get('processes')[0]], OLP)
         
-        if matrix_element.virt_matrix_element:
-                    calls += self.generate_virt_directory( \
-                            matrix_element.virt_matrix_element, \
-                            fortran_model, \
-                            os.path.join(path, borndir))
+        nlo_decay_virtual = getattr(
+            matrix_element, 'nlo_decay_virtual_matrix_element', None)
+        if nlo_decay_virtual:
+            if nlo_decay_prototype:
+                # The decay virtual is a valid standalone MadLoop object, but
+                # its spin-correlated contraction with the LO production
+                # current is deliberately deferred.  Export it as an
+                # inspectable building block without registering it as the
+                # standard fNLO virtual subprocess.
+                virtual_root = os.path.join(
+                    path, borndir, 'NLODecayVirtual')
+                if not os.path.isdir(virtual_root):
+                    os.mkdir(virtual_root)
+                calls += self.generate_virt_directory(
+                    nlo_decay_virtual,
+                    fortran_model, virtual_root)
+                self.repair_nlo_decay_virtual_links(
+                    virtual_root, nlo_decay_virtual)
+        elif matrix_element.virt_matrix_element:
+            calls += self.generate_virt_directory(
+                matrix_element.virt_matrix_element,
+                fortran_model,
+                os.path.join(path, borndir))
 
 #write the infortions for the different real emission processes
         sqsorders_list = \
@@ -1251,7 +1338,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         for file in linkfiles:
             ln('../' + file , '.')
         os.system("ln -s ../../Cards/param_card.dat .")
-        if decay_enabled:
+        if decay_enabled or nlo_decay_prototype:
             os.system("ln -s ../../Cards/decay_card.dat .")
 
         #copy the makefile 
@@ -1275,7 +1362,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         else:
             os.system("ln -s ../BinothLHA_user.f ./BinothLHA.f")
 
-        if decay_enabled:
+        if decay_enabled or nlo_decay_prototype:
             self.declare_fnlo_decay_width_accessor(os.getcwd())
 
         # Return to SubProcesses dir

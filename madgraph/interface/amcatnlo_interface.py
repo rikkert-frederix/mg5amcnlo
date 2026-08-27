@@ -160,10 +160,12 @@ class CheckFKS(mg_interface.CheckValidForCmd):
             raise self.InvalidCmd(text)
 
         if (hasattr(self._fks_multi_proc, 'get') and
-                self._fks_multi_proc.get('has_nlo_decays') and
+                (self._fks_multi_proc.get('has_nlo_decays') or
+                 getattr(self._fks_multi_proc,
+                         'nlo_decay_prototype', False)) and
                 self._export_format != 'fNLO'):
             raise self.InvalidCmd(
-                'NLO production processes with decay chains can only be '
+                'NLO processes with on-shell decay chains can only be '
                 'exported with "output fNLO"')
 
         if self._export_format == 'fNLO' and \
@@ -545,6 +547,13 @@ class aMCatNLOInterface(CheckFKS, CompleteFKS, HelpFKS, Loop_interface.CommonLoo
 
             line = ' '.join(args[1:])
 
+        if (hasattr(self, '_fks_multi_proc') and
+                getattr(self._fks_multi_proc,
+                        'nlo_decay_prototype', False)):
+            raise self.InvalidCmd(
+                'The fNLO NLO-decay prototype does not yet support '
+                'generate/add-process combinations')
+
         # convert the single $ to $$ automatically
         if re.search(r"\b\$\b", line):
             raise MadGraph5Error("Single $ syntax is not supported at NLO, please use $$")
@@ -591,17 +600,41 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         #self.options['group_subprocesses'] = 'False'
         collect_mirror_procs = False
         ignore_six_quark_processes = self.options['ignore_six_quark_processes']
+        nlo_decay_spec = None
         if ',' in line:
             myprocdef, line = mg_interface.MadGraphCmd.extract_decay_chain_process(self,line)
             if myprocdef.are_decays_perturbed():
-                raise MadGraph5Error("Decay processes cannot be perturbed")
+                nlo_decay_spec = \
+                    fks_decay.validate_nlo_decay_to_lo_generation(
+                        myprocdef, self.options, proc_type[2],
+                        self.ewsudakov)
+                # An explicit root [LOonly] carries QCD in the parser's
+                # perturbation field even though no production correction is
+                # requested.  Normalize it before the ordinary root-order
+                # bookkeeping below.
+                myprocdef.set('perturbation_couplings', [])
+                myprocdef.set('NLO_mode', 'tree')
         else:
             myprocdef = mg_interface.MadGraphCmd.extract_process(self,line)
 
-        self.proc_validity(myprocdef,'aMCatNLO_%s'%proc_type[1])
+        if nlo_decay_spec is None:
+            self.proc_validity(myprocdef,'aMCatNLO_%s'%proc_type[1])
+        else:
+            # Validate the two factorised ingredients independently.  The
+            # generic validator quite correctly rejects a perturbed child in
+            # an ordinary decay chain, but this prototype deliberately makes
+            # that child the owner of the FKS process.
+            production_for_validity = copy.copy(myprocdef)
+            production_for_validity.set(
+                'decay_chains', myprocdef.get('decay_chains').__class__())
+            self.proc_validity(
+                production_for_validity, 'aMCatNLO_LOonly')
+            self.proc_validity(
+                nlo_decay_spec['decay'],
+                'aMCatNLO_%s' % nlo_decay_spec['mode'])
 
         decay_chains = myprocdef.get('decay_chains')
-        if decay_chains:
+        if decay_chains and nlo_decay_spec is None:
             fks_decay.validate_decay_generation(
                 myprocdef, self.options, proc_type[2], self.ewsudakov)
 
@@ -787,7 +820,34 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                        'loop_filter':self._fks_multi_proc['loop_filter'] if hasattr(self, '_fks_multi_proc') else None}
 
         fks_procdef = myprocdef
-        if decay_chains:
+        if nlo_decay_spec is not None:
+            if (hasattr(self, '_fks_multi_proc') and
+                    self._fks_multi_proc.get('born_processes')):
+                raise self.InvalidCmd(
+                    'The fNLO NLO-decay prototype does not yet support '
+                    'generate/add-process combinations')
+
+            production_amplitudes = \
+                fks_decay.generate_lo_production_amplitudes(
+                    myprocdef, ignore_six_quark_processes)
+            if len(production_amplitudes) != 1:
+                raise self.InvalidCmd(
+                    'The fNLO NLO-decay prototype currently requires one '
+                    'concrete LO production subprocess; generated %d' %
+                    len(production_amplitudes))
+
+            fks_procdef = fks_decay.prepare_nlo_decay_definition(
+                nlo_decay_spec['decay'])
+            fksproc = fks_base.FKSMultiProcess(fks_procdef, fks_options)
+            fksproc.nlo_decay_prototype = True
+            fksproc.nlo_decay_production_amplitudes = \
+                production_amplitudes
+            fksproc.nlo_decay_selector = nlo_decay_spec['selector']
+            fksproc.nlo_decay_parent_pdg = nlo_decay_spec['parent_pdg']
+            fksproc.nlo_decay_mode = nlo_decay_spec['mode']
+            fksproc.nlo_decay_full_process_definition = myprocdef
+            self._fks_multi_proc = fksproc
+        elif decay_chains:
             # FKS regions and all i/j/ij bookkeeping are generated from the
             # undecayed production process.  The decay specification is kept
             # separately and applied coherently only after HELAS generation.
@@ -796,12 +856,13 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                             myprocdef['decay_chains'].__class__())
             fks_options['decay_chains'] = decay_chains
 
-        fksproc =fks_base.FKSMultiProcess(fks_procdef,fks_options)
-        try:
-            self._fks_multi_proc.add(fksproc)
-        except AttributeError: 
-            self._fks_multi_proc = fksproc
-            self._fks_multi_proc['loop_filter'] = fks_options['loop_filter']
+        if nlo_decay_spec is None:
+            fksproc =fks_base.FKSMultiProcess(fks_procdef,fks_options)
+            try:
+                self._fks_multi_proc.add(fksproc)
+            except AttributeError:
+                self._fks_multi_proc = fksproc
+                self._fks_multi_proc['loop_filter'] = fks_options['loop_filter']
 
         if not aMCatNLOInterface.display_expansion and  self.options['nlo_mixed_expansion']:
             base = {}

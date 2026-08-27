@@ -275,7 +275,8 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
         if not fksmulti['ncores_for_proc_gen']:
             # generate the real ME's if they are needed.
             # note that it may not be always the case, e.g. it the NLO_mode is LOonly
-            if fksmulti['has_nlo_decays']:
+            if (fksmulti['has_nlo_decays'] or
+                    getattr(fksmulti, 'nlo_decay_prototype', False)):
                 # Decay-enabled real matrix elements are constructed afresh
                 # for every concrete assignment below.  Reusing the ordinary
                 # pre-coloured cache would share objects across assignments.
@@ -564,8 +565,16 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
 
     def get_virt_matrix_elements(self):
         """Extract the list of virtuals matrix elements"""
-        return [me.virt_matrix_element for me in self.get('matrix_elements') \
-                if me.virt_matrix_element]        
+        virtuals = []
+        for matrix_element in self.get('matrix_elements'):
+            for virtual in [
+                    matrix_element.virt_matrix_element,
+                    getattr(matrix_element,
+                            'nlo_decay_virtual_matrix_element', None)]:
+                if (virtual and
+                        all(virtual is not other for other in virtuals)):
+                    virtuals.append(virtual)
+        return virtuals
         
 
     def generate_matrix_elements_fks(self, fksmulti, gen_color = True,
@@ -602,7 +611,21 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
             real_amplitudes = [
                 amp for amp in fksmulti['real_amplitudes']
                 if amp['diagrams']]
-            if proc.decay_chains:
+            if getattr(fksmulti, 'nlo_decay_prototype', False):
+                if len(fksmulti.nlo_decay_production_amplitudes) != 1:
+                    raise fks_common.FKSProcessError(
+                        'The NLO-decay prototype requires exactly one LO '
+                        'production amplitude')
+                matrix_element = FKSHelasProcess(
+                    proc, [], [],
+                    loop_optimized=self.loop_optimized,
+                    gen_color=True)
+                matrix_element_list = [
+                    fks_decay.compose_nlo_decay_helas_process(
+                        matrix_element,
+                        fksmulti.nlo_decay_production_amplitudes[0],
+                        fksmulti.nlo_decay_selector)]
+            elif proc.decay_chains:
                 assignments = fks_decay.generate_decay_assignments(
                     proc.decay_chains, proc.born_amp.get('process'))
                 proc_decay_ids = misc.make_unique(
@@ -652,6 +675,7 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
                         # Decay insertion has already rebuilt the complete
                         # tree/loop colour information after all insertions.
                         if (matrix_element.decay_metadata is not None or
+                                matrix_element.nlo_decay_metadata is not None or
                                 not gen_color):
                             continue
 
@@ -725,6 +749,8 @@ class FKSHelasProcess(object):
         
         self.decay_grouping_signature = None
         self.decay_metadata = None
+        self.nlo_decay_metadata = None
+        self.nlo_decay_virtual_matrix_element = None
         self._decay_color_links_set = False
         defer_real_color = opts.pop('defer_real_color', False)
 
@@ -891,6 +917,9 @@ class FKSHelasProcess(object):
             lorentz_list.extend(real.matrix_element.get_used_lorentz())
         if self.virt_matrix_element:
             lorentz_list.extend(self.virt_matrix_element.get_used_lorentz())
+        if self.nlo_decay_virtual_matrix_element:
+            lorentz_list.extend(
+                self.nlo_decay_virtual_matrix_element.get_used_lorentz())
         for sud_me in self.sudakov_matrix_elements:
             lorentz_list.extend(sud_me['matrix_element'].get_used_lorentz())
 
@@ -905,6 +934,9 @@ class FKSHelasProcess(object):
                         real.matrix_element.get_used_couplings()])
         if self.virt_matrix_element:
             coupl_list.extend(self.virt_matrix_element.get_used_couplings())
+        if self.nlo_decay_virtual_matrix_element:
+            coupl_list.extend(
+                self.nlo_decay_virtual_matrix_element.get_used_couplings())
         for sud_me in self.sudakov_matrix_elements:
             coupl_list.extend(sud_me['matrix_element'].get_used_couplings())
         return coupl_list    

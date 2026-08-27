@@ -42,6 +42,101 @@ def _iter_decay_definitions(decay_chains):
             yield nested
 
 
+def _iter_decay_definitions_with_depth(decay_chains, depth=1):
+    """Yield ``(decay, depth)`` for every node in a decay tree."""
+
+    for decay in decay_chains:
+        yield decay, depth
+        for nested in _iter_decay_definitions_with_depth(
+                decay.get('decay_chains'), depth + 1):
+            yield nested
+
+
+def get_perturbed_decay_definitions(process_definition):
+    """Return perturbatively corrected decay definitions and their depth."""
+
+    return [
+        (decay, depth)
+        for decay, depth in _iter_decay_definitions_with_depth(
+            process_definition.get('decay_chains'))
+        if decay.get('perturbation_couplings')]
+
+
+def validate_nlo_decay_to_lo_generation(process_definition, options,
+                                        correction_orders,
+                                        ewsudakov=False):
+    """Validate the matrix-elements-only NLO-decay prototype.
+
+    Return a small immutable description of the selected decay attachment.
+    The deliberately narrow restrictions are documented in
+    ``NLO_DECAY_TO_LO_PRODUCTION_IMPLEMENTATION_PLAN.md``.
+    """
+
+    corrected = get_perturbed_decay_definitions(process_definition)
+    if len(corrected) != 1:
+        raise InvalidCmd(
+            'The fNLO NLO-decay prototype requires exactly one '
+            'perturbatively corrected decay; found %d' % len(corrected))
+
+    decay, depth = corrected[0]
+    all_decays = list(_iter_decay_definitions(
+        process_definition.get('decay_chains')))
+    if depth != 1 or len(all_decays) != 1 or decay.get('decay_chains'):
+        raise InvalidCmd(
+            'The fNLO NLO-decay prototype currently supports one root-level '
+            'decay and no additional or nested decays')
+    if (process_definition.get('perturbation_couplings') and
+            process_definition.get('NLO_mode') != 'LOonly'):
+        raise InvalidCmd(
+            'The production process must be LO when correcting a decay')
+    if set(decay.get('perturbation_couplings')) != set(['QCD']) or \
+            set(correction_orders) != set(['QCD']):
+        raise InvalidCmd(
+            'The fNLO NLO-decay prototype supports QCD corrections only')
+    if decay.get('NLO_mode') not in ['all', 'real']:
+        raise InvalidCmd(
+            'The corrected decay must use [QCD] or [real=QCD]')
+    if options.get('OLP') != 'MadLoop':
+        raise InvalidCmd(
+            'The fNLO NLO-decay prototype requires the native MadLoop OLP')
+    if options.get('low_mem_multicore_nlo_generation'):
+        raise InvalidCmd(
+            'The fNLO NLO-decay prototype requires serial process generation')
+    if options.get('complex_mass_scheme'):
+        raise InvalidCmd(
+            'The fNLO NLO-decay prototype does not support the complex-mass '
+            'scheme')
+    if ewsudakov:
+        raise InvalidCmd(
+            'EW Sudakov corrections are not supported with an NLO decay')
+
+    parent_ids = list(decay.get('legs')[0].get('ids'))
+    if len(parent_ids) != 1:
+        raise InvalidCmd(
+            'The fNLO NLO-decay prototype requires one concrete decay parent')
+    parent_pdg = parent_ids[0]
+    matching_legs = [
+        leg for leg in process_definition.get_final_legs()
+        if parent_pdg in leg.get('ids')]
+    if (len(matching_legs) != 1 or
+            list(matching_legs[0].get('ids')) != [parent_pdg]):
+        raise InvalidCmd(
+            'The fNLO NLO-decay prototype requires exactly one concrete '
+            'production occurrence of decay parent %s' % parent_pdg)
+
+    particle = process_definition.get('model').get_particle(parent_pdg)
+    if particle is None or particle.get('mass').lower() == 'zero':
+        raise InvalidCmd(
+            'Cannot force the massless decay parent %s on shell' % parent_pdg)
+
+    return {
+        'decay': decay,
+        'selector': (parent_pdg, 1),
+        'parent_pdg': parent_pdg,
+        'mode': decay.get('NLO_mode'),
+        'correction': 'QCD'}
+
+
 def validate_decay_generation(process_definition, options,
                               correction_orders, ewsudakov=False):
     """Validate the deliberately narrow decay-enabled fNLO setup."""
@@ -88,6 +183,83 @@ def _clone_process_definition(process):
         _clone_process_definition(decay)
         for decay in process.get('decay_chains')]))
     return result
+
+
+def prepare_nlo_decay_definition(decay_definition):
+    """Clone and prepare one decay definition for standalone FKS generation.
+
+    The ordinary aMC@NLO interface performs these order updates on the root
+    process.  In the prototype the perturbed object is a child, so the same
+    minimal bookkeeping has to be applied directly to that child.
+    """
+
+    process = _clone_process_definition(decay_definition)
+    process.set('decay_chains', process.get('decay_chains').__class__())
+    process.set('is_decay_chain', False)
+
+    model = process.get('model')
+    if not process.get('orders') and not process.get('squared_orders'):
+        weighted = diagram_generation.MultiProcess.find_optimal_process_orders(
+            process)
+        if not weighted:
+            raise InvalidCmd(
+                'Could not determine the Born coupling orders of the '
+                'corrected decay; specify them explicitly')
+        qed, qcd = fks_common.get_qed_qcd_orders_from_weighted(
+            len(process.get('legs')), model.get('order_hierarchy'),
+            weighted['WEIGHTED'])
+        if qed < 0 or qcd < 0:
+            raise InvalidCmd(
+                'Automatic coupling-order determination for the corrected '
+                'decay produced negative orders')
+        orders = {'QED': qed, 'QCD': qcd}
+        squared_orders = {'QED': 2 * qed, 'QCD': 2 * qcd}
+        for order in model.get('coupling_orders'):
+            orders.setdefault(order, 0)
+            squared_orders.setdefault(order, 0)
+        process.set('orders', orders)
+        process.set('squared_orders', squared_orders)
+
+    for order in model.get('coupling_orders'):
+        if order not in process.get('squared_orders'):
+            process.get('squared_orders')[order] = 0
+    process.set('born_sq_orders', copy.copy(process.get('squared_orders')))
+    process.get('split_orders')[:] = misc.make_unique(
+        list(process.get('split_orders')) +
+        list(model.get('coupling_orders')))
+
+    for order in process.get('perturbation_couplings'):
+        if order in process.get('orders'):
+            process.get('orders')[order] += 1
+        process.get('squared_orders')[order] = \
+            process.get('squared_orders').get(order, 0) + 2
+
+    return process
+
+
+def generate_lo_production_amplitudes(process_definition,
+                                      ignore_six_quark_processes=None):
+    """Generate the undecayed LO production amplitudes for the prototype."""
+
+    production = _clone_process_definition(process_definition)
+    production.set('decay_chains',
+                   production.get('decay_chains').__class__())
+    production.set('perturbation_couplings', [])
+    production.set('NLO_mode', 'tree')
+    multi = diagram_generation.MultiProcess(
+        production,
+        collect_mirror_procs=False,
+        ignore_six_quark_processes=ignore_six_quark_processes or [])
+    amplitudes = multi.get('amplitudes')
+    parent_ids = set(
+        decay.get('legs')[0].get('ids')[0]
+        for decay in process_definition.get('decay_chains'))
+    for amplitude in amplitudes:
+        amplitude.trim_diagrams(parent_ids)
+        process = amplitude.get('process')
+        process.set('legs', fks_common.to_fks_legs(
+            process.get('legs'), process.get('model')))
+    return amplitudes
 
 
 def _concrete_decay_matrix_elements(decay_definition):
@@ -722,6 +894,293 @@ def _make_context(matrix_element, assignment, metadata, context_id,
     _annotate_widths(matrix_element, context, metadata)
     _finalize_matrix_element(matrix_element)
     return context
+
+
+def _matrix_element_as_decay_current(matrix_element):
+    """Regenerate a tree matrix element as an insertable decay current."""
+
+    process = _copy_process(matrix_element.get('processes')[0])
+    process.set('is_decay_chain', True)
+    amplitude = diagram_generation.Amplitude(process)
+    if not amplitude.get('diagrams'):
+        raise fks_common.FKSProcessError(
+            'Could not regenerate the corrected decay as a HELAS current')
+    return helas_objects.HelasMatrixElement(
+        amplitude, gen_color=False)
+
+
+def _glue_nlo_decay_tree_component(production_amplitude, selector,
+                                   decay_current, kind, source_index):
+    """Insert one Born/real decay current in a fresh LO production ME."""
+
+    production_me = helas_objects.HelasMatrixElement(
+        production_amplitude, decay_ids=[selector[0]], gen_color=False)
+    metadata = {
+        'format': 1,
+        'nodes': [],
+        'leaves': [],
+        'contexts': [],
+        'fks_maps': [],
+        'color_links': []}
+    attachment = {
+        'selector': selector,
+        'decay_me': decay_current}
+    attachment['root_node_id'] = _append_decay_tree(
+        decay_current.get('processes')[0], 0, metadata)
+    metadata['forced_species'] = [abs(selector[0])]
+    assignment = {
+        'attachments': [attachment],
+        'ordering_for_pol': {selector[0]: False}}
+    context = _make_context(
+        production_me, assignment, metadata, 1, kind, source_index)
+    metadata['contexts'].append(context)
+    return production_me, context, metadata
+
+
+def _local_decay_context(decay_matrix_element, component_context,
+                         component_metadata, context_id, kind,
+                         source_index):
+    """Map standalone decay legs to the combined visible matrix element."""
+
+    process = decay_matrix_element.get('processes')[0]
+    local_legs = sorted(process.get('legs'),
+                        key=lambda leg: leg.get('number'))
+    final_legs = [leg for leg in local_legs if leg.get('state')]
+    leaf_ids = _tree_leaf_ids(1, component_metadata)
+    if len(final_legs) != len(leaf_ids):
+        raise fks_common.FKSProcessError(
+            'The corrected-decay leg map is inconsistent with its HELAS '
+            'current')
+
+    local_map = {}
+    for leg in local_legs:
+        if not leg.get('state'):
+            local_map[leg.get('number')] = ('NODE', 1)
+    for leg, leaf_id in zip(final_legs, leaf_ids):
+        local_map[leg.get('number')] = (
+            'LEG', component_context['leaf_map'][leaf_id])
+
+    return {
+        'id': context_id,
+        'kind': kind,
+        'source_index': source_index,
+        'local_count': len(local_legs),
+        'visible_count': component_context['visible_count'],
+        'local_legs': [{
+            'number': leg.get('number'),
+            'pdg': leg.get('id'),
+            'state': 'F' if leg.get('state') else 'I'}
+            for leg in local_legs],
+        'local_map': local_map}
+
+
+def _build_nlo_decay_color_links(combined_born, decay_born,
+                                 local_color_pairs, component_context,
+                                 component_metadata):
+    """Map decay-local colour insertions to combined visible carriers."""
+
+    model = combined_born.get('processes')[0].get('model')
+    _set_decay_carriers(decay_born, 1, component_metadata, model)
+    node = component_metadata['nodes'][0]
+    carrier_leaf = node['carrier_leaf']
+
+    local_process = decay_born.get('processes')[0]
+    local_legs = sorted(local_process.get('legs'),
+                        key=lambda leg: leg.get('number'))
+    final_legs = [leg for leg in local_legs if leg.get('state')]
+    leaf_ids = _tree_leaf_ids(1, component_metadata)
+    final_to_leaf = dict(
+        (leg.get('number'), leaf_id)
+        for leg, leaf_id in zip(final_legs, leaf_ids))
+
+    def visible_leg(local_number):
+        leg = [leg for leg in local_legs
+               if leg.get('number') == local_number][0]
+        if not leg.get('state'):
+            if not carrier_leaf:
+                raise fks_common.FKSProcessError(
+                    'A coloured corrected-decay parent has no unique '
+                    'visible colour carrier')
+            return component_context['leaf_map'][carrier_leaf]
+        return component_context['leaf_map'][final_to_leaf[local_number]]
+
+    visible_pairs = []
+    records = []
+    for local_first, local_second in local_color_pairs:
+        pair = tuple(sorted((visible_leg(local_first),
+                             visible_leg(local_second))))
+        if pair not in visible_pairs:
+            visible_pairs.append(pair)
+        records.append({
+            'local_first': local_first,
+            'local_second': local_second,
+            'visible_first': pair[0],
+            'visible_second': pair[1],
+            'generated_index': visible_pairs.index(pair) + 1})
+
+    base_amplitude = combined_born.get('base_amplitude')
+    legs = fks_common.to_fks_legs(
+        base_amplitude.get('process').get_legs_with_decays(), model)
+    by_number = dict((leg.get('number'), leg) for leg in legs)
+    links = []
+    for first, second in visible_pairs:
+        color_link = fks_common.legs_to_color_link_string(
+            by_number[first], by_number[second], pert='QCD')
+        links.append({
+            'legs': [by_number[first], by_number[second]],
+            'string': color_link['string'],
+            'replacements': color_link['replacements']})
+
+    basis = combined_born.get('color_basis')
+    color_links = fks_common.insert_color_links(
+        basis, basis.create_color_dict_list(base_amplitude), links)
+    return color_links, records
+
+
+def compose_nlo_decay_helas_process(fks_process, production_amplitude,
+                                    selector):
+    """Compose the tree pieces of a decay-owned FKS process with LO production.
+
+    The virtual is deliberately retained as a standalone decay building block;
+    the fNLO exporter writes it separately for this first milestone.
+    """
+
+    if fks_process.extra_cnt_me_list:
+        raise fks_common.FKSProcessError(
+            'The fNLO NLO-decay prototype does not support extra '
+            'counterterm matrix elements')
+
+    decay_born_me = fks_process.born_me
+    decay_real_mes = [
+        real.matrix_element for real in fks_process.real_processes]
+
+    # Capture the decay-owned links before replacing the Born ME.  Their leg
+    # numbers belong to the standalone decay FKS skeleton.
+    fks_process.set_color_links()
+    local_color_pairs = [
+        tuple(link['link']) for link in fks_process.color_links]
+
+    born_current = _matrix_element_as_decay_current(decay_born_me)
+    combined_born, born_component_context, born_component_metadata = \
+        _glue_nlo_decay_tree_component(
+            production_amplitude, selector, born_current, 'BORN', 1)
+
+    prototype_metadata = {
+        'format': 1,
+        'status': 'MATRIX_ELEMENTS_ONLY',
+        'correction': 'QCD',
+        'parent_pdg': selector[0],
+        'parent_occurrence': selector[1],
+        'contexts': [],
+        'fks_maps': [],
+        'color_links': [],
+        'has_virtual': bool(fks_process.virt_matrix_element),
+        'production_legs': [{
+            'number': leg.get('number'),
+            'pdg': leg.get('id'),
+            'state': 'F' if leg.get('state') else 'I'}
+            for leg in sorted(
+                production_amplitude.get('process').get('legs'),
+                key=lambda item: item.get('number'))]}
+    prototype_metadata['contexts'].append(_local_decay_context(
+        decay_born_me, born_component_context, born_component_metadata,
+        1, 'BORN', 1))
+
+    combined_reals = []
+    for index, (real, decay_real_me) in enumerate(
+            zip(fks_process.real_processes, decay_real_mes), 1):
+        real_current = _matrix_element_as_decay_current(decay_real_me)
+        combined_real, component_context, component_metadata = \
+            _glue_nlo_decay_tree_component(
+                production_amplitude, selector, real_current, 'REAL', index)
+        real.matrix_element = combined_real
+        combined_reals.append(real)
+        context_id = len(prototype_metadata['contexts']) + 1
+        prototype_metadata['contexts'].append(_local_decay_context(
+            decay_real_me, component_context, component_metadata,
+            context_id, 'REAL', index))
+        for info in real.fks_infos:
+            prototype_metadata['fks_maps'].append({
+                'configuration': len(prototype_metadata['fks_maps']) + 1,
+                'real_context': context_id,
+                'i': info['i'],
+                'j': info['j'],
+                'ij': info['ij']})
+
+    color_links, color_records = _build_nlo_decay_color_links(
+        combined_born, born_current, local_color_pairs,
+        born_component_context, born_component_metadata)
+    prototype_metadata['color_links'] = color_records
+
+    fks_process.born_me = combined_born
+    fks_process.real_processes = combined_reals
+    fks_process.color_links = color_links
+    fks_process.nlo_decay_metadata = prototype_metadata
+    fks_process.nlo_decay_virtual_matrix_element = \
+        fks_process.virt_matrix_element
+    # The retained loop object has decay-local external legs.  Keeping it in
+    # the ordinary slot would make later fNLO bookkeeping mistake it for the
+    # full-production virtual.  The prototype slot remains visible to model
+    # and loop-resource generation through FKSHelasMultiProcess.
+    fks_process.virt_matrix_element = None
+    fks_process.decay_grouping_signature = (
+        'NLO_DECAY_TO_LO_PRODUCTION', selector)
+    return fks_process
+
+
+def nlo_decay_info_text(metadata):
+    """Serialize matrix-elements-only NLO-decay prototype metadata."""
+
+    lines = [
+        'FORMAT %d' % metadata['format'],
+        'STATUS %s' % metadata['status'],
+        'CORRECTION %s' % metadata['correction'],
+        'PARENT %d %d' % (
+            metadata['parent_pdg'], metadata['parent_occurrence']),
+        'HAS_VIRTUAL %d' % int(metadata['has_virtual']),
+        'COUNTS %d %d %d' % (
+            len(metadata['contexts']), len(metadata['fks_maps']),
+            len(set(link['generated_index']
+                    for link in metadata['color_links'])))]
+    for leg in metadata['production_legs']:
+        lines.append('PRODUCTION_LEG %d %d %s' % (
+            leg['number'], leg['pdg'], leg['state']))
+    for context in metadata['contexts']:
+        lines.append('CONTEXT %d %s %d %d %d' % (
+            context['id'], context['kind'], context['source_index'],
+            context['local_count'], context['visible_count']))
+        for leg in context['local_legs']:
+            lines.append('LOCAL_LEG %d %d %d %s' % (
+                context['id'], leg['number'], leg['pdg'], leg['state']))
+        for local_leg in sorted(context['local_map']):
+            kind, target = context['local_map'][local_leg]
+            lines.append('LOCAL_MAP %d %d %s %d' % (
+                context['id'], local_leg, kind, target))
+    for mapping in metadata['fks_maps']:
+        lines.append('FKS_MAP %d %d %d %d %d' % (
+            mapping['configuration'], mapping['real_context'],
+            mapping['i'], mapping['j'], mapping['ij']))
+    for link in metadata['color_links']:
+        lines.append('COLOR_LINK %d %d %d %d %d' % (
+            link['local_first'], link['local_second'],
+            link['visible_first'], link['visible_second'],
+            link['generated_index']))
+    lines.append('END')
+    return '\n'.join(lines) + '\n'
+
+
+def write_nlo_decay_prototype_files(path, metadata):
+    """Write metadata and an explicit non-runnable prototype marker."""
+
+    with open(os.path.join(path, 'nlo_decay_info.dat'), 'w') as stream:
+        stream.write(nlo_decay_info_text(metadata))
+    with open(os.path.join(path, 'NLO_DECAY_MATRIX_ELEMENTS_ONLY'), 'w') \
+            as stream:
+        stream.write(
+            'This output contains NLO-decay matrix-element building blocks.\n'
+            'Phase-space mappings, subtraction integration, and the '\
+            'spin-correlated production/virtual-decay contraction are not '\
+            'implemented yet.\n')
 
 
 def apply_decay_assignment(fks_process, assignment):
