@@ -1351,6 +1351,178 @@ def _local_decay_context(decay_matrix_element, component_context,
         'local_map': local_map}
 
 
+def _nlo_decay_local_target(context, local_number, description):
+    """Return the full-event target of one decay-local leg."""
+
+    try:
+        return context['local_map'][local_number]
+    except KeyError:
+        raise fks_common.FKSProcessError(
+            'The NLO-decay %s leg %s is absent from context %s' %
+            (description, local_number, context['id']))
+
+
+def _build_nlo_decay_fks_mapping(configuration, real_context,
+                                 born_context, real, info):
+    """Build the target-aware description of one decay-local FKS region."""
+
+    targets = {
+        'i': _nlo_decay_local_target(real_context, info['i'], 'FKS i'),
+        'j': _nlo_decay_local_target(real_context, info['j'], 'FKS j'),
+        'ij': _nlo_decay_local_target(
+            born_context, info['ij'], 'underlying-Born ij')}
+    for name in ['i', 'j', 'ij']:
+        if targets[name][0] != 'LEG':
+            raise fks_common.FKSProcessError(
+                'The NLO-decay prototype requires decay-local %s to map '
+                'to a visible event leg; found %s %s' %
+                (name, targets[name][0], targets[name][1]))
+
+    partners = []
+    for local_partner in real.fks_j_from_i.get(info['i'], []):
+        kind, target = _nlo_decay_local_target(
+            real_context, local_partner, 'FKS partner')
+        partners.append({
+            'local': local_partner,
+            'kind': kind,
+            'target': target})
+    if not any(partner['local'] == info['j'] for partner in partners):
+        raise fks_common.FKSProcessError(
+            'The selected decay-local FKS j leg is absent from the '
+            'emitter partner list')
+
+    return {
+        'configuration': configuration,
+        'real_context': real_context['id'],
+        'i': info['i'],
+        'j': info['j'],
+        'ij': info['ij'],
+        'targets': targets,
+        'partners': partners}
+
+
+def _visible_fks_legs(matrix_element):
+    """Return consecutive, flattened event legs with FKS properties."""
+
+    process = matrix_element.get('processes')[0]
+    visible_legs = sorted(
+        process.get_legs_with_decays(),
+        key=lambda leg: leg.get('number'))
+    nexternal = matrix_element.get_nexternal_ninitial()[0]
+    if (len(visible_legs) != nexternal or
+            [leg.get('number') for leg in visible_legs] !=
+            list(range(1, nexternal + 1))):
+        raise fks_common.FKSProcessError(
+            'The NLO-decay visible event legs are not consecutive')
+    return fks_common.to_fks_legs(visible_legs, process.get('model'))
+
+
+def _visible_fks_partner_map(real, context):
+    """Project representable FKS partners onto visible event indices.
+
+    An internal resonance is intentionally omitted from the ordinary FKS
+    array and retained as a ``NODE`` target in ``nlo_decay_info.dat``.  A
+    later node-aware soft kernel must add its momentum explicitly.
+    """
+
+    result = {}
+    for local_emitter, local_partners in real.fks_j_from_i.items():
+        emitter_kind, emitter = _nlo_decay_local_target(
+            context, local_emitter, 'FKS emitter')
+        if emitter_kind != 'LEG':
+            continue
+        visible_partners = []
+        for local_partner in local_partners:
+            partner_kind, partner = _nlo_decay_local_target(
+                context, local_partner, 'FKS partner')
+            if (partner_kind == 'LEG' and partner not in visible_partners):
+                visible_partners.append(partner)
+        result[emitter] = visible_partners
+    return result
+
+
+def get_nlo_decay_fks_info_list(fks_process):
+    """Return FKS records projected from a decay onto the visible event.
+
+    The raw FKS objects remain decay-local.  Export-facing copies use the
+    flattened full-event numbering and carry the target-aware local records
+    alongside them for the future resonance-aware phase-space implementation.
+    """
+
+    metadata = fks_process.nlo_decay_metadata
+    mappings = dict(
+        (mapping['configuration'], mapping)
+        for mapping in metadata['fks_maps'])
+    contexts = dict(
+        (context['id'], context) for context in metadata['contexts'])
+    born_contexts = [
+        context for context in metadata['contexts']
+        if context['kind'] == 'BORN']
+    if len(born_contexts) != 1:
+        raise fks_common.FKSProcessError(
+            'The NLO-decay FKS projection requires one Born context')
+    born_legs = _visible_fks_legs(fks_process.born_me)
+
+    info_list = []
+    configuration = 0
+    for real_index, real in enumerate(fks_process.real_processes, 1):
+        real_legs = _visible_fks_legs(real.matrix_element)
+        pdgs = [leg.get('id') for leg in real_legs]
+        colors = [leg.get('color') for leg in real_legs]
+        massless = [leg.get('massless') for leg in real_legs]
+        for raw_info in real.fks_infos:
+            configuration += 1
+            try:
+                mapping = mappings[configuration]
+                real_context = contexts[mapping['real_context']]
+            except KeyError:
+                raise fks_common.FKSProcessError(
+                    'The NLO-decay FKS projection metadata is incomplete')
+            if (real_context['kind'] != 'REAL' or
+                    real_context['source_index'] != real_index or
+                    any(mapping[name] != raw_info[name]
+                        for name in ['i', 'j', 'ij'])):
+                raise fks_common.FKSProcessError(
+                    'The NLO-decay local FKS objects and metadata disagree')
+
+            projected_info = copy.deepcopy(raw_info)
+            for name in ['i', 'j', 'ij']:
+                kind, target = mapping['targets'][name]
+                if kind != 'LEG':
+                    raise fks_common.FKSProcessError(
+                        'Cannot expose an internal NLO-decay %s target as '
+                        'an ordinary FKS index' % name)
+                projected_info[name] = target
+
+            partner_map = _visible_fks_partner_map(real, real_context)
+            if projected_info['j'] not in partner_map.get(
+                    projected_info['i'], []):
+                raise fks_common.FKSProcessError(
+                    'The projected NLO-decay FKS j leg is absent from the '
+                    'visible emitter partner list')
+            ij = projected_info['ij']
+            if ij < 1 or ij > len(born_legs):
+                raise fks_common.FKSProcessError(
+                    'The projected NLO-decay Born ij leg is out of range')
+            info_list.append({
+                'n_me': real_index,
+                'pdgs': pdgs,
+                'colors': colors,
+                'massless': massless,
+                'ij_massless': born_legs[ij - 1].get('massless'),
+                'fks_j_from_i': partner_map,
+                'fks_info': projected_info,
+                'local_fks_info': copy.deepcopy(raw_info),
+                'decay_fks_targets': copy.deepcopy(mapping['targets']),
+                'decay_partner_targets': copy.deepcopy(
+                    mapping['partners'])})
+
+    if configuration != len(mappings):
+        raise fks_common.FKSProcessError(
+            'The NLO-decay FKS projection contains unused metadata')
+    return info_list
+
+
 def _build_nlo_decay_color_links(combined_born, decay_born,
                                  local_color_pairs, component_context,
                                  component_metadata):
@@ -1444,7 +1616,7 @@ def compose_nlo_decay_helas_process(fks_process, production_amplitude,
             production_amplitude, selector, born_current, 'BORN', 1)
 
     prototype_metadata = {
-        'format': 1,
+        'format': 2,
         'status': 'MATRIX_ELEMENTS_ONLY',
         'correction': 'QCD',
         'parent_pdg': selector[0],
@@ -1477,16 +1649,16 @@ def compose_nlo_decay_helas_process(fks_process, production_amplitude,
         real.matrix_element = combined_real
         combined_reals.append(real)
         context_id = len(prototype_metadata['contexts']) + 1
-        prototype_metadata['contexts'].append(_local_decay_context(
+        real_local_context = _local_decay_context(
             decay_real_me, component_context, component_metadata,
-            context_id, 'REAL', index))
+            context_id, 'REAL', index)
+        prototype_metadata['contexts'].append(real_local_context)
         for info in real.fks_infos:
-            prototype_metadata['fks_maps'].append({
-                'configuration': len(prototype_metadata['fks_maps']) + 1,
-                'real_context': context_id,
-                'i': info['i'],
-                'j': info['j'],
-                'ij': info['ij']})
+            configuration = len(prototype_metadata['fks_maps']) + 1
+            prototype_metadata['fks_maps'].append(
+                _build_nlo_decay_fks_mapping(
+                    configuration, real_local_context,
+                    born_local_context, real, info))
 
     color_links, color_records = _build_nlo_decay_color_links(
         combined_born, born_current, local_color_pairs,
@@ -1526,10 +1698,12 @@ def nlo_decay_info_text(metadata):
         'HAS_VIRTUAL %d' % int(metadata['has_virtual']),
         'VIRTUAL_COMPOSITION %s' % metadata['virtual_composition'],
         'VIRTUAL_CURRENT_COUNT %d' % metadata['virtual_current_count'],
-        'COUNTS %d %d %d' % (
+        'COUNTS %d %d %d %d' % (
             len(metadata['contexts']), len(metadata['fks_maps']),
             len(set(link['generated_index']
-                    for link in metadata['color_links'])))]
+                    for link in metadata['color_links'])),
+            sum(len(mapping['partners'])
+                for mapping in metadata['fks_maps']))]
     for leg in metadata['production_legs']:
         lines.append('PRODUCTION_LEG %d %d %s' % (
             leg['number'], leg['pdg'], leg['state']))
@@ -1548,6 +1722,15 @@ def nlo_decay_info_text(metadata):
         lines.append('FKS_MAP %d %d %d %d %d' % (
             mapping['configuration'], mapping['real_context'],
             mapping['i'], mapping['j'], mapping['ij']))
+        for name in ['i', 'j', 'ij']:
+            kind, target = mapping['targets'][name]
+            lines.append('FKS_TARGET %d %s %d %s %d' % (
+                mapping['configuration'], name.upper(), mapping[name],
+                kind, target))
+        for partner in mapping['partners']:
+            lines.append('FKS_PARTNER %d %d %s %d' % (
+                mapping['configuration'], partner['local'],
+                partner['kind'], partner['target']))
     for link in metadata['color_links']:
         lines.append('COLOR_LINK %d %d %d %d %d' % (
             link['local_first'], link['local_second'],

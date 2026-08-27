@@ -61,6 +61,23 @@ labels for non-loop internal lines, then restores the untouched HELAS objects
 before Fortran calls are written.  This is bookkeeping only and does not alter
 the generated momenta or wavefunctions.
 
+### Milestone 4: visible-event FKS projection
+
+The fourth milestone establishes the indexing contract needed before an
+NLO-decay phase-space map can be implemented.  The corrected decay continues
+to own its FKS family in local numbering, but the export-facing FKS accessor
+now returns copies in flattened full-event numbering.  For the representative
+top decay, local `(i,j,ij)=(4,2,2)` consequently becomes visible-event
+`(5,3,3)` after the two production incoming legs have been restored.
+
+The projected records also contain complete visible-event PDG, colour and
+masslessness tables.  Visible entries in `fks_j_from_i` are projected in the
+same way.  A coloured internal parent cannot be represented by an ordinary
+external FKS index, so it remains a target-aware `NODE` partner in
+`nlo_decay_info.dat`; it is deliberately omitted from the visible partner
+array until the soft kernel can consume the reconstructed resonance momentum.
+The matrix-elements-only marker therefore remains in place.
+
 The implementation is split as follows:
 
 - `madgraph/interface/amcatnlo_interface.py`: syntax routing, validation and
@@ -146,6 +163,8 @@ This prototype deliberately requires:
 - no additional or nested decays;
 - native MadLoop, serial generation and the real-mass scheme;
 - `real` or `all` NLO mode on the corrected decay;
+- decay-local `i`, `j` and underlying-Born `ij` targets which map to visible
+  event legs; the internal parent may additionally occur as a soft partner;
 - explicit decay Born-order constraints when the usual automatic inference
   cannot determine orders for a one-incoming-particle process;
 - `output fNLO`.
@@ -177,8 +196,11 @@ For every decay `FKSProcess`:
 3. Insert that current into a fresh LO production matrix element.
 4. Repeat step 3 for every decay-real matrix element.
 5. Rebuild the colour bases after insertion.
-6. Retain the original decay-local FKS maps in prototype metadata.
-7. Map decay colour links onto the visible carrier of the on-shell parent for
+6. Retain the original decay-local FKS maps and explicit `LEG`/`NODE` targets
+   in prototype metadata.
+7. Project export-facing FKS indices and particle tables onto the flattened
+   visible event without mutating the decay-owned FKS objects.
+8. Map decay colour links onto the visible carrier of the on-shell parent for
    the combined Born matrix element.
 
 The corrected decay's incoming resonance is internal in the combined event.
@@ -215,7 +237,7 @@ Each affected `SubProcesses/P*` directory contains:
 - the normal `born.f` for `P^(0) x D^(0)`;
 - normal `matrix_N.f` files for `P^(0) x D^(R)`;
 - `nlo_decay_info.dat`, recording the corrected node, decay-local contexts,
-  original FKS indices and visible-leg maps;
+  original FKS indices, visible-leg targets and internal-node partners;
 - `NLO_DECAY_MATRIX_ELEMENTS_ONLY`, warning that phase-space/subtraction
   integration is not implemented;
 - for `[QCD]`, a normal `V*/` directory containing the combined
@@ -231,9 +253,10 @@ level-based drawer.
 ## Deferred Work
 
 - Equivalent production subprocesses and their grouping at the virtual level.
-- Context-aware FKS accessors for the internal incoming resonance.
-- Decay-local real-to-Born phase-space mappings inside the full event.
-- Soft kernels using both the resonance and visible-daughter momenta.
+- A decay-local real-to-Born phase-space map using the target-aware FKS
+  records inside the full event.
+- Soft kernels combining the separately reconstructed resonance and visible
+  daughter momenta.
 - Integrated subtraction and virtual-pole cancellation.
 - Independent production and decay renormalisation scales at NLO.
 - A decision between an explicitly expanded width normalisation and use of an
@@ -285,3 +308,18 @@ level-based drawer.
   `loop_matrix.f` and `born_matrix.f` and records
   `VIRTUAL_CURRENT_COUNT 3`.
 - The emitted multi-diagram MadLoop directory compiles successfully.
+
+## Fourth-Milestone Acceptance Tests
+
+- The decay-owned FKS objects retain local `(i,j,ij)=(4,2,2)` while the
+  export-facing record for `t > W+ b g` reports `(5,3,3)` in the flattened
+  `u u~ > b W+ g t~` event.
+- Export-facing PDG and colour tables cover all six real-event legs in visible
+  order.
+- The visible FKS partner table maps the bottom partner to leg 3, while the
+  incoming top is preserved separately as `NODE 1`.
+- `fks_info.inc` uses visible-event indices and the Born `IJ_VALUES` lookup
+  uses the projected leg properties (yielding zero for the massive bottom in
+  the default `loop_sm`), while `nlo_decay_info.dat` format 2 serializes every
+  local target and partner.
+- Ordinary fNLO and NLO-production-with-LO-decay accessors remain unchanged.

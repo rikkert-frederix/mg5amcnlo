@@ -880,6 +880,8 @@ class FKSHelasProcess(object):
         """Returns the list of the fks infos for all processes in the format
         {n_me, pdgs, fks_info}, where n_me is the number of real_matrix_element the configuration
         belongs to"""
+        if self.nlo_decay_metadata is not None:
+            return fks_decay.get_nlo_decay_fks_info_list(self)
         info_list = []
         for n, real in enumerate(self.real_processes):
             pdgs = [l['id'] for l in real.matrix_element.get_base_amplitude()['process']['legs']]

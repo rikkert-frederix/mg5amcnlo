@@ -4408,7 +4408,7 @@ Parameters              %(params)s\n\
                 split_type_lines = []
             for i, info in enumerate(fks_info_list):
                 real_process = fksborn.real_processes[info['n_me'] - 1]
-                colors = list(real_process.colors)
+                colors = list(info.get('colors', real_process.colors))
                 pdgs = list(info['pdgs'])
                 if decay_visible_count is not None:
                     colors.extend([1] * (decay_visible_count - len(colors)))
@@ -4419,7 +4419,24 @@ Parameters              %(params)s\n\
                 pdg_lines.append( \
                     'DATA (PDG_TYPE_D(%d, IPOS), IPOS=1, NEXTERNAL) / %s /' \
                     % (i + 1, ', '.join('%d' % pdg for pdg in pdgs)))
-                if decay_visible_count is None:
+                projected_partners = info.get('fks_j_from_i')
+                if projected_partners is not None:
+                    for particle in range(1, len(pdgs) + 1):
+                        partners = projected_partners.get(particle, [])
+                        if partners:
+                            fks_j_from_i_lines.append(
+                                'DATA (FKS_J_FROM_I_D(%d, %d, JPOS), '
+                                'JPOS = 0, %d) / %d, %s /' % (
+                                    i + 1, particle, len(partners),
+                                    len(partners), ', '.join(
+                                        '%d' % partner
+                                        for partner in partners)))
+                        else:
+                            fks_j_from_i_lines.append(
+                                'DATA FKS_J_FROM_I_D(%d, %d, 0) / 0 /' %
+                                (i + 1, particle))
+                    fks_j_from_i_lines.append('')
+                elif decay_visible_count is None:
                     fks_j_from_i_lines.extend(
                         self.get_fks_j_from_i_lines(real_process, i + 1))
                 else:
@@ -5120,9 +5137,16 @@ Parameters              %(params)s\n\
         if info_list:
             # if the reals have been generated, fill with the corresponding value of ij if
             # ij is massless, or with 0 if ij is massive (no collinear singularity)
-            ij_list = [info['fks_info']['ij']if \
-                    fks_born.born_me['processes'][0]['legs'][info['fks_info']['ij']-1]['massless'] \
-                    else 0 for info in info_list]
+            ij_list = []
+            for info in info_list:
+                if 'ij_massless' in info:
+                    ij_massless = info['ij_massless']
+                else:
+                    ij = info['fks_info']['ij']
+                    ij_massless = fks_born.born_me[
+                        'processes'][0]['legs'][ij - 1]['massless']
+                ij_list.append(
+                    info['fks_info']['ij'] if ij_massless else 0)
             lines.append('INTEGER IJ_VALUES(%d)' % len(info_list))
             lines.append('DATA IJ_VALUES /' + ', '.join(['%d' % ij for ij in ij_list]) + '/')
         else:

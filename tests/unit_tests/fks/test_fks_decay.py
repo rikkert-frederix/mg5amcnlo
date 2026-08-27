@@ -440,20 +440,59 @@ class TestFKSDecayChains(unittest.TestCase):
 
         metadata = matrix_element.nlo_decay_metadata
         self.assertEqual(metadata['status'], 'MATRIX_ELEMENTS_ONLY')
+        self.assertEqual(metadata['format'], 2)
         self.assertEqual(metadata['parent_pdg'], 6)
-        self.assertEqual(metadata['fks_maps'], [{
+        self.assertEqual(len(metadata['fks_maps']), 1)
+        fks_mapping = metadata['fks_maps'][0]
+        self.assertEqual({
+            key: fks_mapping[key]
+            for key in ['configuration', 'real_context', 'i', 'j', 'ij']}, {
             'configuration': 1,
             'real_context': 2,
             'i': 4,
             'j': 2,
-            'ij': 2}])
+            'ij': 2})
+        self.assertEqual(fks_mapping['targets'], {
+            'i': ('LEG', 5),
+            'j': ('LEG', 3),
+            'ij': ('LEG', 3)})
+        self.assertEqual(fks_mapping['partners'], [
+            {'local': 1, 'kind': 'NODE', 'target': 1},
+            {'local': 2, 'kind': 'LEG', 'target': 3}])
+
+        projected = matrix_element.get_fks_info_list()[0]
+        self.assertEqual(
+            [matrix_element.real_processes[0].fks_infos[0][key]
+             for key in ['i', 'j', 'ij']],
+            [4, 2, 2])
+        self.assertEqual(
+            [projected['fks_info'][key] for key in ['i', 'j', 'ij']],
+            [5, 3, 3])
+        self.assertEqual(
+            [projected['local_fks_info'][key]
+             for key in ['i', 'j', 'ij']],
+            [4, 2, 2])
+        self.assertEqual(projected['pdgs'], [2, -2, 5, 24, 21, -6])
+        self.assertEqual(projected['colors'], [3, -3, 3, 1, 8, -3])
+        self.assertEqual(
+            projected['massless'],
+            [True, True, False, False, True, False])
+        self.assertEqual(projected['fks_j_from_i'][5], [3])
+        self.assertFalse(projected['ij_massless'])
         self.assertEqual(
             [tuple(link['link']) for link in matrix_element.color_links],
             [(3, 3)])
         info = fks_decay.nlo_decay_info_text(metadata)
+        self.assertIn('FORMAT 2\n', info)
+        self.assertIn('COUNTS 2 1 1 2\n', info)
         self.assertIn('LOCAL_MAP 2 1 NODE 1\n', info)
         self.assertIn('LOCAL_MAP 2 4 LEG 5\n', info)
         self.assertIn('FKS_MAP 1 2 4 2 2\n', info)
+        self.assertIn('FKS_TARGET 1 I 4 LEG 5\n', info)
+        self.assertIn('FKS_TARGET 1 J 2 LEG 3\n', info)
+        self.assertIn('FKS_TARGET 1 IJ 2 LEG 3\n', info)
+        self.assertIn('FKS_PARTNER 1 1 NODE 1\n', info)
+        self.assertIn('FKS_PARTNER 1 2 LEG 3\n', info)
 
     def test_nlo_decay_virtual_is_composed_with_lo_production(self):
         command = self.generate(
@@ -634,11 +673,16 @@ class TestFKSDecayChains(unittest.TestCase):
                 subprocess_root, subprocesses[0])
             born_path = os.path.join(subprocess_dir, 'born.f')
             real_path = os.path.join(subprocess_dir, 'matrix_1.f')
+            fks_info_path = os.path.join(subprocess_dir, 'fks_info.inc')
 
             with open(born_path) as stream:
                 born_source = stream.read()
             with open(real_path) as stream:
                 real_source = stream.read()
+            with open(fks_info_path) as stream:
+                fks_info_source = stream.read()
+            flat_fks_info = ' '.join(
+                fks_info_source.replace('$', ' ').split()).replace(' ,', ',')
             self.assertIn('SUBROUTINE SBORN(P,ANS_SUMMED)', born_source)
             self.assertIn('SUBROUTINE SMATRIX1(P,ANS_SUMMED)', real_source)
             self.assertIn('P(0,5),MDL_MT', born_source)
@@ -654,13 +698,31 @@ class TestFKSDecayChains(unittest.TestCase):
                 born_source)
             self.assertIn(
                 'EXTERNAL FNLO_DECAY_DUMMY_WIDTH_RATIO', real_source)
+            self.assertIn('DATA FKS_I_D / 5 /', fks_info_source)
+            self.assertIn('DATA FKS_J_D / 3 /', fks_info_source)
+            self.assertIn(
+                'FKS_J_FROM_I_D(1, 5, JPOS), JPOS = 0, 1) / 1, 3 /',
+                flat_fks_info)
+            self.assertIn(
+                'PARTICLE_TYPE_D(1, IPOS), IPOS=1, NEXTERNAL) '
+                '/ 3, -3, 3, 1, 8, -3 /',
+                flat_fks_info)
+            self.assertIn(
+                'PDG_TYPE_D(1, IPOS), IPOS=1, NEXTERNAL) '
+                '/ 2, -2, 5, 24, 21, -6 /',
+                flat_fks_info)
+            self.assertIn('DATA IJ_VALUES /0/', born_source)
 
             with open(os.path.join(
                     subprocess_dir,
                     'NLO_DECAY_MATRIX_ELEMENTS_ONLY')) as stream:
                 self.assertIn('not implemented yet', stream.read())
-            self.assertTrue(os.path.isfile(os.path.join(
-                subprocess_dir, 'nlo_decay_info.dat')))
+            with open(os.path.join(
+                    subprocess_dir, 'nlo_decay_info.dat')) as stream:
+                metadata = stream.read()
+            self.assertIn('FORMAT 2\n', metadata)
+            self.assertIn('FKS_TARGET 1 I 4 LEG 5\n', metadata)
+            self.assertIn('FKS_PARTNER 1 1 NODE 1\n', metadata)
             self.assertTrue(os.path.isfile(os.path.join(
                 process_dir, 'Cards', 'decay_card.dat')))
             self.assertTrue(os.path.islink(os.path.join(
