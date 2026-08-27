@@ -39,11 +39,13 @@ module nlo_decay_kinematics
   public :: initialize_nlo_decay_kinematics
   public :: nlo_decay_minimum_production_mass
   public :: nlo_decay_production_mass
+  public :: get_nlo_decay_production_momenta
   public :: fill_nlo_decay_born_masses
   public :: generate_nlo_decay_born_momenta
   public :: generate_nlo_decay_fks_event
   public :: nlo_decay_fks_sister_mass
   public :: get_nlo_decay_event_momenta
+  public :: get_nlo_decay_born_kernel
   public :: get_nlo_decay_counterevent_fks_momenta
   public :: get_nlo_decay_mass_buffer
   public :: nlo_decay_parent_mass
@@ -151,6 +153,15 @@ contains
   end function nlo_decay_production_mass
 
 
+  subroutine get_nlo_decay_production_momenta(momenta)
+    double precision, intent(out) :: momenta(0:3, nexternal)
+    call require_enabled()
+    momenta = 0d0
+    momenta(:, 1:nlo_decay_production_count()) = &
+         production_born(:, 1:nlo_decay_production_count())
+  end subroutine get_nlo_decay_production_momenta
+
+
   double precision function nlo_decay_fks_sister_mass(configuration)
     integer, intent(in) :: configuration
     integer :: context, local_j
@@ -195,6 +206,43 @@ contains
     end if
     momenta = local_event_cache(:, :, event_slot)
   end subroutine get_nlo_decay_event_momenta
+
+
+  subroutine get_nlo_decay_born_kernel(configuration, momenta, masses, &
+                                       particle_count)
+    integer, intent(in) :: configuration
+    double precision, intent(out) :: momenta(0:3, nexternal)
+    double precision, intent(out) :: masses(nexternal)
+    integer, intent(out) :: particle_count
+    integer :: context, leg, born_leg
+    double precision :: inverse_parent(0:3), parent_rest(0:3)
+
+    call require_enabled()
+    context = nlo_decay_context_for_fks(configuration)
+    particle_count = nlo_decay_local_count(context)
+    momenta = 0d0
+    masses = 0d0
+    parent_rest = 0d0
+    parent_rest(0) = parent_mass
+    inverse_parent = parent_born
+    inverse_parent(1:3) = -inverse_parent(1:3)
+
+    do leg = 1, particle_count
+      masses(leg) = &
+           abs(get_mass_from_id(nlo_decay_local_pdg(context, leg)))
+      if (.not. nlo_decay_local_is_final(context, leg)) then
+        momenta(:, leg) = parent_rest
+      else if (leg /= nlo_decay_fks_i(configuration)) then
+        born_leg = nlo_decay_real_to_born(configuration, leg)
+        if (born_leg == 0) then
+          call fail_kinematics( &
+               'a non-radiated decay leg has no underlying-Born image')
+        end if
+        call boost_from_rest(born_local(:, born_leg), inverse_parent, &
+                             parent_mass, momenta(:, leg))
+      end if
+    end do
+  end subroutine get_nlo_decay_born_kernel
 
 
   subroutine get_nlo_decay_counterevent_fks_momenta(configuration, momenta)

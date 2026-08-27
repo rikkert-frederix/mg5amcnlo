@@ -164,8 +164,9 @@ class TestFKSDecayChains(unittest.TestCase):
             '# FNLO_DECAY_CARD\n'
             '# Runtime parameters for fixed-on-shell decay chains.\n'
             '# DECAY_WIDTH entries are physical total widths in GeV.\n'
+            '# NLO_DECAY_WIDTH entries must be NLO physical total widths in GeV.\n'
             '# DECAY_REN_SCALE entries are independent decay scales in GeV.\n'
-            'FORMAT 2\n'
+            'FORMAT 3\n'
             'DUMMY_WIDTH_RATIO 1.0000000000000001e-01\n'
             'PRODUCTION_REN_SCALE_MOMENTA CORE\n'
             'DECAY_WIDTH 6 1.4915000000000000e+00\n'
@@ -180,6 +181,12 @@ class TestFKSDecayChains(unittest.TestCase):
         self.assertIn(
             'PRODUCTION_REN_SCALE_MOMENTA DECAYED\n',
             decayed_scale_text)
+        nlo_card_text = fks_decay.decay_card_text(
+            {6: 1.3646}, {6: 173.0}, nlo_width_pdgs={6})
+        self.assertIn(
+            'NLO_DECAY_WIDTH 6 1.3646000000000000e+00\n',
+            nlo_card_text)
+        self.assertNotIn('\nDECAY_WIDTH 6 ', nlo_card_text)
 
     def test_qcd_decay_order_is_stored_per_node(self):
         command = self.generate(
@@ -439,8 +446,10 @@ class TestFKSDecayChains(unittest.TestCase):
                 self.assertEqual(wavefunction.get('width'), expected)
 
         metadata = matrix_element.nlo_decay_metadata
-        self.assertEqual(metadata['status'], 'LOCAL_PHASE_SPACE_ONLY')
-        self.assertEqual(metadata['format'], 3)
+        self.assertEqual(metadata['status'], 'INTEGRATION_READY')
+        self.assertEqual(metadata['format'], 4)
+        self.assertEqual(metadata['production_born_qcd_order'], 4)
+        self.assertEqual(metadata['decay_born_qcd_order'], 0)
         self.assertEqual(metadata['parent_pdg'], 6)
         self.assertEqual(len(metadata['fks_maps']), 1)
         fks_mapping = metadata['fks_maps'][0]
@@ -501,7 +510,8 @@ class TestFKSDecayChains(unittest.TestCase):
              'visible_first': 3, 'visible_second': 3,
              'generated_index': 1}])
         info = fks_decay.nlo_decay_info_text(metadata)
-        self.assertIn('FORMAT 3\n', info)
+        self.assertIn('FORMAT 4\n', info)
+        self.assertIn('QCD_ORDERS 4 0\n', info)
         self.assertIn('COUNTS 2 1 1 2\n', info)
         self.assertIn('PRODUCTION_MAP 1 3 NODE 1\n', info)
         self.assertIn('PRODUCTION_MAP 2 4 LEG 6\n', info)
@@ -646,6 +656,14 @@ class TestFKSDecayChains(unittest.TestCase):
         self.assertEqual(external, [
             (1, False), (2, False), (3, True),
             (4, True), (5, True)])
+        initial_flow = set(
+            (wavefunction.get('number_external'),
+             wavefunction.get('is_part'))
+            for wavefunction in fks_decay._all_wavefunctions(virtual)
+            if (not wavefunction.get('mothers') and
+                not wavefunction.get('is_loop') and
+                not wavefunction.get('leg_state')))
+        self.assertEqual(initial_flow, set([(1, True), (2, False)]))
         connectors = [
             wavefunction for wavefunction in
             fks_decay._all_wavefunctions(virtual)
@@ -693,6 +711,16 @@ class TestFKSDecayChains(unittest.TestCase):
                 self.assertEqual(virtual.get_nexternal_ninitial(), (5, 2))
                 self.assertEqual(len(virtual.get_born_diagrams()), 3)
                 self.assertEqual(len(virtual.get_loop_diagrams()), 3)
+                external_states = set(
+                    (wavefunction.get('number_external'),
+                     wavefunction.get('state'),
+                     wavefunction.get('leg_state'))
+                    for wavefunction in
+                    fks_decay._all_wavefunctions(virtual)
+                    if (not wavefunction.get('mothers') and
+                        not wavefunction.get('is_loop')))
+                self.assertIn((1, 'initial', False), external_states)
+                self.assertIn((2, 'initial', False), external_states)
                 self.assertEqual(
                     set(virtual.get('born_color_basis')),
                     set(matrix_element.born_me.get('color_basis')))
@@ -824,18 +852,14 @@ class TestFKSDecayChains(unittest.TestCase):
                 flat_fks_info)
             self.assertIn('DATA IJ_VALUES /0/', born_source)
 
-            with open(os.path.join(
-                    subprocess_dir,
-                    'NLO_DECAY_SUBTRACTION_INCOMPLETE')) as stream:
-                marker = stream.read()
-            self.assertIn('resonance-preserving phase-space map', marker)
-            self.assertIn('Integrated subtraction', marker)
-            self.assertNotIn('Node-aware soft subtraction', marker)
+            self.assertFalse(os.path.exists(os.path.join(
+                subprocess_dir, 'NLO_DECAY_SUBTRACTION_INCOMPLETE')))
             with open(os.path.join(
                     subprocess_dir, 'nlo_decay_info.dat')) as stream:
                 metadata = stream.read()
-            self.assertIn('FORMAT 3\n', metadata)
-            self.assertIn('STATUS LOCAL_PHASE_SPACE_ONLY\n', metadata)
+            self.assertIn('FORMAT 4\n', metadata)
+            self.assertIn('STATUS INTEGRATION_READY\n', metadata)
+            self.assertIn('QCD_ORDERS 4 0\n', metadata)
             self.assertIn('PRODUCTION_MAP 1 3 NODE 1\n', metadata)
             self.assertIn('PRODUCTION_MAP 2 4 LEG 6\n', metadata)
             self.assertIn('FKS_TARGET 1 I 4 LEG 5\n', metadata)
@@ -861,6 +885,12 @@ class TestFKSDecayChains(unittest.TestCase):
                 'generate_nlo_decay_fks_kinematics', phase_space)
             self.assertTrue(os.path.isfile(os.path.join(
                 process_dir, 'Cards', 'decay_card.dat')))
+            with open(os.path.join(
+                    process_dir, 'Cards', 'decay_card.dat')) as stream:
+                decay_card = stream.read()
+            self.assertIn('FORMAT 3\n', decay_card)
+            self.assertIn('NLO_DECAY_WIDTH 6 ', decay_card)
+            self.assertNotIn('\nDECAY_WIDTH 6 ', decay_card)
             self.assertTrue(os.path.islink(os.path.join(
                 subprocess_dir, 'decay_card.dat')))
 

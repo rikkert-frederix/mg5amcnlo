@@ -109,7 +109,7 @@ class TestMadEventCmd(unittest.TestCase):
                          'FO_analyse_card.dat')
 
         with tempfile.NamedTemporaryFile(mode='w', delete=False) as card:
-            card.write('# FNLO_DECAY_CARD\nFORMAT 2\n'
+            card.write('# FNLO_DECAY_CARD\nFORMAT 3\n'
                        'DUMMY_WIDTH_RATIO 0.1\n'
                        'PRODUCTION_REN_SCALE_MOMENTA CORE\n'
                        'DECAY_WIDTH 6 1.4915\n'

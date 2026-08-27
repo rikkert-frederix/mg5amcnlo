@@ -12,6 +12,8 @@ module setscales_module
   use fixed_order_user_hooks, only: fixed_user_scale
   use decay_chain_scales, only: select_production_core_momenta, &
        select_production_ren_scale_momenta
+  use decay_chain_parameters, only: decay_renormalization_scale
+  use nlo_decay_metadata, only: has_nlo_decay, corrected_parent_pdg
   use fnlo_process_common, only: mur_id_str, muf1_id_str, &
                                  muf2_id_str, qes_id_str, temp_scale_id, &
                                  calculated_born, nfksprocess
@@ -213,7 +215,10 @@ contains
 
     call validate_momenta(pp, 'set_QES_scale')
     temp_scale_id = '  '
-    if (fixed_qes_scale) then
+    if (has_nlo_decay()) then
+      qes_temp = decay_renormalization_scale(corrected_parent_pdg())
+      temp_scale_id = 'NLO decay renormalization scale'
+    else if (fixed_qes_scale) then
       qes_temp = qes_ref_fixed
       temp_scale_id = 'fixed'
     else

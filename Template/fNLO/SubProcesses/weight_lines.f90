@@ -3,7 +3,7 @@ module weight_lines
   private
 
   public :: max_contr, max_wgt, max_iproc, icontr, iwgt
-  public :: itype, nFKS, QCDpower, pdg, pdg_uborn
+  public :: itype, nFKS, QCDpower, decayQCDpower, pdg, pdg_uborn
   public :: parton_pdg_uborn, parton_pdg, plot_id, niproc, ipr
   public :: orderstag, amppos
   public :: momenta, wgt, bjx, scales2
@@ -11,7 +11,8 @@ module weight_lines
   public :: weight_lines_allocated, deallocate_weight_lines
 
   integer :: max_contr, max_wgt, max_iproc, icontr, iwgt
-  integer, allocatable :: itype(:), nFKS(:), QCDpower(:), pdg(:,:)
+  integer, allocatable :: itype(:), nFKS(:), QCDpower(:)
+  integer, allocatable :: decayQCDpower(:), pdg(:,:)
   integer, allocatable :: pdg_uborn(:,:), parton_pdg_uborn(:,:,:)
   integer, allocatable :: parton_pdg(:,:,:), plot_id(:), niproc(:)
   integer, allocatable :: ipr(:), orderstag(:), amppos(:)
@@ -98,6 +99,13 @@ contains
       deallocate(QCDpower)
       allocate(QCDpower(n_contr))
       QCDpower(1:max_contr) = itemp1
+      deallocate(itemp1)
+
+      allocate(itemp1(max_contr))
+      itemp1 = decayQCDpower
+      deallocate(decayQCDpower)
+      allocate(decayQCDpower(n_contr))
+      decayQCDpower(1:max_contr) = itemp1
       deallocate(itemp1)
 
       allocate(itemp2(nexternal, 0:max_contr))
@@ -237,6 +245,7 @@ contains
     allocate(itype(1))
     allocate(nFKS(1))
     allocate(QCDpower(1))
+    allocate(decayQCDpower(1))
     allocate(pdg(nexternal, 0:1))
     allocate(pdg_uborn(nexternal, 0:1))
     allocate(parton_pdg_uborn(nexternal, 1, 1))
@@ -269,6 +278,7 @@ contains
     if (allocated(itype)) deallocate(itype)
     if (allocated(nFKS)) deallocate(nFKS)
     if (allocated(QCDpower)) deallocate(QCDpower)
+    if (allocated(decayQCDpower)) deallocate(decayQCDpower)
     if (allocated(pdg)) deallocate(pdg)
     if (allocated(pdg_uborn)) deallocate(pdg_uborn)
     if (allocated(parton_pdg_uborn)) deallocate(parton_pdg_uborn)

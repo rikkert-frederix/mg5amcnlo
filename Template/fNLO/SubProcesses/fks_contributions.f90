@@ -8,8 +8,10 @@ module fks_contributions_module
   use fks_model_state_module, only: g => strong_coupling, external_masses
   use decay_chain_metadata, only: has_decay_chains
   use decay_chain_kinematics, only: fks_leg_mass
+  use nlo_decay_metadata, only: has_nlo_decay
+  use nlo_decay_kinematics, only: nlo_decay_fks_sister_mass
   use fks_singular_module, only: evaluate_fks_sij, sreal, sreal_deg, &
-                                 bornsoftvirtual
+                                 bornsoftvirtual, fks_subtraction_shat
   use fks_weights_module, only: add_wgt, real_contribution, &
                                 born_contribution, integrated_contribution, &
                                 soft_contribution, collinear_contribution, &
@@ -54,7 +56,10 @@ module fks_contributions_module
 contains
 
   logical function fks_sister_is_massless()
-    if (has_decay_chains()) then
+    if (has_nlo_decay()) then
+      fks_sister_is_massless = &
+           nlo_decay_fks_sister_mass(nfksprocess) == 0d0
+    else if (has_decay_chains()) then
       fks_sister_is_massless = &
            fks_leg_mass(nfksprocess, j_fks) == 0d0
     else
@@ -344,7 +349,7 @@ contains
     use mint_module
     implicit none
     real :: tBefore, tAfter
-    double precision pi, vegas_wgt
+    double precision pi, vegas_wgt, subtraction_shat
     logical firsttime
     data firsttime/.true./
     parameter(pi=3.1415926535897932385d0)
@@ -355,10 +360,11 @@ contains
       firsttime = .false.
     end if
 ! f_* multiplication factors for Born and nbody
+    subtraction_shat = fks_subtraction_shat(soft_counterevent)
     f_b = stored_event_jacobian(soft_counterevent)* &
           event_xi_norm(real_event)/ &
           (min(event_xi_max(real_event), xiBSVcut_used)* &
-           event_shat(soft_counterevent)/(16*pi**2))* &
+           subtraction_shat/(16*pi**2))* &
           fkssymmetryfactorBorn*vegas_wgt
     f_nb = f_b
     call cpu_time(tAfter)
@@ -437,9 +443,13 @@ contains
     double precision prefact_c, prefact_coll, jac_ev, pi
     double precision prefact_cnt_ssc_c, prefact_coll_c
     double precision prefact_deg_slxi, prefact_deg_sxi
+    double precision collinear_shat, soft_collinear_shat
     integer i
     parameter(pi=3.1415926535897932385d0)
     call cpu_time(tBefore)
+    collinear_shat = fks_subtraction_shat(collinear_counterevent)
+    soft_collinear_shat = &
+         fks_subtraction_shat(soft_collinear_counterevent)
 
 ! f_* multiplication factors for real-emission, soft counter, ... etc.
     prefact = event_xi_norm(real_event)/event_xi(real_event)/ &
@@ -483,7 +493,7 @@ contains
                                   xiScut_used)) &
                          *log(delta_used/deltaS)/deltaS
         f_dc = stored_event_jacobian(collinear_counterevent)*prefact_deg/ &
-               (event_shat(collinear_counterevent)/(32*pi**2))* &
+               (collinear_shat/(32*pi**2))* &
                fkssymmetryfactorDeg*vegas_wgt
         f_sc = (prefact_c + prefact_coll + prefact_cnt_ssc_c + &
                 prefact_coll_c)* &
@@ -504,19 +514,19 @@ contains
                            /(2.d0*deltaS)
         f_dsc(1) = prefact_deg* &
                    stored_event_jacobian(soft_collinear_counterevent)/ &
-                   (event_shat(soft_collinear_counterevent)/(32*pi**2))* &
+                   (soft_collinear_shat/(32*pi**2))* &
                    fkssymmetryfactorDeg*vegas_wgt
         f_dsc(2) = prefact_deg_sxi* &
                    stored_event_jacobian(soft_collinear_counterevent)/ &
-                   (event_shat(soft_collinear_counterevent)/(32*pi**2))* &
+                   (soft_collinear_shat/(32*pi**2))* &
                    fkssymmetryfactorDeg*vegas_wgt
         f_dsc(3) = prefact_deg_slxi* &
                    stored_event_jacobian(soft_collinear_counterevent)/ &
-                   (event_shat(soft_collinear_counterevent)/(32*pi**2))* &
+                   (soft_collinear_shat/(32*pi**2))* &
                    fkssymmetryfactorDeg*vegas_wgt
         f_dsc(4) = (prefact_deg + prefact_deg_sxi)* &
                    stored_event_jacobian(soft_collinear_counterevent)/ &
-                   (event_shat(soft_collinear_counterevent)/(32*pi**2))* &
+                   (soft_collinear_shat/(32*pi**2))* &
                    fkssymmetryfactorDeg*vegas_wgt
       else
         f_c = 0d0

@@ -10,6 +10,7 @@ module decay_chain_parameters
   logical, save :: use_decayed_production_momenta_value = .false.
   integer, allocatable, save :: width_pdgs(:)
   double precision, allocatable, save :: width_values(:)
+  logical, allocatable, save :: width_is_nlo(:)
   integer, allocatable, save :: scale_pdgs(:)
   double precision, allocatable, save :: scale_values(:)
 
@@ -49,21 +50,26 @@ contains
       if (skip_line(line)) cycle
       read(line, *, iostat=ios) keyword
       if (ios /= 0) call fail_parameters('malformed decay-card record')
-      if (trim(keyword) == 'DECAY_WIDTH') width_count = width_count + 1
+      if (trim(keyword) == 'DECAY_WIDTH' .or. &
+          trim(keyword) == 'NLO_DECAY_WIDTH') then
+        width_count = width_count + 1
+      end if
       if (trim(keyword) == 'DECAY_REN_SCALE') scale_count = scale_count + 1
     end do
     if (width_count < 1) then
-      call fail_parameters('no DECAY_WIDTH records are present')
+      call fail_parameters('no physical-width records are present')
     end if
     if (scale_count < 1) then
       call fail_parameters('no DECAY_REN_SCALE records are present')
     end if
     allocate(width_pdgs(width_count))
     allocate(width_values(width_count))
+    allocate(width_is_nlo(width_count))
     allocate(scale_pdgs(scale_count))
     allocate(scale_values(scale_count))
     width_pdgs = 0
     width_values = 0d0
+    width_is_nlo = .false.
     scale_pdgs = 0
     scale_values = 0d0
 
@@ -114,7 +120,7 @@ contains
           end select
         end if
         momentum_mode_seen = .true.
-      case ('DECAY_WIDTH')
+      case ('DECAY_WIDTH', 'NLO_DECAY_WIDTH')
         read(line, *, iostat=ios) keyword, pdg, value
         if (ios == 0) then
           pdg = abs(pdg)
@@ -122,11 +128,12 @@ contains
           width_index = width_index + 1
           do previous = 1, width_index - 1
             if (width_pdgs(previous) == pdg) then
-              call fail_parameters('duplicate DECAY_WIDTH record')
+              call fail_parameters('duplicate physical-width record')
             end if
           end do
           width_pdgs(width_index) = pdg
           width_values(width_index) = value
+          width_is_nlo(width_index) = trim(keyword) == 'NLO_DECAY_WIDTH'
         end if
       case ('DECAY_REN_SCALE')
         read(line, *, iostat=ios) keyword, pdg, value
@@ -154,7 +161,7 @@ contains
     close(unit_number)
 
     if (.not. end_seen) call fail_parameters('END record is absent')
-    if (card_format /= 2) call fail_parameters('FORMAT 2 is required')
+    if (card_format /= 3) call fail_parameters('FORMAT 3 is required')
     if (.not. ratio_seen .or. dummy_width_ratio_value <= 0d0 .or. &
         .not. ieee_is_finite(dummy_width_ratio_value)) then
       call fail_parameters('the dummy-width ratio must be finite and positive')
@@ -176,16 +183,25 @@ contains
     end do
     if (has_decay_chains()) then
       do node = 1, decay_node_count()
-        if (find_pdg(node_pdg(node), width_pdgs) == 0) then
+        width_index = find_pdg(node_pdg(node), width_pdgs)
+        if (width_index == 0) then
           call fail_parameters('a decay node has no physical width')
+        end if
+        if (width_is_nlo(width_index)) then
+          call fail_parameters('an LO decay node has an NLO width record')
         end if
         if (find_pdg(node_pdg(node), scale_pdgs) == 0) then
           call fail_parameters('a decay node has no renormalisation scale')
         end if
       end do
     else if (has_nlo_decay()) then
-      if (find_pdg(corrected_parent_pdg(), width_pdgs) == 0) then
+      width_index = find_pdg(corrected_parent_pdg(), width_pdgs)
+      if (width_index == 0) then
         call fail_parameters('the corrected decay has no physical width')
+      end if
+      if (.not. width_is_nlo(width_index)) then
+        call fail_parameters(&
+             'the corrected decay requires an NLO_DECAY_WIDTH record')
       end if
       if (find_pdg(corrected_parent_pdg(), scale_pdgs) == 0) then
         call fail_parameters('the corrected decay has no renormalisation scale')

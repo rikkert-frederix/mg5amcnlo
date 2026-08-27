@@ -15,13 +15,14 @@ module fks_singular_module
   use decay_chain_kinematics, only: get_core_event_momenta, &
        get_core_born_momenta, get_core_mass_buffer, active_core_count, &
        map_core_color_pair
-  use decay_chain_scales, only: production_qcd_squared_order
+  use decay_chain_scales, only: corrected_born_qcd_squared_order
   use nlo_decay_metadata, only: has_nlo_decay, &
        nlo_decay_context_for_fks, nlo_decay_local_count, &
        nlo_decay_local_pdg, nlo_decay_fks_i, nlo_decay_fks_j, &
        nlo_decay_partner_count, nlo_decay_partner_local, &
        nlo_decay_map_color_link
   use nlo_decay_kinematics, only: get_nlo_decay_event_momenta, &
+       get_nlo_decay_born_kernel, &
        get_nlo_decay_counterevent_fks_momenta, &
        get_nlo_decay_mass_buffer, nlo_decay_parent_mass
   use fks_qcd_splitting, only: AP_reduced, AP_reduced_prime, &
@@ -103,6 +104,7 @@ module fks_singular_module
 
   public :: evaluate_fks_sij, sreal, sreal_deg, bornsoftvirtual
   public :: getpoles, setfksfactor, fill_configurations_common
+  public :: fks_subtraction_shat
   public :: initialize_fks_generated_state
   public :: validate_fks_singular_state
 
@@ -306,7 +308,15 @@ contains
     double precision, intent(out) :: kernel_masses(nexternal)
     integer, intent(out), optional :: kernel_count
 
-    if (has_decay_chains()) then
+    if (has_nlo_decay()) then
+      if (present(kernel_count)) then
+        kernel_count = nlo_decay_local_count( &
+             nlo_decay_context_for_fks(nfksprocess))
+      end if
+      call get_nlo_decay_event_momenta( &
+           nfksprocess, event_slot, kernel_momenta)
+      call get_nlo_decay_mass_buffer(nfksprocess, kernel_masses)
+    else if (has_decay_chains()) then
       if (present(kernel_count)) then
         kernel_count = active_core_count(nfksprocess)
       end if
@@ -319,6 +329,16 @@ contains
       kernel_masses = external_masses
     end if
   end subroutine select_kernel_event
+
+
+  double precision function fks_subtraction_shat(event_slot)
+    integer, intent(in) :: event_slot
+    if (has_nlo_decay()) then
+      fks_subtraction_shat = nlo_decay_parent_mass()**2
+    else
+      fks_subtraction_shat = event_shat(event_slot)
+    end if
+  end function fks_subtraction_shat
 
 
   subroutine select_kernel_born(kernel_momenta)
@@ -350,18 +370,71 @@ contains
 
 
   subroutine select_visible_color_pair(core_first, core_second, &
-                                       visible_first, visible_second)
+                                       visible_first, visible_second, &
+                                       multiplier)
     integer, intent(in) :: core_first, core_second
     integer, intent(out) :: visible_first, visible_second
+    double precision, intent(out), optional :: multiplier
+    double precision :: local_multiplier
 
-    if (has_decay_chains()) then
+    local_multiplier = 1d0
+    if (has_nlo_decay()) then
+      call nlo_decay_map_color_link(nfksprocess, core_first, core_second, &
+                                    visible_first, visible_second, &
+                                    local_multiplier)
+    else if (has_decay_chains()) then
       call map_core_color_pair(core_first, core_second, visible_first, &
                                visible_second)
     else
       visible_first = core_first
       visible_second = core_second
     end if
+    if (present(multiplier)) multiplier = local_multiplier
   end subroutine select_visible_color_pair
+
+
+  subroutine select_kernel_properties(kernel_particle_type, kernel_i, &
+                                      kernel_initial_count)
+    integer, intent(out) :: kernel_particle_type(nexternal)
+    integer, intent(out) :: kernel_i, kernel_initial_count
+    integer :: context, leg
+
+    if (has_nlo_decay()) then
+      context = nlo_decay_context_for_fks(nfksprocess)
+      kernel_particle_type = 1
+      do leg = 1, nlo_decay_local_count(context)
+        kernel_particle_type(leg) = &
+             get_color(nlo_decay_local_pdg(context, leg))
+      end do
+      kernel_i = nlo_decay_fks_i(nfksprocess)
+      kernel_initial_count = 1
+    else
+      kernel_particle_type = particle_type
+      kernel_i = i_fks
+      kernel_initial_count = nincoming
+    end if
+  end subroutine select_kernel_properties
+
+
+  integer function selected_partner_count(kernel_i)
+    integer, intent(in) :: kernel_i
+    if (has_nlo_decay()) then
+      selected_partner_count = nlo_decay_partner_count(nfksprocess)
+    else
+      selected_partner_count = fks_j_from_i(kernel_i, 0)
+    end if
+  end function selected_partner_count
+
+
+  integer function selected_partner(kernel_i, position)
+    integer, intent(in) :: kernel_i, position
+    if (has_nlo_decay()) then
+      selected_partner = &
+           nlo_decay_partner_local(nfksprocess, position)
+    else
+      selected_partner = fks_j_from_i(kernel_i, position)
+    end if
+  end function selected_partner
 
   subroutine sreal(event_slot, pp, xi_i_fks, y_ij_fks, wgt)
 ! Wrapper for the n+1 contribution. Returns the n+1 matrix element
@@ -373,7 +446,8 @@ contains
     double precision pp(0:3, nexternal), wgt
     double precision xi_i_fks, y_ij_fks
 
-    double precision shattmp
+    double precision shattmp, partonic_shat, partonic_sqrt_shat
+    integer :: kernel_i, kernel_j, kernel_initial_count
 
 
 
@@ -384,6 +458,17 @@ contains
     double precision pmass(nexternal)
     double precision kernel_momenta(0:3, nexternal)
     call select_kernel_event(event_slot, pp, kernel_momenta, pmass)
+    partonic_shat = fks_subtraction_shat(event_slot)
+    partonic_sqrt_shat = sqrt(partonic_shat)
+    if (has_nlo_decay()) then
+      kernel_i = nlo_decay_fks_i(nfksprocess)
+      kernel_j = nlo_decay_fks_j(nfksprocess)
+      kernel_initial_count = 1
+    else
+      kernel_i = i_fks
+      kernel_j = j_fks
+      kernel_initial_count = nincoming
+    end if
     if (softtest .or. colltest) then
       tiny = 1d-12
     else
@@ -397,25 +482,27 @@ contains
     end if
 
 ! Check that the requested event slot matches the supplied momenta.
-    if (nincoming .eq. 2) then
+    if (kernel_initial_count .eq. 2) then
       shattmp = 2d0*dot(kernel_momenta(0, 1), &
                         kernel_momenta(0, 2))
     else
       shattmp = kernel_momenta(0, 1)**2
     end if
-    if (abs(shattmp/event_shat(event_slot) - 1.d0) .gt. 1.d-5) then
+    if (abs(shattmp/partonic_shat - 1.d0) .gt. 1.d-5) then
       write (*, *) 'Error in sreal: inconsistent shat'
-      write (*, *) shattmp, event_shat(event_slot)
+      write (*, *) shattmp, partonic_shat
       stop
     end if
 
     if (1d0 - y_ij_fks .lt. tiny) then
-      if (pmass(j_fks) .eq. zero .and. j_fks .le. nincoming) then
+      if (pmass(kernel_j) .eq. zero .and. &
+          kernel_j .le. kernel_initial_count) then
         call sborncol_isr(kernel_momenta, xi_i_fks, y_ij_fks, &
-                          event_shat(event_slot), wgt)
-      elseif (pmass(j_fks) .eq. zero .and. j_fks .ge. nincoming + 1) then
+                          partonic_shat, wgt)
+      elseif (pmass(kernel_j) .eq. zero .and. &
+              kernel_j .ge. kernel_initial_count + 1) then
         call sborncol_fsr(kernel_momenta, y_ij_fks, &
-                          event_shat(event_slot), wgt)
+                          partonic_shat, wgt)
       else
         wgt = 0d0
         amp_split(1:amp_split_size) = 0d0
@@ -424,7 +511,7 @@ contains
       if (need_color_links) then
 ! has soft singularities
         call sbornsoft(event_slot, kernel_momenta, xi_i_fks, y_ij_fks, &
-                       event_sqrt_shat(event_slot), wgt)
+                       partonic_sqrt_shat, wgt)
       else
         wgt = 0d0
         amp_split(1:amp_split_size) = 0d0
@@ -443,7 +530,8 @@ contains
     double precision p(0:3, nexternal), wgt
     double precision y_ij_fks, partonic_shat
 !
-    integer i, imother_fks, iord
+    integer i, imother_fks, iord, selected_i_fks, selected_j_fks
+    integer kernel_count
     double precision t, z, ap(2), E_j_fks, E_i_fks, Q(2), cphi_mother, sphi_mother, pi(0:3), pj(0:3), wgt_born
     complex(kind=kind(0d0)) W1(6), W2(6), W3(6), W4(6), Wij_angle, Wij_recta
     complex(kind=kind(0d0)) azifact
@@ -456,11 +544,22 @@ contains
     complex(kind=kind(0d0)) ximag
     parameter(ximag=(0.d0, 1.d0))
     double precision amp_split_local(amp_split_size)
-    double precision kernel_born(0:3, nexternal - 1)
+    double precision kernel_born(0:3, nexternal)
+    double precision kernel_masses(nexternal)
     complex(kind=kind(0d0)) wgt1(2)
 !
     amp_split_local(1:amp_split_size) = 0d0
-    call select_kernel_born(kernel_born)
+    kernel_born = 0d0
+    if (has_nlo_decay()) then
+      selected_i_fks = nlo_decay_fks_i(nfksprocess)
+      selected_j_fks = nlo_decay_fks_j(nfksprocess)
+      call get_nlo_decay_born_kernel( &
+           nfksprocess, kernel_born, kernel_masses, kernel_count)
+    else
+      selected_i_fks = i_fks
+      selected_j_fks = j_fks
+      call select_kernel_born(kernel_born(:, 1:nexternal - 1))
+    end if
 
 !
     if (p_born(0, 1) .le. 0.d0) then
@@ -470,8 +569,8 @@ contains
       return
     end if
 
-    E_j_fks = p(0, j_fks)
-    E_i_fks = p(0, i_fks)
+    E_j_fks = p(0, selected_j_fks)
+    E_i_fks = p(0, selected_i_fks)
     z = 1d0 - E_i_fks/(E_i_fks + E_j_fks)
     t = z*partonic_shat/4d0
     call sborn(p_born, wgt_born)
@@ -490,8 +589,13 @@ contains
         azifact = xij_aor
       else
         do i = 0, 3
-          pi(i) = event_fks_momentum(i, real_event)
-          pj(i) = p(i, j_fks)
+          if (has_nlo_decay()) then
+            pi(i) = p(i, selected_i_fks)*sqrt(partonic_shat)/ &
+                    (2d0*E_i_fks)
+          else
+            pi(i) = event_fks_momentum(i, real_event)
+          end if
+          pj(i) = p(i, selected_j_fks)
         end do
         call IXXXSO(pi, ZERO, +1, +1, W1)
         call OXXXSO(pj, ZERO, -1, +1, W2)
@@ -506,7 +610,7 @@ contains
         azifact = Wij_angle/Wij_recta
       end if
 ! Insert the extra factor due to Madgraph convention for polarization vectors
-      imother_fks = min(i_fks, j_fks)
+      imother_fks = min(selected_i_fks, selected_j_fks)
       call getaziangles(kernel_born(:, imother_fks), cphi_mother, &
                         sphi_mother)
       wgt1(2) = -(cphi_mother - ximag*sphi_mother)**2*wgt1(2)*azifact
@@ -514,7 +618,8 @@ contains
         -(cphi_mother - ximag*sphi_mother)**2 &
         *amp_split_cnt(1:amp_split_size, 2, iord)*azifact
     else
-      write (*, *) 'FATAL ERROR in sborncol_fsr', i_type, j_type, i_fks, j_fks
+      write (*, *) 'FATAL ERROR in sborncol_fsr', i_type, j_type, &
+                   selected_i_fks, selected_j_fks
       stop 1
     end if
     wgt = wgt + dble(wgt1(1)*ap(1) + wgt1(2)*Q(1))
@@ -879,6 +984,8 @@ contains
     double precision shattmp
     integer event_slot, i, j, aj, m, n, k
     integer kernel_count, visible_m, visible_n
+    integer kernel_i, kernel_initial_count, partner_count
+    integer kernel_particle_type(nexternal)
 
 
 
@@ -908,6 +1015,7 @@ contains
     double precision amp_split_born(amp_split_size)
     double precision amp_split_bsv(amp_split_size)
     double precision kernel_momenta(0:3, nexternal)
+    double precision kernel_shat, kernel_sqrt_shat, link_multiplier
     if (firsttime) then
 ! Check whether any real-emission configuration needs colour links.
       nFKSprocess_save = nFKSprocess
@@ -926,8 +1034,22 @@ contains
       nFKSprocess = nFKSprocess_save
       call fks_inc_chooser()
     end if
-    call select_kernel_event(event_slot, p, kernel_momenta, pmass, &
-                             kernel_count)
+    if (has_nlo_decay()) then
+      call get_nlo_decay_event_momenta( &
+           nfksprocess, event_slot, kernel_momenta)
+      call get_nlo_decay_mass_buffer(nfksprocess, pmass)
+      kernel_count = nlo_decay_local_count( &
+           nlo_decay_context_for_fks(nfksprocess))
+      kernel_sqrt_shat = nlo_decay_parent_mass()
+      kernel_shat = kernel_sqrt_shat**2
+    else
+      call select_kernel_event(event_slot, p, kernel_momenta, pmass, &
+                               kernel_count)
+      kernel_sqrt_shat = event_sqrt_shat(event_slot)
+      kernel_shat = event_shat(event_slot)
+    end if
+    call select_kernel_properties(kernel_particle_type, kernel_i, &
+                                  kernel_initial_count)
 
     aso2pi = g**2/(8*pi**2)
 
@@ -944,15 +1066,15 @@ contains
     end if
 
 ! Check that the requested event slot matches the supplied momenta.
-    if (nincoming .eq. 2) then
+    if (kernel_initial_count .eq. 2) then
       shattmp = 2d0*dot(kernel_momenta(0, 1), &
                         kernel_momenta(0, 2))
     else
       shattmp = kernel_momenta(0, 1)**2
     end if
-    if (abs(shattmp/event_shat(event_slot) - 1.d0) .gt. 1.d-5) then
+    if (abs(shattmp/kernel_shat - 1.d0) .gt. 1.d-5) then
       write (*, *) 'Error in bornsoftvirtual: inconsistent shat'
-      write (*, *) shattmp, event_shat(event_slot)
+      write (*, *) shattmp, kernel_shat
       stop
     end if
 
@@ -972,12 +1094,12 @@ contains
 ! Q contribution eq 5.5 and 5.6 of FKS
     Q = 0d0
     do i = 1, kernel_count
-      if (i .ne. i_fks .and. pmass(i) .eq. ZERO) then
+      if (i .ne. kernel_i .and. pmass(i) .eq. ZERO) then
 ! set the colour factors according to the
 ! type of the leg
-        if (particle_type(i) .eq. 8) then
+        if (kernel_particle_type(i) .eq. 8) then
           aj = 0
-        elseif (abs(particle_type(i)) .eq. 3) then
+        elseif (abs(kernel_particle_type(i)) .eq. 3) then
           aj = 1
         else
           aj = -1
@@ -989,20 +1111,20 @@ contains
         gamma_used = gamma(aj)
         gammap_used = gammap(aj)
 
-        if (i .gt. nincoming) then
+        if (i .gt. kernel_initial_count) then
 ! Q terms for final state partons
           if (abrv .ne. 'virt') then
 ! 1+2+3+4
             Q = Q + gammap_used &
-                - dlog(event_shat(event_slot)*deltaO/2d0/QES2) &
+                - dlog(kernel_shat*deltaO/2d0/QES2) &
                 *(gamma_used &
                   - 2d0*c_used*dlog( &
-                      2d0*Ej/xicut_used/event_sqrt_shat(event_slot))) &
+                      2d0*Ej/xicut_used/kernel_sqrt_shat)) &
                 + 2d0*c_used*(dlog( &
-                      2d0*Ej/event_sqrt_shat(event_slot))**2 &
+                      2d0*Ej/kernel_sqrt_shat)**2 &
                               - dlog(xicut_used)**2) &
                 - 2d0*gamma_used*dlog( &
-                    2d0*Ej/event_sqrt_shat(event_slot))
+                    2d0*Ej/kernel_sqrt_shat)
           else
             write (*, *) 'Error in bornsoftvirtual'
             write (*, *) 'abrv in Q:', abrv
@@ -1043,24 +1165,29 @@ contains
 ! the following call to born is to setup the goodhel(nfksprocess)
       call sborn(p_born, wgt1)
       contr = 0d0
-      do i = 1, fks_j_from_i(i_fks, 0)
+      partner_count = selected_partner_count(kernel_i)
+      do i = 1, partner_count
         do j = 1, i
-          m = fks_j_from_i(i_fks, i)
-          n = fks_j_from_i(i_fks, j)
-          if ((m .ne. n .or. (m .eq. n .and. pmass(m) .ne. ZERO)) .and. n .ne. i_fks .and. m .ne. i_fks) then
+          m = selected_partner(kernel_i, i)
+          n = selected_partner(kernel_i, j)
+          if ((m .ne. n .or. (m .eq. n .and. &
+              pmass(m) .ne. ZERO)) .and. n .ne. kernel_i .and. &
+              m .ne. kernel_i) then
 ! To be sure that color-correlated Borns work well, we need to have
 ! *always* a call to sborn(p_born,wgt) just before. This is okay,
 ! because there is a call above in this subroutine
 ! wgt includes the gs/w^2
-            call select_visible_color_pair(m, n, visible_m, visible_n)
+            call select_visible_color_pair(m, n, visible_m, visible_n, &
+                                           link_multiplier)
             call sborn_sf(p_born, visible_m, visible_n, wgt)
             if (wgt .ne. 0d0) then
               call eikonal_Ireg(kernel_momenta, m, n, xicut_used, pmass, &
-                                 event_shat(event_slot), qes2, abrv, &
+                                 kernel_shat, qes2, abrv, &
                                  eikIreg)
-              contr = contr + wgt*eikIreg
+              contr = contr + link_multiplier*wgt*eikIreg
               do k = 1, amp_split_size
-                amp_split_bsv(k) = amp_split_bsv(k) - 2d0*eikIreg*oneo8pi2*amp_split_soft(k)
+                amp_split_bsv(k) = amp_split_bsv(k) - &
+                  2d0*link_multiplier*eikIreg*oneo8pi2*amp_split_soft(k)
               end do
             end if
           end if
@@ -1156,7 +1283,7 @@ contains
         if (dble(amp_split_cnt(iamp, 1, qcd_pos)) .eq. 0d0) cycle
         call amp_split_pos_to_orders(iamp, orders)
         production_born_qcd_order = &
-             production_qcd_squared_order(orders(qcd_pos) - 2)
+             corrected_born_qcd_squared_order(orders(qcd_pos))
         contr_mufoqes = pi*beta0*dble(production_born_qcd_order) &
              *log(q2fact(1)/QES2)*aso2pi &
              *dble(amp_split_cnt(iamp, 1, qcd_pos))
@@ -1173,7 +1300,7 @@ contains
         if (dble(amp_split_cnt(iamp, 1, qcd_pos)) .eq. 0d0) cycle
         call amp_split_pos_to_orders(iamp, orders)
         production_born_qcd_order = &
-             production_qcd_squared_order(orders(qcd_pos) - 2)
+             corrected_born_qcd_squared_order(orders(qcd_pos))
         contr_mufomur = -pi*beta0*dble(production_born_qcd_order) &
              *log(q2fact(1)/scale**2)*aso2pi &
              *dble(amp_split_cnt(iamp, 1, qcd_pos))
@@ -1192,10 +1319,11 @@ contains
     if (abrv .ne. 'born' .and. abrv .ne. 'grid') then
       call sborn(p_born, wgt1)
       if (abrv(1:2) .ne. 'vi') then
-        do i = 1, nincoming
-          if (particle_type(i) .eq. 8) then
+        do i = 1, kernel_initial_count
+          if (pmass(i) .ne. zero) cycle
+          if (kernel_particle_type(i) .eq. 8) then
             aj = 0
-          elseif (abs(particle_type(i)) .eq. 3) then
+          elseif (abs(kernel_particle_type(i)) .eq. 3) then
             aj = 1
           else
             aj = -1
@@ -1215,7 +1343,7 @@ contains
           if (dble(amp_split_cnt(iamp, 1, qcd_pos)) .eq. 0d0) cycle
           call amp_split_pos_to_orders(iamp, orders)
           production_born_qcd_order = &
-               production_qcd_squared_order(orders(qcd_pos) - 2)
+               corrected_born_qcd_squared_order(orders(qcd_pos))
           amp_split_wgtwnstmpmur(iamp) = dble(amp_split_cnt(iamp, 1, qcd_pos)) &
                *pi*beta0*dble(production_born_qcd_order)*aso2pi
         end do
@@ -1253,6 +1381,8 @@ contains
     double precision contr1, contr2
     integer aj, i, j, m, n, k
     integer kernel_count, visible_m, visible_n
+    integer kernel_i, kernel_initial_count, partner_count
+    integer kernel_particle_type(nexternal)
     double precision pmass(nexternal), zero, pi
     parameter(pi=3.1415926535897932385d0)
     parameter(zero=0d0)
@@ -1261,6 +1391,7 @@ contains
     integer nFKSprocess_save, nFKSprocess_col
     logical need_color_links_used
     double precision soft_fact
+    double precision link_multiplier
     double precision kernel_p(0:3, nexternal)
     double precision kernel_born(0:3, nexternal - 1)
     nFKSprocess_col = 0
@@ -1276,12 +1407,19 @@ contains
     end do
     nFKSprocess = nFKSprocess_save
     call fks_inc_chooser()
-    call select_kernel_masses(pmass, kernel_count)
+    if (has_nlo_decay()) then
+      call get_nlo_decay_born_kernel( &
+           nfksprocess, kernel_p, pmass, kernel_count)
+    else
+      call select_kernel_masses(pmass, kernel_count)
+    end if
+    call select_kernel_properties(kernel_particle_type, kernel_i, &
+                                  kernel_initial_count)
     if (has_decay_chains()) then
       kernel_p = 0d0
       call select_kernel_born(kernel_born)
       kernel_p(:, 1:nexternal - 1) = kernel_born
-    else
+    else if (.not. has_nlo_decay()) then
       kernel_p = p
     end if
 
@@ -1299,10 +1437,10 @@ contains
     contr2 = 0d0
     born = dble(ans_cnt(1, qcd_pos))
     do i = 1, kernel_count
-      if (i .ne. i_fks .and. particle_type(i) .ne. 1) then
-        if (particle_type(i) .eq. 8) then
+      if (i .ne. kernel_i .and. kernel_particle_type(i) .ne. 1) then
+        if (kernel_particle_type(i) .eq. 8) then
           aj = 0
-        elseif (abs(particle_type(i)) .eq. 3) then
+        elseif (abs(kernel_particle_type(i)) .eq. 3) then
           aj = 1
         end if
         if (pmass(i) .eq. ZERO) then
@@ -1334,16 +1472,19 @@ contains
       call sborn(p_born, wgt1)
 
       contr1 = 0d0
-      do i = 1, fks_j_from_i(i_fks, 0)
+      partner_count = selected_partner_count(kernel_i)
+      do i = 1, partner_count
         do j = 1, i
-          m = fks_j_from_i(i_fks, i)
-          n = fks_j_from_i(i_fks, j)
-          if (m .ne. n .and. n .ne. i_fks .and. m .ne. i_fks) then
+          m = selected_partner(kernel_i, i)
+          n = selected_partner(kernel_i, j)
+          if (m .ne. n .and. n .ne. kernel_i .and. &
+              m .ne. kernel_i) then
 ! wgt includes the gs/w^2 factor
-            call select_visible_color_pair(m, n, visible_m, visible_n)
+            call select_visible_color_pair(m, n, visible_m, visible_n, &
+                                           link_multiplier)
             call sborn_sf(p_born, visible_m, visible_n, wgt)
 ! The factor -2 compensate for that missing in sborn_sf
-            wgt = -2d0*wgt
+            wgt = -2d0*link_multiplier*wgt
             if (wgt .ne. 0.d0) then
               if (pmass(m) .eq. zero .and. pmass(n) .eq. zero) then
                 kikj = dot(kernel_p(0, n), kernel_p(0, m))
@@ -1368,7 +1509,10 @@ contains
               end if
               contr1 = contr1 + soft_fact*wgt
               do k = 1, amp_split_size
-                amp_split_poles_FKS(k, 1) = amp_split_poles_FKS(k, 1) + amp_split_soft(k)*(-2d0)*soft_fact*oneo8pi2
+                amp_split_poles_FKS(k, 1) = &
+                     amp_split_poles_FKS(k, 1) + &
+                     link_multiplier*amp_split_soft(k)*(-2d0)* &
+                     soft_fact*oneo8pi2
               end do
             end if
           end if

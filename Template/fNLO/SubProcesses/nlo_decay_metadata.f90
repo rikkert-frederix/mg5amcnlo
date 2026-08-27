@@ -20,6 +20,8 @@ module nlo_decay_metadata
   integer, save :: number_of_color_link_records = 0
   integer, save :: number_of_production_legs = 0
   integer, save :: born_context_id = 0
+  integer, save :: production_born_qcd_order_value = -1
+  integer, save :: decay_born_qcd_order_value = -1
 
   integer, allocatable, save :: production_pdg_values(:)
   logical, allocatable, save :: production_final_values(:)
@@ -53,6 +55,8 @@ module nlo_decay_metadata
 
   public :: initialize_nlo_decay_metadata, has_nlo_decay
   public :: corrected_parent_pdg, corrected_parent_occurrence
+  public :: nlo_decay_production_born_qcd_order
+  public :: nlo_decay_born_qcd_order
   public :: nlo_decay_born_context, nlo_decay_context_for_fks
   public :: nlo_decay_production_count, nlo_decay_production_pdg
   public :: nlo_decay_production_is_final
@@ -110,6 +114,10 @@ contains
         read(line, *, iostat=ios) keyword, number_of_contexts, &
              number_of_fks_maps, number_of_generated_color_links, &
              number_of_fks_partners
+      case ('QCD_ORDERS')
+        read(line, *, iostat=ios) keyword, &
+             production_born_qcd_order_value, &
+             decay_born_qcd_order_value
       case ('PRODUCTION_LEG')
         production_records = production_records + 1
       case ('COLOR_LINK')
@@ -118,8 +126,8 @@ contains
       if (ios /= 0) call fail_metadata('malformed metadata header')
     end do
 
-    if (metadata_format /= 3) then
-      call fail_metadata('FORMAT 3 is required; regenerate the process')
+    if (metadata_format /= 4) then
+      call fail_metadata('FORMAT 4 is required; regenerate the process')
     end if
     if (corrected_parent_pdg_value == 0 .or. &
         corrected_parent_occurrence_value < 1) then
@@ -213,7 +221,8 @@ contains
       if (ios /= 0) call fail_metadata('malformed metadata keyword')
       select case (trim(keyword))
       case ('FORMAT', 'STATUS', 'CORRECTION', 'PARENT', 'HAS_VIRTUAL', &
-            'VIRTUAL_COMPOSITION', 'VIRTUAL_CURRENT_COUNT', 'COUNTS')
+            'VIRTUAL_COMPOSITION', 'VIRTUAL_CURRENT_COUNT', &
+            'QCD_ORDERS', 'COUNTS')
         continue
       case ('PRODUCTION_LEG')
         read(line, *, iostat=ios) keyword, leg, pdg, state
@@ -351,6 +360,12 @@ contains
     integer :: node_maps, expected_visible
     logical :: visible_used(nexternal), born_local_used(nexternal)
 
+    if (production_born_qcd_order_value < 0 .or. &
+        decay_born_qcd_order_value < 0 .or. &
+        mod(production_born_qcd_order_value, 2) /= 0 .or. &
+        mod(decay_born_qcd_order_value, 2) /= 0) then
+      call fail_metadata('invalid Born QCD orders')
+    end if
     if (any(production_pdg_values == 0)) then
       call fail_metadata('production-leg records are incomplete')
     end if
@@ -747,6 +762,19 @@ contains
     call require_enabled()
     corrected_parent_occurrence = corrected_parent_occurrence_value
   end function corrected_parent_occurrence
+
+
+  integer function nlo_decay_production_born_qcd_order()
+    call require_enabled()
+    nlo_decay_production_born_qcd_order = &
+         production_born_qcd_order_value
+  end function nlo_decay_production_born_qcd_order
+
+
+  integer function nlo_decay_born_qcd_order()
+    call require_enabled()
+    nlo_decay_born_qcd_order = decay_born_qcd_order_value
+  end function nlo_decay_born_qcd_order
 
 
   integer function nlo_decay_born_context()

@@ -11,7 +11,8 @@ module fks_weights_module
        get_underlying_born_pdg_impl
   use decay_chain_metadata, only: has_decay_chains
   use decay_chain_scales, only: production_qcd_squared_order, &
-       decay_qcd_coupling_weight, decay_qcd_coupling_rescaling
+       decay_qcd_squared_order, decay_qcd_coupling_weight, &
+       decay_qcd_coupling_rescaling
   use madfks_plot_module, only: outfun_impl
   use fks_model_state_module, only: g => strong_coupling, external_masses
   use fnlo_process_common, only: nfksprocess, soft_counterevent, &
@@ -238,6 +239,7 @@ contains
     nFKS(icontr) = nFKSprocess
     y_bst(icontr) = ybst_til_tolab(event_slot)
     qcdpower(icontr) = production_qcd_squared_order(QCD_power)
+    decayqcdpower(icontr) = decay_qcd_squared_order(QCD_power)
     orderstag(icontr) = orders_tag
     amppos(icontr) = amp_pos
     ipr(icontr) = 0
@@ -307,7 +309,6 @@ contains
     parameter(conv=389379660d0) ! conversion to picobarns
     call cpu_time(tBefore)
     if (icontr .eq. 0) return
-    decay_coupling_weight = decay_qcd_coupling_weight()
     virt_found = .false.
 ! number of contributions before they are (possibly) increased through a
 ! call to separate_flavour_config().
@@ -342,6 +343,8 @@ contains
           xlum = subproc_pd(ipr(i))
         end if
       end if
+      decay_coupling_weight = &
+           decay_qcd_coupling_weight(decayqcdpower(i))
       wgt_wo_pdf = (wgt(1, i) + wgt(2, i)*log(mu2_r/mu2_q) &
                     + wgt(3, i)*log(mu2_f/mu2_q)) &
                     *g_strong(i)**QCDpower(i)*decay_coupling_weight
@@ -351,7 +354,8 @@ contains
       end do
       if (itype(i) .eq. virtual_contribution .and. .not. virt_found) then
         virt_found = .true.
-        decay_rescaling = decay_qcd_coupling_rescaling(g_strong(i))
+        decay_rescaling = decay_qcd_coupling_rescaling( &
+             g_strong(i), decayqcdpower(i))
 ! Special for the soft-virtual needed for the virt-tricks. The
 ! *_wgt_mint variable should be directly passed to the mint-integrator
 ! and not be part of the plots nor computation of the cross section.
@@ -360,6 +364,8 @@ contains
         do iamp = 1, amp_split_size
           call amp_split_pos_to_orders(iamp, orders)
           QCD_power = orders(qcd_pos)
+          decay_rescaling = decay_qcd_coupling_rescaling( &
+               g_strong(i), decay_qcd_squared_order(QCD_power))
           virt_wgt_mint(iamp) = &
                virt_wgt_mint(iamp)*xlum*decay_rescaling
           born_wgt_mint(iamp) = &
@@ -397,6 +403,7 @@ contains
       nFKS(ict_new) = nFKS(ict)
       y_bst(ict_new) = y_bst(ict)
       QCDpower(ict_new) = QCDpower(ict)
+      decayQCDpower(ict_new) = decayQCDpower(ict)
       orderstag(ict_new) = orderstag(ict)
       do k = 1, nexternal
         do j = 0, 3
@@ -484,7 +491,6 @@ contains
     parameter(conv=389379660d0) ! conversion to picobarns
     call cpu_time(tBefore)
     if (icontr .eq. 0) return
-    decay_coupling_weight = decay_qcd_coupling_weight()
 ! currently we have 'iwgt' weights in the wgts() array.
     iwgt_save = iwgt
 ! loop over all the contributions in the weight lines module
@@ -524,6 +530,8 @@ contains
             iwgt = iwgt + 1   ! increment the iwgt for the wgts() array
             call weight_lines_allocated(nexternal, max_contr, iwgt, max_iproc)
 ! add the weights to the array
+            decay_coupling_weight = &
+                 decay_qcd_coupling_weight(decayqcdpower(i))
             wgts(iwgt, i) = xlum(kf) &
                             *(wgt(1, i) + wgt(2, i)*log(mu2_r(kr)/mu2_q) &
                               + wgt(3, i)*log(mu2_f(kf)/mu2_q)) &
@@ -561,7 +569,6 @@ contains
         iwgt = iwgt + 1
         call weight_lines_allocated(nexternal, max_contr, iwgt, max_iproc)
         call InitPDFm(nn, n)
-        decay_coupling_weight = decay_qcd_coupling_weight()
         do i = 1, icontr
           nFKSprocess = nFKS(i)
           mu2_q = scales2(1, i)
@@ -581,6 +588,8 @@ contains
 ! Recompute the strong coupling: alpha_s in the PDF might change
           g = sqrt(4d0*pi*alphas(sqrt(mu2_r)))
 ! add the weights to the array
+          decay_coupling_weight = &
+               decay_qcd_coupling_weight(decayqcdpower(i))
           wgts(iwgt, i) = xlum &
                *(wgt(1, i) + wgt(2, i)*log(mu2_r/mu2_q) &
                + wgt(3, i)*log(mu2_f/mu2_q)) &

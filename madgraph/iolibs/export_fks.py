@@ -390,6 +390,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             return
 
         species = set()
+        nlo_width_species = set()
         for metadata_path in metadata_paths:
             if os.path.basename(metadata_path) == 'nlo_decay_info.dat':
                 records = []
@@ -405,6 +406,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                     raise MadGraph5Error(
                         'Malformed PARENT record in %s' % metadata_path)
                 species.add(parent_pdg)
+                nlo_width_species.add(parent_pdg)
                 continue
 
             records = []
@@ -445,6 +447,13 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                     'The generated decay_card.dat contains a non-positive '
                     'width for PDG %d. Set its physical total width before '
                     'running the process.', pdg)
+            elif pdg in nlo_width_species:
+                logger.warning(
+                    'The width %.8g for NLO-corrected parent PDG %d was '
+                    'copied from param_card.dat to NLO_DECAY_WIDTH. It must '
+                    'be the NLO physical total width; update decay_card.dat '
+                    'if the parameter-card value is only LO.', widths[pdg],
+                    pdg)
             particle = self.model.get_particle(pdg)
             mass_name = particle.get('mass') if particle else None
             mass_value = self.model.get('parameter_dict').get(mass_name)
@@ -461,7 +470,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             renormalization_scales[pdg] = mass_value.real
         fks_decay.write_decay_card(
             pjoin(self.dir_path, 'Cards'), widths,
-            renormalization_scales)
+            renormalization_scales,
+            nlo_width_pdgs=nlo_width_species)
 
         madloop_card = pjoin(
             self.dir_path, 'Cards', 'MadLoopParams.dat')

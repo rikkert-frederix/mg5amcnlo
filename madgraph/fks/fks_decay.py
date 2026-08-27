@@ -567,6 +567,23 @@ def _decay_node_qcd_order(process):
     return qcd_orders.pop()
 
 
+def _born_qcd_squared_order(process, amplitude, label):
+    """Return one unambiguous squared Born QCD order."""
+
+    born_orders = process.get('born_sq_orders')
+    if born_orders and 'QCD' in born_orders:
+        return born_orders['QCD']
+
+    qcd_orders = set(
+        diagram.get('orders').get('QCD', 0)
+        for diagram in amplitude.get('diagrams'))
+    if len(qcd_orders) != 1:
+        raise fks_common.FKSProcessError(
+            'The NLO-decay %s must have one Born QCD order; found %s' %
+            (label, sorted(qcd_orders)))
+    return 2 * qcd_orders.pop()
+
+
 def _append_decay_tree(process, parent_id, metadata):
     """Append one concrete process tree and return its node ID."""
 
@@ -1088,6 +1105,20 @@ def _production_amplitude_as_parent_current(production_amplitude, selector,
         # The crossed state fixes the HELAS particle/antiparticle convention;
         # leg_state instead records which full-process legs are incoming.
         wavefunction.set('leg_state', source.get('state'))
+        # Loop HELAS flips the particle object of an ordinary incoming leg but
+        # deliberately retains its original ``is_part`` flow flag.  Reproduce
+        # that convention after constructing this leg by crossing it through
+        # a final-state antiparticle; otherwise an incoming quark momentum is
+        # assigned the outgoing sign in the composed loop current.
+        wavefunction.set(
+            'is_part', model.get_particle(source.get('id')).get('is_part'))
+        # Fermion crossing also reverses the HELAS momentum sign through the
+        # particle/antiparticle flow.  Bosons have no such flow sign: their
+        # external HELAS call obtains it directly from ``state``.  Restore
+        # that state for production-side incoming bosons, since the composed
+        # loop is evaluated with the ordinary positive-energy beam momenta.
+        if wavefunction.is_boson() and not source.get('state'):
+            wavefunction.set('state', 'initial')
         # A negative node id is a temporary, deepcopy-safe visible-leg tag.
         wavefunction.set('decay_node_id', -visible_number)
 
@@ -1702,9 +1733,11 @@ def compose_nlo_decay_helas_process(fks_process, production_amplitude,
         _glue_nlo_decay_tree_component(
             production_amplitude, selector, born_current, 'BORN', 1)
 
+    production_process = production_amplitude.get('process')
+    decay_process = decay_born_me.get('processes')[0]
     prototype_metadata = {
-        'format': 3,
-        'status': 'LOCAL_PHASE_SPACE_ONLY',
+        'format': 4,
+        'status': 'INTEGRATION_READY',
         'correction': 'QCD',
         'parent_pdg': selector[0],
         'parent_occurrence': selector[1],
@@ -1714,6 +1747,11 @@ def compose_nlo_decay_helas_process(fks_process, production_amplitude,
         'has_virtual': bool(fks_process.virt_matrix_element),
         'virtual_composition': 'NONE',
         'virtual_current_count': 0,
+        'production_born_qcd_order': _born_qcd_squared_order(
+            production_process, production_amplitude, 'production'),
+        'decay_born_qcd_order': _born_qcd_squared_order(
+            decay_process, decay_born_me.get('base_amplitude'),
+            'corrected decay'),
         'production_legs': [{
             'number': leg.get('number'),
             'pdg': leg.get('id'),
@@ -1785,6 +1823,9 @@ def nlo_decay_info_text(metadata):
         'HAS_VIRTUAL %d' % int(metadata['has_virtual']),
         'VIRTUAL_COMPOSITION %s' % metadata['virtual_composition'],
         'VIRTUAL_CURRENT_COUNT %d' % metadata['virtual_current_count'],
+        'QCD_ORDERS %d %d' % (
+            metadata['production_born_qcd_order'],
+            metadata['decay_born_qcd_order']),
         'COUNTS %d %d %d %d' % (
             len(metadata['contexts']), len(metadata['fks_maps']),
             len(set(link['generated_index']
@@ -1836,17 +1877,10 @@ def nlo_decay_info_text(metadata):
 
 
 def write_nlo_decay_prototype_files(path, metadata):
-    """Write metadata and an explicit incomplete-subtraction marker."""
+    """Write runtime metadata for an integration-ready NLO decay."""
 
     with open(os.path.join(path, 'nlo_decay_info.dat'), 'w') as stream:
         stream.write(nlo_decay_info_text(metadata))
-    with open(os.path.join(path, 'NLO_DECAY_SUBTRACTION_INCOMPLETE'), 'w') \
-            as stream:
-        stream.write(
-            'This output contains NLO-decay matrix elements and a local, '\
-            'resonance-preserving phase-space map.\n'
-            'Integrated subtraction, virtual-pole cancellation, and NLO '\
-            'width normalization are not implemented yet.\n')
 
 
 def apply_decay_assignment(fks_process, assignment):
@@ -2080,7 +2114,8 @@ def write_decay_chain_info(path, metadata):
 
 def decay_card_text(widths, renormalization_scales,
                     dummy_width_ratio=DECAY_DUMMY_WIDTH_RATIO,
-                    production_scale_momenta='CORE'):
+                    production_scale_momenta='CORE',
+                    nlo_width_pdgs=()):
     """Return a deterministic runtime card for on-shell decay parameters."""
 
     absolute_widths = dict(
@@ -2097,6 +2132,12 @@ def decay_card_text(widths, renormalization_scales,
     if set(absolute_widths) != set(absolute_scales):
         raise ValueError(
             'Decay widths and renormalisation scales must cover the same PDGs')
+    absolute_nlo_width_pdgs = set(abs(pdg) for pdg in nlo_width_pdgs)
+    if 0 in absolute_nlo_width_pdgs:
+        raise ValueError('NLO decay-width PDG codes must be nonzero')
+    if not absolute_nlo_width_pdgs.issubset(absolute_widths):
+        raise ValueError(
+            'NLO decay-width PDGs must have a physical width entry')
     production_scale_momenta = production_scale_momenta.upper()
     if production_scale_momenta not in ('CORE', 'DECAYED'):
         raise ValueError(
@@ -2105,12 +2146,16 @@ def decay_card_text(widths, renormalization_scales,
         '# FNLO_DECAY_CARD',
         '# Runtime parameters for fixed-on-shell decay chains.',
         '# DECAY_WIDTH entries are physical total widths in GeV.',
+        '# NLO_DECAY_WIDTH entries must be NLO physical total widths in GeV.',
         '# DECAY_REN_SCALE entries are independent decay scales in GeV.',
-        'FORMAT 2',
+        'FORMAT 3',
         'DUMMY_WIDTH_RATIO %.16e' % dummy_width_ratio,
         'PRODUCTION_REN_SCALE_MOMENTA %s' % production_scale_momenta]
     for pdg in sorted(absolute_widths):
-        lines.append('DECAY_WIDTH %d %.16e' % (
+        width_keyword = ('NLO_DECAY_WIDTH'
+                         if pdg in absolute_nlo_width_pdgs
+                         else 'DECAY_WIDTH')
+        lines.append('%s %d %.16e' % (width_keyword,
             pdg, absolute_widths[pdg]))
         lines.append('DECAY_REN_SCALE %d %.16e' % (
             pdg, absolute_scales[pdg]))
@@ -2120,11 +2165,12 @@ def decay_card_text(widths, renormalization_scales,
 
 def write_decay_card(path, widths, renormalization_scales,
                      dummy_width_ratio=DECAY_DUMMY_WIDTH_RATIO,
-                     production_scale_momenta='CORE'):
+                     production_scale_momenta='CORE',
+                     nlo_width_pdgs=()):
     """Write ``decay_card.dat`` containing runtime decay parameters."""
 
     filename = os.path.join(path, 'decay_card.dat')
     with open(filename, 'w') as stream:
         stream.write(decay_card_text(
             widths, renormalization_scales, dummy_width_ratio,
-            production_scale_momenta))
+            production_scale_momenta, nlo_width_pdgs))

@@ -142,6 +142,34 @@ orders for a `1 -> n` child.  Amplitude-level constraints such as `QED=1` are
 now projected to the corresponding squared Born constraint before adding the
 NLO QCD order.
 
+### Milestone 7: phase-space integration and NLO width normalisation
+
+The seventh milestone makes the generated output integration-ready.  The
+integrated FKS operators, finite remainders and virtual poles are evaluated on
+the corrected decay's local underlying-Born event in the parent rest frame.
+The massive parent participates in the soft colour algebra but never defines
+a collinear sector, and all universal FKS prefactors use the decay invariant
+mass rather than the production partonic centre-of-mass energy.
+
+Production and decay QCD powers are stored separately.  Production coupling
+powers and scale variations use the production renormalisation scale, while
+the additional decay coupling and Ellis--Sexton logarithms use the independent
+decay scale.  Dynamic production scales default to the cached undecayed core
+momenta.
+
+The narrow-width denominator uses an unexpanded NLO physical total width for
+the corrected parent.  Such a parent is written as `NLO_DECAY_WIDTH` in
+`decay_card.dat`; the runtime rejects an ordinary LO `DECAY_WIDTH` record in
+its place.  Because the perturbative provenance of a numerical UFO width
+cannot be inferred, export reports that the copied parameter-card value must
+be checked or replaced before running.
+
+For `p p > t t~, t > W+ b [QCD]`, all three grouped subprocesses compile,
+pass `test_ME`, and cancel virtual poles at all 20 test points with a
+`1e-5` tolerance.  Using an independently integrated
+`Gamma_t^NLO = 1.3646(38) GeV`, the complete NLO-decay integration gives
+`463.9(45) pb`, consistent with the corresponding `463.9(46) pb` LO result.
+
 The implementation is split as follows:
 
 - `madgraph/interface/amcatnlo_interface.py`: syntax routing, validation and
@@ -150,7 +178,7 @@ The implementation is split as follows:
   crossed-production-loop composition, and decay-local metadata;
 - `madgraph/fks/fks_helas_objects.py`: decay-owned FKS/HELAS ownership;
 - `madgraph/iolibs/export_fks.py`: combined tree and virtual fNLO Fortran
-  files plus the prototype marker;
+  files and order-labelled decay-width runtime cards;
 - `Template/fNLO/SubProcesses/nlo_decay_metadata.f90`: validation and lookup
   of target-aware NLO-decay runtime metadata;
 - `Template/fNLO/SubProcesses/nlo_decay_kinematics.f90`: factorised Born
@@ -304,7 +332,7 @@ For a requested `[QCD]` virtual:
 This produces one normal full-process `LoopHelasMatrixElement` containing the
 coherent sum over all diagrams in the concrete production amplitude.
 
-## Prototype Output
+## Generated Output
 
 Each affected `SubProcesses/P*` directory contains:
 
@@ -312,30 +340,22 @@ Each affected `SubProcesses/P*` directory contains:
 - normal `matrix_N.f` files for `P^(0) x D^(R)`;
 - `nlo_decay_info.dat`, recording the corrected node, decay-local contexts,
   original FKS indices, visible-leg targets and internal-node partners;
-- `NLO_DECAY_SUBTRACTION_INCOMPLETE`, warning that the local phase-space map
-  is present but subtraction integration is not complete;
 - for `[QCD]`, a normal `V*/` directory containing the combined
   `loop_matrix.f`, `born_matrix.f`, R2 and UV/UVCT machinery.
 
 The standard files make the generated HELAS calls and colour algebra easy to
-inspect and test.  The marker prevents this milestone from being mistaken for
-a numerically complete calculation.  PostScript diagram drawing is skipped for
-the inverse-rooted virtual: the cached base graph is authoritative for colour
-processing, but its synthetic internal labels are not supported by the legacy
-level-based drawer.
+inspect and test.  PostScript diagram drawing is skipped for the inverse-rooted
+virtual: the cached base graph is authoritative for colour processing, but its
+synthetic internal labels are not supported by the legacy level-based drawer.
 
 ## Deferred Work
 
-- Integrated subtraction and virtual-pole cancellation.
-- Independent production and decay renormalisation scales at NLO.
-- A decision between an explicitly expanded width normalisation and use of an
-  unexpanded NLO physical width.
 - Equivalent decay flavour grouping, additional LO decays and nested corrected
   decays.
 - Permutation and symmetry-factor composition when a production final-state
   particle is identical to the decay-owned real-emission particle.
-- Virtual/Born numerical equivalence, pole and width-normalisation regression
-  tests.
+- Automated computation of the NLO total width when the model or input card
+  does not already provide one.
 
 ## First-Milestone Acceptance Tests
 
@@ -391,7 +411,7 @@ level-based drawer.
   incoming top is preserved separately as `NODE 1`.
 - `fks_info.inc` uses visible-event indices and the Born `IJ_VALUES` lookup
   uses the projected leg properties (yielding zero for the massive bottom in
-  the default `loop_sm`), while `nlo_decay_info.dat` format 3 serializes every
+  the default `loop_sm`), while `nlo_decay_info.dat` format 4 serializes every
   local target and partner.
 - Ordinary fNLO and NLO-production-with-LO-decay accessors remain unchanged.
 
@@ -423,3 +443,16 @@ level-based drawer.
   momentum conservation, fixed parent virtuality, unchanged production
   spectators and the decay soft limit.  The massless `W > q q~ [real=QCD]`
   reference also passes both local soft and collinear limits.
+
+## Seventh-Milestone Acceptance Tests
+
+- Integrated counterterms and virtual poles use the corrected decay's local
+  momenta, colour partners and parent invariant mass; every grouped subprocess
+  cancels poles for 20/20 points at a `1e-5` tolerance.
+- The Born, real, integrated and virtual pieces retain the production Born
+  QCD power while only the NLO decay pieces acquire the additional decay
+  coupling at the independent decay renormalisation scale.
+- `decay_card.dat` requires `NLO_DECAY_WIDTH` for the corrected parent and the
+  runtime rejects an ordinary LO-width record for that parent.
+- The representative three-group process completes a fixed-order NLO
+  phase-space integration with finite per-group and total results.
