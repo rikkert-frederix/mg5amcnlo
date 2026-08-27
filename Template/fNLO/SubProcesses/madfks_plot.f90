@@ -106,6 +106,10 @@ contains
       call InitPDFm(1, 0)
     end if
 
+    ! MINT can restart the integration and call initplot again after resetting
+    ! the grids.  Some supported builds retain local variables between calls,
+    ! so release the previous descriptions before rebuilding them.
+    if (allocated(weights_info)) deallocate(weights_info)
     allocate(weights_info(nwgt))
     weights_info = ''
     weights_info(1) = 'central value'

@@ -5,3 +5,7 @@ Processes with on-shell decay chains additionally contain decay_card.dat.
 That card controls the physical widths, dummy-width ratio, decay
 renormalization scales, and the production renormalization-scale momentum
 choice.
+
+The run-card switch cut_decays controls whether built-in and user-defined
+generation cuts see forced-decay products. It defaults to false; fixed-order
+analyses always see the complete decayed event.

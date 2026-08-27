@@ -775,6 +775,7 @@ class MECmdShell(IOTests.IOTestManager):
         run_card['fixed_fac_scale'] = True
         run_card['mur_ref_fixed'] = 173.
         run_card['muf_ref_fixed'] = 173.
+        run_card['cut_decays'] = True
         run_card['ptj'] = 20.
         run_card['etaj'] = 4.
         run_card.write(
@@ -783,6 +784,7 @@ class MECmdShell(IOTests.IOTestManager):
 
         with open(run_card_path) as stream:
             run_card = stream.read()
+        self.assertRegex(run_card.lower(), r'\btrue\s*=\s*cut_decays\b')
         self.assertRegex(run_card, r'\b20(?:\.0*)?\s*=\s*ptj\b')
         self.assertRegex(run_card, r'\b4(?:\.0*)?\s*=\s*etaj\b')
 

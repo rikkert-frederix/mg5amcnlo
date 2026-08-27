@@ -233,6 +233,7 @@ class TestMadEventCmd(unittest.TestCase):
         """Hidden matching and EW fields do not leak into run_card.inc."""
 
         run_card = banner_mod.RunCardNLO()
+        self.assertFalse(run_card['cut_decays'])
         run_mecmd.prepare_fixed_order_only_run_card(run_card)
         include = StringIO()
         run_card.write_include_file(None, include)
@@ -240,6 +241,107 @@ class TestMadEventCmd(unittest.TestCase):
 
         for parameter in run_mecmd.FNLO_OMITTED_RUN_CARD_PARAMETERS:
             self.assertNotIn(parameter, include_text)
+        self.assertIn('cut_decays = .false.', include_text)
+
+        with tempfile.TemporaryDirectory() as output_dir:
+            card_path = pjoin(output_dir, 'run_card.dat')
+            template = pjoin(
+                madgraph.MG5DIR, 'Template', 'fNLO', 'Cards',
+                'run_card.dat')
+            run_card.write(
+                card_path, template=template, python_template=True)
+            with open(card_path) as stream:
+                rendered_card = stream.read().lower()
+            self.assertIn('false = cut_decays', rendered_card)
+
+        run_card.set('cut_decays', True)
+        include = StringIO()
+        run_card.write_include_file(None, include)
+        self.assertIn('cut_decays = .true.', include.getvalue().lower())
+
+    def test_fnlo_decay_cut_opt_out_is_wired(self):
+        """Decay leaves are hidden only in the generation-cut event view."""
+
+        subprocess_dir = pjoin(
+            madgraph.MG5DIR, 'Template', 'fNLO', 'SubProcesses')
+        with open(pjoin(subprocess_dir, 'decay_chain_kinematics.f90')) \
+                as stream:
+            kinematics = stream.read().lower()
+        self.assertIn('call set_decay_cut_mask(context)', kinematics)
+        self.assertIn(
+            'visible = leaf_visible_leg(context, leaf)', kinematics)
+        self.assertIn(
+            'event_from_decay(visible) = .true.', kinematics)
+
+        with open(pjoin(subprocess_dir, 'nlo_decay_kinematics.f90')) \
+                as stream:
+            nlo_kinematics = stream.read().lower()
+        self.assertIn(
+            'call set_nlo_decay_cut_mask(context)', nlo_kinematics)
+        self.assertIn(
+            'visible_leg = nlo_decay_leaf_visible(context, leaf)',
+            nlo_kinematics)
+        self.assertIn(
+            'nlo_decay_local_target_kind(context, leg)', nlo_kinematics)
+        self.assertIn(
+            'event_from_decay(visible_leg) = .true.', nlo_kinematics)
+
+        with open(pjoin(subprocess_dir, 'cuts.f90')) as stream:
+            cuts = stream.read().lower()
+        mask_call = cuts.index(
+            'call apply_decay_cut_mask(pp,istatus,ipdg)')
+        cut_call = cuts.index('passcuts = passcuts_user(pp,istatus,ipdg)')
+        self.assertLess(mask_call, cut_call)
+        self.assertIn('if (cut_decays) return', cuts)
+        self.assertIn('if (event_from_decay(i)) then', cuts)
+        self.assertIn('istatus(i)=decay_cut_status', cuts)
+        self.assertIn('ipdg(i)=decay_cut_pdg', cuts)
+        self.assertIn('passcuts_pdgs(p_reco,istatus)', cuts)
+        self.assertIn('if (istatus(i).ne.1) cycle', cuts)
+
+        with open(pjoin(subprocess_dir, 'setcuts_bridge.f')) as stream:
+            setcuts_bridge = stream.read().lower()
+        self.assertIn('from_decay=.false.', setcuts_bridge)
+        self.assertIn('if (has_nlo_decay()) then', setcuts_bridge)
+        self.assertIn('call set_nlo_decay_tau_min_impl', setcuts_bridge)
+        self.assertIn('if (has_decay_chains()) then', setcuts_bridge)
+        self.assertIn('call set_decay_tau_min_impl', setcuts_bridge)
+
+        with open(pjoin(subprocess_dir, 'setcuts.f90')) as stream:
+            setcuts = stream.read().lower()
+        self.assertIn(
+            'do leg = nincoming + 1, context_core_count(context)', setcuts)
+        self.assertIn('case (decay_node_target)', setcuts)
+        self.assertIn('production_mass = production_mass + leg_mass', setcuts)
+        self.assertIn(
+            'do leg = nincoming + 1, nlo_decay_production_count()',
+            setcuts)
+        self.assertIn('case (nlo_decay_node_target)', setcuts)
+
+        with open(pjoin(subprocess_dir, 'genps_born.f90')) as stream:
+            born_phase_space = stream.read().lower()
+        decay_start = born_phase_space.index(
+            'subroutine generate_decay_born_phase_space')
+        decay_end = born_phase_space.index(
+            'end subroutine generate_decay_born_phase_space', decay_start)
+        self.assertIn(
+            'call set_tau_min()', born_phase_space[decay_start:decay_end])
+        nlo_decay_start = born_phase_space.index(
+            'subroutine generate_nlo_decay_born_phase_space')
+        nlo_decay_end = born_phase_space.index(
+            'end subroutine generate_nlo_decay_born_phase_space',
+            nlo_decay_start)
+        self.assertIn(
+            'call set_tau_min()',
+            born_phase_space[nlo_decay_start:nlo_decay_end])
+
+        decay_mask_path = pjoin(
+            madgraph.MG5DIR, 'Template', 'NLO', 'SubProcesses',
+            'decay_cut_mask.inc')
+        with open(decay_mask_path) as stream:
+            decay_mask = stream.read().lower()
+        self.assertIn('logical from_decay(nexternal)', decay_mask)
+        self.assertIn('common /to_decay_cut_mask/from_decay', decay_mask)
 
     def test_fnlo_rejects_non_msbar_pdf_scheme(self):
         """The reduced fNLO template supports MSbar factorization only."""

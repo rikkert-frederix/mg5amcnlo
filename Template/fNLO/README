@@ -18,6 +18,11 @@ renormalization scale uses the undecayed production momenta (CORE, the
 default) or the fully decayed momenta (DECAYED). Production factorization and
 Ellis-Sexton scales always use the production momenta.
 
+The run-card switch cut_decays defaults to false. With that setting, forced
+decay products are omitted from built-in and user-defined generation cuts,
+while fixed-order analyses still receive the complete decayed event. Set it
+to true to apply the generation cuts to those products as well.
+
 calculate_xsect
 ---------------
 

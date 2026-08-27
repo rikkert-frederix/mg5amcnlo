@@ -768,6 +768,7 @@ C***************************************************************
       include 'run.inc'
       include 'genps.inc'
       include 'cuts.inc'
+      include 'decay_cut_mask.inc'
       include 'timing_variables.inc'
       REAL*8 P(0:3,nexternal),rwgt
       integer i,j,istatus(nexternal),iPDG(nexternal)
@@ -828,6 +829,20 @@ c Fill the arrays (momenta, status and PDG):
          ipdg(i)=idup(i,1)
          if (ipdg(i).eq.-21) ipdg(i)=21
       enddo
+c Present the standard and user generation cuts with a private stable-event
+c view when decay cuts are disabled.  The original momenta remain intact for
+c matrix elements and fixed-order analyses.
+      if (.not.cut_decays) then
+         do i=nincoming+1,nexternal
+            if (from_decay(i)) then
+               do j=0,4
+                  pp(j,i)=0d0
+               enddo
+               istatus(i)=2
+               ipdg(i)=decay_cut_pdg
+            endif
+         enddo
+      endif
 c Call the actual cuts function  
       passcuts = passcuts_user(pp,istatus,ipdg)
       call cpu_time(tAfter)
@@ -1289,6 +1304,5 @@ c     (entry custom_fct of the run_card)
 
       return
       end
-
 
 

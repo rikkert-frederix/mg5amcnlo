@@ -236,9 +236,7 @@ contains
       stop 1
     end if
 
-    tau_born_lower_bound = minimum_mass**2/saved_stot
-    tau_lower_bound_resonance = tau_born_lower_bound
-    tau_lower_bound = tau_born_lower_bound
+    call set_tau_min()
     point%stot = saved_stot
     if (abs(lpp(1)) >= 1 .and. abs(lpp(2)) >= 1 .and. &
         .not. (softtest .or. colltest)) then
@@ -324,9 +322,7 @@ contains
       stop 1
     end if
 
-    tau_born_lower_bound = minimum_mass**2/saved_stot
-    tau_lower_bound_resonance = tau_born_lower_bound
-    tau_lower_bound = tau_born_lower_bound
+    call set_tau_min()
     point%stot = saved_stot
     if (abs(lpp(1)) >= 1 .and. abs(lpp(2)) >= 1 .and. &
         .not. (softtest .or. colltest)) then

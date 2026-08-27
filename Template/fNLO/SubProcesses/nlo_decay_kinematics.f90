@@ -24,7 +24,8 @@ module nlo_decay_kinematics
        nlo_decay_leaf_child, nlo_decay_node_child
   use fnlo_process_common, only: soft_counterevent, collinear_counterevent, &
        soft_collinear_counterevent, real_event, softtest, colltest, &
-       xi_i_fks_fix, y_ij_fks_fix, xij_aor
+       xi_i_fks_fix, y_ij_fks_fix, xij_aor, &
+       event_from_decay => from_decay
   implicit none
   private
 
@@ -57,6 +58,7 @@ module nlo_decay_kinematics
   public :: get_nlo_decay_counterevent_fks_momenta
   public :: get_nlo_decay_mass_buffer
   public :: nlo_decay_parent_mass
+  public :: set_nlo_decay_cut_mask
 
   interface
     double precision function get_mass_from_id(id)
@@ -396,6 +398,7 @@ contains
     logical, intent(out) :: pass
     integer :: leg, target
 
+    call set_nlo_decay_cut_mask(context)
     visible = 0d0
     pass = .true.
     do leg = 1, nlo_decay_production_count()
@@ -410,6 +413,44 @@ contains
       end if
     end do
   end subroutine expand_born_context
+
+
+  subroutine set_nlo_decay_cut_mask(context)
+    integer, intent(in) :: context
+    integer :: leaf, leg, visible_leg
+
+    call require_enabled()
+    event_from_decay = .false.
+
+    ! The topology leaves cover every ordinary LO decay in the complete
+    ! forest, including ancestors, siblings and descendants of the corrected
+    ! node.
+    do leaf = 1, nlo_decay_leaf_count()
+      visible_leg = nlo_decay_leaf_visible(context, leaf)
+      if (visible_leg > nexternal) then
+        call fail_kinematics('a decay leaf has an invalid visible target')
+      end if
+      if (visible_leg > nincoming) then
+        event_from_decay(visible_leg) = .true.
+      end if
+    end do
+
+    ! Direct final legs of the corrected local process are not necessarily
+    ! topology leaves.  In particular, the real-emission parton exists only
+    ! in a real context and must also disappear from generation cuts when
+    ! cut_decays is disabled.
+    do leg = 1, nlo_decay_local_count(context)
+      if (.not. nlo_decay_local_is_final(context, leg)) cycle
+      if (nlo_decay_local_target_kind(context, leg) /= &
+          nlo_decay_leg_target) cycle
+      visible_leg = nlo_decay_local_target_id(context, leg)
+      if (visible_leg <= nincoming .or. visible_leg > nexternal) then
+        call fail_kinematics( &
+             'a corrected-decay leg has an invalid visible target')
+      end if
+      event_from_decay(visible_leg) = .true.
+    end do
+  end subroutine set_nlo_decay_cut_mask
 
 
   recursive subroutine expand_born_node(context, node, parent, x, index, &
@@ -997,6 +1038,7 @@ contains
     integer :: leg, target
     logical, intent(out) :: pass
 
+    call set_nlo_decay_cut_mask(context)
     visible = 0d0
     pass = .true.
     do leg = 1, nlo_decay_production_count()

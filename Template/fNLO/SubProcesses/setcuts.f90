@@ -2,6 +2,19 @@ module setcuts_module
   use process_dimensions, only: nexternal, nincoming, max_branch, &
        lmaxconfigs, maxproc, fks_configs, validate_process_dimensions
   use fks_metadata, only: validate_fks_metadata, fks_i_d, fks_j_d
+  use decay_chain_metadata, only: initialize_decay_chain_metadata, &
+       has_decay_chains, born_context, context_core_count, &
+       core_target_kind, core_target_id, direct_leg_target, &
+       decay_node_target
+  use decay_chain_kinematics, only: initialize_decay_chain_kinematics, &
+       core_mass
+  use nlo_decay_metadata, only: initialize_nlo_decay_metadata, &
+       has_nlo_decay, nlo_decay_born_context, &
+       nlo_decay_production_count, nlo_decay_production_target_kind, &
+       nlo_decay_production_target_id, nlo_decay_leg_target, &
+       nlo_decay_node_target
+  use nlo_decay_kinematics, only: initialize_nlo_decay_kinematics, &
+       nlo_decay_production_mass
   use run_state, only: lpp, ebeam, maxjetflavor, gamma_is_j, pdg_cut, &
        ptmin4pdg, ptmax4pdg, mxxmin4pdg, mxxpart_antipart, ptj, &
        ptgmin, ptl, mll, mll_sf
@@ -26,7 +39,9 @@ module setcuts_module
   logical, allocatable, save :: firsttime_chans(:)
   integer, allocatable, save :: saved_schan_order(:)
 
-  public :: setcuts_impl, set_tau_min_impl, schan_order_impl
+  public :: setcuts_impl, set_tau_min_impl, set_decay_tau_min_impl
+  public :: set_nlo_decay_tau_min_impl
+  public :: schan_order_impl
 
 contains
 
@@ -127,6 +142,228 @@ contains
     end if
 
   end subroutine setcuts_impl
+
+
+subroutine set_decay_tau_min_impl(nfksprocess, etmin, is_a_j_compat, &
+     is_a_lp_compat, is_a_lm_compat, is_a_ph_compat, &
+     tau_born_lower_bound, tau_lower_bound_resonance, tau_lower_bound, &
+     cbw_mass, cbw_width, cbw_level_max, cbw, cbw_level, s_mass)
+! Set the tau bounds for an exact-NWA decay-chain process from the
+! undecayed production core.  A forced decay contributes its on-shell
+! parent mass exactly once; any enabled cuts on its visible daughters
+! are enforced only after the decay momenta have been generated.
+implicit none
+integer, intent(in) :: nfksprocess
+double precision, intent(in) :: etmin(nincoming + 1:)
+logical, intent(in) :: is_a_j_compat(:), is_a_lp_compat(:)
+logical, intent(in) :: is_a_lm_compat(:), is_a_ph_compat(:)
+double precision, intent(out) :: tau_born_lower_bound
+double precision, intent(out) :: tau_lower_bound_resonance
+double precision, intent(out) :: tau_lower_bound
+double precision, intent(out) :: cbw_mass(-1:, -nexternal:)
+double precision, intent(out) :: cbw_width(-1:, -nexternal:)
+integer, intent(out) :: cbw_level_max
+integer, intent(out) :: cbw(-nexternal:), cbw_level(-nexternal:)
+double precision, intent(out) :: s_mass(-nexternal:)
+integer :: context, leg, target, j_fks
+double precision :: production_mass, cut_mass, leg_mass, leg_bound
+double precision :: collider_energy_squared
+
+call validate_process_dimensions()
+call validate_fks_metadata()
+call initialize_decay_chain_metadata()
+if (.not. has_decay_chains()) then
+   call fail_setcuts('decay tau bounds requested without decay metadata')
+end if
+call initialize_decay_chain_kinematics()
+if (nfksprocess < 1 .or. nfksprocess > fks_configs) then
+   call fail_setcuts('decay tau bounds received an invalid FKS configuration')
+end if
+if (size(etmin) /= nexternal - nincoming - 1 .or. &
+    size(is_a_j_compat) /= nexternal .or. &
+    size(is_a_lp_compat) /= nexternal .or. &
+    size(is_a_lm_compat) /= nexternal .or. &
+    size(is_a_ph_compat) /= nexternal) then
+   call fail_setcuts('decay tau bounds received inconsistent cut data')
+end if
+if (size(cbw_mass, 1) /= 3 .or. size(cbw_mass, 2) /= nexternal .or. &
+    any(shape(cbw_width) /= shape(cbw_mass)) .or. &
+    size(cbw) /= nexternal .or. size(cbw_level) /= nexternal .or. &
+    size(s_mass) /= 2*nexternal + 1) then
+   call fail_setcuts('decay tau bounds received inconsistent output storage')
+end if
+
+context = born_context()
+production_mass = 0d0
+cut_mass = 0d0
+do leg = nincoming + 1, context_core_count(context)
+   leg_mass = core_mass(context, leg)
+   production_mass = production_mass + leg_mass
+   leg_bound = leg_mass
+
+   select case (core_target_kind(context, leg))
+   case (decay_node_target)
+! A decay node is an external on-shell particle of the production core.
+! In particular, do not add ptj/ptl/ptgmin once for every decay leaf.
+      continue
+   case (direct_leg_target)
+      target = core_target_id(context, leg)
+      if (target <= nincoming .or. target >= nexternal) then
+         call fail_setcuts('production leg has an invalid visible target')
+      end if
+      if (is_a_j_compat(target)) then
+         leg_bound = dsqrt(ptj**2 + leg_mass**2)
+      elseif (is_a_ph_compat(target)) then
+         leg_bound = dsqrt(ptgmin**2 + leg_mass**2)
+      elseif (is_a_lp_compat(target) .or. is_a_lm_compat(target)) then
+         leg_bound = dsqrt(ptl**2 + leg_mass**2)
+      elseif (etmin(target) > 0d0) then
+         leg_bound = dsqrt(etmin(target)**2 + leg_mass**2)
+      end if
+   case default
+      call fail_setcuts('production leg has an unknown decay-map target')
+   end select
+   cut_mass = cut_mass + leg_bound
+end do
+
+collider_energy_squared = 4d0*ebeam(1)*ebeam(2)
+if (collider_energy_squared <= 0d0) then
+   call fail_setcuts('decay tau bounds received invalid beam energies')
+end if
+j_fks = fks_j_d(nfksprocess)
+if (j_fks > nincoming) then
+   tau_born_lower_bound = cut_mass**2/collider_energy_squared
+else
+! For initial-state radiation the real parton can make an otherwise soft
+! underlying Born pass the production cuts, so its hard Born bound is mass-only.
+   tau_born_lower_bound = production_mass**2/collider_energy_squared
+end if
+tau_lower_bound = cut_mass**2/collider_energy_squared
+tau_lower_bound_resonance = tau_lower_bound
+
+! The decay-chain phase space generates the production core directly and
+! therefore does not use the visible-process propagator tree.
+cbw_mass = 0d0
+cbw_width = 0d0
+cbw_level_max = 0
+cbw = 0
+cbw_level = 0
+s_mass = 0d0
+end subroutine set_decay_tau_min_impl
+
+
+subroutine set_nlo_decay_tau_min_impl(nfksprocess, etmin, &
+     is_a_j_compat, is_a_lp_compat, is_a_lm_compat, is_a_ph_compat, &
+     tau_born_lower_bound, tau_lower_bound_resonance, tau_lower_bound, &
+     cbw_mass, cbw_width, cbw_level_max, cbw, cbw_level, s_mass)
+! Set production-level tau bounds for a decay-local NLO correction.  The
+! complete decay forest is represented by on-shell root nodes in the LO
+! production core, irrespective of whether the corrected node is a root or
+! is nested below additional LO decays.
+implicit none
+integer, intent(in) :: nfksprocess
+double precision, intent(in) :: etmin(nincoming + 1:)
+logical, intent(in) :: is_a_j_compat(:), is_a_lp_compat(:)
+logical, intent(in) :: is_a_lm_compat(:), is_a_ph_compat(:)
+double precision, intent(out) :: tau_born_lower_bound
+double precision, intent(out) :: tau_lower_bound_resonance
+double precision, intent(out) :: tau_lower_bound
+double precision, intent(out) :: cbw_mass(-1:, -nexternal:)
+double precision, intent(out) :: cbw_width(-1:, -nexternal:)
+integer, intent(out) :: cbw_level_max
+integer, intent(out) :: cbw(-nexternal:), cbw_level(-nexternal:)
+double precision, intent(out) :: s_mass(-nexternal:)
+integer :: context, leg, target, j_fks
+double precision :: production_mass, cut_mass, leg_mass, leg_bound
+double precision :: collider_energy_squared
+
+call validate_process_dimensions()
+call validate_fks_metadata()
+call initialize_nlo_decay_metadata()
+if (.not. has_nlo_decay()) then
+   call fail_setcuts( &
+        'NLO-decay tau bounds requested without NLO-decay metadata')
+end if
+call initialize_nlo_decay_kinematics()
+if (nfksprocess < 1 .or. nfksprocess > fks_configs) then
+   call fail_setcuts( &
+        'NLO-decay tau bounds received an invalid FKS configuration')
+end if
+if (size(etmin) /= nexternal - nincoming - 1 .or. &
+    size(is_a_j_compat) /= nexternal .or. &
+    size(is_a_lp_compat) /= nexternal .or. &
+    size(is_a_lm_compat) /= nexternal .or. &
+    size(is_a_ph_compat) /= nexternal) then
+   call fail_setcuts('NLO-decay tau bounds received inconsistent cut data')
+end if
+if (size(cbw_mass, 1) /= 3 .or. size(cbw_mass, 2) /= nexternal .or. &
+    any(shape(cbw_width) /= shape(cbw_mass)) .or. &
+    size(cbw) /= nexternal .or. size(cbw_level) /= nexternal .or. &
+    size(s_mass) /= 2*nexternal + 1) then
+   call fail_setcuts( &
+        'NLO-decay tau bounds received inconsistent output storage')
+end if
+
+context = nlo_decay_born_context()
+production_mass = 0d0
+cut_mass = 0d0
+do leg = nincoming + 1, nlo_decay_production_count()
+   leg_mass = nlo_decay_production_mass(leg)
+   production_mass = production_mass + leg_mass
+   leg_bound = leg_mass
+
+   select case (nlo_decay_production_target_kind(context, leg))
+   case (nlo_decay_node_target)
+! Count every forced root parent once.  Cuts on all of its descendants,
+! including real radiation from the corrected node, are checked only after
+! the full event has been assembled.
+      continue
+   case (nlo_decay_leg_target)
+      target = nlo_decay_production_target_id(context, leg)
+      if (target <= nincoming .or. target >= nexternal) then
+         call fail_setcuts( &
+              'NLO-decay production leg has an invalid visible target')
+      end if
+      if (is_a_j_compat(target)) then
+         leg_bound = dsqrt(ptj**2 + leg_mass**2)
+      elseif (is_a_ph_compat(target)) then
+         leg_bound = dsqrt(ptgmin**2 + leg_mass**2)
+      elseif (is_a_lp_compat(target) .or. is_a_lm_compat(target)) then
+         leg_bound = dsqrt(ptl**2 + leg_mass**2)
+      elseif (etmin(target) > 0d0) then
+         leg_bound = dsqrt(etmin(target)**2 + leg_mass**2)
+      end if
+   case default
+      call fail_setcuts( &
+           'NLO-decay production leg has an unknown target kind')
+   end select
+   cut_mass = cut_mass + leg_bound
+end do
+
+collider_energy_squared = 4d0*ebeam(1)*ebeam(2)
+if (collider_energy_squared <= 0d0) then
+   call fail_setcuts('NLO-decay tau bounds received invalid beam energies')
+end if
+j_fks = fks_j_d(nfksprocess)
+if (j_fks > nincoming) then
+   tau_born_lower_bound = cut_mass**2/collider_energy_squared
+else
+! Retain the conservative production-mass bound if a future decay mapping
+! exposes an initial-state FKS sister.
+   tau_born_lower_bound = production_mass**2/collider_energy_squared
+end if
+tau_lower_bound = cut_mass**2/collider_energy_squared
+tau_lower_bound_resonance = tau_lower_bound
+
+! The dedicated NLO-decay generator samples the LO production core and the
+! complete on-shell decay forest directly, without the visible-process tree.
+cbw_mass = 0d0
+cbw_width = 0d0
+cbw_level_max = 0
+cbw = 0
+cbw_level = 0
+s_mass = 0d0
+end subroutine set_nlo_decay_tau_min_impl
 
 
 subroutine set_tau_min_impl(pmass, pwidth, itree, iconf, nfksprocess, &

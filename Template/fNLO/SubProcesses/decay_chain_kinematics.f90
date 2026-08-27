@@ -1,5 +1,6 @@
 module decay_chain_kinematics
   use process_dimensions, only: nexternal, nincoming, validate_process_dimensions
+  use fnlo_process_common, only: event_from_decay => from_decay
   use phase_space_kinematics, only: phase_space_lambda
   use decay_chain_metadata, only: has_decay_chains, decay_node_count, &
        decay_leaf_count, decay_random_dimension, born_context, &
@@ -31,6 +32,7 @@ module decay_chain_kinematics
   ! These Lorentz-covariant building blocks are also used by the dedicated
   ! NLO-decay phase-space path.  They do not depend on decay-chain metadata.
   public :: generate_nbody, boost_from_rest, minkowski_square
+  public :: set_decay_cut_mask
 
   interface
     double precision function get_mass_from_id(id)
@@ -195,6 +197,7 @@ contains
     logical, intent(out) :: pass
 
     integer :: leg, target
+    call set_decay_cut_mask(context)
     pass = .true.
     do leg = 1, context_core_count(context)
       target = core_target_id(context, leg)
@@ -207,6 +210,19 @@ contains
       end if
     end do
   end subroutine expand_context
+
+
+  subroutine set_decay_cut_mask(context)
+    integer, intent(in) :: context
+    integer :: leaf, visible
+
+    call require_enabled()
+    event_from_decay = .false.
+    do leaf = 1, decay_leaf_count()
+      visible = leaf_visible_leg(context, leaf)
+      if (visible > nincoming) event_from_decay(visible) = .true.
+    end do
+  end subroutine set_decay_cut_mask
 
 
   recursive subroutine expand_node(context, node, parent_momentum, x, &
