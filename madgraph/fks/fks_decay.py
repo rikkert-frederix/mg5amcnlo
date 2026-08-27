@@ -1453,7 +1453,8 @@ def _visible_fks_partner_map(real, context):
 
     An internal resonance is intentionally omitted from the ordinary FKS
     array and retained as a ``NODE`` target in ``nlo_decay_info.dat``.  A
-    later node-aware soft kernel must add its momentum explicitly.
+    decay-local soft kernel consumes that target and its reconstructed
+    parent-rest-frame momentum explicitly.
     """
 
     result = {}
@@ -1789,7 +1790,7 @@ def write_nlo_decay_prototype_files(path, metadata):
         stream.write(
             'This output contains NLO-decay matrix elements and a local, '\
             'resonance-preserving phase-space map.\n'
-            'Node-aware soft subtraction, integrated subtraction, and NLO '\
+            'Integrated subtraction, virtual-pole cancellation, and NLO '\
             'width normalization are not implemented yet.\n')
 
 

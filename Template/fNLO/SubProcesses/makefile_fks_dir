@@ -252,6 +252,7 @@ fks_singular.o: process_dimensions.o fks_model_state.o fks_metadata.o \
 	mint_module.o FKSParams.o splitorders_stuff.o fks_Sij.o \
 	chooser_functions.o phase_space_kinematics.o decay_chain_metadata.o \
 	decay_chain_kinematics.o decay_chain_scales.o \
+	nlo_decay_metadata.o nlo_decay_kinematics.o \
 	fks_qcd_splitting.o fks_soft_kernels.o \
 	fks_random.o \
 	$(LIBDIR)run_state.mod \
@@ -305,7 +306,8 @@ symmetry_fks_v3.o: process_dimensions.o fks_metadata.o genps_fks.o \
 symmetry_fks_v3_bridge.o: symmetry_fks_v3.o \
 	process_dimensions_bridge.o fks_metadata_bridge.o
 test_soft_col_limits.o: process_dimensions.o fks_metadata.o \
-	decay_chain_metadata.o decay_chain_kinematics.o \
+	nlo_decay_metadata.o decay_chain_metadata.o decay_chain_kinematics.o \
+	nlo_decay_kinematics.o \
 	splitorders_stuff.o genps_fks.o fks_diagnostics.o fks_random.o \
 	mint_module.o fks_singular.o $(LIBDIR)run_state.mod
 test_soft_col_limits_bridge.o: test_soft_col_limits.o \

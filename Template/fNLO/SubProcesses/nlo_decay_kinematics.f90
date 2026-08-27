@@ -30,6 +30,10 @@ module nlo_decay_kinematics
   double precision, allocatable, save :: born_local_masses(:)
   double precision, allocatable, save :: production_born(:, :)
   double precision, allocatable, save :: born_local(:, :)
+  double precision, allocatable, save :: local_event_cache(:, :, :)
+  double precision, allocatable, save :: local_fks_momentum_cache(:, :)
+  integer, allocatable, save :: local_event_configuration(:)
+  logical, allocatable, save :: local_event_valid(:)
   double precision, save :: parent_born(0:3) = 0d0
 
   public :: initialize_nlo_decay_kinematics
@@ -39,6 +43,10 @@ module nlo_decay_kinematics
   public :: generate_nlo_decay_born_momenta
   public :: generate_nlo_decay_fks_event
   public :: nlo_decay_fks_sister_mass
+  public :: get_nlo_decay_event_momenta
+  public :: get_nlo_decay_counterevent_fks_momenta
+  public :: get_nlo_decay_mass_buffer
+  public :: nlo_decay_parent_mass
 
   interface
     double precision function get_mass_from_id(id)
@@ -62,10 +70,18 @@ contains
     allocate(born_local_masses(nexternal))
     allocate(production_born(0:3, nexternal))
     allocate(born_local(0:3, nexternal))
+    allocate(local_event_cache(0:3, nexternal, 0:real_event))
+    allocate(local_fks_momentum_cache(0:3, 0:real_event))
+    allocate(local_event_configuration(0:real_event))
+    allocate(local_event_valid(0:real_event))
     production_masses = 0d0
     born_local_masses = 0d0
     production_born = 0d0
     born_local = 0d0
+    local_event_cache = 0d0
+    local_fks_momentum_cache = -1d0
+    local_event_configuration = 0
+    local_event_valid = .false.
     parent_born = 0d0
 
     parent_mass = abs(get_mass_from_id(corrected_parent_pdg()))
@@ -146,6 +162,57 @@ contains
   end function nlo_decay_fks_sister_mass
 
 
+  double precision function nlo_decay_parent_mass()
+    call require_enabled()
+    nlo_decay_parent_mass = parent_mass
+  end function nlo_decay_parent_mass
+
+
+  subroutine get_nlo_decay_mass_buffer(configuration, masses)
+    integer, intent(in) :: configuration
+    double precision, intent(out) :: masses(nexternal)
+    integer :: context, leg
+
+    call require_enabled()
+    context = nlo_decay_context_for_fks(configuration)
+    masses = 0d0
+    do leg = 1, nlo_decay_local_count(context)
+      masses(leg) = &
+           abs(get_mass_from_id(nlo_decay_local_pdg(context, leg)))
+    end do
+  end subroutine get_nlo_decay_mass_buffer
+
+
+  subroutine get_nlo_decay_event_momenta(configuration, event_slot, momenta)
+    integer, intent(in) :: configuration, event_slot
+    double precision, intent(out) :: momenta(0:3, nexternal)
+
+    call require_enabled()
+    call check_event_slot(event_slot)
+    if (.not. local_event_valid(event_slot) .or. &
+        local_event_configuration(event_slot) /= configuration) then
+      call fail_kinematics('decay-local event momenta are unavailable')
+    end if
+    momenta = local_event_cache(:, :, event_slot)
+  end subroutine get_nlo_decay_event_momenta
+
+
+  subroutine get_nlo_decay_counterevent_fks_momenta(configuration, momenta)
+    integer, intent(in) :: configuration
+    double precision, intent(out) :: momenta(0:3, 0:2)
+    integer :: event_slot
+
+    call require_enabled()
+    momenta = -1d0
+    do event_slot = soft_counterevent, soft_collinear_counterevent
+      if (local_event_valid(event_slot) .and. &
+          local_event_configuration(event_slot) == configuration) then
+        momenta(:, event_slot) = local_fks_momentum_cache(:, event_slot)
+      end if
+    end do
+  end subroutine get_nlo_decay_counterevent_fks_momenta
+
+
   subroutine fill_nlo_decay_born_masses(masses)
     double precision, intent(out) :: masses(nexternal - 1)
     integer :: context, leg, target
@@ -190,6 +257,10 @@ contains
     production_born = 0d0
     born_local = 0d0
     parent_born = 0d0
+    local_event_cache = 0d0
+    local_fks_momentum_cache = -1d0
+    local_event_configuration = 0
+    local_event_valid = .false.
     context = nlo_decay_born_context()
 
     system = 0d0
@@ -269,6 +340,11 @@ contains
     double precision :: sister_mass, phi, reference_rest(0:3)
 
     call require_enabled()
+    call check_event_slot(event_slot)
+    local_event_valid(event_slot) = .false.
+    local_event_configuration(event_slot) = 0
+    local_event_cache(:, :, event_slot) = 0d0
+    local_fks_momentum_cache(:, event_slot) = -1d0
     pass = .false.
     visible = 0d0
     local_rest = 0d0
@@ -336,6 +412,10 @@ contains
     call boost_from_rest(reference_rest, parent_born, parent_mass, p_i_hat)
     call validate_local_recoil(context, local_event, pass)
     if (.not. pass) return
+    local_event_cache(:, :, event_slot) = local_rest
+    local_fks_momentum_cache(:, event_slot) = reference_rest
+    local_event_configuration(event_slot) = configuration
+    local_event_valid(event_slot) = .true.
     call flatten_context(context, local_event, visible)
     pass = .true.
   end subroutine generate_nlo_decay_fks_event
@@ -856,6 +936,14 @@ contains
   double precision function pi_value()
     pi_value = 3.141592653589793238462643d0
   end function pi_value
+
+
+  subroutine check_event_slot(event_slot)
+    integer, intent(in) :: event_slot
+    if (event_slot < soft_counterevent .or. event_slot > real_event) then
+      call fail_kinematics('FKS event slot is out of range')
+    end if
+  end subroutine check_event_slot
 
 
   subroutine require_enabled()

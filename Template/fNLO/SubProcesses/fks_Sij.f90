@@ -37,11 +37,16 @@ contains
 
   subroutine initialize_fks_sij_module(nexternal_in, nincoming_in, &
                                        fks_a_in, fks_b_in, a_h_damp_in, &
-                                       one_h_damp_in)
+                                       one_h_damp_in, local_dimensions_in)
     implicit none
     integer, intent(in) :: nexternal_in, nincoming_in
     double precision, intent(in) :: fks_a_in, fks_b_in
     double precision, intent(in) :: a_h_damp_in, one_h_damp_in
+    logical, intent(in), optional :: local_dimensions_in
+    logical :: local_dimensions
+
+    local_dimensions = .false.
+    if (present(local_dimensions_in)) local_dimensions = local_dimensions_in
 
     if (nexternal_in < 1) then
       call fail_validation('NEXTERNAL must be positive')
@@ -60,7 +65,7 @@ contains
       call fail_validation('the h-damping edge is outside [0,1/2)')
     end if
 
-    if (process_dimensions_initialized) then
+    if (process_dimensions_initialized .and. .not. local_dimensions) then
       call validate_process_dimensions()
       if (process_nexternal /= nexternal_in .or. &
           process_nincoming /= nincoming_in) then

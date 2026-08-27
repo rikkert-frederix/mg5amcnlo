@@ -105,9 +105,18 @@ parent momentum.
 
 The runtime supports both massless and massive final-state FKS sisters.  For a
 massive sister only the real and soft event slots exist, as in the ordinary
-fNLO mapping.  This milestone still stops short of a runnable NLO prediction:
-the internal-parent soft colour charge, integrated subtraction and NLO width
-normalisation have not been implemented.
+fNLO mapping.  The standalone decay's local FKS partner table is retained for
+the S functions and soft kernel.  In particular, a massive incoming decay
+parent remains a soft eikonal partner even though it cannot define a
+collinear sector.  The local event and counterevent momenta are cached in the
+parent rest frame, and target-aware colour-link records map the parent's
+colour insertion onto its unique visible carrier.  Crossing signs and the
+self-link normalisation reconstruct the same local linked-Born terms as the
+standalone decay.
+
+This milestone still stops short of a runnable NLO prediction: integrated
+subtraction, virtual-pole cancellation and NLO width normalisation have not
+been implemented.
 
 The implementation is split as follows:
 
@@ -121,7 +130,12 @@ The implementation is split as follows:
 - `Template/fNLO/SubProcesses/nlo_decay_metadata.f90`: validation and lookup
   of target-aware NLO-decay runtime metadata;
 - `Template/fNLO/SubProcesses/nlo_decay_kinematics.f90`: factorised Born
-  generation and parent-rest-frame local FKS kinematics;
+  generation, parent-rest-frame local FKS kinematics, and cached local event
+  state for subtraction kernels;
+- `Template/fNLO/SubProcesses/fks_singular.f90`: decay-local S functions and
+  soft eikonals, including target-aware internal-parent colour links;
+- `Template/fNLO/SubProcesses/test_soft_col_limits.f90`: production-safe
+  matrix-element limit tests for massless and massive decay sisters;
 - `tests/unit_tests/fks/test_fks_decay.py`: process, HELAS, metadata and
   Fortran-writer regression coverage.
 
@@ -239,9 +253,10 @@ For every decay `FKSProcess`:
    the combined Born matrix element.
 
 The corrected decay's incoming resonance is internal in the combined event.
-Later subtraction support must map that local leg to a decay node momentum,
-not to a visible daughter momentum.  The prototype records this mapping but
-does not yet consume it in the fNLO phase-space code.
+The fNLO runtime therefore maps that local leg to the reconstructed decay-node
+momentum, never to a visible daughter momentum.  It consumes the same mapping
+for the local S functions and unintegrated soft kernel; integrated subtraction
+will use the same contract in a later milestone.
 
 ### Virtual stage
 
@@ -288,16 +303,16 @@ level-based drawer.
 ## Deferred Work
 
 - Equivalent production subprocesses and their grouping at the virtual level.
-- Soft kernels combining the separately reconstructed resonance and visible
-  daughter momenta.
 - Integrated subtraction and virtual-pole cancellation.
 - Independent production and decay renormalisation scales at NLO.
 - A decision between an explicitly expanded width normalisation and use of an
   unexpanded NLO physical width.
 - Multiple production subprocesses, equivalent decay flavour grouping,
   additional LO decays and nested corrected decays.
-- Virtual/Born numerical equivalence, pole, soft/collinear-limit and numerical
-  regression tests.
+- Permutation and symmetry-factor composition when a production final-state
+  particle is identical to the decay-owned real-emission particle.
+- Virtual/Born numerical equivalence, pole and width-normalisation regression
+  tests.
 
 ## First-Milestone Acceptance Tests
 
@@ -371,7 +386,14 @@ level-based drawer.
 - The soft counterevent recovers the underlying-Born decay momenta, while a
   massless sister additionally produces local collinear and soft-collinear
   counterevents.
+- S functions use the same parent-rest-frame momenta and decay-local partner
+  table as the corresponding standalone decay.
+- For `t > W+ b [real=QCD]`, the soft kernel includes the local `(t,t)`,
+  `(t,b)` and `(b,b)` linked-Born terms even though the incoming top is a
+  target-aware `NODE`; the top mass removes collinear sectors, not its soft
+  eikonal charge.
 - The representative `u u~ > t t~, (t > W+ b [real=QCD])` metadata and new
-  Fortran phase-space modules compile, and a numerical harness verifies local
-  momentum conservation, fixed parent virtuality and unchanged production
-  spectators.
+  Fortran phase-space modules compile, and numerical tests verify local
+  momentum conservation, fixed parent virtuality, unchanged production
+  spectators and the decay soft limit.  The massless `W > q q~ [real=QCD]`
+  reference also passes both local soft and collinear limits.

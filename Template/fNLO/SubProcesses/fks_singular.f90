@@ -16,6 +16,14 @@ module fks_singular_module
        get_core_born_momenta, get_core_mass_buffer, active_core_count, &
        map_core_color_pair
   use decay_chain_scales, only: production_qcd_squared_order
+  use nlo_decay_metadata, only: has_nlo_decay, &
+       nlo_decay_context_for_fks, nlo_decay_local_count, &
+       nlo_decay_local_pdg, nlo_decay_fks_i, nlo_decay_fks_j, &
+       nlo_decay_partner_count, nlo_decay_partner_local, &
+       nlo_decay_map_color_link
+  use nlo_decay_kinematics, only: get_nlo_decay_event_momenta, &
+       get_nlo_decay_counterevent_fks_momenta, &
+       get_nlo_decay_mass_buffer, nlo_decay_parent_mass
   use fks_qcd_splitting, only: AP_reduced, AP_reduced_prime, &
                                 Qterms_reduced_timelike, &
                                 Qterms_reduced_spacelike
@@ -67,6 +75,12 @@ module fks_singular_module
   implicit none
   private
 
+  interface
+    integer function get_color(ipdg)
+      integer, intent(in) :: ipdg
+    end function get_color
+  end interface
+
   double precision, parameter :: fks_a = 1.5d0, fks_b = 1.5d0
   double precision, parameter :: a_h_damp = 1d0, one_h_damp = 1d-2
   double precision, parameter :: deltao = 1d0, deltai = 1d0, xicut = 0.5d0
@@ -104,6 +118,11 @@ contains
     double precision :: kernel_masses(nexternal)
 
     call require_fks_singular_state()
+    if (has_nlo_decay()) then
+      evaluate_fks_sij = evaluate_nlo_decay_fks_sij( &
+           event_slot, ii_fks, jj_fks, xi_i_fks, y_ij_fks)
+      return
+    end if
     call select_kernel_event(event_slot, p, kernel_momenta, &
                              kernel_masses)
     call initialize_fks_sij_module(nexternal, nincoming, fks_a, fks_b, &
@@ -119,6 +138,83 @@ contains
     evaluate_fks_sij = fks_sij_impl(kernel_momenta, ii_fks, jj_fks, &
                                     xi_i_fks, y_ij_fks)
   end function evaluate_fks_sij
+
+
+  double precision function evaluate_nlo_decay_fks_sij(event_slot, &
+       ii_fks, jj_fks, xi_i_fks, y_ij_fks)
+    integer, intent(in) :: event_slot, ii_fks, jj_fks
+    double precision, intent(in) :: xi_i_fks, y_ij_fks
+    integer :: context, local_count, local_i, local_j
+    integer :: configuration, emitted, partner_count, position, leg
+    integer :: local_partner_map(nexternal, 0:nexternal)
+    integer :: local_particle_type(nexternal)
+    logical :: local_is_aorg(nexternal)
+    double precision :: local_event(0:3, nexternal)
+    double precision :: local_masses(nexternal)
+    double precision :: local_fks_momenta(0:3, 0:2)
+    double precision :: decay_mass
+
+    if (ii_fks /= i_fks .or. jj_fks /= j_fks) then
+      call fail_fks_singular_state( &
+           'NLO-decay S function requested for inactive visible indices')
+    end if
+    context = nlo_decay_context_for_fks(nfksprocess)
+    local_count = nlo_decay_local_count(context)
+    local_i = nlo_decay_fks_i(nfksprocess)
+    local_j = nlo_decay_fks_j(nfksprocess)
+    local_partner_map = 0
+    local_particle_type = 1
+    local_is_aorg = .false.
+
+    ! Rebuild the same decay-local partner table written for the standalone
+    ! 1 -> n process.  Configurations sharing a real matrix element share a
+    ! row, including any massive incoming decay parent.
+    do configuration = 1, fks_configs
+      if (nlo_decay_context_for_fks(configuration) /= context) cycle
+      emitted = nlo_decay_fks_i(configuration)
+      partner_count = nlo_decay_partner_count(configuration)
+      if (local_partner_map(emitted, 0) == 0) then
+        local_partner_map(emitted, 0) = partner_count
+        do position = 1, partner_count
+          local_partner_map(emitted, position) = &
+               nlo_decay_partner_local(configuration, position)
+        end do
+      else
+        if (local_partner_map(emitted, 0) /= partner_count) then
+          call fail_fks_singular_state( &
+               'inconsistent NLO-decay partner rows')
+        end if
+        do position = 1, partner_count
+          if (local_partner_map(emitted, position) /= &
+              nlo_decay_partner_local(configuration, position)) then
+            call fail_fks_singular_state( &
+                 'inconsistent NLO-decay partner ordering')
+          end if
+        end do
+      end if
+    end do
+
+    do leg = 1, local_count
+      local_particle_type(leg) = get_color(nlo_decay_local_pdg(context, leg))
+      local_is_aorg(leg) = abs(nlo_decay_local_pdg(context, leg)) == 21
+    end do
+    call get_nlo_decay_event_momenta(nfksprocess, event_slot, local_event)
+    call get_nlo_decay_mass_buffer(nfksprocess, local_masses)
+    call get_nlo_decay_counterevent_fks_momenta( &
+         nfksprocess, local_fks_momenta)
+    decay_mass = nlo_decay_parent_mass()
+    call initialize_fks_sij_module(local_count, 1, fks_a, fks_b, &
+                                   a_h_damp, one_h_damp, .true.)
+    call set_fks_sij_partition_state( &
+         local_partner_map(1:local_count, 0:local_count), &
+         local_particle_type(1:local_count), &
+         local_is_aorg(1:local_count), &
+         local_i, local_j, 0d0, decay_mass, decay_mass**2, &
+         local_fks_momenta, local_masses(1:local_count))
+    evaluate_nlo_decay_fks_sij = fks_sij_impl( &
+         local_event(:, 1:local_count), local_i, local_j, &
+         xi_i_fks, y_ij_fks)
+  end function evaluate_nlo_decay_fks_sij
 
   subroutine initialize_fks_generated_state(max_branch_used, lmax_used, &
                                             forest_in, sprop_in, tprid_in, map_in, mass_in, width_in)
@@ -327,7 +423,7 @@ contains
     elseif (xi_i_fks .lt. tiny) then
       if (need_color_links) then
 ! has soft singularities
-        call sbornsoft(kernel_momenta, xi_i_fks, y_ij_fks, &
+        call sbornsoft(event_slot, kernel_momenta, xi_i_fks, y_ij_fks, &
                        event_sqrt_shat(event_slot), wgt)
       else
         wgt = 0d0
@@ -530,9 +626,11 @@ contains
   end subroutine sborncol_isr
 
 
-  subroutine sbornsoft(pp, xi_i_fks, y_ij_fks, partonic_sqrt_shat, wgt)
+  subroutine sbornsoft(event_slot, pp, xi_i_fks, y_ij_fks, &
+                       partonic_sqrt_shat, wgt)
     implicit none
 !      include "fks.inc"
+    integer, intent(in) :: event_slot
     integer m, n, visible_m, visible_n
 
     double precision softcontr, pp(0:3, nexternal), wgt, eik
@@ -544,6 +642,11 @@ contains
     double precision zero, pmass(nexternal)
     parameter(zero=0d0)
 
+
+    if (has_nlo_decay()) then
+      call sbornsoft_nlo_decay(event_slot, xi_i_fks, y_ij_fks, wgt)
+      return
+    end if
 
     call select_kernel_masses(pmass)
 !
@@ -585,6 +688,63 @@ contains
     wgt = -2d0*wgt
     return
   end subroutine sbornsoft
+
+
+  subroutine sbornsoft_nlo_decay(event_slot, xi_i_fks, y_ij_fks, wgt)
+    integer, intent(in) :: event_slot
+    double precision, intent(in) :: xi_i_fks, y_ij_fks
+    double precision, intent(out) :: wgt
+    integer :: first_position, second_position, m, n
+    integer :: visible_m, visible_n, local_i, local_j
+    integer :: partner_count
+    double precision :: softcontr, eik, link_weight, born_weight
+    double precision :: link_multiplier, decay_mass
+    double precision :: local_momenta(0:3, nexternal)
+    double precision :: local_masses(nexternal)
+    double precision :: local_fks_momenta(0:3, 0:2)
+    double precision, parameter :: zero = 0d0
+
+    call get_nlo_decay_event_momenta( &
+         nfksprocess, event_slot, local_momenta)
+    call get_nlo_decay_mass_buffer(nfksprocess, local_masses)
+    call get_nlo_decay_counterevent_fks_momenta( &
+         nfksprocess, local_fks_momenta)
+    local_i = nlo_decay_fks_i(nfksprocess)
+    local_j = nlo_decay_fks_j(nfksprocess)
+    decay_mass = nlo_decay_parent_mass()
+
+    ! Prime the generated Born cache before evaluating its color-linked forms.
+    call sborn(p_born, born_weight)
+    amp_split(1:amp_split_size) = 0d0
+    softcontr = 0d0
+    partner_count = nlo_decay_partner_count(nfksprocess)
+    do first_position = 1, partner_count
+      do second_position = 1, first_position
+        m = nlo_decay_partner_local(nfksprocess, first_position)
+        n = nlo_decay_partner_local(nfksprocess, second_position)
+        if ((m /= n .or. local_masses(m) /= zero) .and. &
+            m /= local_i .and. n /= local_i) then
+          call nlo_decay_map_color_link( &
+               nfksprocess, m, n, visible_m, visible_n, link_multiplier)
+          call sborn_sf(p_born, visible_m, visible_n, link_weight)
+          if (link_weight /= 0d0) then
+            call eikonal_reduced( &
+                 local_momenta, m, n, local_i, local_j, xi_i_fks, &
+                 y_ij_fks, local_fks_momenta, local_masses, decay_mass, eik)
+            softcontr = softcontr + &
+                 link_multiplier*link_weight*eik*iden_comp
+            amp_split(1:amp_split_size) = &
+                 amp_split(1:amp_split_size) - &
+                 2d0*link_multiplier*eik* &
+                 amp_split_soft(1:amp_split_size)*iden_comp
+          end if
+        end if
+      end do
+    end do
+
+    ! Match the sign and normalization convention of the standalone decay.
+    wgt = -2d0*softcontr
+  end subroutine sbornsoft_nlo_decay
 
 
   subroutine sreal_deg(event_slot, p, xi_i_fks, collrem_xi, collrem_lxi)

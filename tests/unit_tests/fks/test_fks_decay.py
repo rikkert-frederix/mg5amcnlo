@@ -490,6 +490,16 @@ class TestFKSDecayChains(unittest.TestCase):
         self.assertEqual(
             [tuple(link['link']) for link in matrix_element.color_links],
             [(3, 3)])
+        self.assertEqual(metadata['color_links'], [
+            {'local_first': 1, 'local_second': 1,
+             'visible_first': 3, 'visible_second': 3,
+             'generated_index': 1},
+            {'local_first': 1, 'local_second': 2,
+             'visible_first': 3, 'visible_second': 3,
+             'generated_index': 1},
+            {'local_first': 2, 'local_second': 2,
+             'visible_first': 3, 'visible_second': 3,
+             'generated_index': 1}])
         info = fks_decay.nlo_decay_info_text(metadata)
         self.assertIn('FORMAT 3\n', info)
         self.assertIn('COUNTS 2 1 1 2\n', info)
@@ -506,6 +516,9 @@ class TestFKSDecayChains(unittest.TestCase):
         self.assertIn('REAL_BORN_MAP 1 1 1\n', info)
         self.assertIn('REAL_BORN_MAP 1 2 2\n', info)
         self.assertIn('REAL_BORN_MAP 1 3 3\n', info)
+        self.assertIn('COLOR_LINK 1 1 3 3 1\n', info)
+        self.assertIn('COLOR_LINK 1 2 3 3 1\n', info)
+        self.assertIn('COLOR_LINK 2 2 3 3 1\n', info)
 
     def test_nlo_decay_virtual_is_composed_with_lo_production(self):
         command = self.generate(
@@ -731,7 +744,8 @@ class TestFKSDecayChains(unittest.TestCase):
                     'NLO_DECAY_SUBTRACTION_INCOMPLETE')) as stream:
                 marker = stream.read()
             self.assertIn('resonance-preserving phase-space map', marker)
-            self.assertIn('subtraction', marker)
+            self.assertIn('Integrated subtraction', marker)
+            self.assertNotIn('Node-aware soft subtraction', marker)
             with open(os.path.join(
                     subprocess_dir, 'nlo_decay_info.dat')) as stream:
                 metadata = stream.read()

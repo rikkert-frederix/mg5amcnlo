@@ -250,6 +250,38 @@ class TestMadEventCmd(unittest.TestCase):
                 banner_mod.InvalidRunCard, 'MSbar PDF factorization scheme'):
             run_mecmd.prepare_fixed_order_only_run_card(run_card)
 
+    def test_fnlo_test_me_failures_propagate(self):
+        """A crashed test executable cannot be reported as passing."""
+
+        with tempfile.TemporaryDirectory() as me_dir:
+            subprocess_dir = pjoin(me_dir, 'SubProcesses', 'P0_test')
+            os.makedirs(subprocess_dir)
+            with open(pjoin(me_dir, 'test_ME_input.txt'), 'w') as stream:
+                stream.write('-2 -2\n1 1\n0\n0\n')
+
+            original_compile = run_mecmd.misc.compile
+            original_call = run_mecmd.misc.call
+            run_mecmd.misc.compile = lambda *args, **opts: None
+            run_mecmd.misc.call = lambda *args, **opts: 7
+            try:
+                with self.assertRaisesRegex(
+                        run_mecmd.aMCatNLOError,
+                        'test_ME failed .* exit status 7'):
+                    run_mecmd.compile_dir(
+                        me_dir, 'P0_test', 'fixed_order',
+                        {'reweightonly': True}, ['test_ME'], 'madevent', 0)
+            finally:
+                run_mecmd.misc.compile = original_compile
+                run_mecmd.misc.call = original_call
+
+            log_path = pjoin(subprocess_dir, 'test_ME.log')
+            with open(log_path, 'w') as stream:
+                stream.write(
+                    'Fatal error in NLO-decay phase space: '
+                    'insufficient energy\n')
+            with self.assertRaises(run_mecmd.aMCatNLOError):
+                run_mecmd.aMCatNLOCmd.parse_test_mx_log(None, log_path)
+
     def test_fnlo_exporter_and_template(self):
         """The fNLO factory route uses the fixed-order-only template."""
 
@@ -490,6 +522,35 @@ class TestMadEventCmd(unittest.TestCase):
             limit_test = stream.read()
         self.assertNotIn('xmcsubt', limit_test)
         self.assertNotIn('amp_split_mc', limit_test)
+        limit_test_lower = limit_test.lower()
+        self.assertIn('initial_ebeam = ebeam', limit_test_lower)
+        self.assertIn('max(initial_ebeam(1)', limit_test_lower)
+        self.assertIn('nlo_decay_minimum_production_mass()',
+                      limit_test_lower)
+        self.assertNotIn('soft tests skipped', limit_test_lower)
+        self.assertIn('nlo_decay_fks_sister_mass', limit_test_lower)
+
+        with open(pjoin(subprocess_dir,
+                        'nlo_decay_metadata.f90')) as stream:
+            nlo_decay_metadata = stream.read().lower()
+        self.assertIn("case ('fks_partner')", nlo_decay_metadata)
+        self.assertIn("case ('color_link')", nlo_decay_metadata)
+        self.assertIn('nlo_decay_partner_local', nlo_decay_metadata)
+        self.assertIn('nlo_decay_map_color_link', nlo_decay_metadata)
+
+        with open(pjoin(subprocess_dir, 'fks_singular.f90')) as stream:
+            fks_singular = stream.read().lower()
+        self.assertIn('sbornsoft_nlo_decay', fks_singular)
+        self.assertIn('evaluate_nlo_decay_fks_sij', fks_singular)
+        self.assertIn('nlo_decay_map_color_link', fks_singular)
+        self.assertIn('link_multiplier*link_weight*eik', fks_singular)
+
+        with open(pjoin(subprocess_dir,
+                        'nlo_decay_kinematics.f90')) as stream:
+            nlo_decay_kinematics = stream.read().lower()
+        self.assertIn('local_event_cache', nlo_decay_kinematics)
+        self.assertIn('get_nlo_decay_event_momenta',
+                      nlo_decay_kinematics)
 
         
     def test_v31_syntax_crash(self):

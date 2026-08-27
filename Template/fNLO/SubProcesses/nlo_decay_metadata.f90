@@ -15,6 +15,9 @@ module nlo_decay_metadata
   integer, save :: corrected_parent_occurrence_value = 0
   integer, save :: number_of_contexts = 0
   integer, save :: number_of_fks_maps = 0
+  integer, save :: number_of_fks_partners = 0
+  integer, save :: number_of_generated_color_links = 0
+  integer, save :: number_of_color_link_records = 0
   integer, save :: number_of_production_legs = 0
   integer, save :: born_context_id = 0
 
@@ -37,7 +40,16 @@ module nlo_decay_metadata
   integer, allocatable, save :: fks_target_kinds(:, :)
   integer, allocatable, save :: fks_target_ids(:, :)
   integer, allocatable, save :: fks_target_local_legs(:, :)
+  integer, allocatable, save :: fks_partner_target_kinds(:, :)
+  integer, allocatable, save :: fks_partner_target_ids(:, :)
+  integer, allocatable, save :: fks_partner_counts(:)
+  integer, allocatable, save :: fks_partner_local_values(:, :)
   integer, allocatable, save :: real_to_born_values(:, :)
+  integer, allocatable, save :: color_local_first_values(:)
+  integer, allocatable, save :: color_local_second_values(:)
+  integer, allocatable, save :: color_visible_first_values(:)
+  integer, allocatable, save :: color_visible_second_values(:)
+  integer, allocatable, save :: color_generated_index_values(:)
 
   public :: initialize_nlo_decay_metadata, has_nlo_decay
   public :: corrected_parent_pdg, corrected_parent_occurrence
@@ -50,16 +62,18 @@ module nlo_decay_metadata
   public :: nlo_decay_local_is_final, nlo_decay_local_target_kind
   public :: nlo_decay_local_target_id, nlo_decay_visible_count
   public :: nlo_decay_fks_i, nlo_decay_fks_j, nlo_decay_fks_ij
+  public :: nlo_decay_partner_count, nlo_decay_partner_local
+  public :: nlo_decay_map_color_link
   public :: nlo_decay_real_to_born
 
 contains
 
   subroutine initialize_nlo_decay_metadata()
     logical :: exists, end_seen
-    integer :: unit_number, ios, production_records
+    integer :: unit_number, ios, production_records, color_record
     integer :: context, configuration, leg, pdg, source, local_count
     integer :: visible_count, local_i, local_j, local_ij, target
-    integer :: unused_first, unused_second
+    integer :: target_position
     character(len=512) :: line
     character(len=32) :: keyword, kind, state, name
 
@@ -78,6 +92,7 @@ contains
     if (ios /= 0) call fail_metadata('cannot open nlo_decay_info.dat')
 
     production_records = 0
+    number_of_color_link_records = 0
     do
       read(unit_number, '(a)', iostat=ios) line
       if (ios < 0) exit
@@ -93,9 +108,12 @@ contains
              corrected_parent_occurrence_value
       case ('COUNTS')
         read(line, *, iostat=ios) keyword, number_of_contexts, &
-             number_of_fks_maps, unused_first, unused_second
+             number_of_fks_maps, number_of_generated_color_links, &
+             number_of_fks_partners
       case ('PRODUCTION_LEG')
         production_records = production_records + 1
+      case ('COLOR_LINK')
+        number_of_color_link_records = number_of_color_link_records + 1
       end select
       if (ios /= 0) call fail_metadata('malformed metadata header')
     end do
@@ -108,7 +126,10 @@ contains
       call fail_metadata('invalid corrected-decay parent')
     end if
     if (number_of_contexts < 2 .or. &
-        number_of_fks_maps /= fks_configs) then
+        number_of_fks_maps /= fks_configs .or. &
+        number_of_fks_partners < number_of_fks_maps .or. &
+        number_of_generated_color_links < 1 .or. &
+        number_of_color_link_records < number_of_generated_color_links) then
       call fail_metadata('invalid metadata counts')
     end if
     if (production_records < nincoming + 1 .or. &
@@ -138,7 +159,16 @@ contains
     allocate(fks_target_kinds(3, fks_configs))
     allocate(fks_target_ids(3, fks_configs))
     allocate(fks_target_local_legs(3, fks_configs))
+    allocate(fks_partner_target_kinds(nexternal, fks_configs))
+    allocate(fks_partner_target_ids(nexternal, fks_configs))
+    allocate(fks_partner_counts(fks_configs))
+    allocate(fks_partner_local_values(nexternal, fks_configs))
     allocate(real_to_born_values(nexternal, fks_configs))
+    allocate(color_local_first_values(number_of_color_link_records))
+    allocate(color_local_second_values(number_of_color_link_records))
+    allocate(color_visible_first_values(number_of_color_link_records))
+    allocate(color_visible_second_values(number_of_color_link_records))
+    allocate(color_generated_index_values(number_of_color_link_records))
 
     production_pdg_values = 0
     production_final_values = .false.
@@ -159,10 +189,20 @@ contains
     fks_target_kinds = 0
     fks_target_ids = 0
     fks_target_local_legs = 0
+    fks_partner_target_kinds = 0
+    fks_partner_target_ids = 0
+    fks_partner_counts = 0
+    fks_partner_local_values = 0
     real_to_born_values = 0
+    color_local_first_values = 0
+    color_local_second_values = 0
+    color_visible_first_values = 0
+    color_visible_second_values = 0
+    color_generated_index_values = 0
 
     rewind(unit_number)
     end_seen = .false.
+    color_record = 0
     do
       read(unit_number, '(a)', iostat=ios) line
       if (ios < 0) exit
@@ -173,8 +213,7 @@ contains
       if (ios /= 0) call fail_metadata('malformed metadata keyword')
       select case (trim(keyword))
       case ('FORMAT', 'STATUS', 'CORRECTION', 'PARENT', 'HAS_VIRTUAL', &
-            'VIRTUAL_COMPOSITION', 'VIRTUAL_CURRENT_COUNT', 'COUNTS', &
-            'FKS_PARTNER', 'COLOR_LINK')
+            'VIRTUAL_COMPOSITION', 'VIRTUAL_CURRENT_COUNT', 'COUNTS')
         continue
       case ('PRODUCTION_LEG')
         read(line, *, iostat=ios) keyword, leg, pdg, state
@@ -239,20 +278,36 @@ contains
         call check_configuration(configuration)
         select case (trim(name))
         case ('I')
-          unused_first = 1
+          target_position = 1
         case ('J')
-          unused_first = 2
+          target_position = 2
         case ('IJ')
-          unused_first = 3
+          target_position = 3
         case default
           call fail_metadata('unknown FKS target name')
         end select
-        if (fks_target_kinds(unused_first, configuration) /= 0) then
+        if (fks_target_kinds(target_position, configuration) /= 0) then
           call fail_metadata('duplicate FKS_TARGET record')
         end if
-        fks_target_kinds(unused_first, configuration) = target_kind(kind)
-        fks_target_ids(unused_first, configuration) = target
-        fks_target_local_legs(unused_first, configuration) = leg
+        fks_target_kinds(target_position, configuration) = target_kind(kind)
+        fks_target_ids(target_position, configuration) = target
+        fks_target_local_legs(target_position, configuration) = leg
+      case ('FKS_PARTNER')
+        read(line, *, iostat=ios) keyword, configuration, leg, kind, target
+        call check_configuration(configuration)
+        call check_local_storage_index(leg)
+        if (fks_partner_target_kinds(leg, configuration) /= 0) then
+          call fail_metadata('duplicate FKS_PARTNER record')
+        end if
+        fks_partner_target_kinds(leg, configuration) = target_kind(kind)
+        fks_partner_target_ids(leg, configuration) = target
+        fks_partner_counts(configuration) = &
+             fks_partner_counts(configuration) + 1
+        if (fks_partner_counts(configuration) > nexternal) then
+          call fail_metadata('too many FKS partners in one configuration')
+        end if
+        fks_partner_local_values(fks_partner_counts(configuration), &
+                                 configuration) = leg
       case ('REAL_BORN_MAP')
         read(line, *, iostat=ios) keyword, configuration, leg, target
         call check_configuration(configuration)
@@ -261,6 +316,17 @@ contains
           call fail_metadata('duplicate REAL_BORN_MAP record')
         end if
         real_to_born_values(leg, configuration) = target
+      case ('COLOR_LINK')
+        color_record = color_record + 1
+        if (color_record > number_of_color_link_records) then
+          call fail_metadata('too many COLOR_LINK records')
+        end if
+        read(line, *, iostat=ios) keyword, &
+             color_local_first_values(color_record), &
+             color_local_second_values(color_record), &
+             color_visible_first_values(color_record), &
+             color_visible_second_values(color_record), &
+             color_generated_index_values(color_record)
       case ('END')
         end_seen = .true.
       case default
@@ -270,6 +336,9 @@ contains
     end do
     close(unit_number)
     if (.not. end_seen) call fail_metadata('END record is absent')
+    if (color_record /= number_of_color_link_records) then
+      call fail_metadata('COLOR_LINK record count changed while reading')
+    end if
 
     call validate_metadata_values()
     enabled = .true.
@@ -284,6 +353,12 @@ contains
 
     if (any(production_pdg_values == 0)) then
       call fail_metadata('production-leg records are incomplete')
+    end if
+    if (count(fks_partner_target_kinds /= 0) /= number_of_fks_partners) then
+      call fail_metadata('FKS-partner records disagree with COUNTS')
+    end if
+    if (sum(fks_partner_counts) /= number_of_fks_partners) then
+      call fail_metadata('ordered FKS-partner records disagree with COUNTS')
     end if
     do leg = 1, number_of_production_legs
       if ((leg <= nincoming) .eqv. production_final_values(leg)) then
@@ -378,6 +453,7 @@ contains
     if (born_count /= 1) then
       call fail_metadata('exactly one Born context is required')
     end if
+    call validate_color_link_values()
 
     do configuration = 1, fks_configs
       context = fks_context_values(configuration)
@@ -422,6 +498,38 @@ contains
           fks_target_ids(2, configuration) /= fks_j_d(configuration)) then
         call fail_metadata('local and generated visible FKS maps disagree')
       end if
+      do leg = 1, context_local_counts(context)
+        if (fks_partner_target_kinds(leg, configuration) == 0) cycle
+        if (fks_partner_target_kinds(leg, configuration) /= &
+            local_target_kinds(leg, context) .or. &
+            fks_partner_target_ids(leg, configuration) /= &
+            local_target_ids(leg, context)) then
+          call fail_metadata('FKS partner disagrees with the local map')
+        end if
+      end do
+      if (context_local_counts(context) < nexternal) then
+        if (any(fks_partner_target_kinds( &
+                context_local_counts(context) + 1:, configuration) /= 0)) then
+          call fail_metadata('FKS partner lies beyond its real context')
+        end if
+      end if
+      if (fks_partner_target_kinds( &
+          fks_j_values(configuration), configuration) == 0) then
+        call fail_metadata('FKS sister is absent from the partner list')
+      end if
+      if (fks_partner_counts(configuration) < 1) then
+        call fail_metadata('FKS configuration has no soft partners')
+      end if
+      do target = 1, fks_partner_counts(configuration)
+        leg = fks_partner_local_values(target, configuration)
+        call check_local_leg(context, leg)
+        if (leg == fks_i_values(configuration)) then
+          call fail_metadata('radiated leg appears in its soft-partner list')
+        end if
+        if (fks_partner_target_kinds(leg, configuration) == 0) then
+          call fail_metadata('ordered FKS partner is absent from its map')
+        end if
+      end do
       born_local_used = .false.
       do leg = 1, context_local_counts(context)
         if (leg == fks_i_values(configuration)) then
@@ -447,6 +555,142 @@ contains
       end if
     end do
   end subroutine validate_metadata_values
+
+
+  subroutine validate_color_link_values()
+    integer :: record, other, local_first, local_second
+    integer :: visible_first, visible_second, generated_index
+    integer :: expected_first, expected_second, endpoint_first
+    integer :: endpoint_second, node_leg, node_carrier, direct_target
+    logical :: node_used
+    logical, allocatable :: generated_used(:)
+
+    allocate(generated_used(number_of_generated_color_links))
+    generated_used = .false.
+    node_leg = 0
+    do local_first = 1, context_local_counts(born_context_id)
+      if (local_target_kinds(local_first, born_context_id) == &
+          nlo_decay_node_target) node_leg = local_first
+    end do
+    if (node_leg == 0) then
+      call fail_metadata('Born decay context has no parent node')
+    end if
+
+    ! A massive coloured parent has a self link.  Its visible image fixes the
+    ! unique colour carrier used when the decay is embedded in production.
+    node_carrier = 0
+    node_used = .false.
+    do record = 1, number_of_color_link_records
+      local_first = color_local_first_values(record)
+      local_second = color_local_second_values(record)
+      visible_first = color_visible_first_values(record)
+      visible_second = color_visible_second_values(record)
+      if (local_first /= node_leg .and. local_second /= node_leg) cycle
+      node_used = .true.
+      if (local_first == node_leg .and. local_second == node_leg) then
+        if (visible_first /= visible_second) then
+          call fail_metadata('parent self link maps to two visible legs')
+        end if
+        call set_node_carrier(visible_first, node_carrier)
+      else
+        if (local_first == node_leg) then
+          direct_target = local_target_ids(local_second, born_context_id)
+        else
+          direct_target = local_target_ids(local_first, born_context_id)
+        end if
+        if (visible_first == direct_target) then
+          call set_node_carrier(visible_second, node_carrier)
+        else if (visible_second == direct_target) then
+          call set_node_carrier(visible_first, node_carrier)
+        else
+          call fail_metadata('parent color link omits its direct-leg target')
+        end if
+      end if
+    end do
+    if (node_used .and. node_carrier == 0) then
+      call fail_metadata('cannot identify the parent color carrier')
+    end if
+
+    do record = 1, number_of_color_link_records
+      local_first = color_local_first_values(record)
+      local_second = color_local_second_values(record)
+      visible_first = color_visible_first_values(record)
+      visible_second = color_visible_second_values(record)
+      generated_index = color_generated_index_values(record)
+      call check_local_leg(born_context_id, local_first)
+      call check_local_leg(born_context_id, local_second)
+      if (local_first > local_second) then
+        call fail_metadata('COLOR_LINK local pair is not ordered')
+      end if
+      if (visible_first < 1 .or. visible_second > nexternal - 1 .or. &
+          visible_first > visible_second) then
+        call fail_metadata('COLOR_LINK visible pair is invalid')
+      end if
+      if (generated_index < 1 .or. &
+          generated_index > number_of_generated_color_links) then
+        call fail_metadata('COLOR_LINK generated index is out of range')
+      end if
+      generated_used(generated_index) = .true.
+
+      if (local_first == node_leg) then
+        endpoint_first = node_carrier
+      else
+        if (local_target_kinds(local_first, born_context_id) /= &
+            nlo_decay_leg_target) then
+          call fail_metadata('COLOR_LINK endpoint has an invalid target')
+        end if
+        endpoint_first = local_target_ids(local_first, born_context_id)
+      end if
+      if (local_second == node_leg) then
+        endpoint_second = node_carrier
+      else
+        if (local_target_kinds(local_second, born_context_id) /= &
+            nlo_decay_leg_target) then
+          call fail_metadata('COLOR_LINK endpoint has an invalid target')
+        end if
+        endpoint_second = local_target_ids(local_second, born_context_id)
+      end if
+      expected_first = min(endpoint_first, endpoint_second)
+      expected_second = max(endpoint_first, endpoint_second)
+      if (visible_first /= expected_first .or. &
+          visible_second /= expected_second) then
+        call fail_metadata('COLOR_LINK disagrees with the decay color map')
+      end if
+
+      do other = 1, record - 1
+        if (color_local_first_values(other) == local_first .and. &
+            color_local_second_values(other) == local_second) then
+          call fail_metadata('duplicate local COLOR_LINK pair')
+        end if
+        if (color_generated_index_values(other) == generated_index) then
+          if (color_visible_first_values(other) /= visible_first .or. &
+              color_visible_second_values(other) /= visible_second) then
+            call fail_metadata('generated COLOR_LINK index is ambiguous')
+          end if
+        else if (color_visible_first_values(other) == visible_first .and. &
+                 color_visible_second_values(other) == visible_second) then
+          call fail_metadata('visible COLOR_LINK pair has two indices')
+        end if
+      end do
+    end do
+    if (.not. all(generated_used)) then
+      call fail_metadata('generated COLOR_LINK indices are incomplete')
+    end if
+    deallocate(generated_used)
+  end subroutine validate_color_link_values
+
+
+  subroutine set_node_carrier(candidate, node_carrier)
+    integer, intent(in) :: candidate
+    integer, intent(inout) :: node_carrier
+    if (candidate < 1 .or. candidate > nexternal - 1) then
+      call fail_metadata('parent color carrier is out of range')
+    end if
+    if (node_carrier /= 0 .and. node_carrier /= candidate) then
+      call fail_metadata('parent has inconsistent visible color carriers')
+    end if
+    node_carrier = candidate
+  end subroutine set_node_carrier
 
 
   subroutine mark_visible_target(target, visible_count, used)
@@ -629,6 +873,86 @@ contains
     call check_configuration(configuration)
     nlo_decay_fks_ij = fks_ij_values(configuration)
   end function nlo_decay_fks_ij
+
+
+  integer function nlo_decay_partner_count(configuration)
+    integer, intent(in) :: configuration
+    call require_enabled()
+    call check_configuration(configuration)
+    nlo_decay_partner_count = fks_partner_counts(configuration)
+  end function nlo_decay_partner_count
+
+
+  integer function nlo_decay_partner_local(configuration, position)
+    integer, intent(in) :: configuration, position
+    call require_enabled()
+    call check_configuration(configuration)
+    if (position < 1 .or. position > fks_partner_counts(configuration)) then
+      call fail_metadata('FKS-partner position is out of range')
+    end if
+    nlo_decay_partner_local = &
+         fks_partner_local_values(position, configuration)
+  end function nlo_decay_partner_local
+
+
+  subroutine nlo_decay_map_color_link(configuration, real_first, real_second, &
+                                      visible_first, visible_second, multiplier)
+    integer, intent(in) :: configuration, real_first, real_second
+    integer, intent(out) :: visible_first, visible_second
+    double precision, intent(out) :: multiplier
+    integer :: born_first, born_second, record, temporary
+
+    call require_enabled()
+    call check_configuration(configuration)
+    call check_local_leg(fks_context_values(configuration), real_first)
+    call check_local_leg(fks_context_values(configuration), real_second)
+    born_first = real_to_born_values(real_first, configuration)
+    born_second = real_to_born_values(real_second, configuration)
+    if (born_first == 0 .or. born_second == 0) then
+      call fail_metadata('radiated leg has no decay color-link image')
+    end if
+    if (born_first > born_second) then
+      temporary = born_first
+      born_first = born_second
+      born_second = temporary
+    end if
+
+    record = find_color_link_record(born_first, born_second)
+    if (record == 0) then
+      call fail_metadata('decay-local color link is absent from metadata')
+    end if
+    visible_first = color_visible_first_values(record)
+    visible_second = color_visible_second_values(record)
+
+    ! Generated self links contain the conventional factor 1/2.  Crossing
+    ! an incoming decay charge to its unique final-state carrier changes its
+    ! sign.  Together these reproduce the standalone decay color links when
+    ! distinct local endpoints collapse onto one visible carrier.
+    multiplier = 1d0
+    if (.not. local_final_values(born_first, born_context_id)) then
+      multiplier = -multiplier
+    end if
+    if (.not. local_final_values(born_second, born_context_id)) then
+      multiplier = -multiplier
+    end if
+    if (born_first /= born_second .and. visible_first == visible_second) then
+      multiplier = 2d0*multiplier
+    end if
+  end subroutine nlo_decay_map_color_link
+
+
+  integer function find_color_link_record(local_first, local_second)
+    integer, intent(in) :: local_first, local_second
+    integer :: record
+    find_color_link_record = 0
+    do record = 1, number_of_color_link_records
+      if (color_local_first_values(record) == local_first .and. &
+          color_local_second_values(record) == local_second) then
+        find_color_link_record = record
+        return
+      end if
+    end do
+  end function find_color_link_record
 
 
   integer function nlo_decay_real_to_born(configuration, real_leg)

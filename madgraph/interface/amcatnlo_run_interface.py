@@ -256,11 +256,19 @@ def compile_dir(*arguments):
             else:
                 test_exe=test
             misc.compile([test_exe], cwd = this_dir, job_specs = False)
-            input = pjoin(me_dir, '%s_input.txt' % test)
+            input_path = pjoin(me_dir, '%s_input.txt' % test)
+            log_path = pjoin(this_dir, '%s.log' % test)
             #this can be improved/better written to handle the output
-            misc.call(['./%s' % (test_exe)], cwd=this_dir, 
-                    stdin = open(input), stdout=open(pjoin(this_dir, '%s.log' % test), 'w'),
+            with open(input_path) as input_stream, \
+                    open(log_path, 'w') as output_stream:
+                return_code = misc.call(
+                    ['./%s' % test_exe], cwd=this_dir,
+                    stdin=input_stream, stdout=output_stream,
                     close_fds=True)
+            if return_code:
+                raise aMCatNLOError(
+                    '%s failed in %s with exit status %d; see %s' %
+                    (test, p_dir, return_code, log_path))
             if test == 'check_poles' and os.path.exists(pjoin(this_dir,'MadLoop5_resources')) :
                 tf=tarfile.open(pjoin(this_dir,'MadLoop5_resources.tar.gz'),'w:gz',
                                                                  dereference=True)
@@ -6056,8 +6064,10 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
 
     def parse_test_mx_log(self, log):
         """read and parse the test_ME/MC.log file"""
-        content = open(log).read()
-        if 'FAILED' in content:
+        with open(log) as stream:
+            content = stream.read()
+        failure_markers = ('FAILED', 'FATAL ERROR', 'ERROR:')
+        if any(marker in content.upper() for marker in failure_markers):
             logger.info('Output of the failing test:\n'+content[:-1],'$MG:BOLD')
             raise aMCatNLOError('Some tests failed, run cannot continue. Please search on https://answers.launchpad.net/mg5amcnlo for more information, and in case there is none, report the problem there.')
         else:

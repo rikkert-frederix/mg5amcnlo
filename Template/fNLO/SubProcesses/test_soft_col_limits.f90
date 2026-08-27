@@ -3,6 +3,9 @@ module test_soft_col_limits_module
                                   has_decay_chains
   use decay_chain_kinematics, only: fks_leg_mass, &
                                     minimum_core_final_mass
+  use nlo_decay_metadata, only: has_nlo_decay
+  use nlo_decay_kinematics, only: nlo_decay_minimum_production_mass, &
+                                  nlo_decay_fks_sister_mass
   use process_dimensions, only: nexternal, nincoming, fks_configs, &
                                 nsplitorders, amp_split_size, order_names, &
                                 validate_process_and_born_dimensions
@@ -150,7 +153,7 @@ contains
     integer :: ncolltests, imax, iflag, iret, ntry, fks_conf_number
     integer :: fks_loop_min, fks_loop_max, fks_loop, iamp
     integer :: i_fks, j_fks, nfksprocess
-    double precision :: wgt, fx, totmass, sister_mass
+    double precision :: wgt, fx, totmass, sister_mass, initial_ebeam(2)
     double precision :: xi_i_fks_fix_save, y_ij_fks_fix_save
     double precision :: xi_i_fks_fix, y_ij_fks_fix
     logical :: calculated_born, softtest, colltest
@@ -174,6 +177,7 @@ contains
     read (*, *) nsofttests, ncolltests
 
     call setrun               !Sets up run parameters
+    initial_ebeam = ebeam
     call setpara('param_card.dat') !Sets up couplings and masses
     call init_fks_singular_bridge()
     call fill_configurations_common
@@ -241,9 +245,12 @@ contains
       if (has_decay_chains()) then
         totmass = max(totmass, minimum_core_final_mass())
       end if
-      if (lpp(1) .ne. 0) ebeam(1) = max(ebeam(1) &
+      if (has_nlo_decay()) then
+        totmass = max(totmass, nlo_decay_minimum_production_mass())
+      end if
+      if (lpp(1) .ne. 0) ebeam(1) = max(initial_ebeam(1) &
         &      /20d0, totmass)
-      if (lpp(2) .ne. 0) ebeam(2) = max(ebeam(2) &
+      if (lpp(2) .ne. 0) ebeam(2) = max(initial_ebeam(2) &
         &      /20d0, totmass)
 
       write (*, *) '  '
@@ -526,7 +533,9 @@ contains
         write (*, *) ''
         write (*, *) ''
 
-        if (has_decay_chains()) then
+        if (has_nlo_decay()) then
+          sister_mass = nlo_decay_fks_sister_mass(nfksprocess)
+        elseif (has_decay_chains()) then
           sister_mass = fks_leg_mass(nfksprocess, j_fks)
         else
           sister_mass = generated_masses(j_fks)
