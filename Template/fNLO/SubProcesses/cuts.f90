@@ -2,7 +2,7 @@ module cuts_module
   use process_dimensions, only: nexternal, nincoming
   use run_state, only: gamma_is_j, maxjetflavor, ptgmin, etagamma, isoem, &
        r0gamma, xn, epsgamma, ptl, etal, drll, drll_sf, mll, mll_sf, &
-       ptj, jetalgo, jetradius, etaj
+       ptj, jetalgo, jetradius, etaj, cut_decays
   use boostwdir2_module, only: boostwdir2
   use kin_functions_module, only: pt => pt_impl, eta => eta_impl, &
        delta_phi => delta_phi_impl, theta => theta_impl, dot => dot_impl
@@ -10,12 +10,17 @@ module cuts_module
   use fastjet_timing_wrapper, only: fastjet_etamax_timed
   use fixed_order_user_hooks, only: accept_dummy_cuts
   use fnlo_process_common, only: etmin, etmax, mxxmin, &
-       event_masses => particle_masses, event_idup => idup
+       event_masses => particle_masses, event_idup => idup, &
+       event_from_decay => from_decay
   implicit none
   private
 
   public :: passcuts
+  public :: apply_decay_cut_mask
   public :: chi_gamma_iso, sortzv, iso_getdrv40
+
+  integer, parameter :: decay_cut_pdg = 999999
+  integer, parameter :: decay_cut_status = 2
 
 contains
 
@@ -103,7 +108,7 @@ contains
 
   ! Apply PDG specific cuts
   passcuts_user = passcuts_user .and. &
-  & passcuts_pdgs(p_reco)
+  & passcuts_pdgs(p_reco,istatus)
   if (.not.passcuts_user) return
 
 !***************************************************************
@@ -551,9 +556,10 @@ contains
   return
   end function passcuts_leptons
 
-  logical function passcuts_pdgs(p)
+  logical function passcuts_pdgs(p,istatus)
   implicit none
   double precision p(0:4,nexternal)
+  integer istatus(nexternal)
 ! PDG specific cut
 ! temporary variable for caching locally computation
   double precision tmpvar
@@ -566,6 +572,7 @@ contains
 !     PDG SPECIFIC CUTS (PT/M_IJ)
 !
   do i=nincoming+1,nexternal-1
+  if (istatus(i).ne.1) cycle
   if(etmin(i).gt.0d0 .or. etmax(i).gt.0d0)then
   tmpvar = pt_04(p(0,i))
   if (tmpvar.lt.etmin(i)) then
@@ -577,6 +584,7 @@ contains
   endif
   endif
   do j=i+1, nexternal-1
+  if (istatus(j).ne.1) cycle
   if (mxxmin(i,j).gt.0d0)then
   if (invm2_04(p(0,i),p(0,j),1d0).lt.mxxmin(i,j)**2)then
   passcuts_pdgs=.false.
@@ -646,12 +654,33 @@ contains
   ipdg(i)=event_idup(i,1)
   if (ipdg(i).eq.-21) ipdg(i)=21
   enddo
+! Hide forced-decay products only in the private view passed to generation
+! cuts.  Matrix elements, scales, and fixed-order analyses keep the complete
+! assembled event.
+  call apply_decay_cut_mask(pp,istatus,ipdg)
 ! Call the actual cuts function
   passcuts = passcuts_user(pp,istatus,ipdg)
   call cpu_time(tAfter)
   t_cuts=t_cuts+(tAfter-tBefore)
   RETURN
   end function passcuts
+
+
+  subroutine apply_decay_cut_mask(p, istatus, ipdg)
+  implicit none
+  double precision, intent(inout) :: p(0:4,nexternal)
+  integer, intent(inout) :: istatus(nexternal), ipdg(nexternal)
+  integer :: i
+
+  if (cut_decays) return
+  do i=nincoming+1,nexternal
+  if (event_from_decay(i)) then
+  p(:,i)=0d0
+  istatus(i)=decay_cut_status
+  ipdg(i)=decay_cut_pdg
+  endif
+  enddo
+  end subroutine apply_decay_cut_mask
 
 
   function chi_gamma_iso(dr,R0,xn,epsgamma,pTgamma)

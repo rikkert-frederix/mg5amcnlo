@@ -131,6 +131,11 @@ c The real event and its three FKS counterevents share one layout.
       double precision ybst_til_tolab(soft_counterevent:real_event)
       double precision ybst_til_tocm(soft_counterevent:real_event)
 
+c Decay ancestry of the fully assembled event.  This common block has
+c the same ABI as decay_cut_mask.inc in the parent NLO template.
+      logical from_decay(nexternal)
+      common /to_decay_cut_mask/from_decay
+
       complex(kind=kind(0d0)) xij_aor
       common /cxij_aor/xij_aor
 

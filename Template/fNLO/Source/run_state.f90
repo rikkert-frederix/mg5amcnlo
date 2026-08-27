@@ -21,6 +21,7 @@ module run_state
   public :: jetalgo, jetradius, ptj, etaj, ptl, etal, drll, drll_sf
   public :: mll, mll_sf, gamma_is_j, ptgmin, r0gamma, xn, epsgamma
   public :: etagamma, isoem, maxjetflavor
+  public :: cut_decays
   public :: lhaid, pdlabel
   public :: asmz, nloop, iseed
 
@@ -78,6 +79,7 @@ module run_state
   logical :: isoem
 
   integer :: maxjetflavor
+  logical :: cut_decays
 
 contains
 
@@ -130,6 +132,7 @@ contains
     etagamma = 0d0
     isoem = .false.
     maxjetflavor = 0
+    cut_decays = .false.
     lhaid = 0
     pdlabel = ''
     asmz = 0d0

@@ -8,6 +8,7 @@ c     INCLUDE
 c
       include 'genps.inc'
       include 'nexternal.inc'
+      include 'decay_cut_mask.inc'
       include 'coupl.inc'
       include 'run.inc'
       include 'cuts.inc'
@@ -49,6 +50,12 @@ c
 C-----
 C  BEGIN CODE
 C-----
+c     Stable-process runs start with no decay products in the cut mask.
+c     An assembled exact-NWA event overwrites this through
+c     set_decay_cut_mask before passcuts is called.
+      do i=1,nexternal
+         from_decay(i)=.false.
+      enddo
 c
 c     No pdfs for decay processes - set here since here we know the nincoming
 c     Also set stot here, and use mass of incoming particle for ren scale
@@ -147,6 +154,25 @@ c     fully ensure that this is not a jet/lepton/photon
 
       RETURN
       END
+
+
+      subroutine set_decay_cut_mask(mask)
+c************************************************************************
+c     Install the decay ancestry of the current assembled event.  The
+c     incoming legs can never be decay products.
+c************************************************************************
+      implicit none
+      include 'nexternal.inc'
+      logical mask(nexternal)
+      include 'decay_cut_mask.inc'
+      integer i
+
+      do i=1,nexternal
+         from_decay(i)=mask(i)
+         if(i.le.nincoming) from_decay(i)=.false.
+      enddo
+      return
+      end
 
 
       subroutine set_tau_min()
@@ -679,5 +705,4 @@ c
       new_point=.false.
       return
       end
-
 

@@ -153,6 +153,11 @@ $ion_pdf
 #***********************************************************************
  %(bwcutoff)s  = bwcutoff
 #***********************************************************************
+# Apply the generation cuts to particles produced by forced decays.    *
+# This has no effect on the particles passed to fixed-order analyses.  *
+#***********************************************************************
+ %(cut_decays)s = cut_decays ! Cut decay products
+#***********************************************************************
 # Cuts on the jets. Jet clustering is performed by FastJet.            *
 #  - If gamma_is_j, photons are also clustered with jets.              *
 #    Otherwise, they will be treated as tagged particles and photon    * 

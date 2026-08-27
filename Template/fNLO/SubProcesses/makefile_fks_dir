@@ -205,7 +205,8 @@ decay_chain_parameters.o: decay_chain_metadata.o
 decay_chain_parameters_bridge.o: decay_chain_parameters.o
 phase_space_kinematics.o: process_dimensions.o \
 	$(LIBDIR)kin_functions_module.mod
-decay_chain_kinematics.o: process_dimensions.o decay_chain_metadata.o \
+decay_chain_kinematics.o: process_dimensions.o fnlo_process_common.o \
+	decay_chain_metadata.o \
 	decay_chain_parameters.o phase_space_kinematics.o
 decay_chain_scales.o: process_dimensions.o decay_chain_metadata.o \
 	decay_chain_parameters.o decay_chain_kinematics.o \
@@ -310,7 +311,7 @@ check_poles.o: process_dimensions.o fks_metadata.o mint_module.o \
 	FKSParams.o fks_random.o fks_singular.o $(LIBDIR)run_state.mod \
 	$(LIBDIR)run_printout_module.mod
 check_poles_bridge.o: check_poles.o
-cuts.o: process_dimensions.o boostwdir2.o \
+cuts.o: process_dimensions.o fnlo_process_common.o boostwdir2.o \
 	dummy_fct.o fastjet_wrapper.o \
 	$(LIBDIR)run_state.mod $(LIBDIR)timing_state.mod \
 	$(LIBDIR)kin_functions_module.mod

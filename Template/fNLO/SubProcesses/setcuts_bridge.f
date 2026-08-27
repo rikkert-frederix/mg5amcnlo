@@ -7,11 +7,14 @@ c-----------------------------------------------------------------------
       use setcuts_module, only: setcuts_impl
       use fnlo_process_common, only: pmass=>particle_masses,idup,
      $     etmin,etmax,mxxmin,is_a_j,is_a_lp,is_a_lm,is_a_ph
+     $     ,from_decay
       implicit none
       include 'coupl.inc'
       double precision zero
       parameter (zero=0d0)
       include 'pmass.inc'
+
+      from_decay=.false.
 
       call setcuts_impl(nf,pmass,idup,etmin,etmax,mxxmin,
      $     is_a_j,is_a_lp,is_a_lm,is_a_ph)

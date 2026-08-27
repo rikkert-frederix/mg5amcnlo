@@ -5725,6 +5725,7 @@ class RunCardNLO(RunCard):
         self.add_param('ickkw', 0, allowed=[-1,0,3,4], comment=" - 0: No merging\n - 3:  FxFx Merging :  http://amcatnlo.cern.ch/FxFx_merging.htm\n - 4: UNLOPS merging (No interface within MG5aMC)\n - -1:  NNLL+NLO jet-veto computation. See arxiv:1412.8408 [hep-ph]")
         self.add_param('bwcutoff', 15.0)
         #cuts        
+        self.add_param('cut_decays', False, cut=True)
         self.add_param('jetalgo', 1.0)
         self.add_param('jetradius', 0.7)         
         self.add_param('ptj', 10.0 , cut=True)
