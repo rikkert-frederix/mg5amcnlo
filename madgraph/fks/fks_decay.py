@@ -2979,7 +2979,7 @@ def _build_nlo_decay_color_links(combined_born, decay_born,
     return color_links, records
 
 
-def _factorized_fks_info(info):
+def _factorized_fks_info(info, real=None):
     """Copy the stage-local fields needed by a product-sector catalog.
 
     In particular, do not retain ``underlying_born`` Leg objects.  They are
@@ -2990,8 +2990,21 @@ def _factorized_fks_info(info):
     fields = [
         'i', 'j', 'ij', 'ij_id', 'splitting_type',
         'need_color_links', 'need_charge_links', 'extra_cnt_index']
-    return dict((field, copy.deepcopy(info[field]))
-                for field in fields if field in info)
+    result = dict((field, copy.deepcopy(info[field]))
+                  for field in fields if field in info)
+    if real is not None:
+        # The ordinary additive exporter can recover this information from
+        # the active FKSRealProcess.  A multiplicative carrier is assembled
+        # after the individual contribution objects have been bundled, so it
+        # must retain the stage-local soft partner set explicitly.  Keeping
+        # local leg numbers here is important: flattened visible numbers are
+        # different for every simultaneous-emission carrier.
+        result['partners'] = tuple(
+            real.fks_j_from_i.get(info['i'], ()))
+        result['partition_partners'] = tuple(
+            (emitter, tuple(partners))
+            for emitter, partners in sorted(real.fks_j_from_i.items()))
+    return result
 
 
 def compose_nlo_decay_helas_process(fks_process, composition):
@@ -3085,7 +3098,7 @@ def compose_nlo_decay_helas_process(fks_process, composition):
     for index, (real, decay_real_me) in enumerate(
             zip(fks_process.real_processes, decay_real_mes), 1):
         factorized_real_fks_infos.append(tuple(
-            _factorized_fks_info(info) for info in real.fks_infos))
+            _factorized_fks_info(info, real) for info in real.fks_infos))
         real_current = _matrix_element_as_decay_current(decay_real_me)
         real_current = _attach_corrected_downstream_decays(
             real_current, corrected_process)
@@ -3444,7 +3457,8 @@ def apply_decay_assignment(fks_process, assignment):
         'born_amplitude': core_born_amplitude,
         'real_amplitudes': tuple(core_real_amplitudes),
         'real_fks_infos': tuple(
-            tuple(_factorized_fks_info(info) for info in real.fks_infos)
+            tuple(_factorized_fks_info(info, real)
+                  for info in real.fks_infos)
             for real in fks_process.real_processes),
         # A multiplicative sector still has to insert roots whose decays are
         # LO only.  Keep an immutable current for every concrete root and let

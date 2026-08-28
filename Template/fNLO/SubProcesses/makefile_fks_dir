@@ -22,6 +22,9 @@ endif
 
 FNLO_MADLOOP_LIBRARIES = $(if $(strip $(FNLO_VIRTUAL_LIBRARIES)),\
 	$(FNLO_VIRTUAL_LIBRARIES),$(libmadloop))
+FNLO_PRODUCT_GENERATED = \
+	$(patsubst %.f90,%.o,$(wildcard multiplicative_product_generated.f90)) \
+	$(patsubst %.f,%.o,$(wildcard product_carrier_*.f))
 NLOLIBS=-L$(LIBDIR) $(FNLO_MADLOOP_LIBRARIES) \
 	$(libcuttools) $(libOLP)
 
@@ -42,7 +45,8 @@ FILES= fnlo_process_common.o process_dimensions.o			\
 	 process_dimensions_bridge.o					\
 	 fks_metadata.o fks_metadata_bridge.o				\
 	 nlo_contribution_bundle.o					\
-	 multiplicative_product.o					\
+	 multiplicative_product.o multiplicative_product_kinematics.o	\
+	 $(FNLO_PRODUCT_GENERATED)					\
 	 nlo_decay_metadata.o decay_chain_metadata.o			\
 	 decay_chain_parameters.o					\
 	 fnlo_scale_variations.o					\
@@ -219,6 +223,12 @@ fks_metadata.o: process_dimensions.o
 fks_metadata_bridge.o: fks_metadata.o
 nlo_contribution_bundle.o: process_dimensions.o
 multiplicative_product.o: process_dimensions.o
+multiplicative_product_kinematics.o: multiplicative_product.o \
+	fks_model_state.o fks_qcd_splitting.o fks_Sij.o \
+	decay_chain_kinematics.o boostwdir2.o \
+	$(LIBDIR)kin_functions_module.mod
+multiplicative_product_generated.o: multiplicative_product.o \
+	multiplicative_product_kinematics.o
 nlo_decay_metadata.o: process_dimensions.o fks_metadata.o \
 	nlo_contribution_bundle.o
 decay_chain_metadata.o: process_dimensions.o fks_metadata.o \

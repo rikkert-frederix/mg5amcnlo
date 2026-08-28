@@ -1347,6 +1347,53 @@ class TestFKSDecayChains(unittest.TestCase):
         self.assertEqual(product_info.count('\nSTAGE '), 3)
         self.assertEqual(product_info.count('\nCHOICE '), 11)
 
+        layout = catalog.canonical_layout
+        self.assertTrue(layout.supports_all_stages)
+        self.assertEqual(layout.initial_count, 2)
+        self.assertEqual(layout.base_count, 6)
+        self.assertEqual(layout.max_count, 9)
+        self.assertEqual(layout.emission_slots, {1: 7, 2: 8, 3: 9})
+        self.assertEqual(layout.carrier_count, 16)
+        born_carrier = layout.carrier((0, 0, 0))
+        self.assertEqual(
+            born_carrier.matrix_element.
+            fnlo_product_selected_squared_orders,
+            ((4, 4),))
+        self.assertEqual(
+            born_carrier.matrix_element.get('processes')[0].get(
+                'squared_orders'), {})
+        maximum_carrier = layout.carrier((1, 1, 1))
+        self.assertEqual(maximum_carrier.local_count, 9)
+        self.assertEqual(set(maximum_carrier.local_to_canonical),
+                         set(range(1, 10)))
+
+        # A production-level top colour charge is the coherent sum of its
+        # coloured decay descendants.  When that decay is real, its gluon is
+        # part of the sum as well.  The incoming top of the decay-local
+        # process is crossed and therefore carries the opposite sign.
+        top_endpoint = layout.color_endpoint_expansion(
+            (0, 1, 1), 1, 1, 3, 3)
+        self.assertEqual(len(top_endpoint), 2)
+        self.assertEqual(set(sign for _, sign in top_endpoint), set([1]))
+        decay_parent_endpoint = layout.color_endpoint_expansion(
+            (0, 0, 0), 2, 1, 1, 1)
+        self.assertEqual(len(decay_parent_endpoint), 1)
+        self.assertEqual(decay_parent_endpoint[0][1], -1)
+
+        layout.prepare_color_insertions()
+        self.assertGreater(len(
+            layout.carrier((0, 0, 0)).color_insertions), 1)
+        runtime_plans = fks_product._product_runtime_plans(layout)
+        self.assertEqual(max(
+            len(term['eikonals']) for plan in runtime_plans
+            for term in plan['soft_terms']), 3)
+        layout_info = fks_product.product_layout_info_text(layout)
+        self.assertIn('STATUS COMPLETE\n', layout_info)
+        self.assertIn('BASE_LEGS 6\n', layout_info)
+        self.assertIn('MAX_LEGS 9\n', layout_info)
+        self.assertEqual(layout_info.count('\nEMISSION_SLOT '), 3)
+        self.assertEqual(layout_info.count('\nCARRIER '), 16)
+
     def test_product_sector_retains_uncorrected_root_decays(self):
         command = self.generate(
             'u u~ > t t~ [real=QCD], '
@@ -1598,6 +1645,53 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertEqual(product_metadata.count('\nVIRTUAL_ORDER '), 3)
             self.assertTrue(os.path.isfile(os.path.join(
                 subprocess_dir, 'multiplicative_product.f90')))
+            self.assertTrue(os.path.isfile(os.path.join(
+                subprocess_dir, 'multiplicative_product_kinematics.f90')))
+            with open(os.path.join(
+                    subprocess_dir,
+                    'multiplicative_product_layout.dat')) as stream:
+                product_layout = stream.read()
+            self.assertIn('STATUS COMPLETE\n', product_layout)
+            self.assertIn('INITIAL_LEGS 2\n', product_layout)
+            self.assertIn('BASE_LEGS 6\n', product_layout)
+            self.assertIn('MAX_LEGS 9\n', product_layout)
+            self.assertEqual(product_layout.count('\nEMISSION_SLOT '), 3)
+            self.assertEqual(product_layout.count('\nCARRIER '), 16)
+            for prefix in ['product_carrier_',
+                           'product_carrier_amplitudes_',
+                           'product_carrier_contraction_']:
+                self.assertEqual(len([
+                    name for name in os.listdir(subprocess_dir)
+                    if name.startswith(prefix) and name.endswith('.f') and
+                    name[len(prefix):-2].isdigit()]),
+                    16)
+            with open(os.path.join(
+                    subprocess_dir, 'product_carrier_001.f')) as stream:
+                ordinary_carrier = ' '.join(stream.read().split())
+            self.assertIn('DATA CHOSEN_SO_CONFIGS/.TRUE./',
+                          ordinary_carrier)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'product_carrier_contraction_001.f')) as stream:
+                correlated_carrier = ' '.join(stream.read().split())
+            self.assertIn(
+                'DATA (KEEP_AMP_PAIR_FLAT(I),I=1,1) /.TRUE./',
+                correlated_carrier)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'multiplicative_product_generated.f90')) as stream:
+                generated_product = stream.read()
+            self.assertIn('module multiplicative_product_generated',
+                          generated_product)
+            self.assertIn('subroutine generated_product_mapper',
+                          generated_product)
+            self.assertIn('subroutine generated_product_carrier',
+                          generated_product)
+            self.assertIn('subroutine generated_product_kernel',
+                          generated_product)
+            self.assertIn('PRODUCT_CARRIER_001_CONTRACT',
+                          generated_product)
+            self.assertNotIn('\n     $', generated_product)
             with open(os.path.join(
                     subprocess_dir, 'driver_mintFO.f90')) as stream:
                 driver_source = stream.read()

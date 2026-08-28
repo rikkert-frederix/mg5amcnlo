@@ -117,6 +117,19 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
     """Class to take care of exporting a set of matrix elements to
     Fortran (v4) format."""
 
+    def set_chosen_SO_index(self, process, squared_orders):
+        """Honor the exact factor-local order selection of product carriers."""
+
+        selected = getattr(
+            process, 'fnlo_product_selected_squared_orders', None)
+        if selected is None:
+            return super(ProcessExporterFortranFKS, self).\
+                set_chosen_SO_index(process, squared_orders)
+        selected = set(tuple(order) for order in selected)
+        return ','.join(
+            '.true.' if tuple(order) in selected else '.false.'
+            for order in squared_orders)
+
     def get_fks_template_dir(self):
         """Return the NLO template selected by the output format."""
 
@@ -1010,6 +1023,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             if product_catalog is not None:
                 fks_product.write_product_info(
                     os.getcwd(), product_catalog)
+                calls += self.write_multiplicative_product_carriers(
+                    product_catalog, fortran_model)
 
 ## write the files corresponding to the born process in the P* directory
         self.generate_born_fks_files(matrix_element,
@@ -1359,6 +1374,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               'fks_metadata_bridge.f',
                               'nlo_contribution_bundle.f90',
                               'multiplicative_product.f90',
+                              'multiplicative_product_kinematics.f90',
                               'nlo_decay_metadata.f90',
                               'decay_chain_metadata.f90',
                               'decay_chain_parameters.f90',
@@ -2957,6 +2973,341 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
 
 
     #===========================================================================
+    def write_multiplicative_product_carriers(self, catalog,
+                                              fortran_model):
+        """Export every distinct coherent tree source used by the product.
+
+        FKS configurations and tensor counterevents that reduce to the same
+        tuple of Born/real trees deliberately share one routine.  Each
+        standalone routine owns literal external-state dimensions, so it is
+        not constrained by the legacy ``nexternal.inc`` buffer with room for
+        only one emission.  The generated module performs the canonical-leg
+        permutation before dispatching the matrix element.
+        """
+
+        layout = catalog.canonical_layout
+        layout.prepare_color_insertions()
+        calls = 0
+        for carrier in layout.iter_carriers():
+            filename = 'product_carrier_%03d.f' % carrier.id
+            prefix = 'PRODUCT_CARRIER_%03d_' % carrier.id
+            calls += self.write_matrix_element_v4(
+                writers.FortranWriter(filename), carrier.matrix_element,
+                fortran_model, proc_prefix=prefix)
+            calls += self.write_product_carrier_amplitudes(
+                writers.FortranWriter(
+                    'product_carrier_amplitudes_%03d.f' % carrier.id),
+                carrier, fortran_model)
+            calls += self.write_product_carrier_contraction(
+                writers.FortranWriter(
+                    'product_carrier_contraction_%03d.f' % carrier.id),
+                carrier)
+        writers.FortranWriter90(
+            'multiplicative_product_generated.f90').writelines(
+                fks_product.product_carrier_dispatch_text(layout),
+                formatting=False)
+        return calls
+
+    def write_product_carrier_amplitudes(self, writer, carrier,
+                                         fortran_model):
+        """Export unsquared diagram amplitudes for correlated contractions.
+
+        Ordinary standalone matrix routines sum over helicity and colour
+        immediately.  Tensor counterevents instead need the same coherent
+        full-event amplitude with several colour-charge and helicity-flip
+        operators inserted at once.  Retaining the diagram amplitudes for
+        every helicity lets generated colour bases perform those contractions
+        without rerunning HELAS once per soft partner tuple.
+        """
+
+        matrix_element = carrier.matrix_element
+        if (not matrix_element.get('processes') or
+                not matrix_element.get('diagrams')):
+            return 0
+        if not isinstance(writer, writers.FortranWriter):
+            raise writers.FortranWriter.FortranWriterError(
+                'writer not FortranWriter')
+        writers.FortranWriter.downcase = False
+        nexternal, _ = matrix_element.get_nexternal_ninitial()
+        ncomb = matrix_element.get_helicity_combinations()
+        ngraphs = matrix_element.get_number_of_amplitudes()
+        nwavefunctions = matrix_element.get_number_of_wavefunctions()
+        wavefunction_size = (20 if (not self.model or any(
+            particle.get('spin') in [4, 5]
+            for particle in self.model.get('particles') if particle)) else 8)
+        helas_calls = fortran_model.get_matrix_element_calls(matrix_element)
+        replace = {
+            'identifier': carrier.id,
+            'info_lines': self.get_mg5_info_lines(),
+            'process_lines': self.get_process_info_lines(matrix_element),
+            'nexternal': nexternal,
+            'ncomb': ncomb,
+            'ngraphs': ngraphs,
+            'nwavefunctions': nwavefunctions,
+            'wavefunction_size': wavefunction_size,
+            'helicity_lines': self.get_helicity_lines(matrix_element),
+            'helas_calls': '\n'.join(helas_calls)}
+        source = r'''      SUBROUTINE PRODUCT_CARRIER_%(identifier)3.3d_AMPLITUDES(P,
+     $     AMP_OUT,NHEL_OUT)
+C
+%(info_lines)s
+C
+C Unsquared coherent product-carrier amplitudes for every helicity.
+%(process_lines)s
+C
+      IMPLICIT NONE
+      INTEGER NEXTERNAL,NCOMB,NGRAPHS,NWAVEFUNCS
+      PARAMETER (NEXTERNAL=%(nexternal)d,NCOMB=%(ncomb)d)
+      PARAMETER (NGRAPHS=%(ngraphs)d,NWAVEFUNCS=%(nwavefunctions)d)
+      REAL*8 P(0:3,NEXTERNAL)
+      COMPLEX*16 AMP_OUT(NGRAPHS,NCOMB)
+      INTEGER NHEL_OUT(NEXTERNAL,NCOMB)
+      INTEGER NHEL(NEXTERNAL,NCOMB),IHEL,I
+%(helicity_lines)s
+      AMP_OUT=(0D0,0D0)
+      NHEL_OUT=NHEL
+      DO IHEL=1,NCOMB
+        CALL PRODUCT_CARRIER_%(identifier)3.3d_AMPLITUDE_ONE(P,
+     $       NHEL(1,IHEL),AMP_OUT(1,IHEL))
+      ENDDO
+      END
+
+      SUBROUTINE PRODUCT_CARRIER_%(identifier)3.3d_AMPLITUDE_ONE(P,NHEL,AMP)
+      IMPLICIT NONE
+      INTEGER NEXTERNAL,NGRAPHS,NWAVEFUNCS
+      PARAMETER (NEXTERNAL=%(nexternal)d,NGRAPHS=%(ngraphs)d)
+      PARAMETER (NWAVEFUNCS=%(nwavefunctions)d)
+      REAL*8 P(0:3,NEXTERNAL),ZERO
+      PARAMETER (ZERO=0D0)
+      INTEGER NHEL(NEXTERNAL),IC(NEXTERNAL),I
+      COMPLEX*16 AMP(NGRAPHS)
+      COMPLEX*16 W(%(wavefunction_size)d,NWAVEFUNCS)
+      INCLUDE 'coupl.inc'
+      DO I=1,NEXTERNAL
+        IC(I)=1
+      ENDDO
+%(helas_calls)s
+      END
+''' % replace
+        writer.writelines(source)
+        return len([call for call in helas_calls if call.find('#') != 0])
+
+    def write_product_carrier_contraction(self, writer, carrier):
+        """Export an arbitrary simultaneous colour/spin contraction.
+
+        The companion amplitude routine evaluates HELAS once.  This routine
+        then builds the JAMPs in every ordered multi-link colour basis and
+        contracts a caller-supplied product of two-state helicity operators.
+        ``LINK_ID=0`` and ``NSPIN=0`` reproduces the ordinary squared carrier.
+        """
+
+        matrix_element = carrier.matrix_element
+        if (not matrix_element.get('processes') or
+                not matrix_element.get('diagrams')):
+            return 0
+        if not isinstance(writer, writers.FortranWriter):
+            raise writers.FortranWriter.FortranWriterError(
+                'writer not FortranWriter')
+        writers.FortranWriter.downcase = False
+        nexternal, _ = matrix_element.get_nexternal_ninitial()
+        ncomb = matrix_element.get_helicity_combinations()
+        ngraphs = matrix_element.get_number_of_amplitudes()
+        process = matrix_element.get('processes')[0]
+        split_orders = process.get('split_orders')
+        if split_orders:
+            squared_orders, amplitude_orders = \
+                matrix_element.get_split_orders_mapping()
+            chosen = [entry.strip().lower() == '.true.' for entry in
+                      self.set_chosen_SO_index(
+                          process, squared_orders).split(',')]
+            selected_orders = set(
+                order for order, keep in zip(squared_orders, chosen) if keep)
+        else:
+            amplitude_orders = [((1,), tuple(range(1, ngraphs + 1)))]
+            selected_orders = set([(2,)])
+        namplitude_orders = len(amplitude_orders)
+        # Fortran arrays are column-major: the first amplitude-order index is
+        # the fastest varying index in KEEP_AMP_PAIR(M,N).
+        amplitude_pair_filter = []
+        for second in amplitude_orders:
+            for first in amplitude_orders:
+                squared = tuple(
+                    left + right for left, right in
+                    zip(first[0], second[0]))
+                amplitude_pair_filter.append(
+                    '.TRUE.' if squared in selected_orders else '.FALSE.')
+        insertions = carrier.color_insertions
+        ninsertions = len(insertions)
+        original_colors = max(1, len(matrix_element.get('color_basis')))
+        maximum_colors = max(
+            max(1, len(insertion['basis'])) for insertion in insertions)
+        row_denominators = sum(
+            (insertion['matrix'].get_line_denominators()
+             for insertion in insertions), [])
+        denominator = max(1, color_amp.ColorMatrix.lcmm(
+            *row_denominators))
+
+        color_values = []
+        color_counts = []
+        jamp_blocks = []
+        maximum_temporary = 1
+        for insertion_index, insertion in enumerate(insertions, 1):
+            color_counts.append(max(1, len(insertion['basis'])))
+            matrix = insertion['matrix']
+            for original in range(original_colors):
+                row = [int(value) for value in
+                       matrix.get_line_numerators(original, denominator)]
+                row.extend([0] * (maximum_colors - len(row)))
+                color_values.extend(row)
+
+            linked = copy.copy(matrix_element)
+            linked.set('color_basis', insertion['basis'])
+            if split_orders:
+                jamp_format = (
+                    'JAMP_LINK(%%s,IHEL,%d,{0})' % insertion_index)
+                lines, temporary = self.get_JAMP_lines_split_order(
+                    linked, amplitude_orders,
+                    split_order_names=split_orders,
+                    JAMP_format=jamp_format)
+            else:
+                jamp_format = (
+                    'JAMP_LINK(%%s,IHEL,%d,1)' % insertion_index)
+                lines, temporary = self.get_JAMP_lines(
+                    linked, JAMP_format=jamp_format)
+            maximum_temporary = max(maximum_temporary, temporary)
+            jamp_blocks.append(
+                '      AMP(1:NGRAPHS)=AMP_ALL(1:NGRAPHS,IHEL)')
+            jamp_blocks.extend(lines)
+
+        def data_chunks(name, values, width=40):
+            result = []
+            for start in range(0, len(values), width):
+                chunk = values[start:start + width]
+                result.append('      DATA (%s(I),I=%d,%d) /%s/' % (
+                    name, start + 1, start + len(chunk),
+                    ','.join(str(value) for value in chunk)))
+            return result
+
+        source = r'''      SUBROUTINE PRODUCT_CARRIER_%(identifier)3.3d_CONTRACT(P,
+     $     LINK_ID,NSPIN,SPIN_LEGS,SPIN_MATRIX,VALUE,PASS)
+C
+%(info_lines)s
+C
+C Exact coherent contraction with ordered colour and spin operators.
+%(process_lines)s
+C
+      IMPLICIT NONE
+      INTEGER NEXTERNAL,NCOMB,NGRAPHS,NINSERT,NCOLOR0,MAXCOLOR,NAMPSO
+      PARAMETER (NEXTERNAL=%(nexternal)d,NCOMB=%(ncomb)d)
+      PARAMETER (NGRAPHS=%(ngraphs)d,NINSERT=%(ninsertions)d)
+      PARAMETER (NCOLOR0=%(original_colors)d,MAXCOLOR=%(maximum_colors)d)
+      PARAMETER (NAMPSO=%(namplitude_orders)d)
+      REAL*8 P(0:3,NEXTERNAL)
+      INTEGER LINK_ID,NSPIN,SPIN_LEGS(NEXTERNAL)
+      COMPLEX*16 SPIN_MATRIX(2,2,NEXTERNAL),VALUE
+      LOGICAL PASS,KEEP_AMP_PAIR(NAMPSO,NAMPSO)
+      LOGICAL KEEP_AMP_PAIR_FLAT(NAMPSO*NAMPSO)
+      INTEGER NHEL(NEXTERNAL,NCOMB),IHEL,JHEL,I,J,K,L,M,N,ROW,COL
+      INTEGER NCOLORS(NINSERT),CF(MAXCOLOR,NCOLOR0,NINSERT)
+      INTEGER CF_FLAT(MAXCOLOR*NCOLOR0*NINSERT),IDEN,DENOM
+      COMPLEX*16 AMP_ALL(NGRAPHS,NCOMB),AMP(NGRAPHS)
+      COMPLEX*16 JAMP_LINK(MAXCOLOR,NCOMB,NINSERT,NAMPSO)
+      COMPLEX*16 TMP_JAMP(%(maximum_temporary)d),SPIN_FACTOR,TERM
+      COMPLEX*16 IMAG1
+      PARAMETER (IMAG1=(0D0,1D0))
+      EQUIVALENCE (CF,CF_FLAT)
+      EQUIVALENCE (KEEP_AMP_PAIR,KEEP_AMP_PAIR_FLAT)
+      DATA IDEN/%(identity_denominator)d/
+      DATA DENOM/%(color_denominator)d/
+%(helicity_lines)s
+%(color_count_lines)s
+%(color_data_lines)s
+%(amplitude_pair_lines)s
+C
+      VALUE=(0D0,0D0)
+      PASS=.FALSE.
+      IF (LINK_ID.LT.0.OR.LINK_ID.GE.NINSERT) RETURN
+      IF (NSPIN.LT.0.OR.NSPIN.GT.NEXTERNAL) RETURN
+      DO I=1,NSPIN
+        IF (SPIN_LEGS(I).LT.1.OR.SPIN_LEGS(I).GT.NEXTERNAL) RETURN
+        DO J=1,I-1
+          IF (SPIN_LEGS(I).EQ.SPIN_LEGS(J)) RETURN
+        ENDDO
+      ENDDO
+      CALL PRODUCT_CARRIER_%(identifier)3.3d_AMPLITUDES(P,AMP_ALL,NHEL)
+      JAMP_LINK=(0D0,0D0)
+      DO IHEL=1,NCOMB
+%(jamp_blocks)s
+      ENDDO
+      K=LINK_ID+1
+      DO IHEL=1,NCOMB
+        DO JHEL=1,NCOMB
+          SPIN_FACTOR=(1D0,0D0)
+          DO L=1,NEXTERNAL
+            DO I=1,NSPIN
+              IF (L.EQ.SPIN_LEGS(I)) GOTO 110
+            ENDDO
+            IF (NHEL(L,IHEL).NE.NHEL(L,JHEL))
+     $        SPIN_FACTOR=(0D0,0D0)
+            GOTO 120
+ 110        CONTINUE
+            IF (ABS(NHEL(L,IHEL)).NE.1.OR.
+     $          ABS(NHEL(L,JHEL)).NE.1) THEN
+              SPIN_FACTOR=(0D0,0D0)
+            ELSE
+              ROW=(NHEL(L,IHEL)+3)/2
+              COL=(NHEL(L,JHEL)+3)/2
+              SPIN_FACTOR=SPIN_FACTOR*SPIN_MATRIX(ROW,COL,I)
+            ENDIF
+ 120        CONTINUE
+          ENDDO
+          IF (ABS(SPIN_FACTOR).EQ.0D0) GOTO 130
+          TERM=(0D0,0D0)
+          DO M=1,NAMPSO
+            DO N=1,NAMPSO
+              IF (.NOT.KEEP_AMP_PAIR(M,N)) GOTO 125
+              DO I=1,NCOLOR0
+                DO J=1,NCOLORS(K)
+                  TERM=TERM+DBLE(CF(J,I,K))/DBLE(DENOM)*
+     $              JAMP_LINK(J,JHEL,K,M)*
+     $              DCONJG(JAMP_LINK(I,IHEL,1,N))
+                ENDDO
+              ENDDO
+ 125          CONTINUE
+            ENDDO
+          ENDDO
+          VALUE=VALUE+SPIN_FACTOR*TERM
+ 130      CONTINUE
+        ENDDO
+      ENDDO
+      VALUE=VALUE/DBLE(IDEN)
+      PASS=.TRUE.
+      END
+''' % {
+            'identifier': carrier.id,
+            'info_lines': self.get_mg5_info_lines(),
+            'process_lines': self.get_process_info_lines(matrix_element),
+            'nexternal': nexternal,
+            'ncomb': ncomb,
+            'ngraphs': ngraphs,
+            'namplitude_orders': namplitude_orders,
+            'ninsertions': ninsertions,
+            'original_colors': original_colors,
+            'maximum_colors': maximum_colors,
+            'maximum_temporary': maximum_temporary,
+            'identity_denominator': matrix_element.get_denominator_factor(),
+            'color_denominator': denominator,
+            'helicity_lines': self.get_helicity_lines(matrix_element),
+            'color_count_lines': '\n'.join(data_chunks(
+                'NCOLORS', color_counts)),
+            'color_data_lines': '\n'.join(data_chunks(
+                'CF_FLAT', color_values)),
+            'amplitude_pair_lines': '\n'.join(data_chunks(
+                'KEEP_AMP_PAIR_FLAT', amplitude_pair_filter)),
+            'jamp_blocks': '\n'.join(jamp_blocks)}
+        writer.writelines(source)
+        return 0
+
     # write_split_me_fks
     #===========================================================================
     def write_split_me_fks(self, writer, matrix_element, fortran_model,

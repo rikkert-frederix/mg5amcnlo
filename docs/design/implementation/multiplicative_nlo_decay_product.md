@@ -222,19 +222,73 @@ weights.  The local-kernel callbacks provide only the scalar kinematic and
 plus-distribution factors; the carrier callback owns these operator insertions.
 
 The old fixed-order arrays still have room for only one extra external parton.
-The generic runtime therefore deliberately does not call those legacy maps or
-the additive `sigint_impl`: doing so for a two- or three-real carrier would
-silently alias emitted legs.  The concrete generated dispatcher must first
-export a canonical max-multiplicity leg layout and matching carrier routines.
-Until that dispatcher is present, startup validates the product metadata but
-the default numerical result remains the existing additive result.
+The generic runtime therefore does not route a multi-real carrier through
+those arrays or through the additive `sigint_impl`: doing so for a two- or
+three-real carrier would silently alias emitted legs.  The canonical carrier
+and generated dispatcher described below provide separate, correctly sized
+storage for this path.  Integration of that path into MINT remains a later
+milestone.
+
+## Canonical carrier and generated FKS dispatcher increment
+
+The first runtime milestone is complete.  Every subprocess now exports one
+canonical external-leg layout containing all Born decay leaves followed by
+one reserved emission slot per corrected stage.  A carrier has an explicit
+local-to-canonical permutation and is grouped by its actual tuple of
+production and decay tree sources.  Consequently, FKS configurations and
+counterevents which request the same tree matrix element share generated
+code.  For the production plus top and antitop decay benchmark this gives two
+incoming legs, six Born leaves, three emission slots, and sixteen distinct
+carriers instead of one carrier per tensor counterevent.
+
+Each carrier exports its unsquared HELAS amplitudes for all helicities as well
+as a general bra/ket contraction.  The latter constructs all requested
+ordered colour-insertion bases and applies several helicity operators in one
+coherent full-event contraction.  The uncorrelated identity contraction is
+exactly the ordinary squared carrier.  Amplitudes with different coupling
+orders remain separate, and the contraction retains precisely the same
+squared-order pairs selected by the ordinary generated matrix element; it
+does not introduce otherwise excluded interferences.  The selection is first
+applied independently to every factor and then translated to full-carrier
+orders.  If different factor decompositions make the same total order both
+allowed and forbidden, generation rejects that ambiguous grouping and asks
+for separate coupling-order processes.
+
+A colour charge attached to a decayed resonance is expanded coherently over
+its coloured visible descendants, including an active emission in that
+decay.  Incoming decay parents receive the required crossing sign.  Repeated
+self insertions are reduced analytically to the corresponding fundamental or
+adjoint Casimir, while non-trivial ordered insertions remain in the generated
+colour basis.  This implementation currently supports QCD soft correlations.
+An attempted QED soft-charge correlation is rejected at generation time
+rather than being interpreted as a colour insertion.
+
+The generated free-form Fortran dispatcher now provides the concrete mapper,
+carrier and kernel callbacks expected by `multiplicative_product.f90`.
+Production ISR maps the complete final state, production FSR boosts all
+descendants of a radiating resonance coherently, and decay FSR is performed
+in the massive parent's rest frame while preserving its upstream momentum.
+The mapper stores the stage-local momenta needed by the exact AP/Q splitting,
+eikonal and dynamic S-function kernels.  Its `(xi,y,phi)` arguments are
+already physical FKS coordinates.  For massive final-state maps the sign of
+`xi` tags the second kinematic solution and `abs(xi)` is the emitted energy
+fraction; conversion from MINT random variables is intentionally left to the
+integration milestone.
+
+The generated sources have been compiled for simultaneous production, top
+decay and antitop decay radiation.  Regression tests exercise production ISR
+and FSR followed by both decay maps, check momentum conservation and all
+on-shell constraints after every stage, and verify the decay-local parent
+momentum.  A numerical identity-operator contraction agrees with the ordinary
+carrier at machine precision.  Recursive corrected nodes on the same decay
+branch and identical-particle history handling remain outside this completed
+milestone.
 
 ## Remaining implementation sequence
 
-1. Export a canonical max-multiplicity external-leg layout and the requested
-   coherently multi-correlated carrier routines, then bind the tensor-runtime
-   map and kernel dispatchers to the existing resonance-aware FKS
-   implementations.
+Milestone 1 (canonical carriers and the generated FKS dispatcher) is complete.
+The next step is the original milestone 2:
+
 2. Add recursive simultaneous current insertion for nested corrected nodes
    and audit identical emissions belonging to different resonance histories.
 3. Export finite stage-local virtual interference data and implement exact
