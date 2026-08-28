@@ -3,7 +3,7 @@ module madfks_plot_module
   use boostwdir2_module, only: boostwdir2
   use extra_weights
   use mint_module, only: itmax, ncalls0
-  use process_dimensions, only: nexternal, nincoming, &
+  use process_dimensions, only: nexternal, event_capacity, nincoming, &
        validate_process_dimensions
   use run_state, only: do_rwgt_pdf, do_rwgt_scale, do_rwgt_decay_scale
   use fnlo_process_common, only: xsecPDFr_acc
@@ -16,6 +16,7 @@ module madfks_plot_module
   double precision, allocatable, save :: xsec_scale_points(:, :)
 
   public :: initplot_impl, topout_impl, outfun_impl
+  public :: outfun_multiplicative_impl
 
   interface
     subroutine analysis_begin(nwgt, weights_info)
@@ -27,9 +28,10 @@ module madfks_plot_module
     end subroutine analysis_end
 
     subroutine analysis_fill(p, istatus, ipdg, wgts, ibody)
-      use process_dimensions, only: nexternal
-      double precision, intent(in) :: p(0:4, nexternal)
-      integer, intent(in) :: istatus(nexternal), ipdg(nexternal)
+      use process_dimensions, only: event_capacity
+      double precision, intent(in) :: p(0:4, event_capacity)
+      integer, intent(in) :: istatus(event_capacity)
+      integer, intent(in) :: ipdg(event_capacity)
       double precision, intent(in) :: wgts(*)
       integer, intent(in) :: ibody
     end subroutine analysis_fill
@@ -221,11 +223,11 @@ contains
     integer, intent(in) :: itype
     double precision, intent(in) :: pmass(nexternal)
 
-    double precision :: chybst, chybstmo, p(0:4, nexternal)
-    double precision :: pplab(0:3, nexternal), shybst
+    double precision :: chybst, chybstmo, p(0:4, event_capacity)
+    double precision :: pplab(0:3, event_capacity), shybst
     double precision, parameter :: xd(3) = (/ 0d0, 0d0, 1d0 /)
     integer :: i, ibody, i_wgt, kk, n, nn, point
-    integer :: istatus(nexternal)
+    integer :: istatus(event_capacity), analysis_pdg(event_capacity)
 
     call validate_process_dimensions()
     select case (itype)
@@ -243,6 +245,10 @@ contains
     chybst = cosh(ybst_til_tolab)
     shybst = sinh(ybst_til_tolab)
     chybstmo = chybst - 1d0
+    p = 0d0
+    pplab = 0d0
+    istatus = 2
+    analysis_pdg = 0
     do i = 1, nexternal
       call boostwdir2(chybst, shybst, chybstmo, xd, pp(0, i), &
            pplab(0, i))
@@ -256,9 +262,70 @@ contains
       end if
       p(0:3, i) = pplab(0:3, i)
       p(4, i) = pmass(i)
+      analysis_pdg(i) = ipdg(i)
     end do
 
-    call analysis_fill(p, istatus, ipdg, www, ibody)
+    call analysis_fill(p, istatus, analysis_pdg, www, ibody)
+
+    call accumulate_analysis_weights(www)
+  end subroutine outfun_impl
+
+
+  subroutine outfun_multiplicative_impl( &
+       pp, ybst_til_tolab, www, ipdg, origin_blocks)
+    double precision, intent(in) :: pp(0:,:)
+    double precision, intent(in) :: ybst_til_tolab, www(*)
+    integer, intent(in) :: ipdg(:), origin_blocks(:)
+    double precision :: chybst, chybstmo, shybst, mass_squared
+    double precision :: p(0:4,event_capacity)
+    double precision :: pplab(0:3,event_capacity)
+    double precision, parameter :: direction(3) = (/0d0, 0d0, 1d0/)
+    integer :: particle, istatus(event_capacity)
+    integer :: analysis_pdg(event_capacity)
+
+    if (size(pp,1) /= 4 .or. size(pp,2) /= event_capacity .or. &
+        size(ipdg) /= event_capacity .or. &
+        size(origin_blocks) /= event_capacity) then
+      write (*, *) 'Invalid multiplicative analysis-event shape'
+      stop 1
+    end if
+    p = 0d0
+    pplab = 0d0
+    istatus = 2
+    analysis_pdg = ipdg
+    chybst = cosh(ybst_til_tolab)
+    shybst = sinh(ybst_til_tolab)
+    chybstmo = chybst - 1d0
+    do particle = 1, event_capacity
+      call boostwdir2(chybst, shybst, chybstmo, direction, &
+           pp(:,particle), pplab(:,particle))
+      p(0:3,particle) = pplab(:,particle)
+      mass_squared = (pp(0,particle) + pp(3,particle))* &
+           (pp(0,particle) - pp(3,particle)) - &
+           pp(1,particle)**2 - pp(2,particle)**2
+      p(4,particle) = sqrt(max(0d0, mass_squared))
+      if (particle <= nincoming) then
+        istatus(particle) = -1
+      else if (ipdg(particle) /= 0) then
+        istatus(particle) = 1
+      end if
+      if (analysis_pdg(particle) == -21) analysis_pdg(particle) = 21
+    end do
+    ! Analyses always receive the complete event, including forced-decay
+    ! products.  ORIGIN_BLOCKS is shape-checked here and intentionally not
+    ! used as a cut mask.
+    if (any(origin_blocks < -1)) then
+      write (*, *) 'Invalid multiplicative analysis-event origin'
+      stop 1
+    end if
+    call analysis_fill(p, istatus, analysis_pdg, www, 1)
+    call accumulate_analysis_weights(www)
+  end subroutine outfun_multiplicative_impl
+
+
+  subroutine accumulate_analysis_weights(www)
+    double precision, intent(in) :: www(*)
+    integer :: i_wgt, kk, n, nn, point
 
     i_wgt = 1
     if (do_rwgt_scale .or. do_rwgt_decay_scale) then
@@ -284,6 +351,6 @@ contains
         end if
       end do
     end if
-  end subroutine outfun_impl
+  end subroutine accumulate_analysis_weights
 
 end module madfks_plot_module

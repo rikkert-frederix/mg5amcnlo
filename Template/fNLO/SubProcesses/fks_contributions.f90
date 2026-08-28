@@ -178,12 +178,15 @@ contains
 ! powers; doing otherwise would introduce an additional running coupling and
 ! would no longer represent the user-supplied NLO total width.
     use extra_weights
+    use decay_chain_parameters, only: &
+         uses_multiplicative_nlo_combination
     implicit none
     integer :: born_orders(nsplitorders), correction_orders(nsplitorders)
     integer :: iamp
     double precision :: born_weight, weight
     type(factorized_radiation_state) :: real_radiation, soft_radiation
 
+    if (uses_multiplicative_nlo_combination()) return
     if (.not. active_contribution_is_production()) return
     if (f_b .eq. 0d0) return
     call load_radiation_state(real_event, real_radiation)

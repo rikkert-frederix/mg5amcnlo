@@ -485,9 +485,10 @@ contains
 
 
   subroutine visible_color_pair(core_first, core_second, visible_first, &
-                                visible_second)
+                                visible_second, generated_index)
     integer, intent(in) :: core_first, core_second
     integer, intent(out) :: visible_first, visible_second
+    integer, intent(out), optional :: generated_index
     integer :: record, first, second
     call require_enabled()
     first = min(core_first, core_second)
@@ -497,6 +498,8 @@ contains
           color_core_second(record) == second) then
         visible_first = color_visible_first(record)
         visible_second = color_visible_second(record)
+        if (present(generated_index)) &
+             generated_index = color_generated_index(record)
         return
       end if
     end do

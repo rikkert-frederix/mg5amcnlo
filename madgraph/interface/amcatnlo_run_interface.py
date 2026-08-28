@@ -3097,7 +3097,9 @@ RESTART = %(mint_mode)s
             bundle_metadata = pjoin(
                 os.path.dirname(job['dirname']),
                 'nlo_contribution_info.dat')
-            if os.path.exists(bundle_metadata):
+            multiplicative_bundle = self.is_fnlo_multiplicative_combination(
+                pjoin(job['dirname'], 'decay_card.dat'))
+            if os.path.exists(bundle_metadata) and not multiplicative_bundle:
                 try:
                     job['contribution_results'] = \
                         self.read_fnlo_contribution_results(
@@ -3124,6 +3126,21 @@ RESTART = %(mint_mode)s
                    'Please check the .log files inside the directories which failed:\n' +
                                 '\n'.join(error_log)+'\n')
 
+
+    @staticmethod
+    def is_fnlo_multiplicative_combination(path):
+        """Return whether an fNLO decay card selects the product estimator."""
+
+        try:
+            with open(path) as decay_card:
+                for line in decay_card:
+                    record = line.split('#', 1)[0].split('!', 1)[0].split()
+                    if (len(record) >= 2 and
+                            record[0].upper() == 'NLO_COMBINATION_MODE'):
+                        return record[1].upper() == 'MULTIPLICATIVE'
+        except (IOError, OSError):
+            pass
+        return False
 
     @staticmethod
     def read_fnlo_contribution_results(path):

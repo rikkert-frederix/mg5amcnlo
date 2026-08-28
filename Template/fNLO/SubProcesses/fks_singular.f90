@@ -13,6 +13,14 @@ module fks_singular_module
   use factorized_phase_space, only: factorized_radiation_state, &
        fetch_factorized_kernel_momenta, &
        fetch_factorized_radiation_state
+  use spin_density_matrix_results, only: spin_density_born_insertion, &
+       spin_density_color_insertion
+  use multiplicative_density_terms, only: &
+       density_scale_coefficient_count
+  use density_operator_recorder, only: &
+       density_operator_is_recording, &
+       recorded_density_operator_count, &
+       record_density_operator_primitive
   use decay_chain_metadata, only: has_decay_chains, context_for_fks, &
        born_context, context_core_count, core_leg_pdg
   use decay_chain_kinematics, only: get_core_born_momenta, &
@@ -110,6 +118,8 @@ module fks_singular_module
   logical, save :: fks_singular_state_initialized = .false.
 
   public :: evaluate_fks_sij, sreal, sreal_deg, bornsoftvirtual
+  public :: record_soft_density_operator
+  public :: record_nbody_integrated_density_operator
   public :: evaluate_born_matrix, evaluate_virtual_matrix
   public :: getpoles, setfksfactor, fill_configurations_common
   public :: fks_subtraction_shat
@@ -580,23 +590,25 @@ contains
 
   subroutine select_visible_color_pair(core_first, core_second, &
                                        visible_first, visible_second, &
-                                       multiplier)
+                                       multiplier, generated_index)
     integer, intent(in) :: core_first, core_second
     integer, intent(out) :: visible_first, visible_second
     double precision, intent(out), optional :: multiplier
+    integer, intent(out), optional :: generated_index
     double precision :: local_multiplier
 
     local_multiplier = 1d0
     if (has_nlo_decay()) then
       call nlo_decay_map_color_link(nfksprocess, core_first, core_second, &
                                     visible_first, visible_second, &
-                                    local_multiplier)
+                                    local_multiplier, generated_index)
     else if (has_decay_chains()) then
       call map_core_color_pair(core_first, core_second, visible_first, &
-                               visible_second)
+                               visible_second, generated_index)
     else
       visible_first = core_first
       visible_second = core_second
+      if (present(generated_index)) generated_index = 0
     end if
     if (present(multiplier)) multiplier = local_multiplier
   end subroutine select_visible_color_pair
@@ -743,7 +755,7 @@ contains
     integer kernel_count
     double precision t, z, ap(2), E_j_fks, E_i_fks, Q(2), cphi_mother, sphi_mother, pi(0:3), pj(0:3), wgt_born
     complex(kind=kind(0d0)) W1(6), W2(6), W3(6), W4(6), Wij_angle, Wij_recta
-    complex(kind=kind(0d0)) azifact
+    complex(kind=kind(0d0)) azifact, spin_kernel
 
 ! Colour representations of i_fks, j_fks and the FKS mother
 
@@ -757,6 +769,8 @@ contains
     double precision kernel_masses(nexternal)
     type(factorized_radiation_state) :: radiation
     complex(kind=kind(0d0)) wgt1(2)
+    complex(kind=8) :: density_coefficients( &
+         density_scale_coefficient_count)
 !
     amp_split_local(1:amp_split_size) = 0d0
     call load_kernel_radiation(real_event, radiation)
@@ -791,6 +805,8 @@ contains
     iord = qcd_pos
     wgt1(1) = ans_cnt(1, iord)
     wgt1(2) = ans_cnt(2, iord)
+    imother_fks = min(selected_i_fks, selected_j_fks)
+    spin_kernel = (0d0, 0d0)
     if (abs(j_type) .eq. 3 .and. i_type .eq. 8) then
       Q(1) = 0d0
       wgt1(2) = 0d0
@@ -816,9 +832,10 @@ contains
         azifact = Wij_angle/Wij_recta
       end if
 ! Insert the extra factor due to Madgraph convention for polarization vectors
-      imother_fks = min(selected_i_fks, selected_j_fks)
       call getaziangles(kernel_born(:, imother_fks), cphi_mother, &
                         sphi_mother)
+      spin_kernel = -(cphi_mother - ximag*sphi_mother)**2* &
+           azifact*Q(1)*iden_comp
       wgt1(2) = -(cphi_mother - ximag*sphi_mother)**2*wgt1(2)*azifact
       amp_split_cnt(1:amp_split_size, 2, iord) = &
         -(cphi_mother - ximag*sphi_mother)**2 &
@@ -827,6 +844,20 @@ contains
       write (*, *) 'FATAL ERROR in sborncol_fsr', i_type, j_type, &
                    selected_i_fks, selected_j_fks
       stop 1
+    end if
+    if (density_operator_is_recording()) then
+      density_coefficients = (0d0, 0d0)
+      density_coefficients(1) = cmplx(ap(1)*iden_comp, 0d0, kind=8)
+      call record_density_operator_primitive( &
+           spin_density_born_insertion, active_nlo_contribution(), 1, &
+           imother_fks, density_coefficients, .true.)
+      if (spin_kernel /= (0d0, 0d0)) then
+        density_coefficients = (0d0, 0d0)
+        density_coefficients(1) = spin_kernel
+        call record_density_operator_primitive( &
+             spin_density_born_insertion, active_nlo_contribution(), 2, &
+             imother_fks, density_coefficients, .true.)
+      end if
     end if
     wgt = wgt + dble(wgt1(1)*ap(1) + wgt1(2)*Q(1))
     amp_split_local(1:amp_split_size) = &
@@ -850,7 +881,7 @@ contains
     integer i, iord
     double precision t, z, ap(2), Q(2), cphi_mother, sphi_mother, pi(0:3), pj(0:3), wgt_born
     complex(kind=kind(0d0)) W1(6), W2(6), W3(6), W4(6), Wij_angle, Wij_recta
-    complex(kind=kind(0d0)) azifact
+    complex(kind=kind(0d0)) azifact, spin_kernel
 
     double precision zero, vtiny
     parameter(zero=0d0)
@@ -861,6 +892,8 @@ contains
     type(factorized_radiation_state) :: radiation
     complex(kind=kind(0d0)) amp_split_cnt_local(amp_split_size, 2, nsplitorders)
     complex(kind=kind(0d0)) wgt1(2)
+    complex(kind=8) :: density_coefficients( &
+         density_scale_coefficient_count)
 !
     amp_split_local(1:amp_split_size) = 0d0
     call load_kernel_radiation(real_event, radiation)
@@ -887,6 +920,7 @@ contains
     wgt1(1:2) = ans_cnt(1:2, iord)
     amp_split_cnt_local(1:amp_split_size, 1, iord) = amp_split_cnt(1:amp_split_size, 1, iord)
     amp_split_cnt_local(1:amp_split_size, 2, iord) = amp_split_cnt(1:amp_split_size, 2, iord)
+    spin_kernel = (0d0, 0d0)
     if (abs(m_type) .eq. 3) then
       Q(1) = 0d0
       wgt1(2) = cmplx(0d0, 0d0, kind=kind(0d0))
@@ -923,10 +957,26 @@ contains
 ! Insert the extra factor due to Madgraph convention for polarization vectors
       cphi_mother = 1.d0
       sphi_mother = 0.d0
+      spin_kernel = -(cphi_mother + ximag*sphi_mother)**2* &
+           conjg(azifact)*Q(1)*iden_comp
       wgt1(2) = -(cphi_mother + ximag*sphi_mother)**2*wgt1(2)*conjg(azifact)
       amp_split_cnt_local(1:amp_split_size, 2, iord) = &
         -(cphi_mother + ximag*sphi_mother)**2 &
         *amp_split_cnt_local(1:amp_split_size, 2, iord)*conjg(azifact)
+    end if
+    if (density_operator_is_recording()) then
+      density_coefficients = (0d0, 0d0)
+      density_coefficients(1) = cmplx(ap(1)*iden_comp, 0d0, kind=8)
+      call record_density_operator_primitive( &
+           spin_density_born_insertion, active_nlo_contribution(), 1, &
+           j_fks, density_coefficients, .true.)
+      if (spin_kernel /= (0d0, 0d0)) then
+        density_coefficients = (0d0, 0d0)
+        density_coefficients(1) = spin_kernel
+        call record_density_operator_primitive( &
+             spin_density_born_insertion, active_nlo_contribution(), 2, &
+             j_fks, density_coefficients, .true.)
+      end if
     end if
     wgt = wgt + dble(wgt1(1)*ap(1) + wgt1(2)*Q(1))
     amp_split_local(1:amp_split_size) = &
@@ -1072,12 +1122,240 @@ contains
   end subroutine sbornsoft_nlo_decay
 
 
-  subroutine sreal_deg(event_slot, xi_i_fks, collrem_xi, collrem_lxi)
+  subroutine record_soft_density_operator( &
+       event_slot, xi_i_fks, y_ij_fks, partonic_sqrt_shat)
+    integer, intent(in) :: event_slot
+    double precision, intent(in) :: xi_i_fks, y_ij_fks
+    double precision, intent(in) :: partonic_sqrt_shat
+    integer :: first_position, second_position, m, n
+    integer :: visible_m, visible_n, generated_index
+    integer :: partner_count, kernel_i, kernel_j
+    double precision :: eik, link_multiplier
+    double precision :: kernel_momenta(0:3, nexternal)
+    double precision :: kernel_masses(nexternal)
+    double precision :: kernel_fks_momenta(0:3, &
+         soft_counterevent:soft_collinear_counterevent)
+    complex(kind=8) :: coefficients(density_scale_coefficient_count)
+
+    call select_kernel_event( &
+         event_slot, kernel_momenta, kernel_masses)
+    call load_counterevent_fks_momenta(kernel_fks_momenta)
+    if (has_nlo_decay()) then
+      kernel_i = nlo_decay_fks_i(nfksprocess)
+      kernel_j = nlo_decay_fks_j(nfksprocess)
+    else
+      kernel_i = i_fks
+      kernel_j = j_fks
+    end if
+    partner_count = selected_partner_count(kernel_i)
+    do first_position = 1, partner_count
+      do second_position = 1, first_position
+        m = selected_partner(kernel_i, first_position)
+        n = selected_partner(kernel_i, second_position)
+        if ((m == n .and. kernel_masses(m) == 0d0) .or. &
+            m == kernel_i .or. n == kernel_i) cycle
+        call select_visible_color_pair( &
+             m, n, visible_m, visible_n, link_multiplier, generated_index)
+        if (generated_index < 1) then
+          call fail_fks_singular_state( &
+               'a soft density has no generated color-link identifier')
+        end if
+        call eikonal_reduced( &
+             kernel_momenta, m, n, kernel_i, kernel_j, &
+             xi_i_fks, y_ij_fks, kernel_fks_momenta, kernel_masses, &
+             partonic_sqrt_shat, eik)
+        coefficients = (0d0, 0d0)
+        ! Match SBORNSOFT's linked-Born convention.  The explicit outer
+        ! subtraction sign is attached only when this same-momentum term is
+        ! finalized by the multiplicative distribution builder.
+        coefficients(1) = cmplx( &
+             -2d0*link_multiplier*eik*iden_comp, 0d0, kind=8)
+        call record_density_operator_primitive( &
+             spin_density_color_insertion, generated_index, 1, 0, &
+             coefficients, .true.)
+      end do
+    end do
+  end subroutine record_soft_density_operator
+
+
+  subroutine record_nbody_integrated_density_operator( &
+       event_slot, born_qcd_power)
+    ! Record the finite integrated FKS operator at one underlying-Born
+    ! momentum point.  This routine intentionally records operator
+    ! coefficients only: it neither evaluates nor contracts a matrix
+    ! element.  The finite loop coefficient is a separate primitive added by
+    ! the multiplicative n-body builder, so the loop provider's pole ranks
+    ! can never enter a Cartesian product accidentally.
+    integer, intent(in) :: event_slot, born_qcd_power
+    double precision, parameter :: pi = 3.1415926535897932385d0
+    double precision, parameter :: oneo8pi2 = 1d0/(8d0*pi**2)
+    double precision, parameter :: zero = 0d0
+    double precision :: aso2pi, q_coefficient, energy, eik_ireg
+    double precision :: c_used, gamma_used, gammap_used
+    double precision :: link_multiplier, constant_coefficient
+    double precision :: mur_coefficient, muf_coefficient
+    double precision :: central_mur_piece, central_muf_piece
+    double precision :: kernel_momenta(0:3, nexternal)
+    double precision :: kernel_masses(nexternal)
+    double precision :: kernel_shat, kernel_sqrt_shat
+    integer :: kernel_particle_type(nexternal)
+    integer :: kernel_i, kernel_initial_count, kernel_count
+    integer :: particle, colour_type, first_position, second_position
+    integer :: partner_count, m, n, visible_m, visible_n, generated_index
+    integer :: saved_fks, color_configuration, configuration
+    logical :: color_links_used
+    type(factorized_radiation_state) :: radiation
+    complex(kind=8) :: coefficients(density_scale_coefficient_count)
+
+    if (.not. density_operator_is_recording()) then
+      call fail_fks_singular_state( &
+           'the integrated density operator has no active recorder')
+    end if
+    if (event_slot /= soft_counterevent) then
+      call fail_fks_singular_state( &
+           'the integrated density operator is not on the Born slot')
+    end if
+    if (born_qcd_power < 0) then
+      call fail_fks_singular_state( &
+           'the integrated density has a negative Born QCD power')
+    end if
+
+    call select_kernel_event( &
+         event_slot, kernel_momenta, kernel_masses, kernel_count)
+    call load_kernel_radiation(event_slot, radiation)
+    kernel_shat = radiation%shat
+    kernel_sqrt_shat = radiation%sqrt_shat
+    if (kernel_shat <= 0d0 .or. kernel_sqrt_shat <= 0d0) then
+      call fail_fks_singular_state( &
+           'the integrated density has no positive hard scale')
+    end if
+    call select_kernel_properties( &
+         kernel_particle_type, kernel_i, kernel_initial_count)
+    aso2pi = g**2/(8d0*pi**2)
+
+    ! Q operator, including the explicit scale-polynomial coefficients used
+    ! by the fixed-order reweighter.  The algebra mirrors BORNSOFTVIRTUAL,
+    ! but acts on the uncontracted normal Born density.
+    q_coefficient = 0d0
+    muf_coefficient = 0d0
+    do particle = 1, kernel_count
+      if (particle == kernel_i .or. &
+          kernel_masses(particle) /= zero) cycle
+      if (kernel_particle_type(particle) == 8) then
+        colour_type = 0
+      else if (abs(kernel_particle_type(particle)) == 3) then
+        colour_type = 1
+      else
+        cycle
+      end if
+      c_used = c(colour_type)
+      gamma_used = gamma(colour_type)
+      gammap_used = gammap(colour_type)
+      energy = kernel_momenta(0, particle)
+      if (energy <= 0d0) then
+        call fail_fks_singular_state( &
+             'the integrated density contains a non-positive energy')
+      end if
+      if (particle > kernel_initial_count) then
+        q_coefficient = q_coefficient + gammap_used &
+             - log(kernel_shat*deltao/2d0/qes2)*(gamma_used - &
+               2d0*c_used*log(2d0*energy/xicut_used/ &
+                              kernel_sqrt_shat)) &
+             + 2d0*c_used*(log(2d0*energy/kernel_sqrt_shat)**2 - &
+                           log(xicut_used)**2) &
+             - 2d0*gamma_used*log(2d0*energy/kernel_sqrt_shat)
+      else
+        q_coefficient = q_coefficient - log(q2fact(particle)/qes2)* &
+             (gamma_used + 2d0*c_used*log(xicut_used))
+        muf_coefficient = muf_coefficient - aso2pi* &
+             (gamma_used + 2d0*c_used*log(xicut_used))
+      end if
+    end do
+    q_coefficient = aso2pi*q_coefficient
+    mur_coefficient = pi*beta0*dble(born_qcd_power)*aso2pi
+
+    ! These two central-scale pieces are written separately in the legacy
+    ! implementation.  Keeping the same unsimplified form makes the
+    ! reference-scale subtraction below auditable term by term.
+    central_muf_piece = pi*beta0*dble(born_qcd_power)* &
+         log(q2fact(1)/qes2)*aso2pi
+    central_mur_piece = -pi*beta0*dble(born_qcd_power)* &
+         log(q2fact(1)/scale**2)*aso2pi
+    constant_coefficient = q_coefficient + central_muf_piece + &
+         central_mur_piece - log(q2fact(1)/qes2)*muf_coefficient - &
+         log(scale**2/qes2)*mur_coefficient
+    coefficients = (0d0, 0d0)
+    coefficients(1) = cmplx(constant_coefficient, 0d0, kind=8)
+    coefficients(2) = cmplx(mur_coefficient, 0d0, kind=8)
+    coefficients(3) = cmplx(muf_coefficient, 0d0, kind=8)
+    if (any(coefficients /= (0d0, 0d0))) then
+      call record_density_operator_primitive( &
+           spin_density_born_insertion, active_nlo_contribution(), 1, &
+           0, coefficients, .true.)
+    end if
+
+    ! I(reg) is a sum of colour-linked Born operators at exactly the same
+    ! Born momentum.  It is therefore legal to retain them as several
+    ! primitives in this one term, unlike R/S/C/SC counterevents.
+    saved_fks = nfksprocess
+    color_configuration = 0
+    color_links_used = .false.
+    do configuration = active_contribution_fks_first(), &
+                       active_contribution_fks_last()
+      nfksprocess = configuration
+      call fks_inc_chooser()
+      if (.not. need_color_links) cycle
+      color_links_used = .true.
+      if (color_configuration == 0) color_configuration = configuration
+    end do
+    if (color_links_used) then
+      nfksprocess = color_configuration
+      call fks_inc_chooser()
+      call select_kernel_properties( &
+           kernel_particle_type, kernel_i, kernel_initial_count)
+      partner_count = selected_partner_count(kernel_i)
+      do first_position = 1, partner_count
+        do second_position = 1, first_position
+          m = selected_partner(kernel_i, first_position)
+          n = selected_partner(kernel_i, second_position)
+          if ((m == n .and. kernel_masses(m) == zero) .or. &
+              m == kernel_i .or. n == kernel_i) cycle
+          call select_visible_color_pair( &
+               m, n, visible_m, visible_n, link_multiplier, &
+               generated_index)
+          if (generated_index < 1) then
+            call fail_fks_singular_state( &
+                 'an integrated density has no color-link identifier')
+          end if
+          call eikonal_Ireg( &
+               kernel_momenta, m, n, xicut_used, kernel_masses, &
+               kernel_shat, qes2, abrv, eik_ireg)
+          coefficients = (0d0, 0d0)
+          coefficients(1) = cmplx( &
+               -2d0*link_multiplier*eik_ireg*oneo8pi2, 0d0, kind=8)
+          if (any(coefficients /= (0d0, 0d0))) then
+            call record_density_operator_primitive( &
+                 spin_density_color_insertion, generated_index, 1, 0, &
+                 coefficients, .true.)
+          end if
+        end do
+      end do
+    end if
+    nfksprocess = saved_fks
+    call fks_inc_chooser()
+  end subroutine record_nbody_integrated_density_operator
+
+
+  subroutine sreal_deg(event_slot, xi_i_fks, collrem_xi, collrem_lxi, &
+       recorded_xi_index, recorded_lxi_index, recorded_muf_index)
     use extra_weights
     implicit none
     integer event_slot, iord, iap
     double precision collrem_xi, collrem_lxi
     double precision xi_i_fks
+    integer, intent(out), optional :: recorded_xi_index
+    integer, intent(out), optional :: recorded_lxi_index
+    integer, intent(out), optional :: recorded_muf_index
     double precision collrem_xi_tmp, collrem_lxi_tmp
 
     double precision wgt_born
@@ -1097,12 +1375,17 @@ contains
     double precision amp_split_collrem_xi(amp_split_size), amp_split_collrem_lxi(amp_split_size)
     double precision prefact_xi
     double precision subtraction_shat
+    complex(kind=8) :: density_coefficients( &
+         density_scale_coefficient_count)
 
     amp_split_collrem_xi(1:amp_split_size) = 0d0
     amp_split_collrem_lxi(1:amp_split_size) = 0d0
     amp_split_wgtdegrem_xi(1:amp_split_size) = 0d0
     amp_split_wgtdegrem_lxi(1:amp_split_size) = 0d0
     amp_split_wgtdegrem_muF(1:amp_split_size) = 0d0
+    if (present(recorded_xi_index)) recorded_xi_index = 0
+    if (present(recorded_lxi_index)) recorded_lxi_index = 0
+    if (present(recorded_muf_index)) recorded_muf_index = 0
 
     subtraction_shat = fks_subtraction_shat(event_slot)
     call select_kernel_event(event_slot, kernel_momenta, kernel_masses)
@@ -1185,6 +1468,38 @@ contains
     amp_split_wgtdegrem_muF(1:amp_split_size) = &
       amp_split_wgtdegrem_muF(1:amp_split_size) - &
       oo2pi*dble(amp_split_cnt(1:amp_split_size, 1, iord))*ap(iap)*xnorm
+    if (density_operator_is_recording()) then
+      density_coefficients = (0d0, 0d0)
+      density_coefficients(1) = cmplx( &
+           oo2pi*prefact_xi*xnorm, 0d0, kind=8)
+      if (any(density_coefficients /= (0d0, 0d0))) then
+        call record_density_operator_primitive( &
+             spin_density_born_insertion, active_nlo_contribution(), 1, &
+             j_fks, density_coefficients, .true.)
+        if (present(recorded_xi_index)) &
+             recorded_xi_index = recorded_density_operator_count()
+      end if
+      density_coefficients = (0d0, 0d0)
+      density_coefficients(1) = cmplx( &
+           oo2pi*collrem_lxi_tmp*xnorm, 0d0, kind=8)
+      if (any(density_coefficients /= (0d0, 0d0))) then
+        call record_density_operator_primitive( &
+             spin_density_born_insertion, active_nlo_contribution(), 1, &
+             j_fks, density_coefficients, .true.)
+        if (present(recorded_lxi_index)) &
+             recorded_lxi_index = recorded_density_operator_count()
+      end if
+      density_coefficients = (0d0, 0d0)
+      density_coefficients(3) = cmplx( &
+           -oo2pi*ap(iap)*xnorm, 0d0, kind=8)
+      if (any(density_coefficients /= (0d0, 0d0))) then
+        call record_density_operator_primitive( &
+             spin_density_born_insertion, active_nlo_contribution(), 1, &
+             j_fks, density_coefficients, .true.)
+        if (present(recorded_muf_index)) &
+             recorded_muf_index = recorded_density_operator_count()
+      end if
+    end if
     calculatedborn = .false.
 
     return

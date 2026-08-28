@@ -1,5 +1,5 @@
 module analysis_hwu_pp_ttx_module
-  use process_dimensions, only: nexternal
+  use process_dimensions, only: event_capacity
   use HwU_module, only: HwU_inithist, HwU_book, HwU_fill
   implicit none
   private
@@ -62,8 +62,8 @@ contains
 !ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
     implicit none
 
-    integer iPDG(nexternal)
-    double precision p(0:4, nexternal)
+    integer iPDG(event_capacity)
+    double precision p(0:4, event_capacity)
     double precision wgts(*)
     integer i, l
     double precision xptq(0:3), xptb(0:3), yptqtb(0:3), ycut, ptcut &
@@ -71,7 +71,7 @@ contains
     logical siq1flag, siq2flag, ddflag
     double precision pi
     parameter(PI=3.141592653589793d0)
-    if (nexternal .ne. 5) then
+    if (event_capacity .ne. 5) then
       write (*, *) 'error #1 in analysis_fill: '// &
       & 'only for process "p p > t t~ [QCD]"'
       stop 1

@@ -459,7 +459,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                     'copied from param_card.dat to both LO_DECAY_WIDTH and '
                     'NLO_DECAY_WIDTH. Set both entries in decay_card.dat to '
                     'the corresponding physical total widths before running '
-                    'the strict O(alpha_s) expanded calculation.',
+                    'the selected additive or multiplicative calculation.',
                     widths[pdg], pdg)
             particle = self.model.get_particle(pdg)
             mass_name = particle.get('mass') if particle else None
@@ -1395,7 +1395,19 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               'decay_chain_kinematics.f90',
                               'nlo_decay_kinematics.f90',
                               'factorized_phase_space.f90',
+                              'multiplicative_event_tuples.f90',
+                              'multiplicative_phase_space.f90',
+                              'multiplicative_kinematics.f90',
+                              'multiplicative_scale_state.f90',
+                              'multiplicative_production_channels.f90',
                               'spin_density_matrix_results.f90',
+                              'multiplicative_density_terms.f90',
+                              'density_operator_recorder.f90',
+                              'multiplicative_fks_density.f90',
+                              'multiplicative_nbody_density.f90',
+                              'multiplicative_block_distribution.f90',
+                              'multiplicative_density_contraction.f90',
+                              'multiplicative_runtime.f90',
                               'decay_chain_scales.f90',
                               'phase_space_kinematics.f90',
                               'fks_diagnostics.f90',
@@ -3083,6 +3095,11 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             written.add(variant['filename'])
             density_exporter.write_color_provider(
                 writers.FortranWriter(variant['filename']), plan, variant)
+        if getattr(matrix_element, 'contribution_bundle', False):
+            density_exporter.write_multiplicative_dispatcher(
+                writers.FortranWriter(
+                    'spin_density_multiplicative_contraction.f'), plan,
+                matrix_element.get_fks_info_list())
 
 
     @staticmethod

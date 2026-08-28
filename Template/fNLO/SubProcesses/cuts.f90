@@ -18,6 +18,7 @@ module cuts_module
   private
 
   public :: passcuts
+  public :: passcuts_multiplicative
   public :: apply_decay_cut_mask
   public :: chi_gamma_iso, sortzv, iso_getdrv40
 
@@ -43,13 +44,13 @@ contains
 !
 ! This is an array which is '-1' for initial state and '1' for final
 ! state particles
-  integer istatus(nexternal)
+  integer istatus(:)
 ! This is an array with (simplified) PDG codes for the particles. Note
 ! that channels that are combined (i.e. they have the same matrix
 ! elements) are given only 1 set of PDG codes. This means, e.g., that
 ! when using a 5-flavour scheme calculation (massless b quark), no
 ! b-tagging can be applied.
-  integer iPDG(nexternal)
+  integer iPDG(:)
 ! The array of the momenta and masses of the initial and final state
 ! particles in the lab frame. The format is "E, px, py, pz, mass", while
 ! the second dimension loops over the particles in the process. Note
@@ -57,21 +58,21 @@ contains
 ! momenta equal to all zero's (this is not necessarily the last particle
 ! in the list). If one uses IR-safe obserables only, there should be no
 ! difficulty in using this.
-  double precision p(0:4,nexternal)
+  double precision p(0:,:)
 !
-  double precision p_reco(0:4,nexternal)
-  integer iPDG_reco(nexternal)
+  double precision p_reco(0:4,size(p,2))
+  integer iPDG_reco(size(p,2))
 ! bare parton algorithm
   integer nPART
-  double precision pPART(0:3,nexternal)
+  double precision pPART(0:3,size(p,2))
 ! jet cluster algorithm
   integer nQCD
-  double precision pQCD(0:3,nexternal)
+  double precision pQCD(0:3,size(p,2))
 ! logicals that define if particles are leptons, jets or photons. These
 ! are filled from the PDG codes (iPDG array) in this function.
-  logical is_a_lp(nexternal),is_a_lm(nexternal),is_a_j(nexternal)
-  logical is_nextph_iso(nexternal)
-  logical is_a_lp_reco(nexternal),is_a_lm_reco(nexternal)
+  logical is_a_lp(size(p,2)),is_a_lm(size(p,2))
+  logical is_a_j(size(p,2)),is_nextph_iso(size(p,2))
+  logical is_a_lp_reco(size(p,2)),is_a_lm_reco(size(p,2))
   passcuts_user=.true. ! event is okay; otherwise it is changed
 
 !***************************************************************
@@ -140,19 +141,19 @@ contains
 
   subroutine identify_PART_partons(p,istatus,ipdg,pPART,nPART,is_a_lp,is_a_lm)
   implicit none
-  integer istatus(nexternal)
-  integer iPDG(nexternal)
-  double precision p(0:4,nexternal)
+  integer istatus(:)
+  integer iPDG(:)
+  double precision p(0:,:)
   integer nPART
-  double precision pPART(0:3,nexternal)
-  logical is_a_lp(nexternal),is_a_lm(nexternal)
+  double precision pPART(0:,:)
+  logical is_a_lp(:),is_a_lm(:)
 
   integer i, j
 !
 ! Bare partons and leptons
 !
   nPART=0
-  do j=1,nexternal
+  do j=1,size(p,2)
   is_a_lp(j)=.false.
   is_a_lm(j)=.false.
 ! Partons
@@ -181,16 +182,16 @@ contains
   logical function passcuts_photons(p,ipdg,is_a_lp,is_a_lm, &
   & pPART,nPART,is_nextph_iso)
   implicit none
-  integer iPDG(nexternal)
-  double precision p(0:4,nexternal)
-  logical is_a_lp(nexternal),is_a_lm(nexternal)
+  integer iPDG(:)
+  double precision p(0:,:)
+  logical is_a_lp(:),is_a_lm(:)
   integer nPART, nph
-  double precision pPART(0:3,nexternal), pgamma(0:3,nexternal)
-  double precision pgamma_iso(0:3,nexternal)
-  logical is_nextph_iso(nexternal)
+  double precision pPART(0:,:), pgamma(0:3,size(p,2))
+  double precision pgamma_iso(0:3,size(p,2))
+  logical is_nextph_iso(:)
   integer i,j,k,mu
 ! Sort array of results: ismode>0 for real, isway=0 for ascending order
-  integer ismode,isway,izero,isorted(nexternal)
+  integer ismode,isway,izero,isorted(size(p,2))
   parameter (ismode=1)
   parameter (isway=0)
   parameter (izero=0)
@@ -198,12 +199,12 @@ contains
 ! Photon isolation
   integer nem,nin,nphiso
   double precision ptg
-  double precision Etsum(0:nexternal)
-  real drlist(nexternal)
-  double precision pem(0:3,nexternal)
+  double precision Etsum(0:size(p,2))
+  real drlist(size(p,2))
+  double precision pem(0:3,size(p,2))
 
   logical isolated
-  logical is_a_ph(nexternal)
+  logical is_a_ph(size(p,2))
 
   integer n_needed_photons
 
@@ -213,11 +214,11 @@ contains
 ! PHOTON (ISOLATION) CUTS
 !
 ! Initialise common logical iso
-  do i=nincoming+1,nexternal
+  do i=nincoming+1,size(p,2)
   is_nextph_iso(i)=.False.
   enddo
 ! find the photons
-  do i=nincoming+1,nexternal
+  do i=nincoming+1,size(p,2)
   if (ipdg(i).eq.22 .and. .not.gamma_is_j) then
   is_a_ph(i)=.true.
   else
@@ -227,7 +228,7 @@ contains
 
   if (ptgmin.ne.0d0) then
   nph=0
-  do j=nincoming+1,nexternal
+  do j=nincoming+1,size(p,2)
   if (is_a_ph(j)) then
   nph=nph+1
   do i=0,3
@@ -244,7 +245,7 @@ contains
   pem(i,k)=pgamma(i,k)
   enddo
   enddo
-  do j=nincoming+1,nexternal
+  do j=nincoming+1,size(p,2)
   if (is_a_lp(j).or.is_a_lm(j)) then
   nem=nem+1
   do i=0,3
@@ -261,19 +262,19 @@ contains
   do while(j.lt.nph)
 
   j=j+1
-  ptg=pt(pgamma(0,j))
+  ptg=pt(pgamma(:,j))
   if(ptg.lt.ptgmin)then
   cycle
   endif
   if (etagamma.gt.0d0) then
-  if (abs(eta(pgamma(0,j))).gt.etagamma) then
+  if (abs(eta(pgamma(:,j))).gt.etagamma) then
   cycle
   endif
   endif
 
 ! Isolate from hadronic energy
   do i=1,nPART
-  drlist(i)=sngl(iso_getdrv40(pgamma(0,j),pPART(0,i)))
+  drlist(i)=sngl(iso_getdrv40(pgamma(:,j),pPART(:,i)))
   enddo
   call sortzv(drlist,isorted,nPART,ismode,isway,izero)
   Etsum(0)=0.d0
@@ -281,7 +282,7 @@ contains
   do i=1,nPART
   if(dble(drlist(isorted(i))).le.R0gamma)then
   nin=nin+1
-  Etsum(nin)=Etsum(nin-1)+pt(pPART(0,isorted(i)))
+  Etsum(nin)=Etsum(nin-1)+pt(pPART(:,isorted(i)))
   endif
   enddo
   isolated=.True.
@@ -297,7 +298,7 @@ contains
 ! Isolate from EM energy
   if(isoEM.and.nem.gt.1)then
   do i=1,nem
-  drlist(i)=sngl(iso_getdrv40(pgamma(0,j),pem(0,i)))
+  drlist(i)=sngl(iso_getdrv40(pgamma(:,j),pem(:,i)))
   enddo
   call sortzv(drlist,isorted,nem,ismode,isway,izero)
 ! First of list must be the photon: check this, and drop it
@@ -331,9 +332,9 @@ contains
   pgamma_iso(mu,nphiso)=pgamma(mu,j)
   enddo
 
-  do i=nincoming+1,nexternal
+  do i=nincoming+1,size(p,2)
   if ( ipdg(i).eq.22 .and. &
-  & pt(p(0,i)).eq.pt(pgamma_iso(0,nphiso)) ) then
+  & pt(p(:,i)).eq.pt(pgamma_iso(:,nphiso)) ) then
   is_nextph_iso(i)=.True.
   endif
   enddo
@@ -356,20 +357,20 @@ contains
 
   subroutine identify_QCD_partons(is_iso,p,istatus,ipdg,is_a_j,pQCD,nQCD)
   implicit none
-  integer istatus(nexternal)
-  integer iPDG(nexternal)
-  double precision p(0:4,nexternal)
-  logical is_a_j(nexternal)
+  integer istatus(:)
+  integer iPDG(:)
+  double precision p(0:,:)
+  logical is_a_j(:)
   integer nQCD
-  double precision pQCD(0:3,nexternal)
-  logical is_iso(nexternal)
+  double precision pQCD(0:,:)
+  logical is_iso(:)
   integer i, j
 
 !
 ! JET CUTS
 !
 ! find the jets
-  do i=1,nexternal
+  do i=1,size(p,2)
   if (istatus(i).eq.1 .and. &
   & (  abs(ipdg(i)).le.maxjetflavor .or. ipdg(i).eq.21 &
   & .or. (ipdg(i).eq.22.and.gamma_is_j) .or. &
@@ -389,7 +390,7 @@ contains
 ! the number of (light) QCD partons at the real-emission level (i.e. one
 ! more than the Born).
   nQCD=0
-  do j=nincoming+1,nexternal
+  do j=nincoming+1,size(p,2)
   if (is_a_j(j)) then
   nQCD=nQCD+1
   do i=0,3
@@ -405,13 +406,13 @@ contains
 
   logical function passcuts_jets(p,pQCD,nQCD)
   implicit none
-  double precision p(0:4,nexternal)
+  double precision p(0:,:)
   integer nQCD
-  double precision pQCD(0:3,nexternal)
+  double precision pQCD(0:,:)
 
-  integer NJET,JET(nexternal)
+  integer NJET,JET(size(pQCD,2))
   double precision rfj,sycut,palg
-  double precision PJET(0:3,nexternal)
+  double precision PJET(0:3,size(pQCD,2))
   integer mm
   integer j
 
@@ -473,10 +474,10 @@ contains
   end function passcuts_jets
   logical function passcuts_leptons(p,istatus,ipdg,is_a_lp_reco,is_a_lm_reco)
   implicit none
-  integer istatus(nexternal)
-  integer iPDG(nexternal)
-  double precision p(0:4,nexternal)
-  logical is_a_lp_reco(nexternal),is_a_lm_reco(nexternal)
+  integer istatus(:)
+  integer iPDG(:)
+  double precision p(0:,:)
+  logical is_a_lp_reco(:),is_a_lm_reco(:)
 
   integer i,j
 
@@ -487,7 +488,7 @@ contains
 ! CHARGED LEPTON CUTS
 !
 ! find the charged leptons (also used in the photon isolation cuts below)
-  do i=1,nexternal
+  do i=1,size(p,2)
   if(istatus(i).eq.1 .and. &
   & (ipdg(i).eq.11 .or. ipdg(i).eq.13 .or. ipdg(i).eq.15)) then
   is_a_lm_reco(i)=.true.
@@ -502,47 +503,47 @@ contains
   endif
   enddo
 ! apply the charged lepton cuts
-  do i=nincoming+1,nexternal
+  do i=nincoming+1,size(p,2)
   if (is_a_lp_reco(i).or.is_a_lm_reco(i)) then
 ! transverse momentum
   if (ptl.gt.0d0) then
-  if (pt_04(p(0,i)).lt.ptl) then
+  if (pt_04(p(:,i)).lt.ptl) then
   passcuts_leptons=.false.
   return
   endif
   endif
 ! pseudo-rapidity
   if (etal.gt.0d0) then
-  if (abs(eta_04(p(0,i))).gt.etal) then
+  if (abs(eta_04(p(:,i))).gt.etal) then
   passcuts_leptons=.false.
   return
   endif
   endif
 ! DeltaR and invariant mass cuts
   if (is_a_lp_reco(i)) then
-  do j=nincoming+1,nexternal
+  do j=nincoming+1,size(p,2)
   if (is_a_lm_reco(j)) then
   if (drll.gt.0d0) then
-  if (R2_04(p(0,i),p(0,j)).lt.drll**2) then
+  if (R2_04(p(:,i),p(:,j)).lt.drll**2) then
   passcuts_leptons=.false.
   return
   endif
   endif
   if (mll.gt.0d0) then
-  if (invm2_04(p(0,i),p(0,j),1d0).lt.mll**2) then
+  if (invm2_04(p(:,i),p(:,j),1d0).lt.mll**2) then
   passcuts_leptons=.false.
   return
   endif
   endif
   if (ipdg(i).eq.-ipdg(j)) then
   if (drll_sf.gt.0d0) then
-  if (R2_04(p(0,i),p(0,j)).lt.drll_sf**2) then
+  if (R2_04(p(:,i),p(:,j)).lt.drll_sf**2) then
   passcuts_leptons=.false.
   return
   endif
   endif
   if (mll_sf.gt.0d0) then
-  if (invm2_04(p(0,i),p(0,j),1d0).lt.mll_sf**2) &
+  if (invm2_04(p(:,i),p(:,j),1d0).lt.mll_sf**2) &
   & then
   passcuts_leptons=.false.
   return
@@ -560,8 +561,8 @@ contains
 
   logical function passcuts_pdgs(p,istatus)
   implicit none
-  double precision p(0:4,nexternal)
-  integer istatus(nexternal)
+  double precision p(0:,:)
+  integer istatus(:)
 ! PDG specific cut
 ! temporary variable for caching locally computation
   double precision tmpvar
@@ -573,10 +574,10 @@ contains
 !
 !     PDG SPECIFIC CUTS (PT/M_IJ)
 !
-  do i=nincoming+1,nexternal-1
+  do i=nincoming+1,min(size(p,2),nexternal-1)
   if (istatus(i).ne.1) cycle
   if(etmin(i).gt.0d0 .or. etmax(i).gt.0d0)then
-  tmpvar = pt_04(p(0,i))
+  tmpvar = pt_04(p(:,i))
   if (tmpvar.lt.etmin(i)) then
   passcuts_pdgs=.false.
   return
@@ -585,10 +586,10 @@ contains
   return
   endif
   endif
-  do j=i+1, nexternal-1
+  do j=i+1, min(size(p,2),nexternal-1)
   if (istatus(j).ne.1) cycle
   if (mxxmin(i,j).gt.0d0)then
-  if (invm2_04(p(0,i),p(0,j),1d0).lt.mxxmin(i,j)**2)then
+  if (invm2_04(p(:,i),p(:,j),1d0).lt.mxxmin(i,j)**2)then
   passcuts_pdgs=.false.
   return
   endif
@@ -673,6 +674,79 @@ contains
   end function passcuts
 
 
+  logical function passcuts_multiplicative( &
+       momenta, pdgs, origin_blocks, lab_boost, rwgt)
+    double precision, intent(in) :: momenta(0:,:)
+    integer, intent(in) :: pdgs(:), origin_blocks(:)
+    double precision, intent(in) :: lab_boost
+    double precision, intent(out) :: rwgt
+    double precision :: chybst, shybst, chybstmo, mass_squared
+    double precision :: plab(0:3,size(momenta,2))
+    double precision :: event(0:4,size(momenta,2))
+    double precision, parameter :: direction(3) = (/0d0, 0d0, 1d0/)
+    integer :: particle, status(size(momenta,2))
+    integer :: event_pdgs(size(momenta,2))
+    real :: time_before, time_after
+
+    call cpu_time(time_before)
+    passcuts_multiplicative = .false.
+    rwgt = 1d0
+    if (size(momenta,1) /= 4 .or. size(pdgs) /= size(momenta,2) .or. &
+        size(origin_blocks) /= size(momenta,2)) then
+      call fail_cuts('a multiplicative event has inconsistent shapes')
+    end if
+    if (size(momenta,2) < nincoming .or. momenta(0,1) <= 0d0) return
+    do particle = 1, size(momenta,2)
+      if (any(momenta(:,particle) > 1d32) .or. &
+          any(momenta(:,particle) /= momenta(:,particle))) return
+    end do
+
+    chybst = cosh(lab_boost)
+    shybst = sinh(lab_boost)
+    chybstmo = chybst - 1d0
+    do particle = 1, size(momenta,2)
+      call boostwdir2(chybst, shybst, chybstmo, direction, &
+           momenta(:,particle), plab(:,particle))
+      event(0:3,particle) = plab(:,particle)
+      mass_squared = (momenta(0,particle) + momenta(3,particle))* &
+           (momenta(0,particle) - momenta(3,particle)) - &
+           momenta(1,particle)**2 - momenta(2,particle)**2
+      event(4,particle) = sqrt(max(0d0, mass_squared))
+      event_pdgs(particle) = pdgs(particle)
+      if (pdgs(particle) == -21) event_pdgs(particle) = 21
+      if (particle <= nincoming) then
+        status(particle) = -1
+      else if (pdgs(particle) == 0) then
+        status(particle) = decay_cut_status
+      else
+        status(particle) = 1
+      end if
+    end do
+    call apply_multiplicative_decay_cut_mask( &
+         event, status, event_pdgs, origin_blocks)
+    passcuts_multiplicative = passcuts_user(event, status, event_pdgs)
+    call cpu_time(time_after)
+    t_cuts = t_cuts + (time_after-time_before)
+  end function passcuts_multiplicative
+
+
+  subroutine apply_multiplicative_decay_cut_mask( &
+       p, istatus, ipdg, origin_blocks)
+    double precision, intent(inout) :: p(0:,:)
+    integer, intent(inout) :: istatus(:), ipdg(:)
+    integer, intent(in) :: origin_blocks(:)
+    integer :: particle
+
+    if (cut_decays) return
+    do particle = nincoming + 1, size(p,2)
+      if (origin_blocks(particle) == 0) cycle
+      p(:,particle) = 0d0
+      istatus(particle) = decay_cut_status
+      ipdg(particle) = decay_cut_pdg
+    end do
+  end subroutine apply_multiplicative_decay_cut_mask
+
+
   subroutine apply_decay_cut_mask(p, istatus, ipdg)
   implicit none
   double precision, intent(inout) :: p(0:4,nexternal)
@@ -688,6 +762,14 @@ contains
   endif
   enddo
   end subroutine apply_decay_cut_mask
+
+
+  subroutine fail_cuts(message)
+    character(len=*), intent(in) :: message
+
+    write (*, '(a)') 'ERROR in cuts_module: '//trim(message)
+    stop 1
+  end subroutine fail_cuts
 
 
   function chi_gamma_iso(dr,R0,xn,epsgamma,pTgamma)

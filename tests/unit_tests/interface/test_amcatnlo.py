@@ -384,6 +384,23 @@ class TestMadEventCmd(unittest.TestCase):
             with self.assertRaises(run_mecmd.aMCatNLOError):
                 run_mecmd.aMCatNLOCmd.parse_test_mx_log(None, log_path)
 
+    def test_fnlo_multiplicative_card_has_no_additive_breakdown(self):
+        """A product estimator must not be parsed as additive components."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            decay_card = pjoin(directory, 'decay_card.dat')
+            with open(decay_card, 'w') as stream:
+                stream.write(
+                    'NLO_COMBINATION_MODE MULTIPLICATIVE ! product\n')
+            self.assertTrue(
+                run_mecmd.aMCatNLOCmd.is_fnlo_multiplicative_combination(
+                    decay_card))
+            with open(decay_card, 'w') as stream:
+                stream.write('NLO_COMBINATION_MODE ADDITIVE\n')
+            self.assertFalse(
+                run_mecmd.aMCatNLOCmd.is_fnlo_multiplicative_combination(
+                    decay_card))
+
     def test_fnlo_exporter_and_template(self):
         """The fNLO factory route uses the fixed-order-only template."""
 

@@ -1,6 +1,7 @@
 module nlo_contribution_bundle
-  use process_dimensions, only: fks_configs, nsplitorders, &
+  use process_dimensions, only: nexternal, nincoming, fks_configs, nsplitorders, &
        amp_split_size, amp_split_orders, validate_process_dimensions
+  use fks_metadata, only: fks_j_d
   use fnlo_process_common, only: nfksprocess
   implicit none
   private
@@ -27,6 +28,8 @@ module nlo_contribution_bundle
   public :: active_nlo_contribution, contribution_for_fks
   public :: local_fks_configuration, global_fks_configuration
   public :: contribution_fks_first, contribution_fks_last
+  public :: contribution_fks_channel_count
+  public :: contribution_fks_channel_configuration
   public :: contribution_representative_fks
   public :: contribution_is_nlo_decay, contribution_parent_pdg
   public :: contribution_parent_occurrence, contribution_corrected_node
@@ -40,6 +43,9 @@ module nlo_contribution_bundle
   public :: factorized_integration_dimension
   public :: factorized_radiation_start
   public :: factorized_radiation_block
+  public :: multiplicative_event_capacity
+  public :: multiplicative_emission_target
+  public :: multiplicative_mc_integer_dimension
   public :: bundle_species_is_nlo
   public :: bundle_component_count, bundle_born_component
   public :: bundle_production_nlo_component, bundle_width_component
@@ -361,6 +367,50 @@ contains
   end function contribution_fks_last
 
 
+  integer function contribution_fks_channel_count(contribution, category)
+    integer, intent(in) :: contribution, category
+    integer :: configuration
+
+    if (.not. initialized) call initialize_nlo_contribution_bundle()
+    call check_contribution(contribution)
+    call check_channel_category(category)
+    contribution_fks_channel_count = 0
+    do configuration = contribution_first_values(contribution), &
+                       contribution_last_values(contribution)
+      if (.not. configuration_matches_category( &
+          configuration, category)) cycle
+      contribution_fks_channel_count = &
+           contribution_fks_channel_count + 1
+    end do
+  end function contribution_fks_channel_count
+
+
+  integer function contribution_fks_channel_configuration( &
+       contribution, category, position)
+    integer, intent(in) :: contribution, category, position
+    integer :: configuration, matched
+
+    if (.not. initialized) call initialize_nlo_contribution_bundle()
+    call check_contribution(contribution)
+    call check_channel_category(category)
+    if (position < 1) then
+      call fail_bundle('a contribution channel position is not positive')
+    end if
+    matched = 0
+    do configuration = contribution_first_values(contribution), &
+                       contribution_last_values(contribution)
+      if (.not. configuration_matches_category( &
+          configuration, category)) cycle
+      matched = matched + 1
+      if (matched == position) then
+        contribution_fks_channel_configuration = configuration
+        return
+      end if
+    end do
+    call fail_bundle('a contribution channel position is out of range')
+  end function contribution_fks_channel_configuration
+
+
   integer function contribution_representative_fks(contribution)
     integer, intent(in) :: contribution
     if (.not. initialized) call initialize_nlo_contribution_bundle()
@@ -583,6 +633,42 @@ contains
   end function factorized_radiation_block
 
 
+  integer function multiplicative_event_capacity()
+    if (.not. initialized) call initialize_nlo_contribution_bundle()
+    if (enabled) then
+      ! NEXTERNAL already contains room for one real emission.  A product
+      ! can select one independent real term from every NLO block.
+      multiplicative_event_capacity = &
+           nexternal + number_of_contributions - 1
+    else
+      multiplicative_event_capacity = nexternal
+    end if
+  end function multiplicative_event_capacity
+
+
+  integer function multiplicative_emission_target(contribution)
+    integer, intent(in) :: contribution
+
+    if (.not. initialized) call initialize_nlo_contribution_bundle()
+    call check_contribution(contribution)
+    multiplicative_emission_target = nexternal + contribution - 1
+  end function multiplicative_emission_target
+
+
+  integer function multiplicative_mc_integer_dimension( &
+       contribution, category)
+    integer, intent(in) :: contribution, category
+
+    if (.not. initialized) call initialize_nlo_contribution_bundle()
+    call check_contribution(contribution)
+    call check_channel_category(category)
+    ! One adaptive discrete grid per independently sampled NLO block and
+    ! initial/final-state partition.
+    multiplicative_mc_integer_dimension = &
+         1 + 3*(contribution - 1) + category
+  end function multiplicative_mc_integer_dimension
+
+
   logical function bundle_species_is_nlo(pdg)
     integer, intent(in) :: pdg
     integer :: contribution
@@ -694,6 +780,35 @@ contains
       call fail_bundle('FKS configuration is out of range')
     end if
   end subroutine check_configuration
+
+
+  subroutine check_channel_category(category)
+    integer, intent(in) :: category
+
+    if (category < 0 .or. category > 2) then
+      call fail_bundle('an initial/final FKS category is out of range')
+    end if
+  end subroutine check_channel_category
+
+
+  logical function configuration_matches_category(configuration, category)
+    integer, intent(in) :: configuration, category
+    integer :: emitter
+
+    emitter = fks_j_d(configuration)
+    select case (category)
+    case (0)
+      configuration_matches_category = .true.
+    case (1)
+      configuration_matches_category = emitter > nincoming .and. &
+           emitter <= nexternal
+    case (2)
+      configuration_matches_category = emitter > 0 .and. &
+           emitter <= nincoming
+    case default
+      configuration_matches_category = .false.
+    end select
+  end function configuration_matches_category
 
 
   subroutine check_contribution(contribution)

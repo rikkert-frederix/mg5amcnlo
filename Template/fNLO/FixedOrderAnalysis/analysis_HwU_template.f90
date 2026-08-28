@@ -1,5 +1,5 @@
 module analysis_hwu_template_module
-  use process_dimensions, only: nexternal
+  use process_dimensions, only: event_capacity
   use HwU_module, only: HwU_inithist, HwU_book, HwU_fill
   implicit none
   private

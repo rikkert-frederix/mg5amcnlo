@@ -27,6 +27,18 @@ FNLO_CUTTOOLS_LIBRARY = $(if $(strip $(FNLO_VIRTUAL_LIBRARIES)),\
 NLOLIBS=-L$(LIBDIR) $(FNLO_MADLOOP_LIBRARIES) \
 	$(FNLO_CUTTOOLS_LIBRARY) $(libOLP)
 
+# The generated spin-density virtual providers are part of FILES so that the
+# same independently swappable matrix-element objects are available to every
+# executable.  In a bundled full-NLO process they retain direct references to
+# the separately prefixed MadLoop archives.  The auxiliary gensym and
+# soft/collinear executables must therefore build and link those archives too;
+# omitting them is a link error even when that particular executable never
+# calls a virtual provider at run time.
+FNLO_BUNDLE_VIRTUAL_DEPS = \
+	$(if $(strip $(FNLO_VIRTUAL_LIBRARIES)),$(FNLO_MADLOOP_LIBRARIES))
+FNLO_BUNDLE_VIRTUAL_LINKS = \
+	$(if $(strip $(FNLO_VIRTUAL_LIBRARIES)),$(NLOLIBS))
+
 # Uncomment the line below to compile with MadLoop without setting the environnement 
 # variables 'by hand'
 # NLOLIBS= -L. -lMadLoop -L$(LIBDIR) -lcts
@@ -49,7 +61,19 @@ FILES= fnlo_process_common.o process_dimensions.o			\
 	 fnlo_scale_variations.o					\
 	 decay_chain_parameters_bridge.o phase_space_kinematics.o	\
 	 factorized_phase_space.o factorized_block_kinematics.o	\
+	 multiplicative_event_tuples.o				\
+	 multiplicative_phase_space.o				\
+	 multiplicative_kinematics.o				\
+	 multiplicative_scale_state.o				\
+	 multiplicative_production_channels.o			\
 	 spin_density_matrix_results.o					\
+	 multiplicative_density_terms.o				\
+	 density_operator_recorder.o				\
+	 $(if $(wildcard spin_density_multiplicative_contraction.f),\
+	 multiplicative_fks_density.o multiplicative_nbody_density.o \
+	 multiplicative_block_distribution.o \
+	 multiplicative_density_contraction.o			\
+	 multiplicative_runtime.o) \
 	 decay_chain_kinematics.o nlo_decay_kinematics.o		\
 	 decay_chain_scales.o						\
 	 fks_diagnostics.o fks_qcd_splitting.o fks_soft_kernels.o	\
@@ -185,13 +209,13 @@ SYM= $(RUN) BinothLHADummy.o BinothLHADummy_bridge.o \
 %.o: $(ANADIR)/%.cc
 	$(CXX) $(CXXFLAGS) -c -I. -I$(ANADIR) $(FO_INCLUDEPATHS) $^
 
-gensym: $(SYM)
-	$(FC) $(LDFLAGS) -o gensym $(SYM) $(LINKLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(FJLIBS)
+gensym: $(SYM) $(FNLO_BUNDLE_VIRTUAL_DEPS)
+	$(FC) $(LDFLAGS) -o gensym $(SYM) $(FNLO_BUNDLE_VIRTUAL_LINKS) $(LINKLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(FJLIBS)
 	rm fks_singular.o
 	strip gensym
 
-test_soft_col_limits: $(TEST) mint_module.o
-	$(FC) $(LDFLAGS) -o test_soft_col_limits $(TEST) $(LINKLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(FJLIBS)
+test_soft_col_limits: $(TEST) mint_module.o $(FNLO_BUNDLE_VIRTUAL_DEPS)
+	$(FC) $(LDFLAGS) -o test_soft_col_limits $(TEST) $(FNLO_BUNDLE_VIRTUAL_LINKS) $(LINKLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(FJLIBS)
 	rm test_soft_col_limits.o
 	strip test_soft_col_limits
 
@@ -221,7 +245,8 @@ fnlo_process_common.o: $(LIBDIR)extra_weights.mod
 $(FNLO_PROCESS_COMMON_USERS): fnlo_process_common.o
 fks_metadata.o: process_dimensions.o
 fks_metadata_bridge.o: fks_metadata.o
-nlo_contribution_bundle.o: process_dimensions.o fnlo_process_common.o
+nlo_contribution_bundle.o: process_dimensions.o fks_metadata.o \
+	fnlo_process_common.o
 nlo_decay_metadata.o: process_dimensions.o fks_metadata.o \
 	nlo_contribution_bundle.o
 decay_chain_metadata.o: process_dimensions.o fks_metadata.o \
@@ -235,8 +260,38 @@ fnlo_scale_variations.o: decay_chain_metadata.o nlo_decay_metadata.o \
 phase_space_kinematics.o: process_dimensions.o \
 	$(LIBDIR)kin_functions_module.mod
 factorized_phase_space.o: process_dimensions.o fnlo_process_common.o
+multiplicative_event_tuples.o: process_dimensions.o fnlo_process_common.o
+multiplicative_phase_space.o: process_dimensions.o factorized_phase_space.o \
+	nlo_contribution_bundle.o
+multiplicative_kinematics.o: process_dimensions.o factorized_phase_space.o \
+	factorized_block_kinematics.o $(LIBDIR)kin_functions_module.mod
+multiplicative_scale_state.o: process_dimensions.o factorized_phase_space.o \
+	decay_chain_parameters.o $(LIBDIR)alfas_functions_module.mod \
+	$(LIBDIR)run_state.mod fnlo_process_common.o multiplicative_kinematics.o \
+	dummy_fct.o
+spin_density_multiplicative_contraction.o: multiplicative_scale_state.o \
+	spin_density_matrix_results.o factorized_phase_space.o
 spin_density_matrix_results.o: process_dimensions.o fnlo_process_common.o \
 	factorized_phase_space.o
+multiplicative_density_terms.o: process_dimensions.o fnlo_process_common.o \
+	spin_density_matrix_results.o
+density_operator_recorder.o: multiplicative_density_terms.o
+multiplicative_fks_density.o: factorized_phase_space.o fks_singular.o \
+	nlo_contribution_bundle.o spin_density_matrix_results.o \
+	multiplicative_density_terms.o density_operator_recorder.o
+multiplicative_nbody_density.o: factorized_phase_space.o fks_singular.o \
+	nlo_contribution_bundle.o spin_density_matrix_results.o \
+	multiplicative_density_terms.o density_operator_recorder.o
+multiplicative_block_distribution.o: multiplicative_density_terms.o \
+	multiplicative_nbody_density.o multiplicative_fks_density.o \
+	multiplicative_scale_state.o nlo_contribution_bundle.o
+multiplicative_density_contraction.o: process_dimensions.o \
+	spin_density_matrix_results.o multiplicative_density_terms.o \
+	multiplicative_kinematics.o
+multiplicative_runtime.o: process_dimensions.o factorized_phase_space.o \
+	nlo_contribution_bundle.o fnlo_process_common.o \
+	multiplicative_density_terms.o multiplicative_density_contraction.o \
+	multiplicative_kinematics.o
 factorized_block_kinematics.o: process_dimensions.o phase_space_kinematics.o
 decay_chain_kinematics.o: process_dimensions.o fnlo_process_common.o \
 	decay_chain_metadata.o \
@@ -285,7 +340,7 @@ fks_singular.o: process_dimensions.o fks_model_state.o fks_metadata.o \
 	mint_module.o FKSParams.o splitorders_stuff.o fks_Sij.o \
 	chooser_functions.o phase_space_kinematics.o decay_chain_metadata.o \
 	decay_chain_kinematics.o decay_chain_scales.o \
-	factorized_phase_space.o \
+	factorized_phase_space.o density_operator_recorder.o \
 	nlo_decay_metadata.o nlo_decay_kinematics.o \
 	nlo_contribution_bundle.o \
 	fks_qcd_splitting.o fks_soft_kernels.o \
@@ -312,7 +367,12 @@ fks_singular_bridge.o: fks_model_state.o fks_singular.o \
 	fks_metadata_bridge.o
 fks_random_bridge.o: fks_random.o mint_module.o
 driver_mintFO.o: process_dimensions.o fks_metadata.o fks_channel_map.o \
-	decay_chain_metadata.o nlo_contribution_bundle.o \
+	decay_chain_metadata.o decay_chain_parameters.o \
+	nlo_contribution_bundle.o multiplicative_phase_space.o \
+	multiplicative_density_terms.o multiplicative_block_distribution.o \
+	multiplicative_kinematics.o multiplicative_scale_state.o \
+	multiplicative_production_channels.o \
+	multiplicative_runtime.o \
 	fnlo_scale_variations.o \
 	fks_random.o genps_fks.o \
 	weight_lines.o mint_module.o FKSParams.o MC_integer.o setscales.o \

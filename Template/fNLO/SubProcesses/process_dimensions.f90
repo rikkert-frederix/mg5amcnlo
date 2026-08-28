@@ -5,6 +5,7 @@ module process_dimensions
   integer, parameter, public :: order_name_length = 64
 
   integer, public :: nexternal = 0
+  integer, public :: event_capacity = 0
   integer, public :: nincoming = 0
   integer, public :: max_particles = 0
   integer, public :: max_branch = 0
@@ -31,6 +32,7 @@ module process_dimensions
   logical :: born_dimensions_initialized = .false.
 
   public :: initialize_process_dimensions
+  public :: configure_event_capacity
   public :: initialize_born_dimensions
   public :: validate_process_dimensions
   public :: validate_process_and_born_dimensions
@@ -78,6 +80,7 @@ contains
     end if
 
     nexternal = nexternal_in
+    event_capacity = nexternal_in
     nincoming = nincoming_in
     max_particles = max_particles_in
     max_branch = max_branch_in
@@ -99,6 +102,17 @@ contains
     process_dimensions_initialized = .true.
     call validate_process_dimensions()
   end subroutine initialize_process_dimensions
+
+
+  subroutine configure_event_capacity(capacity)
+    integer, intent(in) :: capacity
+
+    call validate_process_dimensions()
+    if (capacity < nexternal) then
+      call fail_validation('the event capacity is smaller than NEXTERNAL')
+    end if
+    event_capacity = capacity
+  end subroutine configure_event_capacity
 
 
   subroutine initialize_born_dimensions(max_bhel_in, max_bcol_in, &
@@ -175,6 +189,8 @@ contains
     process_dimensions_are_valid = process_dimensions_initialized
     process_dimensions_are_valid = process_dimensions_are_valid .and. &
          nexternal > 0
+    process_dimensions_are_valid = process_dimensions_are_valid .and. &
+         event_capacity >= nexternal
     process_dimensions_are_valid = process_dimensions_are_valid .and. &
          nincoming >= 1 .and. nincoming <= 2
     process_dimensions_are_valid = process_dimensions_are_valid .and. &

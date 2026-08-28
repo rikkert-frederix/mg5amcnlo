@@ -1,5 +1,5 @@
 module analysis_hwu_general_module
-  use process_dimensions, only: nexternal, nincoming
+  use process_dimensions, only: event_capacity, nincoming
   use run_state, only: jetalgo, jetradius, ptj, etaj, gamma_is_j, &
                        ptgmin, r0gamma, xn, epsgamma, etagamma, isoem
   use HwU_module, only: HwU_inithist, HwU_book, HwU_fill
@@ -123,40 +123,40 @@ contains
   subroutine analysis_fill(p, istatus, ipdg, wgts, ibody)
 !ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
     implicit none
-    integer, intent(in) :: istatus(nexternal)
-    integer, intent(in) :: iPDG(nexternal)
-    double precision, intent(in) :: p(0:4, nexternal)
+    integer, intent(in) :: istatus(event_capacity)
+    integer, intent(in) :: iPDG(event_capacity)
+    double precision, intent(in) :: p(0:4, event_capacity)
     double precision, intent(in) :: wgts(*)
     integer, intent(in) :: ibody
     integer i, j, k, l
-    double precision pQCD(0:3, nexternal), palg, rfj, sycut, yjmax &
-    & , pjet(0:3, nexternal), tmp, ptlep(4), ptem, ptep, ptmm, ptmp, ptepem &
+    double precision pQCD(0:3, event_capacity), palg, rfj, sycut, yjmax &
+    & , pjet(0:3, event_capacity), tmp, ptlep(4), ptem, ptep, ptmm, ptmp, ptepem &
     & , ptmpmm, ptepve, ptmmvm, ptepemmpmm, ptepvemmvm, ptt, ptat, pttt &
     & , etmiss, pth(2), pthh, ptv(3), ptjet(3), Mepem, Mmpmm, Mepve, Mmmvm &
     & , Mepemmpmm, Mepvemmvm, Mtt, Mhh, Mj1j2, Mj1j3, Mj2j3, Mj1j2j3, Mvvv &
-    & , HTparton, HTreco, p_reco(0:4, nexternal), ptphiso(nexternal), Mphphph
-    integer nQCD, jet(nexternal), njet, itop, iatop, iem, iep, imp, imm, ive &
-    & , ivm, iv1, iv2, iv3, ih1, ih2, il, ipdg_reco(nexternal)
+    & , HTparton, HTreco, p_reco(0:4, event_capacity), ptphiso(event_capacity), Mphphph
+    integer nQCD, jet(event_capacity), njet, itop, iatop, iem, iep, imp, imm, ive &
+    & , ivm, iv1, iv2, iv3, ih1, ih2, il, ipdg_reco(event_capacity)
 ! Photon isolation
     integer nph, nem, nin, nphiso
     double precision ptg
-    double precision Etsum(0:nexternal)
-    real drlist(nexternal)
-    double precision pgamma(0:3, nexternal), pgammaiso(0:3, nexternal), pem(0:3, nexternal)
+    double precision Etsum(0:event_capacity)
+    real drlist(event_capacity)
+    double precision pgamma(0:3, event_capacity), pgammaiso(0:3, event_capacity), pem(0:3, event_capacity)
     logical isolated
 ! Sort array of results: ismode>0 for real, isway=0 for ascending order
-    integer ismode, isway, izero, isorted(nexternal)
+    integer ismode, isway, izero, isorted(event_capacity)
     parameter(ismode=1)
     parameter(isway=0)
     parameter(izero=0)
-    logical is_a_ph(nexternal)
+    logical is_a_ph(event_capacity)
 !      integer iph1,iph2,iph3
     p_reco = p
     iPDG_reco = iPDG
 
 ! Put all (light) QCD partons(+photon) in momentum array for jet clustering.
     nQCD = 0
-    do j = nincoming + 1, nexternal
+    do j = nincoming + 1, event_capacity
       if (abs(ipdg_reco(j)) .le. 5 .or. ipdg_reco(j) .eq. 21 &
       & .or. (ipdg_reco(j) .eq. 22 .and. gamma_is_j)) then
         nQCD = nQCD + 1
@@ -176,14 +176,14 @@ contains
 !     call FASTJET to get all the jets
 !
 !     INPUT:
-!     input momenta:               pQCD(0:3,nexternal), energy is 0th component
+!     input momenta:               pQCD(0:3,event_capacity), energy is 0th component
 !     number of input momenta:     nQCD
 !     radius parameter:            rfj
 !     minumum jet pt:              sycut
 !     jet algorithm:               palg, 1.0=kt, 0.0=C/A, -1.0 = anti-kt
 !
 !     OUTPUT:
-!     jet momenta:                             pjet(0:3,nexternal), E is 0th cmpnt
+!     jet momenta:                             pjet(0:3,event_capacity), E is 0th cmpnt
 !     the number of jets (with pt > SYCUT):    njet
 !     the jet for a given particle 'i':        jet(i),   note that this is
 !     the particle in pQCD, which doesn't necessarily correspond to the particle
@@ -197,7 +197,7 @@ contains
 ! PHOTON (ISOLATION) CUTS
 !
 ! find the photons
-    do i = 1, nexternal
+    do i = 1, event_capacity
       if (istatus(i) .eq. 1 .and. ipdg(i) .eq. 22 .and. .not. gamma_is_j) then
         is_a_ph(i) = .true.
       else
@@ -206,7 +206,7 @@ contains
     end do
     if (ptgmin .gt. 0d0) then
       nph = 0
-      do j = nincoming + 1, nexternal
+      do j = nincoming + 1, event_capacity
         if (is_a_ph(j)) then
           nph = nph + 1
           do i = 0, 3
@@ -222,7 +222,7 @@ contains
             pem(i, k) = pgamma(i, k)
           end do
         end do
-        do j = nincoming + 1, nexternal
+        do j = nincoming + 1, event_capacity
           if (istatus(j) .eq. 1 .and. (abs(ipdg(j)) .eq. 11 .or. &
           & abs(ipdg(j)) .eq. 13 .or. abs(ipdg(j)) .eq. 15)) then
             nem = nem + 1
@@ -345,7 +345,7 @@ contains
 !      iph2=0
 !      iph3=0
 !          print*,"nell'analisi"
-    do i = 1, nexternal
+    do i = 1, event_capacity
 !          print*,"idpg di ",i,"=",ipdg(i)
 !          print*,"idpg_reco di ",i,"=",ipdg_reco(i)
 
@@ -563,7 +563,7 @@ contains
 !
     HTparton = 0d0
     HTreco = 0d0
-    do i = 1, nexternal
+    do i = 1, event_capacity
       HTparton = HTparton + getptv4(p(0, i))
       if (abs(ipdg_reco(i)) .gt. 5 .and. ipdg_reco(i) .ne. 21 .and. &
       & ipdg_reco(i) .ne. 22 .and. abs(ipdg_reco(i)) .ne. 12 .and. &

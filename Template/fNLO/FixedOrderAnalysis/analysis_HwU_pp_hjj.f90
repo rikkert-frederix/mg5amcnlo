@@ -1,5 +1,5 @@
 module analysis_hwu_pp_hjj_module
-  use process_dimensions, only: nexternal, nincoming
+  use process_dimensions, only: event_capacity, nincoming
   use HwU_module, only: HwU_inithist, HwU_book, HwU_fill
   implicit none
   private
@@ -133,26 +133,26 @@ contains
 !ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
     use boostwdir2_module, only: boostwdir2
     implicit none
-    integer, intent(in) :: iPDG(nexternal)
-    double precision, intent(in) :: p(0:4, nexternal)
+    integer, intent(in) :: iPDG(event_capacity)
+    double precision, intent(in) :: p(0:4, event_capacity)
     double precision, intent(in) :: wgts(*)
     integer i, j, k, l
-    double precision pQCD(0:3, nexternal), palg, rfj, sycut, yjmax &
-    & , pjet(0:3, nexternal), ptjet(nexternal), yjet(nexternal) &
-    & , etajet(nexternal), ptj_tag, deltay12, mj1j2min, ph(0:3), pj1(0:3) &
+    double precision pQCD(0:3, event_capacity), palg, rfj, sycut, yjmax &
+    & , pjet(0:3, event_capacity), ptjet(event_capacity), yjet(event_capacity) &
+    & , etajet(event_capacity), ptj_tag, deltay12, mj1j2min, ph(0:3), pj1(0:3) &
     & , pj2(0:3), pj3(0:3), pjj(0:3), pHj(0:3), psyst(0:3), pjveto(0:3) &
     & , ptH, etaH, yH, njdble, ptj1, etaj1, yj1, ptHj, etaHj, yHj, DphiHj1 &
     & , DRHj1, ptj2, etaj2, yj2, ptjj, etajj, yjj, ptsyst, etasyst, ysyst &
     & , DphiHj2, Dphij1j2, DRHj2, DRj1j2, mj1j2, Dyj1j2, ptj3, etaj3, yj3 &
     & , yj3rel, chy1, shy1, chy1mo, chy2, shy2, chy2mo, ptrel_j1, ptrel_j2 &
-    & , ppboost(0:3, nexternal), prel_j1(0:3), prel_j2(0:3) &
+    & , ppboost(0:3, event_capacity), prel_j1(0:3), prel_j2(0:3) &
     & , pj1boost(0:3), pj2boost(0:3), pt_veto, previous_pt
     logical pass_tag_cuts, flag
-    integer nQCD, jet(nexternal), ij1y, ij2y, ij3y, njet, njety, ijveto &
+    integer nQCD, jet(event_capacity), ij1y, ij2y, ij3y, njet, njety, ijveto &
     & , ijvetoy, ij1, ij2, ij3
     double precision xd(1:3)
     data(xd(i), i=1, 3)/0d0, 0d0, 1d0/
-    if (nexternal .ne. 6) then
+    if (event_capacity .ne. 6) then
       write (*, *) 'error #1 in analysis_fill: '// &
       & 'only for process "p p > h j j [QCD]"'
       stop 1
@@ -191,7 +191,7 @@ contains
 
 ! Put all (light) QCD partons in momentum array for jet clustering.
     nQCD = 0
-    do j = nincoming + 1, nexternal
+    do j = nincoming + 1, event_capacity
       if (abs(ipdg(j)) .le. 5 .or. ipdg(j) .eq. 21) then
         nQCD = nQCD + 1
         do i = 0, 3
@@ -205,7 +205,7 @@ contains
     rfj = 0.4d0
     sycut = 20d0
     yjmax = 4.5d0
-    do i = 1, nexternal
+    do i = 1, event_capacity
       do j = 0, 3
         pjet(j, i) = 0d0
       end do
@@ -226,14 +226,14 @@ contains
 !     call FASTJET to get all the jets
 !
 !     INPUT:
-!     input momenta:               pQCD(0:3,nexternal), energy is 0th component
+!     input momenta:               pQCD(0:3,event_capacity), energy is 0th component
 !     number of input momenta:     nQCD
 !     radius parameter:            rfj
 !     minumum jet pt:              sycut
 !     jet algorithm:               palg, 1.0=kt, 0.0=C/A, -1.0 = anti-kt
 !
 !     OUTPUT:
-!     jet momenta:                             pjet(0:3,nexternal), E is 0th cmpnt
+!     jet momenta:                             pjet(0:3,event_capacity), E is 0th cmpnt
 !     the number of jets (with pt > SYCUT):    njet
 !     the jet for a given particle 'i':        jet(i),   note that this is
 !     the particle in pQCD, which doesn't necessarily correspond to the particle

@@ -1,5 +1,5 @@
 module analysis_hwu_pp_tj_module
-  use process_dimensions, only: nexternal
+  use process_dimensions, only: event_capacity
   use run_state, only: jetalgo, jetradius, ptj
   use HwU_module, only: HwU_inithist, HwU_book, HwU_fill
   implicit none
@@ -85,18 +85,18 @@ contains
 !ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
     implicit none
 
-    integer iPDG(nexternal)
-    double precision p(0:4, nexternal)
+    integer iPDG(event_capacity)
+    double precision p(0:4, event_capacity)
     double precision wgts(*)
     integer ibody, mu, count_bj, count_j
     integer i, j, l, itop
-    double precision pQCD(0:3, nexternal), palg, rfj, sycut, pjet(0:3 &
-    & , nexternal), ptj1, yj1, etaj1, ptbj1, ybj1, etabj1, ptj2, yj2, etaj2 &
+    double precision pQCD(0:3, event_capacity), palg, rfj, sycut, pjet(0:3 &
+    & , event_capacity), ptj1, yj1, etaj1, ptbj1, ybj1, etabj1, ptj2, yj2, etaj2 &
     & , ptbj2, ybj2, etabj2, p_top(0:3), pttop, ytop, etatop, psyst(0:3) &
     & , ptsyst, ysyst, etasyst
-    integer nQCD, nb, is_b(nexternal), njet, jet(nexternal), nbjet
-    logical is_b_jet(nexternal)
-    if (nexternal .ne. 5) then
+    integer nQCD, nb, is_b(event_capacity), njet, jet(event_capacity), nbjet
+    logical is_b_jet(event_capacity)
+    if (event_capacity .ne. 5) then
 
       write (*, *) 'error #1 in analysis_fill: '// &
       & 'only for process "p p > t j [QCD]"'
@@ -130,7 +130,7 @@ contains
 
     nQCD = 0
     nb = 0
-    do i = 1, nexternal
+    do i = 1, event_capacity
       if (abs(ipdg(i)) .le. 5 .or. ipdg(i) .eq. 21) then
         nQCD = nQCD + 1
         do j = 0, 3
@@ -157,14 +157,14 @@ contains
 !     call FASTJET to get all the jets
 !
 !     INPUT:
-!     input momenta:               pQCD(0:3,nexternal), energy is 0th component
+!     input momenta:               pQCD(0:3,event_capacity), energy is 0th component
 !     number of input momenta:     nQCD
 !     radius parameter:            rfj
 !     minumum jet pt:              sycut
 !     jet algorithm:               palg, 1.0=kt, 0.0=C/A, -1.0 = anti-kt
 !
 !     OUTPUT:
-!     jet momenta:                             pjet(0:3,nexternal), E is 0th cmpnt
+!     jet momenta:                             pjet(0:3,event_capacity), E is 0th cmpnt
 !     the number of jets (with pt > SYCUT):    njet
 !     the jet for a given particle 'i':        jet(i),   note that this is
 !     the particle in pQCD, which doesn't necessarily correspond to the particle

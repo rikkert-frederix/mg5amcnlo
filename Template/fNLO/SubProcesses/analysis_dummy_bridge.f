@@ -22,12 +22,12 @@ c Legacy analysis ABI for the module-owned dummy implementation.
 
 
       subroutine analysis_fill(p,istatus,ipdg,wgts,ibody)
-      use process_dimensions, only: nexternal
+      use process_dimensions, only: event_capacity
       use analysis_dummy_module, only:
      &     module_analysis_fill => analysis_fill
       implicit none
-      double precision p(0:4,nexternal),wgts(*)
-      integer istatus(nexternal),ipdg(nexternal),ibody
+      double precision p(0:4,event_capacity),wgts(*)
+      integer istatus(event_capacity),ipdg(event_capacity),ibody
 
       call module_analysis_fill()
       return

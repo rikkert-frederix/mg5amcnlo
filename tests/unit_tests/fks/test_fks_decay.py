@@ -165,12 +165,13 @@ class TestFKSDecayChains(unittest.TestCase):
             '# Runtime parameters for fixed-on-shell decay chains.\n'
             '# LO_DECAY_WIDTH entries are LO physical total widths in GeV.\n'
             '# NLO_DECAY_WIDTH entries are NLO physical total widths in GeV.\n'
-            '# Bundled NLO results use the strict O(alpha_s) width expansion.\n'
-            '# All NWA denominators use LO widths; NLO-LO enters only linearly.\n'
+            '# ADDITIVE keeps only the strict O(alpha_s) expansion.\n'
+            '# MULTIPLICATIVE combines complete block-local NLO distributions.\n'
             '# DECAY_REN_SCALE entries are independent decay scales in GeV.\n'
             'FORMAT 3\n'
             'DUMMY_WIDTH_RATIO 1.0000000000000001e-01\n'
             'PRODUCTION_REN_SCALE_MOMENTA CORE\n'
+            'NLO_COMBINATION_MODE ADDITIVE\n'
             'DECAY_WIDTH 6 1.4915000000000000e+00\n'
             'DECAY_REN_SCALE 6 1.7300000000000000e+02\n'
             'DECAY_WIDTH 24 2.0476000000000001e+00\n'
@@ -194,6 +195,17 @@ class TestFKSDecayChains(unittest.TestCase):
             'NLO_DECAY_WIDTH 6 1.3646000000000000e+00\n',
             nlo_card_text)
         self.assertNotIn('\nDECAY_WIDTH 6 ', nlo_card_text)
+        multiplicative_card_text = fks_decay.decay_card_text(
+            {6: 1.4915}, {6: 173.0}, nlo_width_pdgs={6},
+            nlo_widths={6: 1.3646},
+            nlo_combination_mode='multiplicative')
+        self.assertIn(
+            'NLO_COMBINATION_MODE MULTIPLICATIVE\n',
+            multiplicative_card_text)
+        with self.assertRaisesRegex(ValueError, 'explicit NLO widths'):
+            fks_decay.decay_card_text(
+                {6: 1.4915}, {6: 173.0},
+                nlo_combination_mode='multiplicative')
         varied_card_text = fks_decay.decay_card_text(
             {6: 1.4915}, {6: 173.0}, nlo_width_pdgs={6},
             nlo_widths={6: 1.3646},
@@ -304,6 +316,11 @@ class TestFKSDecayChains(unittest.TestCase):
                 'type, public :: spin_density_block_result', result_source)
             self.assertIn(
                 'function strict_spin_density_product', result_source)
+            self.assertIn(
+                'function multiplicative_spin_density_product',
+                result_source)
+            self.assertIn('function spin_density_product_order',
+                          result_source)
             self.assertIn('insertion_order > 1', result_source)
             self.assertIn('momentum_revision', result_source)
             self.assertIn('the active block has no density insertion',
@@ -1140,7 +1157,10 @@ class TestFKSDecayChains(unittest.TestCase):
             sampler = sampler.split(
                 'end subroutine sample_nlo_decay_node', 1)[0]
             self.assertNotIn('parent_momentum', sampler)
-            self.assertNotIn('visible', sampler)
+            # Metadata may name a final-event target "visible", but sampling
+            # must not construct or mutate the global visible-momentum array.
+            self.assertNotIn('visible(:,', sampler)
+            self.assertNotIn('materialize_', sampler)
             self.assertNotIn('boost_nbody_from_rest', sampler)
             self.assertIn('factorized_block_kinematics', kinematics)
             self.assertNotIn('use decay_chain_kinematics', kinematics)
@@ -1522,6 +1542,91 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertTrue(all(
                 'SDM_BLOCK_AVAILABLE' not in source
                 for source in real_sources))
+            with open(os.path.join(
+                    subprocess_dir,
+                    'spin_density_multiplicative_contraction.f')) as stream:
+                product_source = stream.read()
+            self.assertIn(
+                'SUBROUTINE SDM_MULTIPLICATIVE_CONTRACTION(',
+                product_source)
+            self.assertIn('INTEGER EVENT_SLOTS(NBLOCKS)', product_source)
+            flat_product_source = ' '.join(
+                product_source.replace('$', ' ').split()).replace(' ,', ',')
+            self.assertIn(
+                'MULTIPLICATIVE_SPIN_DENSITY_PRODUCT(SDM_BLOCKS,',
+                flat_product_source)
+            self.assertIn('SPIN_DENSITY_REAL_INSERTION', product_source)
+            self.assertIn('SPIN_DENSITY_COLOR_INSERTION', product_source)
+            self.assertIn(
+                'INTEGER FUNCTION SDM_MULTIPLICATIVE_PHYSICAL_BLOCK(',
+                product_source)
+            self.assertIn(
+                'INTEGER FUNCTION SDM_MULTIPLICATIVE_COMPONENT_POSITION(',
+                product_source)
+            self.assertIn(
+                'INTEGER FUNCTION SDM_MULTIPLICATIVE_BLOCK_PDG(',
+                product_source)
+            self.assertIn(
+                'CALL ACTIVATE_MULTIPLICATIVE_BLOCK_REFERENCE(',
+                product_source)
+            self.assertIn(
+                'INTEGER FUNCTION SDM_MULTIPLICATIVE_BORN_QCD_POWER(',
+                product_source)
+            self.assertIn(
+                'SDM_MULTIPLICATIVE_BORN_QCD_POWER=4', product_source)
+            self.assertIn(
+                'SDM_MULTIPLICATIVE_BORN_QCD_POWER=0', product_source)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'multiplicative_event_tuples.f90')) as stream:
+                tuple_source = stream.read().lower()
+            self.assertIn('cartesian_subtraction_tuple_count', tuple_source)
+            self.assertIn('decode_cartesian_subtraction_tuple', tuple_source)
+            self.assertIn('(/1, -1, -1, 1/)', tuple_source)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'factorized_phase_space.f90')) as stream:
+                factorized_source = stream.read().lower()
+            self.assertIn('compose_factorized_tuple_measure',
+                          factorized_source)
+            self.assertIn('store_factorized_local_momenta',
+                          factorized_source)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'multiplicative_density_terms.f90')) as stream:
+                density_terms_source = stream.read().lower()
+            self.assertIn('block_nlo_distribution', density_terms_source)
+            self.assertIn('raw laurent-pole density', density_terms_source)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'multiplicative_kinematics.f90')) as stream:
+                tuple_kinematics_source = stream.read().lower()
+            self.assertIn('realize_factorized_event_tuple',
+                          tuple_kinematics_source)
+            self.assertIn('boost_from_rest', tuple_kinematics_source)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'multiplicative_density_contraction.f90')) as stream:
+                contraction_source = stream.read().lower()
+            self.assertIn('call realize_factorized_event_tuple',
+                          contraction_source)
+            self.assertIn('call sdm_multiplicative_contraction',
+                          contraction_source)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'multiplicative_nbody_density.f90')) as stream:
+                nbody_density_source = stream.read().lower()
+            self.assertIn('build_multiplicative_lo_density_term',
+                          nbody_density_source)
+            self.assertIn('record_nbody_integrated_density_operator',
+                          nbody_density_source)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'multiplicative_scale_state.f90')) as stream:
+                scale_state_source = stream.read().lower()
+            self.assertIn('activate_multiplicative_block_reference',
+                          scale_state_source)
+            self.assertIn('reference_coupling', scale_state_source)
 
     def test_full_nlo_bundle_supports_nested_corrected_decays(self):
         command = self.generate(
@@ -1783,6 +1888,15 @@ class TestFKSDecayChains(unittest.TestCase):
                     subprocess_dir, 'makefile')) as stream:
                 makefile = stream.read()
             self.assertIn('FNLO_CUTTOOLS_LIBRARY', makefile)
+            self.assertIn('FNLO_BUNDLE_VIRTUAL_DEPS', makefile)
+            self.assertIn(
+                'test_soft_col_limits: $(TEST) mint_module.o '
+                '$(FNLO_BUNDLE_VIRTUAL_DEPS)', makefile)
+            self.assertIn(
+                'gensym: $(SYM) $(FNLO_BUNDLE_VIRTUAL_DEPS)', makefile)
+            self.assertTrue(os.path.islink(os.path.join(
+                subprocess_dir,
+                'multiplicative_production_channels.f90')))
             self.assertTrue(os.path.isfile(os.path.join(
                 subprocess_dir, 'nlo_decay_info_2.dat')))
             self.assertTrue(os.path.isfile(os.path.join(

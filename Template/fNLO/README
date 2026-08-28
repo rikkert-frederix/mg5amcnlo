@@ -13,8 +13,9 @@ Cards/FO_analyse_card.dat.
 Decay-chain outputs also contain Cards/decay_card.dat. It sets the physical
 total widths and an independent renormalization scale for each decaying
 particle species. Full NLO production-and-decay bundles require both
-LO_DECAY_WIDTH and NLO_DECAY_WIDTH for every NLO-corrected species. They use
-the strict O(alpha_s) expansion
+LO_DECAY_WIDTH and NLO_DECAY_WIDTH for every NLO-corrected species.
+NLO_COMBINATION_MODE selects ADDITIVE (the default) or MULTIPLICATIVE.
+ADDITIVE uses the strict O(alpha_s) expansion
 
   dsigma = dsigma_LO + delta dsigma_prod
          + sum_i delta dsigma_decay_i
@@ -95,6 +96,22 @@ The block measures, active radiation map, production flux and incoming
 integration weight are composed only at the integrator boundary. Production
 and decay NLO terms also own separate adaptive grids for their three FKS
 radiation variables.
+
+In MULTIPLICATIVE mode each block contributes its complete NLO distribution
+and NLO-corrected decay denominators use NLO total widths. This product is NLO
+accurate and contains factorizable cross terms between different blocks; it
+is not a complete higher-order calculation within any one block and contains
+no non-factorizable exchange between blocks.
+
+Real subtraction is not performed before blocks are combined. A radiative
+block remains a list of terms with distinct momenta. For two massless
+radiative blocks, for example, the product contains separate RR, RS, SR and
+SS tuples (and the analogous collinear tuples) with signs +, -, -, +. Each
+tuple first selects and boosts the corresponding momentum in every block,
+then contracts the block-local density matrices, assembles the visible event,
+and evaluates cuts and observables. Only those separately evaluated tuple
+weights are finally added. Thus “finite block” means a finite signed
+distribution, never a matrix or scalar formed by pre-adding unlike events.
 
 calculate_xsect
 ---------------

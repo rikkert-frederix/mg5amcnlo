@@ -4,6 +4,9 @@ module decay_chain_kinematics
        soft_counterevent
   use factorized_phase_space, only: factorized_measure_state, &
        store_factorized_block_momenta, store_factorized_kernel_momenta, &
+       store_factorized_local_momenta, fetch_factorized_local_momenta, &
+       store_factorized_local_layout, factorized_no_target, &
+       factorized_visible_target, factorized_block_target, &
        store_factorized_embedded_momenta, &
        fetch_factorized_embedded_momenta, &
        store_factorized_base_measure, compose_factorized_base_measure
@@ -24,6 +27,9 @@ module decay_chain_kinematics
        visible_color_pair
   use decay_chain_parameters, only: decay_dummy_width_ratio, &
        decay_physical_width
+  use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
+       active_nlo_contribution, active_contribution_is_production, &
+       multiplicative_emission_target
   implicit none
   private
 
@@ -42,6 +48,8 @@ module decay_chain_kinematics
   public :: active_core_count, fks_leg_mass
   public :: map_core_color_pair
   public :: contract_visible_momenta
+  public :: realize_decay_event_tuple
+  public :: materialize_decay_event_tuple
   ! These Lorentz-covariant building blocks are also used by the dedicated
   ! NLO-decay phase-space path.  They do not depend on decay-chain metadata.
   public :: generate_nbody, generate_nbody_rest
@@ -175,6 +183,9 @@ contains
     end do
     call store_factorized_block_momenta(soft_counterevent, 0, core_count, &
                                         core_born_storage)
+    call store_factorized_local_momenta(soft_counterevent, 0, core_count, &
+                                        core_born_storage)
+    call store_core_local_layout(context, soft_counterevent, core_count)
     call store_factorized_embedded_momenta( &
          soft_counterevent, 0, core_count, core_born_storage)
 
@@ -209,6 +220,8 @@ contains
 
     call require_enabled()
     context = context_for_fks(configuration)
+    call store_core_local_layout( &
+         context, event_slot, context_core_count(context))
     call embed_decay_context( &
          context, event_slot, core_momenta, &
          event_slot /= soft_counterevent, pass)
@@ -228,7 +241,7 @@ contains
     do leg = 1, context_core_count(context)
       target = core_target_id(context, leg)
       if (core_target_kind(context, leg) /= decay_node_target) cycle
-      call sample_decay_node(target, x, index, pass)
+      call sample_decay_node(context, target, x, index, pass)
       if (.not. pass) return
     end do
   end subroutine sample_decay_context
@@ -247,8 +260,8 @@ contains
   end subroutine set_decay_cut_mask
 
 
-  recursive subroutine sample_decay_node(node, x, index, pass)
-    integer, intent(in) :: node
+  recursive subroutine sample_decay_node(context, node, x, index, pass)
+    integer, intent(in) :: context, node
     double precision, intent(in) :: x(99)
     integer, intent(inout) :: index
     logical, intent(out) :: pass
@@ -256,6 +269,10 @@ contains
     integer :: child_count, child, identifier, child_kind
     double precision :: child_masses(nexternal)
     double precision :: rest_momenta(0:3, nexternal)
+    double precision :: local_momenta(0:3, nexternal)
+    integer :: pdgs(nexternal), target_kinds(nexternal)
+    integer :: target_ids(nexternal)
+    logical :: particle_is_final(nexternal)
     double precision :: local_jacobian, local_weight
     type(factorized_measure_state) :: decay_measure
 
@@ -280,6 +297,33 @@ contains
     node_rest_storage(:, 1:child_count, node) = &
          rest_momenta(:, 1:child_count)
     node_rest_valid(node) = .true.
+    local_momenta = 0d0
+    local_momenta(0, 1) = node_masses(node)
+    local_momenta(:, 2:child_count + 1) = &
+         rest_momenta(:, 1:child_count)
+    call store_factorized_local_momenta( &
+         soft_counterevent, node, child_count + 1, local_momenta)
+    pdgs = 0
+    target_kinds = factorized_no_target
+    target_ids = 0
+    particle_is_final = .false.
+    pdgs(1) = node_pdg(node)
+    do child = 1, child_count
+      identifier = node_child_id(node, child)
+      particle_is_final(child + 1) = .true.
+      if (node_child_kind(node, child) == decay_node_child) then
+        pdgs(child + 1) = node_pdg(identifier)
+        target_kinds(child + 1) = factorized_block_target
+        target_ids(child + 1) = identifier
+      else
+        pdgs(child + 1) = leaf_pdg(identifier)
+        target_kinds(child + 1) = factorized_visible_target
+        target_ids(child + 1) = leaf_visible_leg(context, identifier)
+      end if
+    end do
+    call store_factorized_local_layout( &
+         soft_counterevent, node, child_count + 1, pdgs, &
+         particle_is_final, target_kinds, target_ids)
     index = index + 3*child_count - 4
     decay_measure%jacobian = local_jacobian
     decay_measure%phase_space_weight = &
@@ -288,10 +332,47 @@ contains
 
     do child = 1, child_count
       if (node_child_kind(node, child) /= decay_node_child) cycle
-      call sample_decay_node(node_child_id(node, child), x, index, pass)
+      call sample_decay_node( &
+           context, node_child_id(node, child), x, index, pass)
       if (.not. pass) return
     end do
   end subroutine sample_decay_node
+
+
+  subroutine store_core_local_layout(context, event_slot, particle_count)
+    integer, intent(in) :: context, event_slot, particle_count
+    integer :: leg, target
+    integer :: pdgs(nexternal), target_kinds(nexternal)
+    integer :: target_ids(nexternal)
+    logical :: particle_is_final(nexternal)
+
+    pdgs = 0
+    target_kinds = factorized_no_target
+    target_ids = 0
+    particle_is_final = .false.
+    do leg = 1, particle_count
+      pdgs(leg) = core_leg_pdg(context, leg)
+      particle_is_final(leg) = leg > nincoming
+      if (.not. particle_is_final(leg)) cycle
+      target = core_target_id(context, leg)
+      if (core_target_kind(context, leg) == decay_node_target) then
+        target_kinds(leg) = factorized_block_target
+      else
+        target_kinds(leg) = factorized_visible_target
+      end if
+      target_ids(leg) = target
+      if (has_nlo_contribution_bundle() .and. &
+          active_contribution_is_production() .and. &
+          target_kinds(leg) == factorized_visible_target .and. &
+          target_ids(leg) == nexternal) then
+        target_ids(leg) = multiplicative_emission_target( &
+             active_nlo_contribution())
+      end if
+    end do
+    call store_factorized_local_layout( &
+         event_slot, 0, particle_count, pdgs, particle_is_final, &
+         target_kinds, target_ids)
+  end subroutine store_core_local_layout
 
 
   subroutine embed_decay_context(context, event_slot, core_momenta, &
@@ -362,15 +443,132 @@ contains
     integer, intent(in) :: context, event_slot
     double precision, intent(out) :: visible_momenta(0:, :)
     logical, intent(out) :: pass
+    integer :: event_slots(0:nexternal)
+
+    event_slots = event_slot
+    call materialize_decay_event_tuple( &
+         context, event_slots, visible_momenta, pass)
+  end subroutine materialize_decay_event
+
+
+  subroutine realize_decay_event_tuple(context, event_slots, pass)
+    integer, intent(in) :: context
+    integer, intent(in) :: event_slots(0:)
+    logical, intent(out) :: pass
+    double precision :: core_momenta(0:3, nexternal)
+    integer :: core_count, leg, target
+    logical :: available
+
+    if (ubound(event_slots, 1) < nexternal) then
+      call fail_kinematics('an event-slot tuple has the wrong size')
+    end if
+    core_count = context_core_count(context)
+    call fetch_factorized_local_momenta( &
+         event_slots(0), 0, core_count, &
+         core_momenta(:, 1:core_count), available)
+    if (.not. available) then
+      call fail_kinematics( &
+           'the selected production-local configuration is unavailable')
+    end if
+    call store_factorized_block_momenta( &
+         event_slots(0), 0, core_count, core_momenta)
+    call store_factorized_embedded_momenta( &
+         event_slots(0), 0, core_count, core_momenta)
+
+    pass = .true.
+    do leg = 1, core_count
+      if (core_target_kind(context, leg) /= decay_node_target) cycle
+      target = core_target_id(context, leg)
+      call realize_decay_node_tuple( &
+           context, event_slots, target, core_momenta(:, leg), pass)
+      if (.not. pass) return
+    end do
+  end subroutine realize_decay_event_tuple
+
+
+  recursive subroutine realize_decay_node_tuple( &
+       context, event_slots, node, parent_momentum, pass)
+    integer, intent(in) :: context, node
+    integer, intent(in) :: event_slots(0:)
+    double precision, intent(in) :: parent_momentum(0:3)
+    logical, intent(out) :: pass
+    double precision :: local_momenta(0:3, nexternal)
+    double precision :: child_momenta(0:3, nexternal)
+    double precision :: block_momenta(0:3, nexternal)
+    integer :: child_count, child, identifier, event_slot
+    logical :: available
+
+    child_count = node_child_count(node)
+    event_slot = event_slots(node)
+    call fetch_factorized_local_momenta( &
+         event_slot, node, child_count + 1, &
+         local_momenta(:, 1:child_count + 1), available)
+    if (.not. available) then
+      call fail_kinematics( &
+           'a selected decay-local configuration is unavailable')
+    end if
+    call validate_local_decay_parent( &
+         node, local_momenta(:, 1), pass)
+    if (.not. pass) return
+    call boost_nbody_from_rest( &
+         local_momenta(:, 2:child_count + 1), child_count, &
+         parent_momentum, node_masses(node), child_momenta)
+
+    block_momenta = 0d0
+    block_momenta(:, 1) = parent_momentum
+    block_momenta(:, 2:child_count + 1) = &
+         child_momenta(:, 1:child_count)
+    call store_factorized_block_momenta( &
+         event_slot, node, child_count + 1, block_momenta)
+    call store_factorized_embedded_momenta( &
+         event_slot, node, child_count + 1, block_momenta)
+
+    pass = .true.
+    do child = 1, child_count
+      if (node_child_kind(node, child) /= decay_node_child) cycle
+      identifier = node_child_id(node, child)
+      call realize_decay_node_tuple( &
+           context, event_slots, identifier, child_momenta(:, child), pass)
+      if (.not. pass) return
+    end do
+  end subroutine realize_decay_node_tuple
+
+
+  subroutine validate_local_decay_parent(node, parent, pass)
+    integer, intent(in) :: node
+    double precision, intent(in) :: parent(0:3)
+    logical, intent(out) :: pass
+    double precision :: tolerance
+
+    tolerance = 1d-10*max(1d0, node_masses(node))
+    pass = abs(parent(0) - node_masses(node)) <= tolerance .and. &
+         maxval(abs(parent(1:3))) <= tolerance
+    if (.not. pass) then
+      call fail_kinematics( &
+           'a decay-local configuration is not in the parent rest frame')
+    end if
+  end subroutine validate_local_decay_parent
+
+
+  subroutine materialize_decay_event_tuple(context, event_slots, &
+                                            visible_momenta, pass)
+    integer, intent(in) :: context
+    integer, intent(in) :: event_slots(0:)
+    double precision, intent(out) :: visible_momenta(0:, :)
+    logical, intent(out) :: pass
     double precision :: core_momenta(0:3, nexternal)
     integer :: leg, target, core_count
     logical :: available
 
+    if (ubound(event_slots, 1) < nexternal) then
+      call fail_kinematics('an event-slot tuple has the wrong size')
+    end if
     call set_decay_cut_mask(context)
     visible_momenta = 0d0
     core_count = context_core_count(context)
     call fetch_factorized_embedded_momenta( &
-         event_slot, 0, core_count, core_momenta(:, 1:core_count), available)
+         event_slots(0), 0, core_count, &
+         core_momenta(:, 1:core_count), available)
     if (.not. available) then
       call fail_kinematics('the embedded production block is unavailable')
     end if
@@ -380,17 +578,18 @@ contains
       if (core_target_kind(context, leg) == direct_leg_target) then
         visible_momenta(:, target) = core_momenta(:, leg)
       else
-        call materialize_decay_node( &
-             context, event_slot, target, visible_momenta, pass)
+        call materialize_decay_node_tuple( &
+             context, event_slots, target, visible_momenta, pass)
         if (.not. pass) return
       end if
     end do
-  end subroutine materialize_decay_event
+  end subroutine materialize_decay_event_tuple
 
 
-  recursive subroutine materialize_decay_node( &
-       context, event_slot, node, visible_momenta, pass)
-    integer, intent(in) :: context, event_slot, node
+  recursive subroutine materialize_decay_node_tuple( &
+       context, event_slots, node, visible_momenta, pass)
+    integer, intent(in) :: context, node
+    integer, intent(in) :: event_slots(0:)
     double precision, intent(inout) :: visible_momenta(0:, :)
     logical, intent(out) :: pass
     double precision :: block_momenta(0:3, nexternal)
@@ -399,7 +598,7 @@ contains
 
     child_count = node_child_count(node)
     call fetch_factorized_embedded_momenta( &
-         event_slot, node, child_count + 1, &
+         event_slots(node), node, child_count + 1, &
          block_momenta(:, 1:child_count + 1), available)
     if (.not. available) then
       call fail_kinematics('an embedded decay block is unavailable')
@@ -408,15 +607,15 @@ contains
     do child = 1, child_count
       identifier = node_child_id(node, child)
       if (node_child_kind(node, child) == decay_node_child) then
-        call materialize_decay_node( &
-             context, event_slot, identifier, visible_momenta, pass)
+        call materialize_decay_node_tuple( &
+             context, event_slots, identifier, visible_momenta, pass)
         if (.not. pass) return
       else
         visible_momenta(:, leaf_visible_leg(context, identifier)) = &
              block_momenta(:, child + 1)
       end if
     end do
-  end subroutine materialize_decay_node
+  end subroutine materialize_decay_node_tuple
 
 
   subroutine fill_incoming_momenta(shat, sqrtshat, context, momenta, pass)
@@ -463,6 +662,8 @@ contains
     end if
     call store_factorized_kernel_momenta( &
          event_slot, 0, particle_count, momenta)
+    call store_factorized_local_momenta( &
+         event_slot, 0, particle_count, momenta)
     call store_factorized_embedded_momenta( &
          event_slot, 0, particle_count, momenta)
     if (event_slot /= soft_counterevent) then
@@ -506,12 +707,13 @@ contains
 
 
   subroutine map_core_color_pair(core_first, core_second, visible_first, &
-                                 visible_second)
+                                 visible_second, generated_index)
     integer, intent(in) :: core_first, core_second
     integer, intent(out) :: visible_first, visible_second
+    integer, intent(out), optional :: generated_index
     call require_enabled()
     call visible_color_pair(core_first, core_second, visible_first, &
-                            visible_second)
+                            visible_second, generated_index)
   end subroutine map_core_color_pair
 
 

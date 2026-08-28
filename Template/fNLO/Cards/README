@@ -3,13 +3,18 @@ fNLO fixed-order calculation.
 
 Processes with on-shell decay chains additionally contain decay_card.dat.
 That card controls the physical widths, dummy-width ratio, decay
-renormalization scales, and the production renormalization-scale momentum
-choice. Full NLO production-and-decay bundles require separate LO and NLO
-total widths for each corrected species and use their strict fixed-order
-O(alpha_s) expansion. All narrow-width denominators use the LO entries; the
-NLO-minus-LO differences enter only through the linear Born counterterm. That
-counterterm counts physical resonance occurrences, independently of which
-partial-decay numerators receive QCD corrections.
+renormalization scales, the production renormalization-scale momentum choice,
+and NLO_COMBINATION_MODE. Full NLO production-and-decay bundles require
+separate LO and NLO total widths for each corrected species. ADDITIVE is the
+default and keeps their strict fixed-order O(alpha_s) expansion: all
+narrow-width denominators use the LO entries and NLO-minus-LO enters only
+through the linear Born counterterm. MULTIPLICATIVE combines the complete NLO
+distribution of every factorized block and uses NLO total widths for corrected
+decays. Its block cross terms are beyond NLO but do not constitute a complete
+NNLO calculation.
+
+  NLO_COMBINATION_MODE ADDITIVE
+  # or: NLO_COMBINATION_MODE MULTIPLICATIVE
 
 FORMAT 5 adds explicit decay-scale variations:
 

@@ -13,6 +13,9 @@ module decay_chain_parameters
   integer, parameter, public :: decay_scale_none = 0
   integer, parameter, public :: decay_scale_correlated = 1
   integer, parameter, public :: decay_scale_independent = 2
+  integer, parameter, public :: nlo_combination_additive = 0
+  integer, parameter, public :: nlo_combination_multiplicative = 1
+  integer, save :: nlo_combination_mode_value = nlo_combination_additive
   double precision, save :: dummy_width_ratio_value = 0d0
   logical, save :: use_decayed_production_momenta_value = .false.
   integer, save :: number_of_width_species = 0
@@ -48,6 +51,7 @@ module decay_chain_parameters
   public :: decay_scale_factor_count, decay_scale_factor
   public :: decay_scale_species_count, decay_scale_species
   public :: decay_scale_species_index
+  public :: nlo_combination_mode, uses_multiplicative_nlo_combination
 
 contains
 
@@ -55,6 +59,7 @@ contains
     logical :: exists, end_seen, format_seen, ratio_seen, momentum_mode_seen
     logical :: legacy_width_seen, explicit_lo_width_seen
     logical :: variation_mode_seen, scale_factors_seen
+    logical :: combination_mode_seen
     integer :: unit_number, ios, card_format, width_count, width_index
     integer :: scale_count, scale_index, factor_count, factor_index
     integer :: lo_variation_count, nlo_variation_count
@@ -62,6 +67,7 @@ contains
     double precision :: value, factor
     character(len=512) :: line
     character(len=32) :: keyword, momentum_mode, variation_mode
+    character(len=32) :: combination_mode
 
     if (initialized) return
     if (.not. has_decay_chains() .and. .not. has_nlo_decay()) then
@@ -152,6 +158,7 @@ contains
     number_of_lo_width_variations = 0
     number_of_nlo_width_variations = 0
     scale_variation_mode_value = decay_scale_none
+    nlo_combination_mode_value = nlo_combination_additive
     dummy_width_ratio_value = 0d0
     use_decayed_production_momenta_value = .false.
     end_seen = .false.
@@ -162,6 +169,7 @@ contains
     explicit_lo_width_seen = .false.
     variation_mode_seen = .false.
     scale_factors_seen = .false.
+    combination_mode_seen = .false.
     do
       read(unit_number, '(a)', iostat=ios) line
       if (ios < 0) exit
@@ -199,6 +207,23 @@ contains
           end select
         end if
         momentum_mode_seen = .true.
+      case ('NLO_COMBINATION_MODE')
+        if (combination_mode_seen) then
+          call fail_parameters('duplicate NLO_COMBINATION_MODE record')
+        end if
+        read(line, *, iostat=ios) keyword, combination_mode
+        if (ios == 0) then
+          select case (trim(combination_mode))
+          case ('ADDITIVE')
+            nlo_combination_mode_value = nlo_combination_additive
+          case ('MULTIPLICATIVE')
+            nlo_combination_mode_value = nlo_combination_multiplicative
+          case default
+            call fail_parameters(&
+                 'NLO combination mode must be ADDITIVE or MULTIPLICATIVE')
+          end select
+        end if
+        combination_mode_seen = .true.
       case ('DECAY_WIDTH', 'LO_DECAY_WIDTH', 'NLO_DECAY_WIDTH')
         read(line, *, iostat=ios) keyword, pdg, value
         if (ios == 0) then
@@ -329,6 +354,11 @@ contains
     if (.not. momentum_mode_seen) then
       call fail_parameters('PRODUCTION_REN_SCALE_MOMENTA record is absent')
     end if
+    if (nlo_combination_mode_value == nlo_combination_multiplicative .and. &
+        .not. has_nlo_contribution_bundle()) then
+      call fail_parameters(&
+           'MULTIPLICATIVE mode requires a full NLO contribution bundle')
+    end if
     do width_index = 1, number_of_width_species
       if (has_lo_width(width_index)) then
         if (lo_width_values(width_index) <= 0d0 .or. &
@@ -426,7 +456,12 @@ contains
       call fail_parameters('requested particle has no physical width')
     end if
     if (has_nlo_contribution_bundle()) then
-      decay_physical_width = decay_lo_width(pdg)
+      if (uses_multiplicative_nlo_combination() .and. &
+          bundle_species_is_nlo(pdg)) then
+        decay_physical_width = decay_nlo_width(pdg)
+      else
+        decay_physical_width = decay_lo_width(pdg)
+      end if
     else if (has_nlo_width(width_index) .and. &
              .not. has_lo_width(width_index)) then
       ! Compatibility with FORMAT 3 standalone NLO-decay cards.
@@ -504,6 +539,7 @@ contains
     decay_width_expansion_coefficient = 0d0
     if (.not. has_nlo_contribution_bundle() .or. &
         .not. has_decay_chains()) return
+    if (uses_multiplicative_nlo_combination()) return
     ! Expand every physical 1/Gamma denominator whose species is corrected.
     ! This is deliberately a decay-node count, not an NLO-contribution count:
     ! an identical resonance assigned a QCD-inert numerator decay still has
@@ -533,11 +569,31 @@ contains
       pdg = node_pdg(node)
       factor_index = selected_factor_index(pdg, factor_indices)
       if (factor_index == 1) cycle
-      decay_width_denominator_rescaling = &
-           decay_width_denominator_rescaling*decay_lo_width(pdg)/ &
-           decay_lo_width(pdg, factor_index)
+      if (uses_multiplicative_nlo_combination() .and. &
+          bundle_species_is_nlo(pdg)) then
+        decay_width_denominator_rescaling = &
+             decay_width_denominator_rescaling*decay_nlo_width(pdg)/ &
+             decay_nlo_width(pdg, factor_index)
+      else
+        decay_width_denominator_rescaling = &
+             decay_width_denominator_rescaling*decay_lo_width(pdg)/ &
+             decay_lo_width(pdg, factor_index)
+      end if
     end do
   end function decay_width_denominator_rescaling
+
+
+  integer function nlo_combination_mode()
+    if (.not. initialized) call initialize_decay_chain_parameters()
+    nlo_combination_mode = nlo_combination_mode_value
+  end function nlo_combination_mode
+
+
+  logical function uses_multiplicative_nlo_combination()
+    if (.not. initialized) call initialize_decay_chain_parameters()
+    uses_multiplicative_nlo_combination = &
+         nlo_combination_mode_value == nlo_combination_multiplicative
+  end function uses_multiplicative_nlo_combination
 
 
   double precision function decay_renormalization_scale(pdg, factor_index)

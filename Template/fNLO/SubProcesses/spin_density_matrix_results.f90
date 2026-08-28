@@ -13,10 +13,11 @@ module spin_density_matrix_results
   integer, parameter, public :: spin_density_color_insertion = 4
 
   ! One physical production or decay block.  LO is the reusable spectator
-  ! density.  INSERTION is the sole block-local object that may replace it in
-  ! a fixed-order contraction (a local underlying Born, real, virtual,
-  ! spin-correlated, or colour-correlated density).  The contraction routine
-  ! below never reads INSERTION from more than one block.
+  ! density.  INSERTION is the block-local object selected for one term of a
+  ! subtraction tuple (an underlying Born, real, virtual, spin-correlated, or
+  ! colour-correlated density).  Strict additive contractions select an
+  ! insertion in at most one block; multiplicative contractions may select
+  ! one insertion in every block, while retaining each block's own event slot.
   type, public :: spin_density_block_result
     integer :: block = -1
     integer :: event_slot = -1
@@ -42,6 +43,8 @@ module spin_density_matrix_results
   public :: load_cached_lo_density, record_lo_density
   public :: set_spin_density_insertion
   public :: strict_spin_density_product
+  public :: multiplicative_spin_density_product
+  public :: spin_density_product_order
 
 contains
 
@@ -152,7 +155,7 @@ contains
     type(spin_density_block_result), intent(in) :: results(:)
     integer, intent(in) :: active_position, insertion_rank
     integer, intent(in) :: left_indices(:), right_indices(:)
-    integer :: position
+    integer :: insertion_ranks(size(results))
 
     if (size(left_indices) /= size(results) .or. &
         size(right_indices) /= size(results)) then
@@ -168,37 +171,118 @@ contains
            'an all-LO contraction requested an insertion rank')
     end if
 
-    strict_spin_density_product = (1d0, 0d0)
+    insertion_ranks = 0
+    if (active_position > 0) then
+      if (.not. results(active_position)%has_insertion) then
+        call fail_spin_density_results( &
+             'the active block has no density insertion')
+      end if
+      if (results(active_position)%insertion_order > 1) then
+        call fail_spin_density_results( &
+             'a higher-order density insertion was requested')
+      end if
+      insertion_ranks(active_position) = insertion_rank
+    end if
+    strict_spin_density_product = multiplicative_spin_density_product( &
+         results, insertion_ranks, left_indices, right_indices)
+  end function strict_spin_density_product
+
+
+  complex(kind=8) function multiplicative_spin_density_product( &
+       results, insertion_ranks, left_indices, right_indices)
+    type(spin_density_block_result), intent(in) :: results(:)
+    integer, intent(in) :: insertion_ranks(:)
+    integer, intent(in) :: left_indices(:), right_indices(:)
+    integer :: position, rank
+
+    call validate_contraction_vectors(results, insertion_ranks, &
+                                      left_indices, right_indices)
+    multiplicative_spin_density_product = (1d0, 0d0)
     do position = 1, size(results)
-      if (position == active_position) then
+      rank = insertion_ranks(position)
+      if (rank == 0) then
+        if (.not. results(position)%has_lo) then
+          call fail_spin_density_results( &
+               'a selected LO block has no cached LO density')
+        end if
+        multiplicative_spin_density_product = &
+             multiplicative_spin_density_product* &
+             results(position)%lo(1, left_indices(position), &
+                                  right_indices(position))
+      else
         if (.not. results(position)%has_insertion) then
           call fail_spin_density_results( &
-               'the active block has no density insertion')
+               'a selected block has no density insertion')
         end if
-        if (results(position)%insertion_order > 1) then
-          call fail_spin_density_results( &
-               'a higher-order density insertion was requested')
-        end if
-        if (insertion_rank < 1 .or. insertion_rank > &
-            size(results(position)%insertion, 1)) then
+        if (rank < 1 .or. rank > size(results(position)%insertion, 1)) then
           call fail_spin_density_results( &
                'an insertion rank is out of range')
         end if
-        strict_spin_density_product = strict_spin_density_product* &
-             results(position)%insertion( &
-             insertion_rank, left_indices(position), &
-             right_indices(position))
-      else
-        if (.not. results(position)%has_lo) then
-          call fail_spin_density_results( &
-               'a spectator block has no cached LO density')
-        end if
-        strict_spin_density_product = strict_spin_density_product* &
-             results(position)%lo(1, left_indices(position), &
-                                  right_indices(position))
+        multiplicative_spin_density_product = &
+             multiplicative_spin_density_product* &
+             results(position)%insertion(rank, left_indices(position), &
+                                         right_indices(position))
       end if
     end do
-  end function strict_spin_density_product
+  end function multiplicative_spin_density_product
+
+
+  integer function spin_density_product_order(results, insertion_ranks)
+    type(spin_density_block_result), intent(in) :: results(:)
+    integer, intent(in) :: insertion_ranks(:)
+    integer :: position
+
+    if (size(insertion_ranks) /= size(results)) then
+      call fail_spin_density_results( &
+           'a contraction insertion-rank vector has the wrong size')
+    end if
+    spin_density_product_order = 0
+    do position = 1, size(results)
+      if (insertion_ranks(position) < 0) then
+        call fail_spin_density_results('an insertion rank is negative')
+      end if
+      if (insertion_ranks(position) == 0) cycle
+      if (.not. results(position)%has_insertion) then
+        call fail_spin_density_results( &
+             'a selected block has no density insertion')
+      end if
+      if (insertion_ranks(position) > &
+          size(results(position)%insertion, 1)) then
+        call fail_spin_density_results( &
+             'an insertion rank is out of range')
+      end if
+      spin_density_product_order = spin_density_product_order + &
+           results(position)%insertion_order
+    end do
+  end function spin_density_product_order
+
+
+  subroutine validate_contraction_vectors(results, insertion_ranks, &
+                                           left_indices, right_indices)
+    type(spin_density_block_result), intent(in) :: results(:)
+    integer, intent(in) :: insertion_ranks(:)
+    integer, intent(in) :: left_indices(:), right_indices(:)
+    integer :: position
+
+    if (size(insertion_ranks) /= size(results) .or. &
+        size(left_indices) /= size(results) .or. &
+        size(right_indices) /= size(results)) then
+      call fail_spin_density_results( &
+           'a contraction vector has the wrong size')
+    end if
+    do position = 1, size(results)
+      if (insertion_ranks(position) < 0) then
+        call fail_spin_density_results('an insertion rank is negative')
+      end if
+      if (left_indices(position) < 1 .or. &
+          left_indices(position) > results(position)%open_size .or. &
+          right_indices(position) < 1 .or. &
+          right_indices(position) > results(position)%open_size) then
+        call fail_spin_density_results( &
+             'a contraction spin index is out of range')
+      end if
+    end do
+  end subroutine validate_contraction_vectors
 
 
   subroutine ensure_cache()

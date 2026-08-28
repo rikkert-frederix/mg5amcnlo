@@ -1246,10 +1246,12 @@ contains
 
 
   subroutine nlo_decay_map_color_link(configuration, real_first, real_second, &
-                                      visible_first, visible_second, multiplier)
+                                      visible_first, visible_second, multiplier, &
+                                      generated_index)
     integer, intent(in) :: configuration, real_first, real_second
     integer, intent(out) :: visible_first, visible_second
     double precision, intent(out) :: multiplier
+    integer, intent(out), optional :: generated_index
     integer :: born_first, born_second, record, temporary
     integer :: local_configuration_value
 
@@ -1278,6 +1280,8 @@ contains
     end if
     visible_first = color_visible_first_values(record)
     visible_second = color_visible_second_values(record)
+    if (present(generated_index)) &
+         generated_index = color_generated_index_values(record)
 
     ! Generated self links contain the conventional factor 1/2.  Crossing
     ! an incoming decay charge to its unique final-state carrier changes its

@@ -24,6 +24,7 @@ module genps_fks
        get_core_mass_buffer, active_core_count, expand_real_decay_momenta, &
        store_core_event_momenta, fks_leg_mass
   use nlo_decay_metadata, only: has_nlo_decay, nlo_decay_corrected_node
+  use nlo_contribution_bundle, only: has_nlo_contribution_bundle
   use nlo_decay_kinematics, only: generate_nlo_decay_fks_event, &
                                   nlo_decay_fks_sister_mass, &
                                   nlo_decay_parent_mass, &
@@ -64,7 +65,7 @@ contains
     type(born_phase_space) :: born
     real :: tBefore, tAfter
     double precision :: jac
-    integer :: i
+    integer :: i, incoming_weight_block
     logical :: pass
     call validate_process_dimensions()
     call cpu_time(tBefore)
@@ -106,7 +107,11 @@ contains
       stored_event_jacobian(i) = stored_event_jacobian(i)*wgt
     end do
     if (has_nlo_decay() .or. has_decay_chains()) then
-      call scale_factorized_event_measures(wgt)
+      incoming_weight_block = 0
+      if (has_nlo_contribution_bundle() .and. has_nlo_decay()) then
+        incoming_weight_block = nlo_decay_corrected_node()
+      end if
+      call scale_factorized_event_measures(wgt, incoming_weight_block)
     end if
     call scale_factorized_radiation_jacobians(wgt)
     wgt = stored_event_jacobian(real_event)
@@ -580,6 +585,8 @@ contains
     radiation%shat = kernel_shat
     radiation%sqrt_shat = kernel_sqrt_shat
     radiation%y_to_cm = kernel_y_to_cm
+    radiation%bjorken_x = event_bjorken_x(:, icountevts)
+    radiation%y_to_lab = ybst_til_tolab(icountevts)
     call store_factorized_radiation_state( &
          icountevts, radiation_block, radiation)
 

@@ -976,3 +976,399 @@ class SpinDensityExporter(object):
             '  ENDDO',
             'ENDDO'])
         return declarations, code
+
+    def write_multiplicative_dispatcher(self, writer, plan,
+                                        fks_info_list=None):
+        """Write the block-vector contraction used by product terms.
+
+        ``EVENT_SLOTS`` is deliberately an array.  A real or counterevent in
+        one factorized block does not select the momentum point of any other
+        block.  The caller must first choose one signed subtraction term per
+        radiative block, then pass the resulting tuple here.  Consequently no
+        real/counterevent family is prematurely collapsed at matrix-element
+        level.
+        """
+
+        self.prepare_plan(plan)
+        _, state_count, states = self._contraction_layout(plan)
+        node_count = len(plan['topology']['nodes'])
+        providers = dict(
+            (component_id, component['born'])
+            for component_id, component in plan['components'].items())
+        positions = self._block_position_map(providers)
+        component_count = len(providers)
+        born_qcd_powers = {}
+        for component_id, provider in sorted(providers.items()):
+            matrix_element = provider['matrix_element']
+            split_orders = list(
+                matrix_element.get('processes')[0].get('split_orders'))
+            squared_orders, _ = matrix_element.get_split_orders_mapping()
+            if 'QCD' in split_orders and len(squared_orders) == 1:
+                powers = set([int(squared_orders[0][
+                    split_orders.index('QCD')])])
+            else:
+                # Component providers can be constructed before their local
+                # split-order list is installed.  Diagram orders are the
+                # authoritative fallback; all diagrams in a reduced fNLO
+                # component must carry the same QCD amplitude power.
+                powers = set(
+                    2 * int(diagram.calculate_orders().get('QCD', 0))
+                    for diagram in matrix_element.get('diagrams'))
+            if len(powers) != 1:
+                raise MadGraph5Error(
+                    'A multiplicative density block has inconsistent '
+                    'Born QCD powers')
+            born_qcd_powers[component_id] = powers.pop()
+
+        born_variants = {}
+        for variant in plan.get('born_variants', []):
+            active = variant['active_component']
+            provider = variant.get('provider') or providers[active]
+            self._prepare_provider(plan, provider)
+            born_variants.setdefault(active, []).append((
+                variant.get('contribution_id', 1), provider))
+
+        real_variants = {}
+        for identifier, variant in enumerate(
+                plan.get('real_variants', []), 1):
+            self._prepare_provider(plan, variant['provider'])
+            real_variants.setdefault(
+                variant['active_component'], []).append(
+                    (identifier, variant['provider']))
+
+        virtual_variants = {}
+        for variant in plan.get('virtual_variants', []):
+            self._prepare_virtual_variant(plan, variant, 1)
+            virtual_variants.setdefault(
+                variant['active_component'], []).append((
+                    variant.get('contribution_id', 1), variant))
+
+        color_variants = {}
+        for variant in plan.get('color_variants', []):
+            self._prepare_color_variant(plan, variant)
+            color_variants.setdefault(
+                variant['active_component'], []).append((
+                    variant['generated_index'], variant))
+
+        lines = [
+            'SUBROUTINE SDM_MULTIPLICATIVE_CONTRACTION(EVENT_SLOTS,'
+            'INSERTION_KINDS,INSERTION_IDS,INSERTION_RANKS,'
+            'CORRELATION_LEGS,RESULT,PREC_ASKED,PREC_FOUND,RET_CODE)',
+            'USE SPIN_DENSITY_MATRIX_RESULTS',
+            'USE MULTIPLICATIVE_SCALE_STATE, ONLY: '
+            'ACTIVATE_MULTIPLICATIVE_BLOCK_REFERENCE',
+            'IMPLICIT NONE',
+            'INTEGER NBLOCKS,NSTATES,NNODES',
+            'PARAMETER (NBLOCKS=%d,NSTATES=%d,NNODES=%d)' % (
+                component_count, state_count, max(1, node_count)),
+            'INTEGER EVENT_SLOTS(NBLOCKS),INSERTION_KINDS(NBLOCKS)',
+            'INTEGER INSERTION_IDS(NBLOCKS),INSERTION_RANKS(NBLOCKS)',
+            'INTEGER CORRELATION_LEGS(NBLOCKS),RET_CODE,SDM_LOCAL_CODE',
+            'INTEGER SDM_STATE,SDM_STATE2,SDM_LEFT(NBLOCKS)',
+            'INTEGER SDM_RIGHT(NBLOCKS)',
+            'INTEGER SDM_NODE_STATE(NNODES,NSTATES)',
+            'DOUBLE PRECISION PREC_ASKED,PREC_FOUND,SDM_PRECISION',
+            'COMPLEX*16 RESULT',
+            'TYPE(SPIN_DENSITY_BLOCK_RESULT) SDM_BLOCKS(NBLOCKS)']
+        for node_id in sorted(states):
+            lines.append(
+                'DATA (SDM_NODE_STATE(%d,SDM_STATE),SDM_STATE=1,%d) '
+                '/%s/' % (node_id, state_count,
+                          ','.join(map(str, states[node_id]))))
+
+        for component_id, provider in sorted(providers.items()):
+            position = positions[component_id]
+            candidates = [provider]
+            candidates.extend(item[1]
+                              for item in born_variants.get(component_id, []))
+            candidates.extend(item[1]
+                              for item in real_variants.get(component_id, []))
+            candidates.extend(
+                variant.get('tree_provider') or provider
+                for _, variant in virtual_variants.get(component_id, []))
+            max_external = max(candidate['matrix_element'].
+                               get_nexternal_ninitial()[0]
+                               for candidate in candidates)
+            open_size = provider['open_size']
+            lines.extend([
+                'REAL*8 SDM_P_%d(0:3,%d)' % (position, max_external),
+                'COMPLEX*16 SDM_RHO2_%d(2,%d,%d)' % (
+                    position, open_size, open_size),
+                'COMPLEX*16 SDM_RHO3_%d(3,%d,%d)' % (
+                    position, open_size, open_size),
+                'COMPLEX*16 SDM_COLOR_%d(%d,%d)' % (
+                    position, open_size, open_size),
+                'COMPLEX*16 SDM_COLOR_INSERTION_%d(1,%d,%d)' % (
+                    position, open_size, open_size),
+                'LOGICAL SDM_LO_AVAILABLE_%d' % position])
+
+        lines.extend([
+            'RESULT=(0D0,0D0)',
+            'PREC_FOUND=0D0',
+            'RET_CODE=0'])
+
+        def provider_call(position, component_id, provider, corr_leg):
+            nexternal = provider['matrix_element'].get_nexternal_ninitial()[0]
+            return [
+                'CALL GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOTS(%d),%d,%d,'
+                'SDM_P_%d)' % (
+                    position, component_id, nexternal, position),
+                'CALL %s(SDM_P_%d,%s,SDM_RHO2_%d)' % (
+                    provider['fortran_name'], position, corr_leg, position)]
+
+        def selection_cases(entries, body):
+            result = ['SELECT CASE (INSERTION_IDS(%d))' % body['position']]
+            for identifier, value in entries:
+                result.append('CASE (%d)' % identifier)
+                result.extend(body['emit'](value))
+            result.extend([
+                'CASE DEFAULT',
+                "WRITE(*,*) 'Invalid multiplicative density identifier'",
+                'STOP 1',
+                'END SELECT'])
+            return result
+
+        for component_id, provider in sorted(providers.items()):
+            position = positions[component_id]
+            open_size = provider['open_size']
+            nexternal = provider['matrix_element'].get_nexternal_ninitial()[0]
+            lines.extend([
+                'CALL ACTIVATE_MULTIPLICATIVE_BLOCK_REFERENCE(%d)' %
+                component_id,
+                'CALL INITIALIZE_SPIN_DENSITY_BLOCK(SDM_BLOCKS(%d),' %
+                position,
+                '     $ EVENT_SLOTS(%d),%d,%d)' % (
+                    position, component_id, open_size),
+                'IF (INSERTION_KINDS(%d).EQ.'
+                'SPIN_DENSITY_NO_INSERTION) THEN' % position,
+                'IF (INSERTION_RANKS(%d).NE.0) THEN' % position,
+                "WRITE(*,*) 'LO block has a nonzero insertion rank'",
+                'STOP 1',
+                'ENDIF',
+                'CALL LOAD_CACHED_LO_DENSITY(SDM_BLOCKS(%d),'
+                'SDM_LO_AVAILABLE_%d)' % (position, position),
+                'IF (.NOT.SDM_LO_AVAILABLE_%d) THEN' % position,
+                'CALL GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOTS(%d),%d,%d,'
+                'SDM_P_%d)' % (
+                    position, component_id, nexternal, position),
+                'CALL %s(SDM_P_%d,0,SDM_RHO2_%d)' % (
+                    provider['fortran_name'], position, position),
+                'CALL RECORD_LO_DENSITY(SDM_BLOCKS(%d),'
+                'SDM_RHO2_%d(1:1,:,:))' % (position, position),
+                'ENDIF',
+                'ELSE',
+                'SELECT CASE (INSERTION_KINDS(%d))' % position])
+
+            block_born = born_variants.get(component_id, [])
+            if block_born:
+                lines.append('CASE (SPIN_DENSITY_BORN_INSERTION)')
+                lines.extend(selection_cases(
+                    block_born, {
+                        'position': position,
+                        'emit': lambda selected, p=position, c=component_id:
+                            provider_call(
+                                p, c, selected,
+                                'CORRELATION_LEGS(%d)' % p)}))
+                lines.extend([
+                    'CALL SET_SPIN_DENSITY_INSERTION(SDM_BLOCKS(%d),'
+                    'SPIN_DENSITY_BORN_INSERTION,0,SDM_RHO2_%d)' % (
+                        position, position)])
+
+            block_real = real_variants.get(component_id, [])
+            if block_real:
+                lines.append('CASE (SPIN_DENSITY_REAL_INSERTION)')
+                lines.extend(selection_cases(
+                    block_real, {
+                        'position': position,
+                        'emit': lambda selected, p=position, c=component_id:
+                            provider_call(p, c, selected, '0')}))
+                lines.extend([
+                    'CALL SET_SPIN_DENSITY_INSERTION(SDM_BLOCKS(%d),'
+                    'SPIN_DENSITY_REAL_INSERTION,1,SDM_RHO2_%d)' % (
+                        position, position)])
+
+            block_virtual = virtual_variants.get(component_id, [])
+            if block_virtual:
+                def virtual_call(selected, p=position, c=component_id):
+                    local_external = selected['matrix_element'].\
+                        get_nexternal_ninitial()[0]
+                    return [
+                        'CALL GET_FACTORIZED_BLOCK_MOMENTA('
+                        'EVENT_SLOTS(%d),%d,%d,SDM_P_%d)' % (
+                            p, c, local_external, p),
+                        'CALL %s(SDM_P_%d,SDM_RHO3_%d,PREC_ASKED,'
+                        'SDM_PRECISION,SDM_LOCAL_CODE)' % (
+                            selected['fortran_name'], p, p),
+                        'PREC_FOUND=MAX(PREC_FOUND,SDM_PRECISION)',
+                        'RET_CODE=MAX(RET_CODE,SDM_LOCAL_CODE)']
+                lines.append('CASE (SPIN_DENSITY_VIRTUAL_INSERTION)')
+                lines.extend(selection_cases(
+                    block_virtual, {
+                        'position': position,
+                        'emit': virtual_call}))
+                lines.extend([
+                    'CALL SET_SPIN_DENSITY_INSERTION(SDM_BLOCKS(%d),'
+                    'SPIN_DENSITY_VIRTUAL_INSERTION,1,SDM_RHO3_%d)' % (
+                        position, position)])
+
+            block_color = color_variants.get(component_id, [])
+            if block_color:
+                def color_call(selected, p=position, c=component_id):
+                    local_external = selected['provider']['matrix_element'].\
+                        get_nexternal_ninitial()[0]
+                    return [
+                        'CALL GET_FACTORIZED_BLOCK_MOMENTA('
+                        'EVENT_SLOTS(%d),%d,%d,SDM_P_%d)' % (
+                            p, c, local_external, p),
+                        'CALL %s(SDM_P_%d,SDM_COLOR_%d)' % (
+                            selected['fortran_name'], p, p)]
+                lines.append('CASE (SPIN_DENSITY_COLOR_INSERTION)')
+                lines.extend(selection_cases(
+                    block_color, {
+                        'position': position,
+                        'emit': color_call}))
+                lines.extend([
+                    'SDM_COLOR_INSERTION_%d(1,:,:)=SDM_COLOR_%d' % (
+                        position, position),
+                    'CALL SET_SPIN_DENSITY_INSERTION(SDM_BLOCKS(%d),'
+                    'SPIN_DENSITY_COLOR_INSERTION,0,'
+                    'SDM_COLOR_INSERTION_%d)' % (position, position)])
+
+            lines.extend([
+                'CASE DEFAULT',
+                "WRITE(*,*) 'Invalid multiplicative density kind'",
+                'STOP 1',
+                'END SELECT',
+                'ENDIF'])
+
+        lines.extend([
+            'DO SDM_STATE=1,NSTATES',
+            '  DO SDM_STATE2=1,NSTATES'])
+        for component_id, provider in sorted(providers.items()):
+            position = positions[component_id]
+            lines.extend([
+                '    SDM_LEFT(%d)=%s' % (
+                    position, self._state_index(provider, 'SDM_STATE')),
+                '    SDM_RIGHT(%d)=%s' % (
+                    position, self._state_index(
+                        provider, 'SDM_STATE2'))])
+        lines.extend([
+            'RESULT=RESULT+MULTIPLICATIVE_SPIN_DENSITY_PRODUCT('
+            'SDM_BLOCKS,INSERTION_RANKS,SDM_LEFT,SDM_RIGHT)',
+            '  ENDDO',
+            'ENDDO',
+            'END'])
+
+        contribution_positions = {}
+        for variant in plan.get('born_variants', []):
+            contribution = variant.get('contribution_id', 1)
+            position = positions[variant['active_component']]
+            previous = contribution_positions.get(contribution)
+            if previous is not None and previous != position:
+                raise MadGraph5Error(
+                    'An NLO contribution owns several density blocks')
+            contribution_positions[contribution] = position
+        lines.extend([
+            '',
+            'INTEGER FUNCTION SDM_MULTIPLICATIVE_BLOCK_COUNT()',
+            'IMPLICIT NONE',
+            'SDM_MULTIPLICATIVE_BLOCK_COUNT=%d' % component_count,
+            'END',
+            '',
+            'INTEGER FUNCTION SDM_MULTIPLICATIVE_PHYSICAL_BLOCK('
+            'POSITION)',
+            'IMPLICIT NONE',
+            'INTEGER POSITION,VALUES(%d)' % component_count,
+            'DATA VALUES /%s/' % ','.join(
+                str(component_id) for component_id in sorted(providers)),
+            'IF (POSITION.LT.1.OR.POSITION.GT.%d) THEN' % component_count,
+            "WRITE(*,*) 'Invalid multiplicative component position'",
+            'STOP 1',
+            'ENDIF',
+            'SDM_MULTIPLICATIVE_PHYSICAL_BLOCK=VALUES(POSITION)',
+            'END',
+            '',
+            'INTEGER FUNCTION SDM_MULTIPLICATIVE_COMPONENT_POSITION('
+            'BLOCK)',
+            'IMPLICIT NONE',
+            'INTEGER BLOCK',
+            'SELECT CASE (BLOCK)'])
+        for component_id, position in sorted(positions.items()):
+            lines.extend([
+                'CASE (%d)' % component_id,
+                'SDM_MULTIPLICATIVE_COMPONENT_POSITION=%d' % position])
+        lines.extend([
+            'CASE DEFAULT',
+            "WRITE(*,*) 'Invalid multiplicative physical block'",
+            'STOP 1',
+            'END SELECT',
+            'END',
+            '',
+            'INTEGER FUNCTION SDM_MULTIPLICATIVE_BLOCK_PDG(BLOCK)',
+            'IMPLICIT NONE',
+            'INTEGER BLOCK',
+            'SELECT CASE (BLOCK)'])
+        topology_nodes = dict(
+            (node['id'], node) for node in plan['topology']['nodes'])
+        for component_id in sorted(providers):
+            pdg = 0 if component_id == 0 else int(
+                topology_nodes[component_id]['pdg'])
+            lines.extend([
+                'CASE (%d)' % component_id,
+                'SDM_MULTIPLICATIVE_BLOCK_PDG=%d' % pdg])
+        lines.extend([
+            'CASE DEFAULT',
+            "WRITE(*,*) 'Invalid multiplicative block-PDG request'",
+            'STOP 1',
+            'END SELECT',
+            'END',
+            '',
+            'INTEGER FUNCTION SDM_MULTIPLICATIVE_BORN_QCD_POWER(BLOCK)',
+            'IMPLICIT NONE',
+            'INTEGER BLOCK',
+            'SELECT CASE (BLOCK)'])
+        for component_id in sorted(providers):
+            lines.extend([
+                'CASE (%d)' % component_id,
+                'SDM_MULTIPLICATIVE_BORN_QCD_POWER=%d' %
+                born_qcd_powers[component_id]])
+        lines.extend([
+            'CASE DEFAULT',
+            "WRITE(*,*) 'Invalid multiplicative Born-QCD block'",
+            'STOP 1',
+            'END SELECT',
+            'END',
+            '',
+            'INTEGER FUNCTION SDM_CONTRIBUTION_COMPONENT_POSITION('
+            'CONTRIBUTION)',
+            'IMPLICIT NONE',
+            'INTEGER CONTRIBUTION',
+            'SELECT CASE (CONTRIBUTION)'])
+        for contribution, position in sorted(contribution_positions.items()):
+            lines.extend([
+                'CASE (%d)' % contribution,
+                'SDM_CONTRIBUTION_COMPONENT_POSITION=%d' % position])
+        lines.extend([
+            'CASE DEFAULT',
+            "WRITE(*,*) 'Invalid multiplicative contribution identifier'",
+            'STOP 1',
+            'END SELECT',
+            'END'])
+
+        if fks_info_list:
+            real_identifiers = [int(info['n_me']) for info in fks_info_list]
+            lines.extend([
+                '',
+                'INTEGER FUNCTION SDM_REAL_INSERTION_IDENTIFIER('
+                'CONFIGURATION)',
+                'IMPLICIT NONE',
+                'INTEGER CONFIGURATION,VALUES(%d)' % len(real_identifiers),
+                'DATA VALUES /%s/' % ','.join(map(str, real_identifiers)),
+                'IF (CONFIGURATION.LT.1.OR.CONFIGURATION.GT.%d) THEN' %
+                len(real_identifiers),
+                "WRITE(*,*) 'Invalid multiplicative FKS configuration'",
+                'STOP 1',
+                'ENDIF',
+                'SDM_REAL_INSERTION_IDENTIFIER=VALUES(CONFIGURATION)',
+                'END'])
+        writer.writelines(lines)
