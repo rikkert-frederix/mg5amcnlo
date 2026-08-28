@@ -9,9 +9,11 @@ module cuts_module
   use timing_state, only: t_cuts
   use fastjet_timing_wrapper, only: fastjet_etamax_timed
   use fixed_order_user_hooks, only: accept_dummy_cuts
+  use nlo_decay_metadata, only: has_nlo_decay
+  use nlo_decay_kinematics, only: fill_nlo_decay_event_masses
   use fnlo_process_common, only: etmin, etmax, mxxmin, &
        event_masses => particle_masses, event_idup => idup, &
-       event_from_decay => from_decay
+       event_from_decay => from_decay, nfksprocess
   implicit none
   private
 
@@ -613,9 +615,14 @@ contains
   data (xd(i),i=1,3)/0,0,1/
 ! Momenta of the particles
   double precision plab(0:3, nexternal),pp(0:4, nexternal)
+  double precision active_event_masses(nexternal)
 ! Masses of external particles
 ! PDG codes and masses are synchronized by the generated-state bridge.
   call cpu_time(tBefore)
+  active_event_masses = event_masses
+  if (has_nlo_decay()) then
+    call fill_nlo_decay_event_masses(nfksprocess, active_event_masses)
+  end if
 ! Make sure have reasonable 4-momenta
   if (p(0,1) .le. 0d0) then
   passcuts=.false.
@@ -650,7 +657,7 @@ contains
   do j=0,3
   pp(j,i)=plab(j,i)
   enddo
-  pp(4,i)=event_masses(i)
+  pp(4,i)=active_event_masses(i)
   ipdg(i)=event_idup(i,1)
   if (ipdg(i).eq.-21) ipdg(i)=21
   enddo

@@ -255,12 +255,17 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                     'squared-order combinations' %
                     (len(real_amplitude_orders), len(real_squared_orders)))
 
-        virtual_matrix_element = getattr(
-            matrix_element, 'nlo_decay_virtual_matrix_element', None)
-        if virtual_matrix_element is None:
+        virtual_matrix_elements = list(getattr(
+            matrix_element, 'bundle_virtual_matrix_elements', []))
+        if not virtual_matrix_elements:
             virtual_matrix_element = getattr(
-                matrix_element, 'virt_matrix_element', None)
-        if virtual_matrix_element:
+                matrix_element, 'nlo_decay_virtual_matrix_element', None)
+            if virtual_matrix_element is None:
+                virtual_matrix_element = getattr(
+                    matrix_element, 'virt_matrix_element', None)
+            if virtual_matrix_element:
+                virtual_matrix_elements.append(virtual_matrix_element)
+        for virtual_matrix_element in virtual_matrix_elements:
             virtual_squared_orders, _ = \
                 virtual_matrix_element.get_split_orders_mapping()
             if len(virtual_squared_orders) != 1:
@@ -383,7 +388,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
 
         metadata_paths = []
         for metadata_name in [
-                'decay_chain_info.dat', 'nlo_decay_info.dat']:
+                'decay_chain_info.dat', 'nlo_decay_info*.dat']:
             metadata_paths.extend(glob.glob(pjoin(
                 self.dir_path, 'SubProcesses', 'P*', metadata_name)))
         if not metadata_paths:
@@ -392,7 +397,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         species = set()
         nlo_width_species = set()
         for metadata_path in metadata_paths:
-            if os.path.basename(metadata_path) == 'nlo_decay_info.dat':
+            if os.path.basename(metadata_path).startswith(
+                    'nlo_decay_info'):
                 parent_records = []
                 with open(metadata_path) as metadata_file:
                     for line in metadata_file:
@@ -934,7 +940,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         BLHA (Binoth LesHouches Accord) guidelines. The MadFKS design
         necessitates that there is no process prefix."""
         
-        return ''
+        return getattr(self, '_fnlo_virtual_prefix', '')
 
     #===============================================================================
     # write_coef_specs
@@ -984,12 +990,19 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         nlo_decay_prototype = (
             self.opt.get('fks_template') == 'fNLO' and
             getattr(matrix_element, 'nlo_decay_metadata', None) is not None)
+        contribution_bundle = (
+            self.opt.get('fks_template') == 'fNLO' and
+            getattr(matrix_element, 'contribution_bundle', False))
         if decay_enabled:
             fks_decay.write_decay_chain_info(
                 os.getcwd(), matrix_element.decay_metadata)
         if nlo_decay_prototype:
             fks_decay.write_nlo_decay_prototype_files(
                 os.getcwd(), matrix_element.nlo_decay_metadata)
+        if contribution_bundle:
+            fks_decay.write_contribution_bundle_files(
+                os.getcwd(), matrix_element.bundle_contributions,
+                matrix_element.bundle_nlo_decay_metadata)
 
 ## write the files corresponding to the born process in the P* directory
         self.generate_born_fks_files(matrix_element,
@@ -1003,7 +1016,32 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         
         nlo_decay_virtual = getattr(
             matrix_element, 'nlo_decay_virtual_matrix_element', None)
-        if nlo_decay_virtual:
+        if contribution_bundle:
+            archives = []
+            for virtual in matrix_element.bundle_virtual_matrix_elements:
+                contribution = virtual.fnlo_contribution_id
+                self._fnlo_virtual_prefix = 'FNLOC%d_' % contribution
+                self._fnlo_virtual_directory_name = \
+                    'VContribution%d' % contribution
+                self._fnlo_virtual_archive = \
+                    'libMadLoop_%d.a' % contribution
+                try:
+                    calls += self.generate_virt_directory(
+                        virtual, fortran_model,
+                        os.path.join(path, borndir))
+                finally:
+                    self._fnlo_virtual_prefix = ''
+                    self._fnlo_virtual_directory_name = None
+                    self._fnlo_virtual_archive = None
+                archives.append('libMadLoop_%d.a' % contribution)
+            if archives:
+                self.write_virtual_contribution_chooser(
+                    writers.FortranWriter('virtual_contribution_chooser.f'),
+                    matrix_element.bundle_contributions)
+                with open('virtual_libraries.inc', 'w') as stream:
+                    stream.write('FNLO_VIRTUAL_LIBRARIES = %s\n' %
+                                 ' '.join(archives))
+        elif nlo_decay_virtual:
             if nlo_decay_prototype:
                 # The decay virtual is a valid standalone MadLoop object, but
                 # its spin-correlated contraction with the LO production
@@ -1312,6 +1350,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               'fnlo_process_common.f',
                               'fks_metadata.f90',
                               'fks_metadata_bridge.f',
+                              'nlo_contribution_bundle.f90',
                               'nlo_decay_metadata.f90',
                               'decay_chain_metadata.f90',
                               'decay_chain_parameters.f90',
@@ -1409,13 +1448,15 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         for file in linkfiles:
             ln('../' + file , '.')
         os.system("ln -s ../../Cards/param_card.dat .")
-        if decay_enabled or nlo_decay_prototype:
+        if decay_enabled or nlo_decay_prototype or contribution_bundle:
             os.system("ln -s ../../Cards/decay_card.dat .")
 
         #copy the makefile 
         os.system("ln -s ../makefile_fks_dir ./makefile")
         if self.opt.get('fks_template') == 'fNLO':
-            if matrix_element.virt_matrix_element:
+            if (matrix_element.virt_matrix_element or
+                    (contribution_bundle and
+                     matrix_element.bundle_virtual_matrix_elements)):
                 ln('../BinothLHA.f90', '.')
                 ln('../BinothLHA_bridge.f', '.')
             elif OLP != 'MadLoop':
@@ -1433,7 +1474,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         else:
             os.system("ln -s ../BinothLHA_user.f ./BinothLHA.f")
 
-        if decay_enabled or nlo_decay_prototype:
+        if decay_enabled or nlo_decay_prototype or contribution_bundle:
             self.declare_fnlo_decay_width_accessor(os.getcwd())
 
         # Return to SubProcesses dir
@@ -1449,6 +1490,213 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         gen_infohtml.make_info_html_nlo(self.dir_path)
 
         return calls, amp_split_orders
+
+    def write_virtual_contribution_chooser(self, writer, contributions):
+        """Dispatch the legacy unprefixed MadLoop ABI to one bundle member."""
+
+        virtual_ids = set(
+            contribution['id'] for contribution in contributions
+            if contribution['has_virtual'])
+        matrix_cases = []
+        helicity_cases = []
+        stability_cases = []
+        collier_uv_cases = []
+        collier_ir_cases = []
+        order_cases = []
+        for contribution in contributions:
+            identifier = contribution['id']
+            if identifier in virtual_ids:
+                if contribution['optimized_virtual']:
+                    matrix_cases.append(
+                        '      CASE (%d)\n'
+                        '        CALL FNLOC%d_SLOOPMATRIX_THRES(P, ANS, '
+                        'PREC_ASKED, PREC_FOUND, RET_CODE)' %
+                        (identifier, identifier))
+                    helicity_cases.append(
+                        '      CASE (%d)\n'
+                        '        CALL FNLOC%d_SLOOPMATRIXHEL_THRES(P, HEL, '
+                        'ANS, PREC_ASKED, PREC_FOUND, RET_CODE)' %
+                        (identifier, identifier))
+                else:
+                    # The traditional (non-optimized) MadLoop writer does
+                    # not expose split-order slots: its sole result lives at
+                    # index zero.  BinothLHA consumes the first split-order
+                    # slot, so mirror that total into slot one at this ABI
+                    # boundary.
+                    matrix_cases.append(
+                        '      CASE (%d)\n'
+                        '        CALL FNLOC%d_SLOOPMATRIX_THRES(P, RAW_ANS, '
+                        'PREC_ASKED, RAW_PREC_FOUND, RET_CODE)\n'
+                        '        ANS = 0D0\n'
+                        '        PREC_FOUND = 0D0\n'
+                        '        ANS(0:3,0) = RAW_ANS(0:3,0)\n'
+                        '        ANS(0:3,1) = RAW_ANS(0:3,0)\n'
+                        '        PREC_FOUND(0) = RAW_PREC_FOUND(0)\n'
+                        '        PREC_FOUND(1) = RAW_PREC_FOUND(0)' %
+                        (identifier, identifier))
+                    helicity_cases.append(
+                        '      CASE (%d)\n'
+                        '        CALL FNLOC%d_SLOOPMATRIXHEL_THRES(P, HEL, '
+                        'RAW_ANS, PREC_ASKED, RAW_PREC_FOUND, RET_CODE)\n'
+                        '        ANS = 0D0\n'
+                        '        PREC_FOUND = 0D0\n'
+                        '        ANS(0:3,0) = RAW_ANS(0:3,0)\n'
+                        '        ANS(0:3,1) = RAW_ANS(0:3,0)\n'
+                        '        PREC_FOUND(0) = RAW_PREC_FOUND(0)\n'
+                        '        PREC_FOUND(1) = RAW_PREC_FOUND(0)' %
+                        (identifier, identifier))
+                stability_cases.append(
+                    '      CASE (%d)\n'
+                    '        CALL FNLOC%d_FORCE_STABILITY_CHECK(ONOFF)' %
+                    (identifier, identifier))
+                if contribution['optimized_virtual']:
+                    collier_uv_cases.append(
+                        '      CASE (%d)\n'
+                        '        CALL FNLOC%d_COLLIER_COMPUTE_UV_POLES('
+                        'ONOFF)' % (identifier, identifier))
+                    collier_ir_cases.append(
+                        '      CASE (%d)\n'
+                        '        CALL FNLOC%d_COLLIER_COMPUTE_IR_POLES('
+                        'ONOFF)' % (identifier, identifier))
+                else:
+                    collier_uv_cases.append(
+                        '      CASE (%d)\n'
+                        '        CONTINUE' % identifier)
+                    collier_ir_cases.append(
+                        '      CASE (%d)\n'
+                        '        CONTINUE' % identifier)
+                amplitude_cases = []
+                for amplitude, orders in enumerate(
+                        contribution['virtual_orders'], 1):
+                    coupling_cases = [
+                        '          CASE (%d)\n'
+                        '            GETORDPOWFROMINDEX_ML5 = %d' %
+                        (position, power)
+                        for position, power in enumerate(orders, 1)]
+                    amplitude_cases.append(
+                        '        CASE (%d)\n'
+                        '          SELECT CASE (IORDER)\n%s\n'
+                        '          CASE DEFAULT\n'
+                        '            GETORDPOWFROMINDEX_ML5 = 0\n'
+                        '          END SELECT' %
+                        (amplitude, '\n'.join(coupling_cases)))
+                order_cases.append(
+                    '      CASE (%d)\n'
+                    '        SELECT CASE (IAMP)\n%s\n'
+                    '        CASE DEFAULT\n'
+                    '          GETORDPOWFROMINDEX_ML5 = 0\n'
+                    '        END SELECT' %
+                    (identifier, '\n'.join(amplitude_cases)))
+            else:
+                matrix_cases.append(
+                    '      CASE (%d)\n'
+                    '        ANS = 0D0\n'
+                    '        PREC_FOUND = 0D0\n'
+                    '        RET_CODE = 0' % identifier)
+                helicity_cases.append(
+                    '      CASE (%d)\n'
+                    '        ANS = 0D0\n'
+                    '        PREC_FOUND = 0D0\n'
+                    '        RET_CODE = 0' % identifier)
+                stability_cases.append(
+                    '      CASE (%d)\n'
+                    '        CONTINUE' % identifier)
+                collier_uv_cases.append(
+                    '      CASE (%d)\n'
+                    '        CONTINUE' % identifier)
+                collier_ir_cases.append(
+                    '      CASE (%d)\n'
+                    '        CONTINUE' % identifier)
+                order_cases.append(
+                    '      CASE (%d)\n'
+                    '        GETORDPOWFROMINDEX_ML5 = 0' % identifier)
+        text = """
+      SUBROUTINE SLOOPMATRIX_THRES(P, ANS, PREC_ASKED, PREC_FOUND,
+     $ RET_CODE)
+      USE NLO_CONTRIBUTION_BUNDLE, ONLY: ACTIVE_NLO_CONTRIBUTION
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      DOUBLE PRECISION P(0:3,NEXTERNAL-1), ANS(0:3,0:1)
+      DOUBLE PRECISION PREC_ASKED, PREC_FOUND(0:1)
+      DOUBLE PRECISION RAW_ANS(0:3,0:0), RAW_PREC_FOUND(0:0)
+      INTEGER RET_CODE
+      SELECT CASE (ACTIVE_NLO_CONTRIBUTION())
+%s
+      CASE DEFAULT
+        WRITE (*,*) 'Invalid NLO contribution in SLOOPMATRIX_THRES'
+        STOP 1
+      END SELECT
+      END
+
+      SUBROUTINE SLOOPMATRIXHEL_THRES(P, HEL, ANS, PREC_ASKED,
+     $ PREC_FOUND, RET_CODE)
+      USE NLO_CONTRIBUTION_BUNDLE, ONLY: ACTIVE_NLO_CONTRIBUTION
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      DOUBLE PRECISION P(0:3,NEXTERNAL-1), ANS(0:3,0:1)
+      DOUBLE PRECISION PREC_ASKED, PREC_FOUND(0:1)
+      DOUBLE PRECISION RAW_ANS(0:3,0:0), RAW_PREC_FOUND(0:0)
+      INTEGER HEL(NEXTERNAL-1), RET_CODE
+      SELECT CASE (ACTIVE_NLO_CONTRIBUTION())
+%s
+      CASE DEFAULT
+        WRITE (*,*) 'Invalid NLO contribution in SLOOPMATRIXHEL_THRES'
+        STOP 1
+      END SELECT
+      END
+
+      SUBROUTINE FORCE_STABILITY_CHECK(ONOFF)
+      USE NLO_CONTRIBUTION_BUNDLE, ONLY: ACTIVE_NLO_CONTRIBUTION
+      IMPLICIT NONE
+      LOGICAL ONOFF
+      SELECT CASE (ACTIVE_NLO_CONTRIBUTION())
+%s
+      CASE DEFAULT
+        WRITE (*,*) 'Invalid NLO contribution in stability chooser'
+        STOP 1
+      END SELECT
+      END
+
+      SUBROUTINE COLLIER_COMPUTE_UV_POLES(ONOFF)
+      USE NLO_CONTRIBUTION_BUNDLE, ONLY: ACTIVE_NLO_CONTRIBUTION
+      IMPLICIT NONE
+      LOGICAL ONOFF
+      SELECT CASE (ACTIVE_NLO_CONTRIBUTION())
+%s
+      CASE DEFAULT
+        WRITE (*,*) 'Invalid NLO contribution in Collier UV chooser'
+        STOP 1
+      END SELECT
+      END
+
+      SUBROUTINE COLLIER_COMPUTE_IR_POLES(ONOFF)
+      USE NLO_CONTRIBUTION_BUNDLE, ONLY: ACTIVE_NLO_CONTRIBUTION
+      IMPLICIT NONE
+      LOGICAL ONOFF
+      SELECT CASE (ACTIVE_NLO_CONTRIBUTION())
+%s
+      CASE DEFAULT
+        WRITE (*,*) 'Invalid NLO contribution in Collier IR chooser'
+        STOP 1
+      END SELECT
+      END
+
+      INTEGER FUNCTION GETORDPOWFROMINDEX_ML5(IORDER, IAMP)
+      USE NLO_CONTRIBUTION_BUNDLE, ONLY: ACTIVE_NLO_CONTRIBUTION
+      IMPLICIT NONE
+      INTEGER IORDER, IAMP
+      SELECT CASE (ACTIVE_NLO_CONTRIBUTION())
+%s
+      CASE DEFAULT
+        WRITE (*,*) 'Invalid NLO contribution in order chooser'
+        STOP 1
+      END SELECT
+      END
+""" % ('\n'.join(matrix_cases), '\n'.join(helicity_cases),
+       '\n'.join(stability_cases),
+       '\n'.join(collier_uv_cases), '\n'.join(collier_ir_cases),
+       '\n'.join(order_cases))
+        writer.writelines(text)
 
     #===========================================================================
     #  create the run_card 
@@ -3199,7 +3447,8 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             logger.warning(error.strerror + " " + dirpath)
 
         # Create the directory PN_xx_xxxxx in the specified path
-        name = "V%s" % matrix_element.get('processes')[0].shell_string()
+        name = (getattr(self, '_fnlo_virtual_directory_name', None) or
+                "V%s" % matrix_element.get('processes')[0].shell_string())
         dirpath = os.path.join(dir_name, name)
 
         try:
@@ -3259,7 +3508,16 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         for file in linkfiles:
             ln('../../%s' % file)
 
-        os.system("ln -s ../../makefile_loop makefile")
+        archive = getattr(self, '_fnlo_virtual_archive', None)
+        if archive:
+            with open('../../makefile_loop') as makefile_stream:
+                makefile_text = makefile_stream.read()
+            makefile_text = makefile_text.replace(
+                'LOOPLIB= libMadLoop.a', 'LOOPLIB= %s' % archive)
+            with open('makefile', 'w') as makefile_stream:
+                makefile_stream.write(makefile_text)
+        else:
+            os.system("ln -s ../../makefile_loop makefile")
 
         linkfiles = ['mpmodule.mod']
 

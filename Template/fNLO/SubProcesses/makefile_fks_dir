@@ -1,6 +1,7 @@
 include ../proc_characteristics
 include ../../Source/make_opts
 include ../analyse_opts
+-include virtual_libraries.inc
 
 LIBDIR = $(abspath ../../lib/)/
 ANADIR = ../../FixedOrderAnalysis/
@@ -19,7 +20,12 @@ else
     FJLIBS += $(STDLIB)
 endif
 
-NLOLIBS=-L$(LIBDIR) $(libmadloop) $(libcuttools) $(libOLP)
+FNLO_MADLOOP_LIBRARIES = $(if $(strip $(FNLO_VIRTUAL_LIBRARIES)),\
+	$(FNLO_VIRTUAL_LIBRARIES),$(libmadloop))
+FNLO_CUTTOOLS_LIBRARY = $(if $(strip $(FNLO_VIRTUAL_LIBRARIES)),\
+	-lcts,$(libcuttools))
+NLOLIBS=-L$(LIBDIR) $(FNLO_MADLOOP_LIBRARIES) \
+	$(FNLO_CUTTOOLS_LIBRARY) $(libOLP)
 
 # Uncomment the line below to compile with MadLoop without setting the environnement 
 # variables 'by hand'
@@ -37,6 +43,7 @@ endif
 FILES= fnlo_process_common.o process_dimensions.o			\
 	 process_dimensions_bridge.o					\
 	 fks_metadata.o fks_metadata_bridge.o				\
+	 nlo_contribution_bundle.o					\
 	 nlo_decay_metadata.o decay_chain_metadata.o			\
 	 decay_chain_parameters.o					\
 	 decay_chain_parameters_bridge.o phase_space_kinematics.o	\
@@ -62,6 +69,9 @@ FILES= fnlo_process_common.o process_dimensions.o			\
 	 splitorders_stuff_bridge.o					\
 	 get_color.o MC_integer.o weight_lines.o			\
 	 mint_module.o polfit.o
+
+FNLO_VIRTUAL_CHOOSER = \
+	$(patsubst %.f,%.o,$(wildcard virtual_contribution_chooser.f))
 
 # Every shipped analysis is a module plus one external-ABI bridge.  Derive the
 # companion object here as well as in FOAnalyseCard so hand-written
@@ -134,12 +144,12 @@ RUN= $(FO_ANALYSE) $(FNLO_AUTO_ANALYSIS_BRIDGES) \
 	madfks_plot.o madfks_plot_bridge.o
 
 # Files for mintFO
-MINTFO= $(RUN) driver_mintFO.o driver_mintFO_bridge.o BinothLHA.o \
-	BinothLHA_bridge.o
+MINTFO= $(RUN) $(FNLO_VIRTUAL_CHOOSER) driver_mintFO.o \
+	driver_mintFO_bridge.o BinothLHA.o BinothLHA_bridge.o
 
 # Files for check_poles
-POLES= $(RUN) check_poles.o check_poles_bridge.o BinothLHA.o \
-	BinothLHA_bridge.o
+POLES= $(RUN) $(FNLO_VIRTUAL_CHOOSER) check_poles.o \
+	check_poles_bridge.o BinothLHA.o BinothLHA_bridge.o
 
 # Files for the matrix-element soft/collinear limit test
 TEST= $(RUN) test_soft_col_limits.o test_soft_col_limits_bridge.o \
@@ -186,26 +196,34 @@ $(LIBDIR)/libdhelas.$(dylibext):
 $(LIBDIR)/libmodel.$(dylibext):
 	$(MAKE) -C "$(LIBDIR)/../Source/MODEL" shared
 
-check_poles: $(POLES) $(libmadloop)
+check_poles: $(POLES) $(FNLO_MADLOOP_LIBRARIES)
 	$(FC) -o check_poles $(POLES) $(NLOLIBS) $(LINKLIBS) $(FJLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(LDFLAGS)
 	strip check_poles
 
-madevent_mintFO: $(MINTFO) $(libmadloop) makefile $(LIBS)
+madevent_mintFO: $(MINTFO) $(FNLO_MADLOOP_LIBRARIES) makefile $(LIBS)
 	$(FC) -o madevent_mintFO $(MINTFO) $(NLOLIBS) $(LINKLIBS) $(FJLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(LDFLAGS)
 	strip madevent_mintFO
 
-libMadLoop.a:
+ifneq ($(strip $(FNLO_VIRTUAL_LIBRARIES)),)
+libMadLoop_%.a:
+	$(MAKE) -C VContribution$*
+else ifneq ($(strip $(libmadloop)),)
+$(libmadloop):
 	for dir in `ls -d V*`; do cd $$dir; make; cd ../; done
+endif
 
 process_dimensions_bridge.o: process_dimensions.o
 fnlo_process_common.o: $(LIBDIR)extra_weights.mod
 $(FNLO_PROCESS_COMMON_USERS): fnlo_process_common.o
 fks_metadata.o: process_dimensions.o
 fks_metadata_bridge.o: fks_metadata.o
-nlo_decay_metadata.o: process_dimensions.o fks_metadata.o
+nlo_contribution_bundle.o: process_dimensions.o
+nlo_decay_metadata.o: process_dimensions.o fks_metadata.o \
+	nlo_contribution_bundle.o
 decay_chain_metadata.o: process_dimensions.o fks_metadata.o \
-	nlo_decay_metadata.o
-decay_chain_parameters.o: decay_chain_metadata.o nlo_decay_metadata.o
+	nlo_decay_metadata.o nlo_contribution_bundle.o
+decay_chain_parameters.o: decay_chain_metadata.o nlo_decay_metadata.o \
+	nlo_contribution_bundle.o
 decay_chain_parameters_bridge.o: decay_chain_parameters.o
 phase_space_kinematics.o: process_dimensions.o \
 	$(LIBDIR)kin_functions_module.mod
@@ -217,6 +235,7 @@ nlo_decay_kinematics.o: process_dimensions.o nlo_decay_metadata.o \
 	phase_space_kinematics.o boostwdir2.o fnlo_process_common.o
 decay_chain_scales.o: process_dimensions.o decay_chain_metadata.o \
 	decay_chain_parameters.o decay_chain_kinematics.o \
+	nlo_decay_kinematics.o \
 	$(LIBDIR)alfas_functions_module.mod
 fks_diagnostics.o: process_dimensions.o fnlo_process_common.o
 fks_soft_kernels.o: process_dimensions.o $(LIBDIR)kin_functions_module.mod
@@ -246,7 +265,7 @@ analysis_HwU_pp_V.o analysis_HwU_pp_taptam.o \
 mint_module.o : FKSParams.o MC_integer.o polfit.o
 BinothLHA_OLP.o: process_dimensions.o FKSParams.o fks_singular.o
 BinothLHA.o: process_dimensions.o FKSParams.o splitorders_stuff.o cuts.o \
-	fks_singular.o
+	fks_singular.o nlo_contribution_bundle.o
 BinothLHA_bridge.o: BinothLHA.o
 fks_model_state.o: process_dimensions.o
 fks_singular.o: process_dimensions.o fks_model_state.o fks_metadata.o \
@@ -254,6 +273,7 @@ fks_singular.o: process_dimensions.o fks_model_state.o fks_metadata.o \
 	chooser_functions.o phase_space_kinematics.o decay_chain_metadata.o \
 	decay_chain_kinematics.o decay_chain_scales.o \
 	nlo_decay_metadata.o nlo_decay_kinematics.o \
+	nlo_contribution_bundle.o \
 	fks_qcd_splitting.o fks_soft_kernels.o \
 	fks_random.o \
 	$(LIBDIR)run_state.mod \
@@ -261,20 +281,22 @@ fks_singular.o: process_dimensions.o fks_model_state.o fks_metadata.o \
 	$(LIBDIR)kin_functions_module.mod
 fks_weights.o: process_dimensions.o fks_model_state.o fks_metadata.o \
 	decay_chain_metadata.o decay_chain_scales.o \
+	nlo_decay_metadata.o nlo_contribution_bundle.o \
 	weight_lines.o mint_module.o FKSParams.o setscales.o \
 	splitorders_stuff.o chooser_functions.o madfks_plot.o \
 	$(LIBDIR)run_state.mod $(LIBDIR)timing_state.mod \
 	$(LIBDIR)extra_weights.mod $(LIBDIR)alfas_functions_module.mod
 fks_contributions.o: process_dimensions.o fks_model_state.o \
 	decay_chain_metadata.o decay_chain_kinematics.o \
-	fks_singular.o fks_weights.o mint_module.o splitorders_stuff.o \
+	nlo_contribution_bundle.o fks_singular.o fks_weights.o mint_module.o \
+	splitorders_stuff.o \
 	madfks_plot.o $(LIBDIR)timing_state.mod $(LIBDIR)extra_weights.mod
 fks_singular_bridge.o: fks_model_state.o fks_singular.o \
 	process_dimensions_bridge.o \
 	fks_metadata_bridge.o
 fks_random_bridge.o: fks_random.o mint_module.o
 driver_mintFO.o: process_dimensions.o fks_metadata.o fks_channel_map.o \
-	decay_chain_metadata.o \
+	decay_chain_metadata.o nlo_contribution_bundle.o \
 	fks_random.o genps_fks.o \
 	weight_lines.o mint_module.o FKSParams.o MC_integer.o setscales.o \
 	splitorders_stuff.o cuts.o fks_singular.o fks_weights.o \
@@ -284,8 +306,10 @@ driver_mintFO.o: process_dimensions.o fks_metadata.o fks_channel_map.o \
 driver_mintFO_bridge.o: driver_mintFO.o \
 	$(LIBDIR)fnlo_runtime_common.mod
 chooser_functions.o: process_dimensions.o fks_metadata.o weight_lines.o \
-	decay_chain_metadata.o
+	decay_chain_metadata.o nlo_decay_metadata.o \
+	nlo_contribution_bundle.o
 chooser_functions_bridge.o: chooser_functions.o
+virtual_contribution_chooser.o: nlo_contribution_bundle.o
 setcuts.o: process_dimensions.o fks_metadata.o decay_chain_metadata.o \
 	decay_chain_kinematics.o nlo_decay_metadata.o nlo_decay_kinematics.o \
 	fks_random.o mint_module.o \
@@ -324,6 +348,7 @@ check_poles.o: process_dimensions.o fks_metadata.o mint_module.o \
 	$(LIBDIR)run_printout_module.mod
 check_poles_bridge.o: check_poles.o
 cuts.o: process_dimensions.o fnlo_process_common.o boostwdir2.o \
+	nlo_decay_metadata.o nlo_decay_kinematics.o \
 	dummy_fct.o fastjet_wrapper.o \
 	$(LIBDIR)run_state.mod $(LIBDIR)timing_state.mod \
 	$(LIBDIR)kin_functions_module.mod

@@ -7,7 +7,8 @@ module nlo_decay_kinematics
                                     minkowski_square
   use decay_chain_parameters, only: decay_dummy_width_ratio, &
                                     decay_physical_width
-  use nlo_decay_metadata, only: has_nlo_decay, corrected_parent_pdg, &
+  use nlo_decay_metadata, only: initialize_nlo_decay_metadata, &
+       has_nlo_decay, nlo_decay_metadata_revision, corrected_parent_pdg, &
        nlo_decay_born_context, nlo_decay_context_for_fks, &
        nlo_decay_production_count, nlo_decay_production_pdg, &
        nlo_decay_production_target_kind, &
@@ -30,6 +31,7 @@ module nlo_decay_kinematics
   private
 
   logical, save :: initialized = .false.
+  integer, save :: loaded_metadata_revision = -1
   double precision, save :: parent_mass = 0d0
   double precision, save :: massive_xjac_cache = 1d0
   double precision, allocatable, save :: production_masses(:)
@@ -50,6 +52,7 @@ module nlo_decay_kinematics
   public :: nlo_decay_production_mass
   public :: get_nlo_decay_production_momenta
   public :: fill_nlo_decay_born_masses
+  public :: fill_nlo_decay_event_masses
   public :: generate_nlo_decay_born_momenta
   public :: generate_nlo_decay_fks_event
   public :: nlo_decay_fks_sister_mass
@@ -69,9 +72,14 @@ module nlo_decay_kinematics
 contains
 
   subroutine initialize_nlo_decay_kinematics()
-    integer :: context, leg, node, target
+    integer :: context, leg, node, target, current_revision
 
-    if (initialized) return
+    call initialize_nlo_decay_metadata()
+    current_revision = nlo_decay_metadata_revision()
+    if (initialized .and. loaded_metadata_revision == current_revision) return
+    call clear_nlo_decay_kinematics()
+    initialized = .false.
+    loaded_metadata_revision = current_revision
     call validate_process_dimensions()
     if (.not. has_nlo_decay()) then
       initialized = .true.
@@ -146,6 +154,26 @@ contains
     end do
     initialized = .true.
   end subroutine initialize_nlo_decay_kinematics
+
+
+  subroutine clear_nlo_decay_kinematics()
+    if (allocated(production_masses)) deallocate(production_masses)
+    if (allocated(born_local_masses)) deallocate(born_local_masses)
+    if (allocated(node_masses)) deallocate(node_masses)
+    if (allocated(leaf_masses)) deallocate(leaf_masses)
+    if (allocated(production_born)) deallocate(production_born)
+    if (allocated(born_local)) deallocate(born_local)
+    if (allocated(node_random_start)) deallocate(node_random_start)
+    if (allocated(local_event_cache)) deallocate(local_event_cache)
+    if (allocated(local_fks_momentum_cache)) &
+         deallocate(local_fks_momentum_cache)
+    if (allocated(local_event_configuration)) &
+         deallocate(local_event_configuration)
+    if (allocated(local_event_valid)) deallocate(local_event_valid)
+    parent_mass = 0d0
+    massive_xjac_cache = 1d0
+    parent_born = 0d0
+  end subroutine clear_nlo_decay_kinematics
 
 
   integer function production_random_dimension()
@@ -329,6 +357,46 @@ contains
       if (target /= 0) masses(target) = leaf_masses(leaf)
     end do
   end subroutine fill_nlo_decay_born_masses
+
+
+  subroutine fill_nlo_decay_event_masses(configuration, masses)
+    integer, intent(in) :: configuration
+    double precision, intent(out) :: masses(nexternal)
+    integer :: context, leg, target, leaf
+    logical :: covered(nexternal)
+
+    call require_enabled()
+    masses = 0d0
+    covered = .false.
+    context = nlo_decay_context_for_fks(configuration)
+    do leg = 1, nlo_decay_production_count()
+      if (nlo_decay_production_target_kind(context, leg) == &
+          nlo_decay_leg_target) then
+        target = nlo_decay_production_target_id(context, leg)
+        masses(target) = production_masses(leg)
+        covered(target) = .true.
+      end if
+    end do
+    do leg = 1, nlo_decay_local_count(context)
+      if (nlo_decay_local_target_kind(context, leg) == &
+          nlo_decay_leg_target) then
+        target = nlo_decay_local_target_id(context, leg)
+        masses(target) = &
+             abs(get_mass_from_id(nlo_decay_local_pdg(context, leg)))
+        covered(target) = .true.
+      end if
+    end do
+    do leaf = 1, nlo_decay_leaf_count()
+      target = nlo_decay_leaf_visible(context, leaf)
+      if (target /= 0) then
+        masses(target) = leaf_masses(leaf)
+        covered(target) = .true.
+      end if
+    end do
+    if (.not. all(covered)) then
+      call fail_kinematics('NLO-decay event masses do not cover all legs')
+    end if
+  end subroutine fill_nlo_decay_event_masses
 
 
   subroutine generate_nlo_decay_born_momenta(x, shat, sqrtshat, xjac, &
@@ -1227,7 +1295,7 @@ contains
 
 
   subroutine require_enabled()
-    if (.not. initialized) call initialize_nlo_decay_kinematics()
+    call initialize_nlo_decay_kinematics()
     if (.not. has_nlo_decay()) then
       call fail_kinematics('no NLO-decay metadata are present')
     end if

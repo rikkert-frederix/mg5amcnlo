@@ -26,6 +26,9 @@ module fks_singular_module
        get_nlo_decay_born_kernel, &
        get_nlo_decay_counterevent_fks_momenta, &
        get_nlo_decay_mass_buffer, nlo_decay_parent_mass
+  use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
+       active_contribution_fks_first, active_contribution_fks_last, &
+       active_contribution_has_virtual, active_virtual_grid_index
   use fks_qcd_splitting, only: AP_reduced, AP_reduced_prime, &
                                 Qterms_reduced_timelike, &
                                 Qterms_reduced_spacelike
@@ -983,7 +986,7 @@ contains
     double precision Q, Ej, wgt, contr, eikIreg
     double precision aso2pi
     double precision shattmp
-    integer event_slot, i, j, aj, m, n, k
+    integer event_slot, i, j, aj, m, n, k, virtual_grid
     integer kernel_count, visible_m, visible_n
     integer kernel_i, kernel_initial_count, partner_count
     integer kernel_particle_type(nexternal)
@@ -1006,7 +1009,7 @@ contains
     data need_color_links_used/.false./
     double precision oneo8pi2
     parameter(oneo8pi2=1d0/(8d0*pi**2))
-    integer nFKSprocess_save, nFKSprocess_col
+    integer nFKSprocess_save, nFKSprocess_col, scan_first, scan_last
     data nFKSprocess_col/0/
     double precision bsv_wgt_mufoqes, bsv_wgt_mufomur
     double precision contr_mufoqes, contr_mufomur
@@ -1017,7 +1020,22 @@ contains
     double precision amp_split_bsv(amp_split_size)
     double precision kernel_momenta(0:3, nexternal)
     double precision kernel_shat, kernel_sqrt_shat, link_multiplier
-    if (firsttime) then
+    if (has_nlo_contribution_bundle()) then
+      need_color_links_used = .false.
+      nFKSprocess_col = 0
+      nFKSprocess_save = nFKSprocess
+      scan_first = active_contribution_fks_first()
+      scan_last = active_contribution_fks_last()
+      do nFKSprocess = scan_first, scan_last
+        call fks_inc_chooser()
+        need_color_links_used = need_color_links_used .or. need_color_links
+        if (need_color_links .and. nFKSprocess_col .eq. 0) then
+          nFKSprocess_col = nFKSprocess
+        end if
+      end do
+      nFKSprocess = nFKSprocess_save
+      call fks_inc_chooser()
+    else if (firsttime) then
 ! Check whether any real-emission configuration needs colour links.
       nFKSprocess_save = nFKSprocess
       do nFKSprocess = 1, FKS_configs
@@ -1228,9 +1246,10 @@ contains
       end if
     end do
 
-    if ((random_unit_interval(iconfig) .le. virtual_fraction(ichan) &
+    if (active_contribution_has_virtual() .and. &
+        ((random_unit_interval(iconfig) .le. virtual_fraction(ichan) &
          .and. abrv(1:3) .ne. 'nov') .or. &
-        abrv(1:4) .eq. 'virt') then
+        abrv(1:4) .eq. 'virt')) then
       call cpu_time(tBefore)
       call BinothLHA(p_born, born_wgt, virt_wgt)
       do iamp = 1, amp_split_size
@@ -1240,12 +1259,18 @@ contains
       virt_wgt = 0d0
       do iamp = 1, amp_split_size
         if (amp_split_virt(iamp) .eq. 0d0) cycle
+        virtual_grid = active_virtual_grid_index(iamp, amp_split_size)
+        if (virtual_grid == 0) then
+          write (*,*) 'ERROR: a virtual split order has no bundle grid'
+          stop 1
+        end if
         if (use_poly_virtual) then
           amp_split_virt(iamp) = amp_split_virt(iamp) - &
-            polyfit(iamp)*amp_split_born_for_virt(iamp)
+            polyfit(virtual_grid)*amp_split_born_for_virt(iamp)
         else
           amp_split_virt(iamp) = amp_split_virt(iamp) - &
-            average_virtual(iamp, ichan)*amp_split_born_for_virt(iamp)
+            average_virtual(virtual_grid, ichan)* &
+            amp_split_born_for_virt(iamp)
         end if
         virt_wgt = virt_wgt + amp_split_virt(iamp)
       end do
@@ -1259,18 +1284,33 @@ contains
       call cpu_time(tAfter)
       tOLP = tOLP + (tAfter - tBefore)
     end if
-    if (abrv(1:4) .ne. 'virt') then
+    if (abrv(1:4) .ne. 'virt' .and. &
+        active_contribution_has_virtual()) then
       if (use_poly_virtual) then
-        avv_wgt = polyfit(0)*born_wgt
+        avv_wgt = 0d0
         do iamp = 1, amp_split_size
           if (amp_split_born_for_virt(iamp) .eq. 0d0) cycle
-          amp_split_avv(iamp) = polyfit(iamp)*amp_split_born_for_virt(iamp)
+          virtual_grid = active_virtual_grid_index(iamp, amp_split_size)
+          if (virtual_grid == 0) then
+            write (*,*) 'ERROR: an averaged virtual has no bundle grid'
+            stop 1
+          end if
+          amp_split_avv(iamp) = polyfit(virtual_grid)* &
+               amp_split_born_for_virt(iamp)
+          avv_wgt = avv_wgt + amp_split_avv(iamp)
         end do
       else
-        avv_wgt = average_virtual(0, ichan)*born_wgt
+        avv_wgt = 0d0
         do iamp = 1, amp_split_size
           if (amp_split_born_for_virt(iamp) .eq. 0d0) cycle
-          amp_split_avv(iamp) = average_virtual(iamp, ichan)*amp_split_born_for_virt(iamp)
+          virtual_grid = active_virtual_grid_index(iamp, amp_split_size)
+          if (virtual_grid == 0) then
+            write (*,*) 'ERROR: an averaged virtual has no bundle grid'
+            stop 1
+          end if
+          amp_split_avv(iamp) = average_virtual(virtual_grid, ichan)* &
+               amp_split_born_for_virt(iamp)
+          avv_wgt = avv_wgt + amp_split_avv(iamp)
         end do
       end if
     end if
@@ -1389,7 +1429,7 @@ contains
     parameter(zero=0d0)
     double precision oneo8pi2
     parameter(oneo8pi2=1d0/(8d0*pi**2))
-    integer nFKSprocess_save, nFKSprocess_col
+    integer nFKSprocess_save, nFKSprocess_col, scan_first, scan_last
     logical need_color_links_used
     double precision soft_fact
     double precision link_multiplier
@@ -1401,7 +1441,14 @@ contains
 
 ! Check whether any real-emission configuration needs colour links.
     nFKSprocess_save = nFKSprocess
-    do nFKSprocess = 1, FKS_configs
+    if (has_nlo_contribution_bundle()) then
+      scan_first = active_contribution_fks_first()
+      scan_last = active_contribution_fks_last()
+    else
+      scan_first = 1
+      scan_last = FKS_configs
+    end if
+    do nFKSprocess = scan_first, scan_last
       call fks_inc_chooser()
       need_color_links_used = need_color_links_used .or. need_color_links
       if (need_color_links .and. nFKSprocess_col .eq. 0) nFKSprocess_col = nFKSprocess

@@ -10,6 +10,9 @@ module chooser_functions_module
        context_for_fks, context_core_count, core_target_kind, &
        core_target_id, direct_leg_target, decay_node_target, node_pdg, &
        decay_leaf_count, leaf_visible_leg
+  use nlo_decay_metadata, only: has_nlo_decay
+  use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
+       contribution_for_fks
   implicit none
   private
 
@@ -202,7 +205,9 @@ contains
     end do
     icolup_values = icolup_input(:, :, :, 1:maxflow_used_in)
     leshouche_initialized = .true.
-    if (has_decay_chains()) call initialize_decay_born_process_map()
+    if (has_decay_chains() .or. has_nlo_contribution_bundle()) then
+      call initialize_decay_born_process_map()
+    end if
   end subroutine initialize_leshouche_data
 
 
@@ -544,8 +549,8 @@ contains
     do particle = 1, nexternal
       pdg(particle, ict) = idup(particle, 1)
     end do
-    if (has_decay_chains()) then
-      call get_born_pdg_impl(1, born_pdgs)
+    if (has_decay_chains() .or. has_nlo_decay()) then
+      call get_underlying_born_pdg_impl(ifks, 1, born_pdgs)
       pdg_uborn(:, ict) = born_pdgs
       return
     end if
@@ -631,11 +636,44 @@ contains
     decay_born_process_values = 0
     do configuration = 1, fks_configs
       do real_process = 1, niprocs_values(configuration)
-        decay_born_process_values(configuration, real_process) = &
-             find_decay_born_process(configuration, real_process)
+        if (has_nlo_contribution_bundle() .and. &
+            contribution_for_fks(configuration) /= 1) then
+          decay_born_process_values(configuration, real_process) = &
+               find_nlo_decay_born_process(configuration, real_process)
+        else
+          decay_born_process_values(configuration, real_process) = &
+               find_decay_born_process(configuration, real_process)
+        end if
       end do
     end do
   end subroutine initialize_decay_born_process_map
+
+
+  integer function find_nlo_decay_born_process(configuration, real_process)
+    integer, intent(in) :: configuration, real_process
+    integer :: candidate, leg
+    logical :: matches
+
+    find_nlo_decay_born_process = 0
+    do candidate = 1, size(born_idup_values, 2)
+      matches = .true.
+      do leg = 1, nincoming
+        if (idup_values(configuration, leg, real_process) /= &
+            born_idup_values(leg, candidate)) then
+          matches = .false.
+          exit
+        end if
+      end do
+      if (.not. matches) cycle
+      if (find_nlo_decay_born_process /= 0) then
+        call fail_chooser('ambiguous NLO-decay underlying Born process')
+      end if
+      find_nlo_decay_born_process = candidate
+    end do
+    if (find_nlo_decay_born_process == 0) then
+      call fail_chooser('NLO-decay underlying Born process is absent')
+    end if
+  end function find_nlo_decay_born_process
 
 
   integer function find_decay_born_process(configuration, real_process)

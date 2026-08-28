@@ -1087,6 +1087,167 @@ class TestFKSDecayChains(unittest.TestCase):
         self.assertEqual(len(production_gluons), 1)
         self.assertNotEqual(production_gluons[0], emitted_target[1])
 
+    def test_full_nlo_bundle_combines_production_and_each_decay(self):
+        command = self.generate(
+            'u u~ > t t~ [real=QCD], '
+            '(t > w+ b QED=1 [real=QCD]), '
+            '(t~ > w- b~ QED=1 [real=QCD])')
+        self.assertTrue(command._fks_multi_proc.full_nlo_decay_bundle)
+        self.assertEqual(len(command._fks_multi_proc.members), 3)
+
+        helas = fks_helas_objects.FKSHelasMultiProcess(
+            command._fks_multi_proc, loop_optimized=False)
+        self.assertEqual(len(helas['matrix_elements']), 1)
+        matrix_element = helas['matrix_elements'][0]
+        self.assertTrue(matrix_element.contribution_bundle)
+        self.assertEqual(
+            [entry['kind'] for entry in
+             matrix_element.bundle_contributions],
+            ['PRODUCTION', 'NLO_DECAY', 'NLO_DECAY'])
+        self.assertEqual(
+            [entry['parent_pdg'] for entry in
+             matrix_element.bundle_contributions],
+            [0, 6, -6])
+        self.assertEqual(
+            [entry['has_virtual'] for entry in
+             matrix_element.bundle_contributions],
+            [False, False, False])
+        self.assertEqual(len(matrix_element.bundle_nlo_decay_metadata), 2)
+        self.assertEqual(
+            [leg.get('id') for leg in matrix_element.born_me[
+                'processes'][0].get_legs_with_decays()],
+            [2, -2, 24, 5, -24, -5])
+
+        contributions = matrix_element.bundle_contributions
+        self.assertEqual(contributions[0]['first'], 1)
+        for previous, current in zip(contributions, contributions[1:]):
+            self.assertEqual(current['first'], previous['last'] + 1)
+        infos = matrix_element.get_fks_info_list()
+        self.assertEqual(len(infos), contributions[-1]['last'])
+        for contribution in contributions:
+            owned = [info for info in infos
+                     if info['contribution'] == contribution['id']]
+            self.assertEqual(
+                len(owned), contribution['last'] -
+                contribution['first'] + 1)
+
+    def test_full_nlo_bundle_supports_nested_corrected_decays(self):
+        command = self.generate(
+            'u u~ > t t~ [real=QCD], '
+            '(t > w+ b QED=1 [real=QCD], '
+            'w+ > u d~ QED=1 [real=QCD]), '
+            '(t~ > w- b~)')
+        matrix_element = fks_helas_objects.FKSHelasMultiProcess(
+            command._fks_multi_proc,
+            loop_optimized=False)['matrix_elements'][0]
+
+        self.assertEqual(
+            [entry['parent_pdg'] for entry in
+             matrix_element.bundle_contributions],
+            [0, 6, 24])
+        self.assertEqual(
+            [metadata['parent_pdg'] for metadata in
+             matrix_element.bundle_nlo_decay_metadata],
+            [6, 24])
+        self.assertEqual(
+            [metadata['nodes'][metadata['corrected_node'] - 1]['pdg']
+             for metadata in
+             matrix_element.bundle_nlo_decay_metadata],
+            [6, 24])
+
+    def test_full_nlo_bundle_groups_production_subprocesses(self):
+        command = self.generate(
+            'p p > t t~ [real=QCD], '
+            't > w+ b QED=1 [real=QCD]')
+        helas = fks_helas_objects.FKSHelasMultiProcess(
+            command._fks_multi_proc, loop_optimized=False)
+        self.assertEqual(len(helas['matrix_elements']), 3)
+        expected_groups = set([
+            frozenset([(21, 21)]),
+            frozenset([(2, -2), (4, -4), (1, -1), (3, -3)]),
+            frozenset([(-2, 2), (-4, 4), (-1, 1), (-3, 3)])])
+        actual_groups = set()
+        for matrix_element in helas['matrix_elements']:
+            actual_groups.add(frozenset(
+                tuple(process.get_initial_ids())
+                for process in matrix_element.born_me.get('processes')))
+            self.assertEqual(
+                [entry['kind'] for entry in
+                 matrix_element.bundle_contributions],
+                ['PRODUCTION', 'NLO_DECAY'])
+        self.assertEqual(actual_groups, expected_groups)
+
+    def test_full_nlo_bundle_exports_virtual_dispatchers(self):
+        command = self.generate(
+            'u u~ > t t~ [QCD], '
+            '(t > w+ b QED=1 [QCD]), '
+            '(t~ > w- b~ QED=1 [QCD])')
+        command.exec_cmd(
+            'set loop_optimized_output False',
+            printcmd=False, precmd=True)
+
+        with tempfile.TemporaryDirectory() as output_dir:
+            process_dir = os.path.join(output_dir, 'PROC')
+            command.exec_cmd(
+                'output fNLO %s' % process_dir,
+                printcmd=False, precmd=True)
+            subprocess_root = os.path.join(process_dir, 'SubProcesses')
+            subprocesses = [
+                os.path.join(subprocess_root, name)
+                for name in os.listdir(subprocess_root)
+                if name.startswith('P') and
+                os.path.isdir(os.path.join(subprocess_root, name))]
+            self.assertEqual(len(subprocesses), 1)
+            subprocess_dir = subprocesses[0]
+            self.assertEqual(sorted(
+                name for name in os.listdir(subprocess_dir)
+                if name.startswith('VContribution') and
+                os.path.isdir(os.path.join(subprocess_dir, name))),
+                ['VContribution1', 'VContribution2', 'VContribution3'])
+            with open(os.path.join(
+                    subprocess_dir,
+                    'virtual_contribution_chooser.f')) as stream:
+                chooser = ' '.join(
+                    stream.read().replace('$', ' ').split())
+            for contribution in [1, 2, 3]:
+                self.assertIn(
+                    'CALL FNLOC%d_SLOOPMATRIX_THRES(P, RAW_ANS' %
+                    contribution,
+                    chooser)
+                self.assertIn(
+                    'CALL FNLOC%d_FORCE_STABILITY_CHECK' % contribution,
+                    chooser)
+            self.assertIn('ANS(0:3,1) = RAW_ANS(0:3,0)', chooser)
+            self.assertNotIn('FNLOC1_GETORDPOWFROMINDEX_ML5', chooser)
+            with open(os.path.join(
+                    subprocess_dir, 'virtual_libraries.inc')) as stream:
+                libraries = stream.read()
+            self.assertIn(
+                'libMadLoop_1.a libMadLoop_2.a libMadLoop_3.a',
+                libraries)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'nlo_contribution_info.dat')) as stream:
+                metadata = stream.read()
+            self.assertIn('FORMAT 2\n', metadata)
+            self.assertIn('COUNT 3\n', metadata)
+            self.assertIn('VIRTUAL_GRIDS 3\n', metadata)
+            self.assertEqual(metadata.count('\nVIRTUAL_GRID '), 3)
+            self.assertTrue(os.path.isfile(os.path.join(
+                subprocess_dir, 'nlo_decay_info_2.dat')))
+            self.assertTrue(os.path.isfile(os.path.join(
+                subprocess_dir, 'nlo_decay_info_3.dat')))
+            generated_links = len([
+                name for name in os.listdir(subprocess_dir)
+                if name.startswith('b_sf_') and name.endswith('.f')])
+            for contribution in [2, 3]:
+                with open(os.path.join(
+                        subprocess_dir,
+                        'nlo_decay_info_%d.dat' % contribution)) as stream:
+                    counts = next(
+                        line for line in stream if line.startswith('COUNTS '))
+                self.assertEqual(int(counts.split()[3]), generated_links)
+
     def test_nlo_decay_generation_restrictions(self):
         command = self.generate(
             'u u~ > t t~, '

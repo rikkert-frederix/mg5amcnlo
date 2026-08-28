@@ -3,6 +3,8 @@ module decay_chain_parameters
   use decay_chain_metadata, only: has_decay_chains, decay_node_count, node_pdg
   use nlo_decay_metadata, only: has_nlo_decay, corrected_parent_pdg, &
        nlo_decay_node_count, nlo_decay_node_pdg
+  use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
+       bundle_species_is_nlo
   implicit none
   private
 
@@ -188,7 +190,9 @@ contains
         if (width_index == 0) then
           call fail_parameters('a decay node has no physical width')
         end if
-        if (width_is_nlo(width_index)) then
+        if (width_is_nlo(width_index) .and. &
+            .not. (has_nlo_contribution_bundle() .and. &
+                   bundle_species_is_nlo(node_pdg(node)))) then
           call fail_parameters('an LO decay node has an NLO width record')
         end if
         if (find_pdg(node_pdg(node), scale_pdgs) == 0) then
@@ -202,7 +206,10 @@ contains
         if (width_index == 0) then
           call fail_parameters('an NLO-decay topology node has no width')
         end if
-        if (abs(pdg) == abs(corrected_parent_pdg())) then
+        if ((has_nlo_contribution_bundle() .and. &
+             bundle_species_is_nlo(pdg)) .or. &
+            (.not. has_nlo_contribution_bundle() .and. &
+             abs(pdg) == abs(corrected_parent_pdg()))) then
           if (.not. width_is_nlo(width_index)) then
             call fail_parameters(&
                  'the corrected species requires an NLO_DECAY_WIDTH record')

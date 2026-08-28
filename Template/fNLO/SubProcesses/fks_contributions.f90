@@ -10,6 +10,8 @@ module fks_contributions_module
   use decay_chain_kinematics, only: fks_leg_mass
   use nlo_decay_metadata, only: has_nlo_decay
   use nlo_decay_kinematics, only: nlo_decay_fks_sister_mass
+  use nlo_contribution_bundle, only: active_contribution_has_virtual, &
+       active_virtual_grid_index
   use fks_singular_module, only: evaluate_fks_sij, sreal, sreal_deg, &
                                  bornsoftvirtual, fks_subtraction_shat
   use fks_weights_module, only: add_wgt, real_contribution, &
@@ -106,7 +108,7 @@ contains
     implicit none
     real :: tBefore, tAfter
     integer orders(nsplitorders)
-    integer iamp
+    integer iamp, virtual_grid
 
     double precision wgt1, wgt2, wgt3, bsv_wgt, virt_wgt, born_wgt, g22, wgt4
     call cpu_time(tBefore)
@@ -138,17 +140,27 @@ contains
 ! Special for the soft-virtual needed for the virt-tricks. The
 ! *_wgt_mint variable should be directly passed to the mint-integrator
 ! and not be part of the plots nor computation of the cross section.
-    virt_wgt_mint(0) = virt_wgt_mint(0) + virt_wgt*f_nb
-    born_wgt_mint(0) = born_wgt_mint(0) + born_wgt*f_b
+    if (active_contribution_has_virtual()) then
+      virt_wgt_mint(0) = virt_wgt_mint(0) + virt_wgt*f_nb
+      born_wgt_mint(0) = born_wgt_mint(0) + born_wgt*f_b
+    end if
     do iamp = 1, amp_split_size
+      if (.not. active_contribution_has_virtual()) exit
       if (amp_split_virt(iamp) .eq. 0d0) cycle
+      virtual_grid = active_virtual_grid_index(iamp, amp_split_size)
+      if (virtual_grid == 0) then
+        write (*,*) 'ERROR: a virtual weight has no bundle grid'
+        stop 1
+      end if
       call amp_split_pos_to_orders(iamp, orders)
       QCD_power = orders(qcd_pos)
       orders_tag = get_orders_tag(orders)
       amp_pos = iamp
       wgt1 = amp_split_virt(iamp)*f_nb
-      virt_wgt_mint(iamp) = virt_wgt_mint(iamp) + wgt1
-      born_wgt_mint(iamp) = born_wgt_mint(iamp) + amp_split_born_for_virt(iamp)*f_nb
+      virt_wgt_mint(virtual_grid) = &
+           virt_wgt_mint(virtual_grid) + wgt1
+      born_wgt_mint(virtual_grid) = born_wgt_mint(virtual_grid) + &
+           amp_split_born_for_virt(iamp)*f_nb
       wgt1 = wgt1/g**(QCD_power)
       call add_wgt(soft_counterevent, virtual_contribution, wgt1, 0d0, 0d0)
     end do

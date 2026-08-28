@@ -5,6 +5,8 @@ module binoth_lha_madloop_backend
   use split_orders, only: orders_to_amp_split_pos, &
        amp_split_pos_to_orders
   use fks_singular_module, only: getpoles
+  use nlo_contribution_bundle, only: nlo_contribution_count, &
+       active_nlo_contribution
   use fnlo_process_common, only: qes2, ntot, nsun, nsps, nups, &
                                  neps, n100, nddp, nqdp, nini, n10, n1, &
                                  volh, mc_hel, ihel, &
@@ -13,8 +15,8 @@ module binoth_lha_madloop_backend
   implicit none
   private
 
-  logical :: firsttime = .true.
-  logical :: firsttime_run = .true.
+  logical, allocatable :: firsttime(:)
+  logical, allocatable :: firsttime_run(:)
   integer :: nbad = 0
   double precision, allocatable :: virt_wgts(:,:)
   double precision, allocatable :: virt_wgts_hel(:,:)
@@ -56,12 +58,20 @@ contains
     double precision :: hel_fact, born_hel_from_virt
     double precision :: avg_pole_res(2), pole_diff(2)
     integer :: ret_code, i, j, ioerr, ioerr_counter, dt(8)
+    integer :: contribution
     integer :: iamp
     integer :: order_name_width
     integer :: amp_orders(nsplitorders), split_amp_orders(nsplitorders)
     logical :: cpol
     integer, external :: getordpowfromindex_ml5
     ioerr_counter = 0
+    contribution = active_nlo_contribution()
+    if (.not. allocated(firsttime)) then
+      allocate(firsttime(nlo_contribution_count()))
+      allocate(firsttime_run(nlo_contribution_count()))
+      firsttime = .true.
+      firsttime_run = .true.
+    end if
     order_name_width = maxval(len_trim(order_names))
     call binoth_lha_update_couplings(mu_r_value, alpha_s)
     ao2pi = alpha_s/(2d0*pi)
@@ -80,16 +90,18 @@ contains
     amp_split_poles_ml(1:amp_split_size,2) = 0d0
     prec_found(1:amp_split_size) = 0d0
 
-    if (firsttime_run) then
+    if (firsttime_run(contribution)) then
       if (.not. force_polecheck) then
         call set_forbid_hel_doublecheck(.true.)
       end if
-      allocate(accuracies(0:1))
-      allocate(virt_wgts(0:3,0:1))
-      allocate(virt_wgts_hel(0:3,0:1))
-      allocate(include_hel(max_bhel))
-      allocate(goodhel(max_bhel))
-      allocate(hel(0:max_bhel))
+      if (.not. allocated(accuracies)) then
+        allocate(accuracies(0:1))
+        allocate(virt_wgts(0:3,0:1))
+        allocate(virt_wgts_hel(0:3,0:1))
+        allocate(include_hel(max_bhel))
+        allocate(goodhel(max_bhel))
+        allocate(hel(0:max_bhel))
+      end if
       call FORCE_STABILITY_CHECK(.true.)
       if (.not. force_polecheck) then
         call COLLIER_COMPUTE_UV_POLES(.false.)
@@ -98,11 +110,11 @@ contains
         call COLLIER_COMPUTE_UV_POLES(.true.)
         call COLLIER_COMPUTE_IR_POLES(.true.)
       end if
-      firsttime_run = .false.
+      firsttime_run(contribution) = .false.
     end if
 
-    firsttime = firsttime .or. force_polecheck
-    if (firsttime) then
+    firsttime(contribution) = firsttime(contribution) .or. force_polecheck
+    if (firsttime(contribution)) then
       write (*,*) 'alpha_s value used for the virtuals' // &
            ' is (for the first PS point): ', alpha_s
       tolerance = IRPoleCheckThreshold/10d0
@@ -174,7 +186,7 @@ contains
 
     cpol = .false.
     ret_code_common = ret_code
-    if ((firsttime .or. mc_hel == 0) .and. &
+    if ((firsttime(contribution) .or. mc_hel == 0) .and. &
         mod(ret_code,100)/10 /= 3 .and. mod(ret_code,100)/10 /= 4) then
       call getpoles(p, madfks_double, madfks_single, &
                     amp_split_poles_fks)
@@ -182,7 +194,7 @@ contains
       do iamp = 1, amp_split_size
         if (amp_split_poles_fks(iamp,1) == 0d0 .and. &
             amp_split_poles_fks(iamp,2) == 0d0) cycle
-        if (firsttime) then
+        if (firsttime(contribution)) then
           write (*,*) ''
           write (*,*) 'Splitorders', iamp
           call amp_split_pos_to_orders(iamp, split_amp_orders)
@@ -211,7 +223,7 @@ contains
         end if
         if (tolerance < 0d0) cpol = .false.
 
-        if (.not. cpol .and. firsttime) then
+        if (.not. cpol .and. firsttime(contribution)) then
           write (*,*) '---- POLES CANCELLED ----'
           write (*,*) ' COEFFICIENT DOUBLE POLE:'
           write (*,*) '       MadFKS: ', madfks_double, &
@@ -291,7 +303,7 @@ contains
             end if
             close(67)
           end if
-        else if (cpol .and. firsttime) then
+        else if (cpol .and. firsttime(contribution)) then
           polecheck_passed = .false.
           write (*,*) 'POLES MISCANCELLATION, DIFFERENCE > ', &
                tolerance*10d0
@@ -321,7 +333,7 @@ contains
           end if
         end if
       end do
-      firsttime = cpol
+      firsttime(contribution) = cpol
     end if
 
     ntot = ntot + 1
@@ -351,7 +363,8 @@ contains
     n1(mod(ret_code,10)) = n1(mod(ret_code,10)) + 1
 
     do iamp = 1, amp_split_size
-      if (.not. firsttime .and. (ret_code/100 == 4 .or. cpol .or. &
+      if (.not. firsttime(contribution) .and. &
+          (ret_code/100 == 4 .or. cpol .or. &
           prec_found(iamp) > 0.05d0 .or. &
           amp_split_finite_ml(iamp) /= amp_split_finite_ml(iamp))) then
         if (neps < 10) then
@@ -397,7 +410,7 @@ contains
       end if
     end do
 
-    if (.not. firsttime .and. &
+    if (.not. firsttime(contribution) .and. &
         (accuracies(0) > 0.05d0 .or. virt_wgt /= virt_wgt)) then
       virt_wgt = 0d0
     end if

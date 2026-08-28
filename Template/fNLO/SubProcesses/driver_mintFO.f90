@@ -23,6 +23,9 @@ module driver_mintfo_module
                        do_rwgt_scale, do_rwgt_pdf
   use genps_fks, only: generate_momenta
   use decay_chain_metadata, only: real_phase_space_dimension
+  use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
+       nlo_contribution_count, contribution_representative_fks, &
+       nlo_virtual_grid_count
   use setscales_module, only: set_alphas
   use split_orders, only: check_amp_split
   use cuts_module, only: passcuts
@@ -36,7 +39,8 @@ module driver_mintfo_module
        compute_soft_collinear_ct_impl, compute_collinear_counter_term, &
        compute_real_emission
   use fks_weights_module, only: include_pdf_and_alphas, reweight_scale, &
-       reweight_pdf, get_wgt_no_nbody, fill_plots, fill_mint_function
+       reweight_pdf, get_wgt_no_nbody, fill_plots, fill_mint_function, &
+       begin_bundle_virtual_tricks, finish_bundle_virtual_tricks
   use fks_singular_module, only: fill_configurations_common, setfksfactor
   use madfks_plot_module, only: topout_impl
   use fnlo_process_common, only: nfksprocess, soft_counterevent, &
@@ -158,7 +162,7 @@ contains
       end do
       virtual_fraction(kchan) = max(virt_fraction, min_virt_fraction)
     end do
-    n_ord_virt = amp_split_size
+    n_ord_virt = nlo_virtual_grid_count(amp_split_size)
 
     ntot = 0
     nsun = 0
@@ -311,6 +315,7 @@ contains
     double precision :: vegas_variables(99), mc_integer_weight
     integer :: nfks_born, nfks_picked, ifks, nfks_min, nfks_max
     integer :: amplitude_order, picked_integer, position
+    integer :: nbody_contribution, nbody_contribution_max
     logical :: passcuts_nbody, passcuts_n1body, passcuts_coll
     logical :: skip_nplusone
 
@@ -322,7 +327,7 @@ contains
     end if
     sigint_impl = 0d0
     icontr = 0
-    do amplitude_order = 0, amp_split_size
+    do amplitude_order = 0, n_ave_virt
       virt_wgt_mint(amplitude_order) = 0d0
       born_wgt_mint(amplitude_order) = 0d0
     end do
@@ -340,36 +345,58 @@ contains
 
     if (abrv /= 'real') then
       nbody = .true.
-      calculated_born = .false.
-      call get_born_fks_process(nfks_picked, nfks_born)
-      call update_fks_dir_impl(nfks_born)
-      if (ini_fin_fks(ichan) == 0) then
-        jacobian = 1d0
+      if (has_nlo_contribution_bundle()) then
+        nbody_contribution_max = nlo_contribution_count()
+        if (abrv == 'born') nbody_contribution_max = 1
       else
-        jacobian = 0.5d0
+        nbody_contribution_max = 1
       end if
-      call generate_momenta(nndim, iconfig, jacobian, vegas_variables, &
-                            momentum)
-      if (p_born(0, 1) >= 0d0) then
-        call compute_prefactors_nbody(vegas_wgt)
-        passcuts_nbody = passcuts( &
-                           event_momenta(0, 1, soft_counterevent), reweight, &
-                           ybst_til_tolab(soft_counterevent))
-        if (passcuts_nbody) then
-          pass_cuts_check = .true.
-          call set_alphas( &
-            event_momenta(0:3, 1:nexternal, soft_counterevent))
-          call include_multichannel_enhance(1)
-          if (abrv(1:2) /= 'vi') then
-            call compute_born()
-          end if
-          if (abrv /= 'born') then
-            call compute_nbody_noborn()
-          end if
+
+      do nbody_contribution = 1, nbody_contribution_max
+        calculated_born = .false.
+        if (has_nlo_contribution_bundle()) then
+          nfks_born = contribution_representative_fks(nbody_contribution)
+        else
+          call get_born_fks_process(nfks_picked, nfks_born)
         end if
-      else
-        skip_nplusone = .true.
-      end if
+        call update_fks_dir_impl(nfks_born)
+        if (ini_fin_fks(ichan) == 0) then
+          jacobian = 1d0
+        else
+          jacobian = 0.5d0
+        end if
+        call generate_momenta(nndim, iconfig, jacobian, vegas_variables, &
+                              momentum)
+        if (p_born(0, 1) >= 0d0) then
+          call compute_prefactors_nbody(vegas_wgt)
+          passcuts_nbody = passcuts( &
+                             event_momenta(0, 1, soft_counterevent), &
+                             reweight, ybst_til_tolab(soft_counterevent))
+          if (passcuts_nbody) then
+            pass_cuts_check = .true.
+            call set_alphas( &
+              event_momenta(0:3, 1:nexternal, soft_counterevent))
+            call include_multichannel_enhance(1)
+            if (abrv(1:2) /= 'vi' .and. &
+                (.not. has_nlo_contribution_bundle() .or. &
+                 nbody_contribution == 1)) then
+              call compute_born()
+            end if
+            if (abrv /= 'born') then
+              if (has_nlo_contribution_bundle()) then
+                call begin_bundle_virtual_tricks()
+              end if
+              call compute_nbody_noborn()
+              if (has_nlo_contribution_bundle()) then
+                call finish_bundle_virtual_tricks()
+              end if
+            end if
+          end if
+        else if (.not. has_nlo_contribution_bundle() .or. &
+                 nbody_contribution == 1) then
+          skip_nplusone = .true.
+        end if
+      end do
     end if
 
     if (abrv(1:4) /= 'born' .and. abrv(1:4) /= 'bovi' .and. &

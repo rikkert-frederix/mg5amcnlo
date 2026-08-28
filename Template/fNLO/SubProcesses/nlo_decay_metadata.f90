@@ -2,6 +2,10 @@ module nlo_decay_metadata
   use process_dimensions, only: nexternal, nincoming, fks_configs, &
                                 validate_process_dimensions
   use fks_metadata, only: fks_i_d, fks_j_d, validate_fks_metadata
+  use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
+       active_nlo_contribution, active_contribution_is_nlo_decay, &
+       contribution_fks_first, contribution_fks_last, &
+       global_fks_configuration, local_fks_configuration
   implicit none
   private
 
@@ -12,6 +16,8 @@ module nlo_decay_metadata
 
   logical, save :: initialized = .false.
   logical, save :: enabled = .false.
+  integer, save :: loaded_contribution = -1
+  integer, save :: metadata_revision_value = 0
   integer, save :: metadata_format = 0
   integer, save :: corrected_parent_pdg_value = 0
   integer, save :: corrected_parent_occurrence_value = 0
@@ -69,6 +75,7 @@ module nlo_decay_metadata
   integer, allocatable, save :: leaf_visible_values(:, :)
 
   public :: initialize_nlo_decay_metadata, has_nlo_decay
+  public :: nlo_decay_metadata_revision
   public :: corrected_parent_pdg, corrected_parent_occurrence
   public :: nlo_decay_production_born_qcd_order
   public :: nlo_decay_born_qcd_order
@@ -92,31 +99,117 @@ module nlo_decay_metadata
 
 contains
 
+  subroutine clear_nlo_decay_metadata()
+    if (allocated(production_pdg_values)) deallocate(production_pdg_values)
+    if (allocated(production_final_values)) &
+         deallocate(production_final_values)
+    if (allocated(context_kind_values)) deallocate(context_kind_values)
+    if (allocated(context_source_values)) deallocate(context_source_values)
+    if (allocated(context_local_counts)) deallocate(context_local_counts)
+    if (allocated(context_visible_counts)) deallocate(context_visible_counts)
+    if (allocated(production_target_kinds)) &
+         deallocate(production_target_kinds)
+    if (allocated(production_target_ids)) &
+         deallocate(production_target_ids)
+    if (allocated(local_pdg_values)) deallocate(local_pdg_values)
+    if (allocated(local_final_values)) deallocate(local_final_values)
+    if (allocated(local_target_kinds)) deallocate(local_target_kinds)
+    if (allocated(local_target_ids)) deallocate(local_target_ids)
+    if (allocated(fks_context_values)) deallocate(fks_context_values)
+    if (allocated(fks_i_values)) deallocate(fks_i_values)
+    if (allocated(fks_j_values)) deallocate(fks_j_values)
+    if (allocated(fks_ij_values)) deallocate(fks_ij_values)
+    if (allocated(fks_target_kinds)) deallocate(fks_target_kinds)
+    if (allocated(fks_target_ids)) deallocate(fks_target_ids)
+    if (allocated(fks_target_local_legs)) &
+         deallocate(fks_target_local_legs)
+    if (allocated(fks_partner_target_kinds)) &
+         deallocate(fks_partner_target_kinds)
+    if (allocated(fks_partner_target_ids)) &
+         deallocate(fks_partner_target_ids)
+    if (allocated(fks_partner_counts)) deallocate(fks_partner_counts)
+    if (allocated(fks_partner_local_values)) &
+         deallocate(fks_partner_local_values)
+    if (allocated(real_to_born_values)) deallocate(real_to_born_values)
+    if (allocated(color_local_first_values)) &
+         deallocate(color_local_first_values)
+    if (allocated(color_local_second_values)) &
+         deallocate(color_local_second_values)
+    if (allocated(color_visible_first_values)) &
+         deallocate(color_visible_first_values)
+    if (allocated(color_visible_second_values)) &
+         deallocate(color_visible_second_values)
+    if (allocated(color_generated_index_values)) &
+         deallocate(color_generated_index_values)
+    if (allocated(node_parent_values)) deallocate(node_parent_values)
+    if (allocated(node_pdg_values)) deallocate(node_pdg_values)
+    if (allocated(node_qcd_orders)) deallocate(node_qcd_orders)
+    if (allocated(node_carrier_values)) deallocate(node_carrier_values)
+    if (allocated(node_child_counts)) deallocate(node_child_counts)
+    if (allocated(node_child_kinds)) deallocate(node_child_kinds)
+    if (allocated(node_child_ids)) deallocate(node_child_ids)
+    if (allocated(leaf_parent_values)) deallocate(leaf_parent_values)
+    if (allocated(leaf_pdg_values)) deallocate(leaf_pdg_values)
+    if (allocated(leaf_visible_values)) deallocate(leaf_visible_values)
+    metadata_format = 0
+    corrected_parent_pdg_value = 0
+    corrected_parent_occurrence_value = 0
+    number_of_contexts = 0
+    number_of_fks_maps = 0
+    number_of_fks_partners = 0
+    number_of_generated_color_links = 0
+    number_of_color_link_records = 0
+    number_of_production_legs = 0
+    number_of_nodes = 0
+    number_of_leaves = 0
+    corrected_node_value = 0
+    born_context_id = 0
+    production_born_qcd_order_value = -1
+    decay_born_qcd_order_value = -1
+  end subroutine clear_nlo_decay_metadata
+
   subroutine initialize_nlo_decay_metadata()
     logical :: exists, end_seen
     integer :: unit_number, ios, production_records, color_record
     integer :: context, configuration, leg, pdg, source, local_count
     integer :: visible_count, local_i, local_j, local_ij, target
     integer :: target_position, node, leaf, parent, qcd_order, carrier
-    integer :: child, child_count, visible
+    integer :: child, child_count, visible, target_contribution
+    character(len=64) :: metadata_filename
     character(len=512) :: line
     character(len=32) :: keyword, kind, state, name
     character(len=16) :: child_words(nexternal)
     integer :: child_ids(nexternal)
 
-    if (initialized) return
+    target_contribution = active_nlo_contribution()
+    if (initialized .and. loaded_contribution == target_contribution) return
+    call clear_nlo_decay_metadata()
+    initialized = .false.
+    enabled = .false.
+    loaded_contribution = target_contribution
+    metadata_revision_value = metadata_revision_value + 1
     call validate_process_dimensions()
     call validate_fks_metadata()
-    inquire(file='nlo_decay_info.dat', exist=exists)
+    if (has_nlo_contribution_bundle()) then
+      if (.not. active_contribution_is_nlo_decay()) then
+        initialized = .true.
+        return
+      end if
+      write(metadata_filename, '("nlo_decay_info_",i0,".dat")') &
+           target_contribution
+    else
+      metadata_filename = 'nlo_decay_info.dat'
+    end if
+    inquire(file=trim(metadata_filename), exist=exists)
     if (.not. exists) then
       initialized = .true.
       enabled = .false.
       return
     end if
 
-    open(newunit=unit_number, file='nlo_decay_info.dat', status='old', &
+    open(newunit=unit_number, file=trim(metadata_filename), status='old', &
          action='read', iostat=ios)
-    if (ios /= 0) call fail_metadata('cannot open nlo_decay_info.dat')
+    if (ios /= 0) call fail_metadata('cannot open NLO-decay metadata')
 
     production_records = 0
     number_of_color_link_records = 0
@@ -160,11 +253,24 @@ contains
       call fail_metadata('invalid corrected-decay parent')
     end if
     if (number_of_contexts < 2 .or. &
-        number_of_fks_maps /= fks_configs .or. &
+        number_of_fks_maps < 1 .or. &
         number_of_fks_partners < number_of_fks_maps .or. &
         number_of_generated_color_links < 1 .or. &
-        number_of_color_link_records < number_of_generated_color_links) then
+        number_of_color_link_records < 1) then
       call fail_metadata('invalid metadata counts')
+    end if
+    if (.not. has_nlo_contribution_bundle() .and. &
+        number_of_color_link_records < number_of_generated_color_links) then
+      call fail_metadata('incomplete standalone color-link metadata')
+    end if
+    if (has_nlo_contribution_bundle()) then
+      if (number_of_fks_maps /= &
+          contribution_fks_last(target_contribution) - &
+          contribution_fks_first(target_contribution) + 1) then
+        call fail_metadata('contribution FKS map count disagrees')
+      end if
+    else if (number_of_fks_maps /= fks_configs) then
+      call fail_metadata('FKS map count disagrees with generated data')
     end if
     if (production_records < nincoming + 1 .or. &
         production_records > nexternal) then
@@ -191,18 +297,18 @@ contains
     allocate(local_final_values(nexternal, number_of_contexts))
     allocate(local_target_kinds(nexternal, number_of_contexts))
     allocate(local_target_ids(nexternal, number_of_contexts))
-    allocate(fks_context_values(fks_configs))
-    allocate(fks_i_values(fks_configs))
-    allocate(fks_j_values(fks_configs))
-    allocate(fks_ij_values(fks_configs))
-    allocate(fks_target_kinds(3, fks_configs))
-    allocate(fks_target_ids(3, fks_configs))
-    allocate(fks_target_local_legs(3, fks_configs))
-    allocate(fks_partner_target_kinds(nexternal, fks_configs))
-    allocate(fks_partner_target_ids(nexternal, fks_configs))
-    allocate(fks_partner_counts(fks_configs))
-    allocate(fks_partner_local_values(nexternal, fks_configs))
-    allocate(real_to_born_values(nexternal, fks_configs))
+    allocate(fks_context_values(number_of_fks_maps))
+    allocate(fks_i_values(number_of_fks_maps))
+    allocate(fks_j_values(number_of_fks_maps))
+    allocate(fks_ij_values(number_of_fks_maps))
+    allocate(fks_target_kinds(3, number_of_fks_maps))
+    allocate(fks_target_ids(3, number_of_fks_maps))
+    allocate(fks_target_local_legs(3, number_of_fks_maps))
+    allocate(fks_partner_target_kinds(nexternal, number_of_fks_maps))
+    allocate(fks_partner_target_ids(nexternal, number_of_fks_maps))
+    allocate(fks_partner_counts(number_of_fks_maps))
+    allocate(fks_partner_local_values(nexternal, number_of_fks_maps))
+    allocate(real_to_born_values(nexternal, number_of_fks_maps))
     allocate(color_local_first_values(number_of_color_link_records))
     allocate(color_local_second_values(number_of_color_link_records))
     allocate(color_visible_first_values(number_of_color_link_records))
@@ -657,7 +763,7 @@ contains
     end if
     call validate_color_link_values()
 
-    do configuration = 1, fks_configs
+    do configuration = 1, number_of_fks_maps
       context = fks_context_values(configuration)
       call check_context(context)
       if (trim(context_kind_values(context)) /= 'REAL') then
@@ -696,8 +802,12 @@ contains
           local_target_ids(fks_ij_values(configuration), born_context_id)) then
         call fail_metadata('FKS targets disagree with the context maps')
       end if
-      if (fks_target_ids(1, configuration) /= fks_i_d(configuration) .or. &
-          fks_target_ids(2, configuration) /= fks_j_d(configuration)) then
+      if (fks_target_ids(1, configuration) /= fks_i_d( &
+              global_fks_configuration(&
+                  loaded_contribution, configuration)) .or. &
+          fks_target_ids(2, configuration) /= fks_j_d( &
+              global_fks_configuration(&
+                  loaded_contribution, configuration))) then
         call fail_metadata('local and generated visible FKS maps disagree')
       end if
       do leg = 1, context_local_counts(context)
@@ -878,7 +988,8 @@ contains
         end if
       end do
     end do
-    if (.not. all(generated_used)) then
+    if (.not. has_nlo_contribution_bundle() .and. &
+        .not. all(generated_used)) then
       call fail_metadata('generated COLOR_LINK indices are incomplete')
     end if
     deallocate(generated_used)
@@ -937,9 +1048,15 @@ contains
 
 
   logical function has_nlo_decay()
-    if (.not. initialized) call initialize_nlo_decay_metadata()
+    call initialize_nlo_decay_metadata()
     has_nlo_decay = enabled
   end function has_nlo_decay
+
+
+  integer function nlo_decay_metadata_revision()
+    call initialize_nlo_decay_metadata()
+    nlo_decay_metadata_revision = metadata_revision_value
+  end function nlo_decay_metadata_revision
 
 
   integer function corrected_parent_pdg()
@@ -975,9 +1092,11 @@ contains
 
   integer function nlo_decay_context_for_fks(configuration)
     integer, intent(in) :: configuration
+    integer :: local_configuration_value
     call require_enabled()
-    call check_configuration(configuration)
-    nlo_decay_context_for_fks = fks_context_values(configuration)
+    local_configuration_value = bundle_local_configuration(configuration)
+    nlo_decay_context_for_fks = &
+         fks_context_values(local_configuration_value)
   end function nlo_decay_context_for_fks
 
 
@@ -1071,45 +1190,51 @@ contains
 
   integer function nlo_decay_fks_i(configuration)
     integer, intent(in) :: configuration
+    integer :: local_configuration_value
     call require_enabled()
-    call check_configuration(configuration)
-    nlo_decay_fks_i = fks_i_values(configuration)
+    local_configuration_value = bundle_local_configuration(configuration)
+    nlo_decay_fks_i = fks_i_values(local_configuration_value)
   end function nlo_decay_fks_i
 
 
   integer function nlo_decay_fks_j(configuration)
     integer, intent(in) :: configuration
+    integer :: local_configuration_value
     call require_enabled()
-    call check_configuration(configuration)
-    nlo_decay_fks_j = fks_j_values(configuration)
+    local_configuration_value = bundle_local_configuration(configuration)
+    nlo_decay_fks_j = fks_j_values(local_configuration_value)
   end function nlo_decay_fks_j
 
 
   integer function nlo_decay_fks_ij(configuration)
     integer, intent(in) :: configuration
+    integer :: local_configuration_value
     call require_enabled()
-    call check_configuration(configuration)
-    nlo_decay_fks_ij = fks_ij_values(configuration)
+    local_configuration_value = bundle_local_configuration(configuration)
+    nlo_decay_fks_ij = fks_ij_values(local_configuration_value)
   end function nlo_decay_fks_ij
 
 
   integer function nlo_decay_partner_count(configuration)
     integer, intent(in) :: configuration
+    integer :: local_configuration_value
     call require_enabled()
-    call check_configuration(configuration)
-    nlo_decay_partner_count = fks_partner_counts(configuration)
+    local_configuration_value = bundle_local_configuration(configuration)
+    nlo_decay_partner_count = fks_partner_counts(local_configuration_value)
   end function nlo_decay_partner_count
 
 
   integer function nlo_decay_partner_local(configuration, position)
     integer, intent(in) :: configuration, position
+    integer :: local_configuration_value
     call require_enabled()
-    call check_configuration(configuration)
-    if (position < 1 .or. position > fks_partner_counts(configuration)) then
+    local_configuration_value = bundle_local_configuration(configuration)
+    if (position < 1 .or. &
+        position > fks_partner_counts(local_configuration_value)) then
       call fail_metadata('FKS-partner position is out of range')
     end if
     nlo_decay_partner_local = &
-         fks_partner_local_values(position, configuration)
+         fks_partner_local_values(position, local_configuration_value)
   end function nlo_decay_partner_local
 
 
@@ -1119,13 +1244,18 @@ contains
     integer, intent(out) :: visible_first, visible_second
     double precision, intent(out) :: multiplier
     integer :: born_first, born_second, record, temporary
+    integer :: local_configuration_value
 
     call require_enabled()
-    call check_configuration(configuration)
-    call check_local_leg(fks_context_values(configuration), real_first)
-    call check_local_leg(fks_context_values(configuration), real_second)
-    born_first = real_to_born_values(real_first, configuration)
-    born_second = real_to_born_values(real_second, configuration)
+    local_configuration_value = bundle_local_configuration(configuration)
+    call check_local_leg(&
+         fks_context_values(local_configuration_value), real_first)
+    call check_local_leg(&
+         fks_context_values(local_configuration_value), real_second)
+    born_first = real_to_born_values(&
+         real_first, local_configuration_value)
+    born_second = real_to_born_values(&
+         real_second, local_configuration_value)
     if (born_first == 0 .or. born_second == 0) then
       call fail_metadata('radiated leg has no decay color-link image')
     end if
@@ -1175,10 +1305,13 @@ contains
 
   integer function nlo_decay_real_to_born(configuration, real_leg)
     integer, intent(in) :: configuration, real_leg
+    integer :: local_configuration_value
     call require_enabled()
-    call check_configuration(configuration)
-    call check_local_leg(fks_context_values(configuration), real_leg)
-    nlo_decay_real_to_born = real_to_born_values(real_leg, configuration)
+    local_configuration_value = bundle_local_configuration(configuration)
+    call check_local_leg(&
+         fks_context_values(local_configuration_value), real_leg)
+    nlo_decay_real_to_born = real_to_born_values(&
+         real_leg, local_configuration_value)
   end function nlo_decay_real_to_born
 
 
@@ -1314,16 +1447,23 @@ contains
 
   subroutine check_configuration(configuration)
     integer, intent(in) :: configuration
-    if (configuration < 1 .or. configuration > fks_configs) then
+    if (configuration < 1 .or. configuration > number_of_fks_maps) then
       call fail_metadata('FKS configuration is out of range')
     end if
   end subroutine check_configuration
 
 
+  integer function bundle_local_configuration(configuration)
+    integer, intent(in) :: configuration
+    bundle_local_configuration = local_fks_configuration(configuration)
+    call check_configuration(bundle_local_configuration)
+  end function bundle_local_configuration
+
+
   subroutine require_enabled()
-    if (.not. initialized) call initialize_nlo_decay_metadata()
+    call initialize_nlo_decay_metadata()
     if (.not. enabled) then
-      call fail_metadata('nlo_decay_info.dat is absent')
+      call fail_metadata('no active NLO-decay metadata are present')
     end if
   end subroutine require_enabled
 

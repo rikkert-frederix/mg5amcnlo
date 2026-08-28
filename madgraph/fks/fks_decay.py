@@ -33,6 +33,50 @@ DECAY_DUMMY_WIDTH_RATIO = 0.1
 DECAY_DUMMY_WIDTH_FUNCTION = 'FNLO_DECAY_DUMMY_WIDTH_RATIO()'
 
 
+class FullNLOContributionMultiProcess(object):
+    """Container for factorised NLO production and decay ingredients.
+
+    It deliberately presents the ordinary ``FKSMultiProcess`` read API so
+    that the command interface can keep treating the generated process as one
+    object.  HELAS generation is the only stage which expands ``members``.
+    """
+
+    def __init__(self, production, decays):
+        self.production = production
+        self.decays = list(decays)
+        self.members = [production] + self.decays
+        self.full_nlo_decay_bundle = True
+
+    def get(self, name):
+        if name == 'has_isr':
+            return any(member.get(name) for member in self.members)
+        if name == 'has_fsr':
+            return any(member.get(name) for member in self.members)
+        if name == 'has_nlo_decays':
+            return True
+        if name == 'ewsudakov':
+            return any(member.get(name) for member in self.members)
+        return self.production.get(name)
+
+    def __getitem__(self, name):
+        return self.get(name)
+
+    def get_born_amplitudes(self):
+        return self.production.get_born_amplitudes()
+
+    def get_real_amplitudes(self):
+        result = self.production.get_real_amplitudes().__class__()
+        for member in self.members:
+            result.extend(member.get_real_amplitudes())
+        return result
+
+    def get_virt_amplitudes(self):
+        result = self.production.get_virt_amplitudes().__class__()
+        for member in self.members:
+            result.extend(member.get_virt_amplitudes())
+        return result
+
+
 def _iter_decay_definitions(decay_chains):
     """Yield all decay definitions, parents before nested decays."""
 
@@ -104,11 +148,53 @@ def validate_nlo_decay_to_lo_generation(process_definition, options,
             'perturbatively corrected decay; found %d' % len(corrected))
 
     decay, depth = corrected[0]
+    return _validate_nlo_decay_definition(
+        process_definition, decay, depth, options, correction_orders,
+        ewsudakov=ewsudakov, require_lo_production=True)
+
+
+def validate_full_nlo_decay_chain_generation(process_definition, options,
+                                             correction_orders,
+                                             ewsudakov=False):
+    """Validate and describe every correction in a full NLO decay chain.
+
+    The returned list contains one entry per perturbatively corrected decay.
+    Production is deliberately kept at NLO; the caller builds a separate
+    NLO-production/LO-decay ingredient and one LO-production/NLO-decay
+    ingredient for every entry in this list.
+    """
+
+    corrected = get_perturbed_decay_definitions(process_definition)
+    if not corrected:
+        raise InvalidCmd(
+            'A full NLO decay-chain bundle requires at least one '
+            'perturbatively corrected decay')
+    if (set(process_definition.get('perturbation_couplings')) !=
+            set(['QCD']) or
+            process_definition.get('NLO_mode') not in ['all', 'real']):
+        raise InvalidCmd(
+            'The production process in a full NLO decay-chain bundle must '
+            'use [QCD] or [real=QCD]')
+
+    return [
+        _validate_nlo_decay_definition(
+            process_definition, decay, depth, options, correction_orders,
+            ewsudakov=ewsudakov, require_lo_production=False)
+        for decay, depth in corrected]
+
+
+def _validate_nlo_decay_definition(process_definition, decay, depth,
+                                   options, correction_orders,
+                                   ewsudakov=False,
+                                   require_lo_production=True):
+    """Validate one corrected node and return its attachment description."""
+
     decay_path = _find_decay_definition_path(
         process_definition.get('decay_chains'), decay)
     if decay_path is None:
         raise InvalidCmd('Could not locate the perturbatively corrected decay')
-    if (process_definition.get('perturbation_couplings') and
+    if (require_lo_production and
+            process_definition.get('perturbation_couplings') and
             process_definition.get('NLO_mode') != 'LOonly'):
         raise InvalidCmd(
             'The production process must be LO when correcting a decay')
@@ -305,6 +391,16 @@ def prepare_nlo_decay_full_definition(process_definition, decay_path):
         process.get('decay_chains'), decay_path)
     corrected.set('perturbation_couplings', [])
     corrected.set('NLO_mode', 'tree')
+    return process
+
+
+def prepare_lo_decay_tree(process_definition):
+    """Clone a process definition and make every decay node Born-only."""
+
+    process = _clone_process_definition(process_definition)
+    for decay in _iter_decay_definitions(process.get('decay_chains')):
+        decay.set('perturbation_couplings', [])
+        decay.set('NLO_mode', 'tree')
     return process
 
 
@@ -1223,6 +1319,187 @@ def _finalize_matrix_element(matrix_element,
         matrix_element.set(
             'color_matrix', color_amp.ColorMatrix(color_amp.ColorBasis()))
         matrix_element.process_color()
+
+
+def align_nlo_decay_born_to_decay_chain(decay_metadata,
+                                         nlo_decay_metadata):
+    """Use the production contribution's visible Born ordering.
+
+    Real-emission orderings remain contribution-local.  The NLO-decay
+    phase-space metadata already carries an explicit real-to-Born map, so
+    only the Born context, its ``ij`` targets and the colour-link endpoints
+    need to be permuted here.
+    """
+
+    decay_nodes = [
+        (node['id'], node['parent'], node['pdg'], tuple(node['children']))
+        for node in decay_metadata['nodes']]
+    nlo_nodes = [
+        (node['id'], node['parent'], node['pdg'], tuple(node['children']))
+        for node in nlo_decay_metadata['nodes']]
+    decay_leaves = [
+        (leaf['id'], leaf['parent'], leaf['pdg'])
+        for leaf in decay_metadata['leaves']]
+    nlo_leaves = [
+        (leaf['id'], leaf['parent'], leaf['pdg'])
+        for leaf in nlo_decay_metadata['leaves']]
+    if decay_nodes != nlo_nodes or decay_leaves != nlo_leaves:
+        raise fks_common.FKSProcessError(
+            'NLO production and decay contributions have different decay '
+            'topologies')
+
+    production_born = [
+        context for context in decay_metadata['contexts']
+        if context['kind'] == 'BORN']
+    nlo_born = [
+        context for context in nlo_decay_metadata['contexts']
+        if context['kind'] == 'BORN']
+    if len(production_born) != 1 or len(nlo_born) != 1:
+        raise fks_common.FKSProcessError(
+            'A bundled decay contribution requires one Born context')
+    production_born = production_born[0]
+    nlo_born = nlo_born[0]
+
+    visible_map = {}
+    for production_leg, old_target in nlo_born['production_map'].items():
+        new_target = production_born['core_map'].get(production_leg)
+        if new_target is None or old_target[0] != new_target[0]:
+            raise fks_common.FKSProcessError(
+                'Bundled production-leg targets are inconsistent')
+        if old_target[0] == 'NODE':
+            if old_target[1] != new_target[1]:
+                raise fks_common.FKSProcessError(
+                    'Bundled production legs select different decay nodes')
+        else:
+            visible_map[old_target[1]] = new_target[1]
+    for leaf_id, old_target in nlo_born['leaf_map'].items():
+        try:
+            new_target = production_born['leaf_map'][leaf_id]
+        except KeyError:
+            raise fks_common.FKSProcessError(
+                'A bundled NLO-decay leaf is absent from production')
+        previous = visible_map.setdefault(old_target, new_target)
+        if previous != new_target:
+            raise fks_common.FKSProcessError(
+                'The bundled Born visible-leg permutation is ambiguous')
+
+    visible_count = nlo_born['visible_count']
+    if (set(visible_map) != set(range(1, visible_count + 1)) or
+            set(visible_map.values()) != set(range(1, visible_count + 1))):
+        raise fks_common.FKSProcessError(
+            'The bundled Born visible-leg permutation is incomplete')
+
+    def remap_target(target):
+        if target[0] == 'LEG':
+            return ('LEG', visible_map[target[1]])
+        return target
+
+    nlo_born['production_map'] = dict(
+        (leg, remap_target(target))
+        for leg, target in nlo_born['production_map'].items())
+    nlo_born['local_map'] = dict(
+        (leg, remap_target(target))
+        for leg, target in nlo_born['local_map'].items())
+    nlo_born['leaf_map'] = dict(
+        (leaf, visible_map[target])
+        for leaf, target in nlo_born['leaf_map'].items())
+    nlo_born['node_visible_map'] = dict(
+        (node, [visible_map[target] for target in targets])
+        for node, targets in nlo_born['node_visible_map'].items())
+    nlo_born['visible_external_map'] = dict(
+        (leg, visible_map[target])
+        for leg, target in nlo_born.get(
+            'visible_external_map', {}).items())
+
+    for mapping in nlo_decay_metadata['fks_maps']:
+        mapping['targets']['ij'] = remap_target(
+            mapping['targets']['ij'])
+    for record in nlo_decay_metadata['color_links']:
+        record['visible_first'] = visible_map[record['visible_first']]
+        record['visible_second'] = visible_map[record['visible_second']]
+        if record['visible_first'] > record['visible_second']:
+            record['visible_first'], record['visible_second'] = (
+                record['visible_second'], record['visible_first'])
+    return visible_map
+
+
+def canonicalize_virtual_external_order(matrix_element, visible_map):
+    """Make a composed decay virtual consume canonical Born momenta."""
+
+    if matrix_element is None:
+        return
+    for wavefunction in _all_wavefunctions(matrix_element):
+        if wavefunction.get('mothers') or wavefunction.get('is_loop'):
+            continue
+        old_number = wavefunction.get('number_external')
+        try:
+            wavefunction.set('number_external', visible_map[old_number])
+        except KeyError:
+            raise fks_common.FKSProcessError(
+                'A decay virtual external leg is absent from the canonical '
+                'Born permutation')
+
+    for process in matrix_element.get('processes'):
+        visible = process.get_legs_with_decays()
+        if not visible:
+            continue
+        reordered = [None] * len(visible)
+        for source_leg in visible:
+            leg = copy.copy(source_leg)
+            target = visible_map[leg.get('number')]
+            leg.set('number', target)
+            reordered[target - 1] = leg
+        if any(leg is None for leg in reordered):
+            raise fks_common.FKSProcessError(
+                'The canonical decay-virtual process ordering is incomplete')
+        process.set('legs_with_decays', base_objects.LegList(reordered))
+
+    _finalize_matrix_element(matrix_element,
+                             normalize_crossed_current=True)
+
+
+def set_bundle_color_links(fks_process, metadata_sequence):
+    """Generate the union of visible colour links required by all members."""
+
+    visible_pairs = []
+    for metadata in metadata_sequence:
+        for record in metadata['color_links']:
+            pair = tuple(sorted((record['visible_first'],
+                                 record['visible_second'])))
+            if pair not in visible_pairs:
+                visible_pairs.append(pair)
+            record['generated_index'] = visible_pairs.index(pair) + 1
+
+    # NLO-decay metadata normally owns the complete generated colour-link
+    # table.  In a contribution bundle it only owns the records relevant to
+    # that decay, while ``generated_index`` refers to the shared union above.
+    # Preserve the size of that global table so sparse indices (for example a
+    # top-decay self link at position six) remain meaningful at run time.
+    for metadata in metadata_sequence:
+        metadata['generated_color_link_count'] = len(visible_pairs)
+
+    base_amplitude = fks_process.born_me.get('base_amplitude')
+    model = fks_process.born_me.get('processes')[0].get('model')
+    legs = fks_common.to_fks_legs(
+        base_amplitude.get('process').get_legs_with_decays(), model)
+    by_number = dict((leg.get('number'), leg) for leg in legs)
+    descriptions = []
+    for first, second in visible_pairs:
+        try:
+            color_link = fks_common.legs_to_color_link_string(
+                by_number[first], by_number[second], pert='QCD')
+        except KeyError:
+            raise fks_common.FKSProcessError(
+                'A bundled colour link refers to a missing visible leg')
+        descriptions.append({
+            'legs': [by_number[first], by_number[second]],
+            'string': color_link['string'],
+            'replacements': color_link['replacements']})
+
+    basis = fks_process.born_me.get('color_basis')
+    fks_process.color_links = fks_common.insert_color_links(
+        basis, basis.create_color_dict_list(base_amplitude), descriptions)
+    fks_process._decay_color_links_set = True
 
 
 def _make_context(matrix_element, assignment, metadata, context_id,
@@ -2530,8 +2807,10 @@ def nlo_decay_info_text(metadata):
             metadata['corrected_node']),
         'COUNTS %d %d %d %d' % (
             len(metadata['contexts']), len(metadata['fks_maps']),
-            len(set(link['generated_index']
-                    for link in metadata['color_links'])),
+            metadata.get(
+                'generated_color_link_count',
+                len(set(link['generated_index']
+                        for link in metadata['color_links']))),
             sum(len(mapping['partners'])
                 for mapping in metadata['fks_maps']))]
     for node in metadata['nodes']:
@@ -2598,6 +2877,62 @@ def write_nlo_decay_prototype_files(path, metadata):
 
     with open(os.path.join(path, 'nlo_decay_info.dat'), 'w') as stream:
         stream.write(nlo_decay_info_text(metadata))
+
+
+def contribution_bundle_info_text(contributions):
+    """Serialize ownership of the global FKS configurations."""
+
+    virtual_grid_count = sum(
+        len(contribution.get('virtual_orders', []))
+        for contribution in contributions)
+    lines = [
+        'FORMAT 2',
+        'COUNT %d' % len(contributions),
+        'VIRTUAL_GRIDS %d' % virtual_grid_count]
+    expected_first = 1
+    virtual_grid = 0
+    for expected_id, contribution in enumerate(contributions, 1):
+        if (contribution['id'] != expected_id or
+                contribution['first'] != expected_first or
+                contribution['last'] < contribution['first'] or
+                contribution['representative'] < contribution['first'] or
+                contribution['representative'] > contribution['last']):
+            raise fks_common.FKSProcessError(
+                'The NLO contribution bundle has inconsistent FKS ranges')
+        virtual_orders = contribution.get('virtual_orders', [])
+        if bool(virtual_orders) != bool(contribution['has_virtual']):
+            raise fks_common.FKSProcessError(
+                'A bundled virtual has inconsistent split-order metadata')
+        lines.append('CONTRIBUTION %d %s %d %d %d %d %d' % (
+            contribution['id'], contribution['kind'],
+            contribution['first'], contribution['last'],
+            contribution['representative'],
+            int(contribution['has_virtual']),
+            contribution['parent_pdg']))
+        for orders in virtual_orders:
+            virtual_grid += 1
+            lines.append('VIRTUAL_GRID %d %d %s' % (
+                contribution['id'], virtual_grid,
+                ' '.join(str(power) for power in orders)))
+        expected_first = contribution['last'] + 1
+    lines.append('END')
+    return '\n'.join(lines) + '\n'
+
+
+def write_contribution_bundle_files(path, contributions,
+                                    nlo_decay_metadata):
+    """Write bundle ownership and one metadata file per corrected decay."""
+
+    if len(contributions) != len(nlo_decay_metadata) + 1:
+        raise fks_common.FKSProcessError(
+            'The contribution and NLO-decay metadata counts disagree')
+    with open(os.path.join(path, 'nlo_contribution_info.dat'), 'w') as stream:
+        stream.write(contribution_bundle_info_text(contributions))
+    for contribution, metadata in zip(
+            contributions[1:], nlo_decay_metadata):
+        filename = 'nlo_decay_info_%d.dat' % contribution['id']
+        with open(os.path.join(path, filename), 'w') as stream:
+            stream.write(nlo_decay_info_text(metadata))
 
 
 def apply_decay_assignment(fks_process, assignment):

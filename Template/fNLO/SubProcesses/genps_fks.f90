@@ -16,7 +16,8 @@ module genps_fks
        store_core_event_momenta, fks_leg_mass
   use nlo_decay_metadata, only: has_nlo_decay
   use nlo_decay_kinematics, only: generate_nlo_decay_fks_event, &
-                                  nlo_decay_fks_sister_mass
+                                  nlo_decay_fks_sister_mass, &
+                                  fill_nlo_decay_event_masses
   ! Generated parameters keep the phase-space normalization bit-identical
   ! to the NLO template's compile-time arithmetic.
   use fnlo_process_common, only: nexternal, nincoming, max_particles, &
@@ -125,7 +126,8 @@ contains
     ybst_til_tolab = -ycm_born - 0.5d0*log(ebeam(1)/ebeam(2))
     ybst_til_tocm = 0d0
     event_masses = 0d0
-    event_masses(1:nexternal) = particle_masses
+    call fill_nlo_decay_event_masses(nfksprocess, &
+                                     event_masses(1:nexternal))
     do event_slot = first_counterevent, real_event
       event_fks_momentum(0, event_slot) = -1d0
       event_xi_max(event_slot) = -1d0

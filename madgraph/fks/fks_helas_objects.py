@@ -256,6 +256,11 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
     def __init__(self, fksmulti, loop_optimized = False, gen_color =True, decay_ids =[]):
         """Initialization from a FKSMultiProcess"""
 
+        if getattr(fksmulti, 'full_nlo_decay_bundle', False):
+            self.initialize_full_nlo_decay_bundle(
+                fksmulti, loop_optimized, gen_color, decay_ids)
+            return
+
         #swhich the other loggers off
         loggers_off = [logging.getLogger('madgraph.diagram_generation'),
                        logging.getLogger('madgraph.helas_objects')]
@@ -492,6 +497,162 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
 
         for i, logg in enumerate(loggers_off):
             logg.setLevel(old_levels[i])
+
+    @staticmethod
+    def _bundle_process_key(matrix_element):
+        """Identify the production subprocess group represented by an ME."""
+
+        initial_states = []
+        for process in matrix_element.born_me.get('processes'):
+            initial_states.append(tuple(
+                leg.get('id') for leg in sorted(
+                    process.get('legs'), key=lambda item: item.get('number'))
+                if not leg.get('state')))
+        return tuple(sorted(initial_states))
+
+    def initialize_full_nlo_decay_bundle(self, fksmulti, loop_optimized,
+                                         gen_color, decay_ids):
+        """Combine production and all decay corrections per physical Born."""
+
+        self.loop_optimized = loop_optimized
+        member_helas = [
+            FKSHelasMultiProcess(member, loop_optimized=loop_optimized,
+                                 gen_color=gen_color,
+                                 decay_ids=decay_ids)
+            for member in fksmulti.members]
+        production_helas = member_helas[0]
+        decay_helas = member_helas[1:]
+
+        decay_by_key = []
+        for contribution in decay_helas:
+            indexed = {}
+            for matrix_element in contribution.get_matrix_elements():
+                key = self._bundle_process_key(matrix_element)
+                if key in indexed:
+                    raise fks_common.FKSProcessError(
+                        'An NLO-decay contribution produced duplicate '
+                        'subprocess groups')
+                indexed[key] = matrix_element
+            decay_by_key.append(indexed)
+
+        bundled = FKSHelasProcessList()
+        for production in production_helas.get_matrix_elements():
+            key = self._bundle_process_key(production)
+            decay_members = []
+            for indexed in decay_by_key:
+                try:
+                    decay_members.append(indexed.pop(key))
+                except KeyError:
+                    raise fks_common.FKSProcessError(
+                        'Production and NLO-decay subprocess groupings do '
+                        'not match')
+
+            if production.decay_metadata is None:
+                raise fks_common.FKSProcessError(
+                    'The production member of an NLO decay-chain bundle '
+                    'has no decay metadata')
+            production.contribution_bundle = False
+            production.bundle_nlo_decay_metadata = []
+            production.bundle_virtual_matrix_elements = []
+            production.bundle_fks_info_list = []
+            production.bundle_contributions = []
+
+            real_offset = 0
+            configuration_offset = 0
+            members = [production] + decay_members
+            member_metadata = [production.decay_metadata]
+            for contribution_id, member in enumerate(members, 1):
+                if contribution_id == 1:
+                    info_list = member.get_fks_info_list()
+                    metadata = member.decay_metadata
+                else:
+                    metadata = member.nlo_decay_metadata
+                    if metadata is None:
+                        raise fks_common.FKSProcessError(
+                            'A bundled decay correction has no NLO-decay '
+                            'metadata')
+                    visible_map = \
+                        fks_decay.align_nlo_decay_born_to_decay_chain(
+                            production.decay_metadata, metadata)
+                    fks_decay.canonicalize_virtual_external_order(
+                        member.virt_matrix_element, visible_map)
+                    member.born_me = production.born_me
+                    info_list = member.get_fks_info_list()
+                    production.bundle_nlo_decay_metadata.append(metadata)
+                    member_metadata.append(metadata)
+
+                for info in info_list:
+                    bundled_info = copy.deepcopy(info)
+                    bundled_info['n_me'] += real_offset
+                    bundled_info['contribution'] = contribution_id
+                    production.bundle_fks_info_list.append(bundled_info)
+
+                configuration_count = len(info_list)
+                if configuration_count < 1:
+                    raise fks_common.FKSProcessError(
+                        'Every full NLO contribution must own at least one '
+                        'FKS configuration')
+                first_configuration = configuration_offset + 1
+                last_configuration = configuration_offset + \
+                    configuration_count
+                virtual = member.virt_matrix_element
+                virtual_orders = []
+                if virtual is not None:
+                    squared_orders, _ = virtual.get_split_orders_mapping()
+                    virtual_orders = [tuple(order[0])
+                                      for order in squared_orders]
+                production.bundle_contributions.append({
+                    'id': contribution_id,
+                    'kind': ('PRODUCTION' if contribution_id == 1
+                             else 'NLO_DECAY'),
+                    'first': first_configuration,
+                    'last': last_configuration,
+                    'representative': first_configuration,
+                    'has_virtual': bool(virtual),
+                    'optimized_virtual': bool(
+                        virtual is not None and virtual.optimized_output),
+                    'virtual_orders': virtual_orders,
+                    'parent_pdg': (0 if contribution_id == 1 else
+                                   metadata['parent_pdg'])})
+                if virtual is not None:
+                    virtual.fnlo_contribution_id = contribution_id
+                    production.bundle_virtual_matrix_elements.append(
+                        virtual)
+                if contribution_id != 1:
+                    production.real_processes.extend(member.real_processes)
+                real_offset += len(member.real_processes)
+                configuration_offset = last_configuration
+
+            fks_decay.set_bundle_color_links(
+                production, member_metadata)
+            production.contribution_bundle = True
+            production.virt_matrix_element = None
+            production.nlo_decay_virtual_matrix_element = None
+            bundled.append(production)
+
+        for indexed in decay_by_key:
+            if indexed:
+                raise fks_common.FKSProcessError(
+                    'An NLO-decay contribution has subprocess groups with '
+                    'no matching production contribution')
+
+        self['matrix_elements'] = bundled
+        self['real_matrix_elements'] = \
+            helas_objects.HelasMatrixElementList()
+        self['used_lorentz'] = []
+        self['used_couplings'] = []
+        self['processes'] = []
+        self['max_particles'] = -1
+        self['max_configs'] = -1
+        self['initial_states'] = production_helas.get('initial_states')
+        self['has_loops'] = any(
+            matrix_element.bundle_virtual_matrix_elements
+            for matrix_element in bundled)
+        self['has_isr'] = fksmulti['has_isr']
+        self['has_fsr'] = fksmulti['has_fsr']
+        self['ewsudakov'] = fksmulti['ewsudakov']
+        logger.info('... bundled %d full-NLO decay subprocesses',
+                    len(bundled))
             
         
     def get_used_lorentz(self):
@@ -567,6 +728,10 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
         """Extract the list of virtuals matrix elements"""
         virtuals = []
         for matrix_element in self.get('matrix_elements'):
+            for virtual in getattr(
+                    matrix_element, 'bundle_virtual_matrix_elements', []):
+                if all(virtual is not other for other in virtuals):
+                    virtuals.append(virtual)
             for virtual in [
                     matrix_element.virt_matrix_element,
                     getattr(matrix_element,
@@ -894,6 +1059,8 @@ class FKSHelasProcess(object):
         """Returns the list of the fks infos for all processes in the format
         {n_me, pdgs, fks_info}, where n_me is the number of real_matrix_element the configuration
         belongs to"""
+        if getattr(self, 'contribution_bundle', False):
+            return self.bundle_fks_info_list
         if self.nlo_decay_metadata is not None:
             return fks_decay.get_nlo_decay_fks_info_list(self)
         info_list = []
@@ -936,6 +1103,9 @@ class FKSHelasProcess(object):
         if self.nlo_decay_virtual_matrix_element:
             lorentz_list.extend(
                 self.nlo_decay_virtual_matrix_element.get_used_lorentz())
+        for virtual in getattr(
+                self, 'bundle_virtual_matrix_elements', []):
+            lorentz_list.extend(virtual.get_used_lorentz())
         for sud_me in self.sudakov_matrix_elements:
             lorentz_list.extend(sud_me['matrix_element'].get_used_lorentz())
 
@@ -953,6 +1123,9 @@ class FKSHelasProcess(object):
         if self.nlo_decay_virtual_matrix_element:
             coupl_list.extend(
                 self.nlo_decay_virtual_matrix_element.get_used_couplings())
+        for virtual in getattr(
+                self, 'bundle_virtual_matrix_elements', []):
+            coupl_list.extend(virtual.get_used_couplings())
         for sud_me in self.sudakov_matrix_elements:
             coupl_list.extend(sud_me['matrix_element'].get_used_couplings())
         return coupl_list    

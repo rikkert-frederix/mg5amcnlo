@@ -48,7 +48,6 @@ contains
     if (initialized) return
     call validate_process_dimensions()
     if (.not. has_decay_chains()) then
-      initialized = .true.
       return
     end if
 

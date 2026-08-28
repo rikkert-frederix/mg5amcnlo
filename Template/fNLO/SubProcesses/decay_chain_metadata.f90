@@ -3,6 +3,10 @@ module decay_chain_metadata
                                 validate_process_dimensions
   use fks_metadata, only: validate_fks_metadata, fks_i_d, fks_j_d
   use nlo_decay_metadata, only: has_nlo_decay, nlo_decay_node_count
+  use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
+       active_contribution_is_production, contribution_fks_first, &
+       contribution_fks_last, global_fks_configuration, &
+       local_fks_configuration
   implicit none
   private
 
@@ -113,9 +117,17 @@ contains
       call fail_metadata('FORMAT 4 is required; regenerate the process')
     end if
     if (number_of_nodes < 1 .or. number_of_leaves < 1 .or. &
-        number_of_contexts < 1 .or. number_of_fks_maps /= fks_configs .or. &
+        number_of_contexts < 1 .or. number_of_fks_maps < 1 .or. &
         number_of_generated_color_links < 0) then
       call fail_metadata('invalid metadata counts')
+    end if
+    if (has_nlo_contribution_bundle()) then
+      if (number_of_fks_maps /= contribution_fks_last(1) - &
+          contribution_fks_first(1) + 1) then
+        call fail_metadata('production contribution FKS count disagrees')
+      end if
+    else if (number_of_fks_maps /= fks_configs) then
+      call fail_metadata('FKS map count disagrees with generated data')
     end if
     allocate(node_parent_values(number_of_nodes))
     allocate(node_pdg_values(number_of_nodes))
@@ -135,10 +147,10 @@ contains
     allocate(core_pdg_values(nexternal, number_of_contexts))
     allocate(core_final_values(nexternal, number_of_contexts))
     allocate(leaf_visible_values(number_of_leaves, number_of_contexts))
-    allocate(fks_context_values(fks_configs))
-    allocate(fks_i_values(fks_configs))
-    allocate(fks_j_values(fks_configs))
-    allocate(fks_ij_values(fks_configs))
+    allocate(fks_context_values(number_of_fks_maps))
+    allocate(fks_i_values(number_of_fks_maps))
+    allocate(fks_j_values(number_of_fks_maps))
+    allocate(fks_ij_values(number_of_fks_maps))
     color_capacity = max(1, nexternal*nexternal)
     allocate(color_core_first(color_capacity))
     allocate(color_core_second(color_capacity))
@@ -322,6 +334,10 @@ contains
   logical function has_decay_chains()
     call require_initialized()
     has_decay_chains = enabled
+    if (has_nlo_contribution_bundle()) then
+      has_decay_chains = has_decay_chains .and. &
+           active_contribution_is_production()
+    end if
   end function has_decay_chains
 
 
@@ -351,7 +367,7 @@ contains
   integer function real_phase_space_dimension()
     call require_initialized()
     real_phase_space_dimension = 3*(nexternal - nincoming) - 4
-    if (enabled) real_phase_space_dimension = &
+    if (has_decay_chains()) real_phase_space_dimension = &
          real_phase_space_dimension - number_of_nodes
     ! Every forced node in an NLO-decay forest removes one invariant-mass
     ! integration exactly as for an ordinary decay-chain node.
@@ -376,9 +392,11 @@ contains
 
   integer function context_for_fks(configuration)
     integer, intent(in) :: configuration
+    integer :: local_configuration
     call require_enabled()
-    call check_configuration(configuration)
-    context_for_fks = fks_context_values(configuration)
+    local_configuration = local_fks_configuration(configuration)
+    call check_configuration(local_configuration)
+    context_for_fks = fks_context_values(local_configuration)
   end function context_for_fks
 
 
@@ -663,7 +681,7 @@ contains
       call fail_metadata('exactly one BORN context is required')
     end if
 
-    do configuration = 1, fks_configs
+    do configuration = 1, number_of_fks_maps
       context = fks_context_values(configuration)
       call check_context(context)
       if (trim(context_kind_values(context)) /= 'REAL') then
@@ -681,8 +699,10 @@ contains
           context_core_counts(born_context_id)) then
         call fail_metadata('an FKS map contains an invalid Born index')
       end if
-      if (fks_i_values(configuration) /= fks_i_d(configuration) .or. &
-          fks_j_values(configuration) /= fks_j_d(configuration)) then
+      if (fks_i_values(configuration) /= fks_i_d( &
+              global_fks_configuration(1, configuration)) .or. &
+          fks_j_values(configuration) /= fks_j_d( &
+              global_fks_configuration(1, configuration))) then
         call fail_metadata('decay and generated FKS maps disagree')
       end if
     end do
@@ -790,7 +810,9 @@ contains
 
   subroutine require_enabled()
     call require_initialized()
-    if (.not. enabled) call fail_metadata('no decay-chain metadata are present')
+    if (.not. has_decay_chains()) then
+      call fail_metadata('no active decay-chain metadata are present')
+    end if
   end subroutine require_enabled
 
 
@@ -828,7 +850,7 @@ contains
 
   subroutine check_configuration(configuration)
     integer, intent(in) :: configuration
-    if (configuration < 1 .or. configuration > fks_configs) then
+    if (configuration < 1 .or. configuration > number_of_fks_maps) then
       call fail_metadata('FKS configuration is out of range')
     end if
   end subroutine check_configuration

@@ -601,23 +601,33 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         collect_mirror_procs = False
         ignore_six_quark_processes = self.options['ignore_six_quark_processes']
         nlo_decay_spec = None
+        full_nlo_decay_specs = None
         if ',' in line:
             myprocdef, line = mg_interface.MadGraphCmd.extract_decay_chain_process(self,line)
             if myprocdef.are_decays_perturbed():
-                nlo_decay_spec = \
-                    fks_decay.validate_nlo_decay_to_lo_generation(
-                        myprocdef, self.options, proc_type[2],
-                        self.ewsudakov)
-                # An explicit root [LOonly] carries QCD in the parser's
-                # perturbation field even though no production correction is
-                # requested.  Normalize it before the ordinary root-order
-                # bookkeeping below.
-                myprocdef.set('perturbation_couplings', [])
-                myprocdef.set('NLO_mode', 'tree')
+                production_is_nlo = (
+                    bool(myprocdef.get('perturbation_couplings')) and
+                    myprocdef.get('NLO_mode') != 'LOonly')
+                if production_is_nlo:
+                    full_nlo_decay_specs = \
+                        fks_decay.validate_full_nlo_decay_chain_generation(
+                            myprocdef, self.options, proc_type[2],
+                            self.ewsudakov)
+                else:
+                    nlo_decay_spec = \
+                        fks_decay.validate_nlo_decay_to_lo_generation(
+                            myprocdef, self.options, proc_type[2],
+                            self.ewsudakov)
+                    # An explicit root [LOonly] carries QCD in the parser's
+                    # perturbation field even though no production correction
+                    # is requested.  Normalize it before the ordinary
+                    # root-order bookkeeping below.
+                    myprocdef.set('perturbation_couplings', [])
+                    myprocdef.set('NLO_mode', 'tree')
         else:
             myprocdef = mg_interface.MadGraphCmd.extract_process(self,line)
 
-        if nlo_decay_spec is None:
+        if nlo_decay_spec is None and full_nlo_decay_specs is None:
             self.proc_validity(myprocdef,'aMCatNLO_%s'%proc_type[1])
         else:
             # Validate the two factorised ingredients independently.  The
@@ -627,14 +637,28 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
             production_for_validity = copy.copy(myprocdef)
             production_for_validity.set(
                 'decay_chains', myprocdef.get('decay_chains').__class__())
-            self.proc_validity(
-                production_for_validity, 'aMCatNLO_LOonly')
-            self.proc_validity(
-                nlo_decay_spec['decay'],
-                'aMCatNLO_%s' % nlo_decay_spec['mode'])
+            if full_nlo_decay_specs is not None:
+                production_mode = myprocdef.get('NLO_mode')
+                self.proc_validity(
+                    production_for_validity,
+                    'aMCatNLO_%s' % production_mode)
+                decay_specs_for_validity = full_nlo_decay_specs
+            else:
+                self.proc_validity(
+                    production_for_validity, 'aMCatNLO_LOonly')
+                decay_specs_for_validity = [nlo_decay_spec]
+            for decay_spec in decay_specs_for_validity:
+                decay_for_validity = copy.copy(decay_spec['decay'])
+                decay_for_validity.set(
+                    'decay_chains',
+                    decay_spec['decay'].get('decay_chains').__class__())
+                self.proc_validity(
+                    decay_for_validity,
+                    'aMCatNLO_%s' % decay_spec['mode'])
 
         decay_chains = myprocdef.get('decay_chains')
-        if decay_chains and nlo_decay_spec is None:
+        if (decay_chains and nlo_decay_spec is None and
+                full_nlo_decay_specs is None):
             fks_decay.validate_decay_generation(
                 myprocdef, self.options, proc_type[2], self.ewsudakov)
 
@@ -849,6 +873,52 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
             fksproc.nlo_decay_mode = nlo_decay_spec['mode']
             fksproc.nlo_decay_full_process_definition = myprocdef
             self._fks_multi_proc = fksproc
+        elif full_nlo_decay_specs is not None:
+            if (hasattr(self, '_fks_multi_proc') and
+                    self._fks_multi_proc.get('born_processes')):
+                raise self.InvalidCmd(
+                    'Full NLO decay-chain bundles do not yet support '
+                    'generate/add-process combinations')
+
+            lo_decay_tree = fks_decay.prepare_lo_decay_tree(myprocdef)
+            production_definition = copy.copy(lo_decay_tree)
+            production_definition.set(
+                'decay_chains', lo_decay_tree['decay_chains'].__class__())
+            production_options = copy.copy(fks_options)
+            production_options['decay_chains'] = \
+                lo_decay_tree.get('decay_chains')
+            production_fks = fks_base.FKSMultiProcess(
+                production_definition, production_options)
+            production_amplitudes = \
+                production_fks.get_born_amplitudes()
+            if not production_amplitudes:
+                raise self.InvalidCmd(
+                    'The full NLO decay-chain bundle generated no concrete '
+                    'LO production subprocesses')
+
+            decay_members = []
+            for decay_spec in full_nlo_decay_specs:
+                decay_definition = fks_decay.prepare_nlo_decay_definition(
+                    decay_spec['decay'])
+                decay_fks = fks_base.FKSMultiProcess(
+                    decay_definition, fks_options)
+                decay_fks.nlo_decay_prototype = True
+                decay_fks.nlo_decay_production_amplitudes = \
+                    production_amplitudes
+                decay_fks.nlo_decay_selector = decay_spec['selector']
+                decay_fks.nlo_decay_path = decay_spec['decay_path']
+                decay_fks.nlo_decay_parent_pdg = \
+                    decay_spec['parent_pdg']
+                decay_fks.nlo_decay_root_parent_pdg = \
+                    decay_spec['root_parent_pdg']
+                decay_fks.nlo_decay_mode = decay_spec['mode']
+                decay_fks.nlo_decay_full_process_definition = \
+                    lo_decay_tree
+                decay_members.append(decay_fks)
+
+            self._fks_multi_proc = \
+                fks_decay.FullNLOContributionMultiProcess(
+                    production_fks, decay_members)
         elif decay_chains:
             # FKS regions and all i/j/ij bookkeeping are generated from the
             # undecayed production process.  The decay specification is kept
@@ -858,7 +928,7 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                             myprocdef['decay_chains'].__class__())
             fks_options['decay_chains'] = decay_chains
 
-        if nlo_decay_spec is None:
+        if nlo_decay_spec is None and full_nlo_decay_specs is None:
             fksproc =fks_base.FKSMultiProcess(fks_procdef,fks_options)
             try:
                 self._fks_multi_proc.add(fksproc)

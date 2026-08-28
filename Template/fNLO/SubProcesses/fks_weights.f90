@@ -3,13 +3,17 @@ module fks_weights_module
                                 nsplitorders, qcd_pos, amp_split_size
   use run_state, only: q2fact, scale, dynamical_scale_choice
   use timing_state, only: t_as, tr_s, tr_pdf, t_plot
-  use mint_module, only: nintegrals, virt_wgt_mint, born_wgt_mint
+  use mint_module, only: nintegrals, n_ave_virt, n_ord_virt, &
+       virt_wgt_mint, born_wgt_mint
   use fks_metadata, only: fks_i_d, fks_j_d
   use setscales_module, only: set_ren_scale, set_fac_scale
   use split_orders, only: amp_split_pos_to_orders
   use chooser_functions_module, only: set_pdg_impl, &
        get_underlying_born_pdg_impl
   use decay_chain_metadata, only: has_decay_chains
+  use nlo_decay_metadata, only: has_nlo_decay
+  use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
+       active_contribution_has_virtual, active_virtual_grid_index
   use decay_chain_scales, only: production_qcd_squared_order, &
        decay_qcd_squared_order, decay_qcd_coupling_weight, &
        decay_qcd_coupling_rescaling
@@ -27,6 +31,10 @@ module fks_weights_module
   implicit none
   private
 
+  double precision, save :: bundle_virt_snapshot(0:n_ave_virt) = 0d0
+  double precision, save :: bundle_born_snapshot(0:n_ave_virt) = 0d0
+  logical, save :: bundle_snapshot_active = .false.
+
   integer, parameter, public :: real_contribution = 1
   integer, parameter, public :: born_contribution = 2
   integer, parameter, public :: integrated_contribution = 3
@@ -39,6 +47,7 @@ module fks_weights_module
   public :: add_wgt, include_pdf_and_alphas
   public :: reweight_scale, reweight_pdf, get_wgt_no_nbody
   public :: fill_plots, fill_mint_function
+  public :: begin_bundle_virtual_tricks, finish_bundle_virtual_tricks
 
   interface
     double precision function dlum(bjorken_x)
@@ -48,6 +57,53 @@ module fks_weights_module
   end interface
 
 contains
+
+  subroutine begin_bundle_virtual_tricks()
+    if (.not. has_nlo_contribution_bundle()) return
+    if (bundle_snapshot_active) then
+      write (*,*) 'ERROR: nested bundle virtual-trick snapshot'
+      stop 1
+    end if
+    bundle_virt_snapshot = virt_wgt_mint
+    bundle_born_snapshot = born_wgt_mint
+    bundle_snapshot_active = .true.
+  end subroutine begin_bundle_virtual_tricks
+
+
+  subroutine finish_bundle_virtual_tricks()
+    integer :: iamp, virtual_grid, orders(nsplitorders)
+    double precision :: xlum, rescaling
+
+    if (.not. has_nlo_contribution_bundle()) return
+    if (.not. bundle_snapshot_active) then
+      write (*,*) 'ERROR: missing bundle virtual-trick snapshot'
+      stop 1
+    end if
+    xlum = dlum(event_bjorken_x(:, soft_counterevent))
+    rescaling = decay_qcd_coupling_rescaling(&
+         g, decay_qcd_squared_order())
+    virt_wgt_mint(0) = bundle_virt_snapshot(0) + &
+         (virt_wgt_mint(0) - bundle_virt_snapshot(0))*xlum*rescaling
+    born_wgt_mint(0) = bundle_born_snapshot(0) + &
+         (born_wgt_mint(0) - bundle_born_snapshot(0))*xlum*rescaling
+    do iamp = 1, amp_split_size
+      if (.not. active_contribution_has_virtual()) exit
+      virtual_grid = active_virtual_grid_index(iamp, amp_split_size)
+      if (virtual_grid == 0) cycle
+      call amp_split_pos_to_orders(iamp, orders)
+      rescaling = decay_qcd_coupling_rescaling(&
+           g, decay_qcd_squared_order(orders(qcd_pos)))
+      virt_wgt_mint(virtual_grid) = bundle_virt_snapshot(virtual_grid) + &
+           (virt_wgt_mint(virtual_grid) - &
+            bundle_virt_snapshot(virtual_grid))* &
+           xlum*rescaling
+      born_wgt_mint(virtual_grid) = bundle_born_snapshot(virtual_grid) + &
+           (born_wgt_mint(virtual_grid) - &
+            bundle_born_snapshot(virtual_grid))* &
+           xlum*rescaling
+    end do
+    bundle_snapshot_active = .false.
+  end subroutine finish_bundle_virtual_tricks
 
   logical function pdg_equal(pdg1, pdg2)
 ! Returns .true. if the lists of PDG codes --'pdg1' and 'pdg2'-- are
@@ -95,7 +151,7 @@ contains
     implicit none
     integer i, j, jfks1, ifks1, jfks2, ifks2
     double precision p1(0:3, nexternal), p2(0:3, nexternal), pb1(0:3, nexternal), pb2(0:3, nexternal)
-    if (has_decay_chains()) then
+    if (has_decay_chains() .or. has_nlo_decay()) then
       momenta_equal_uborn = momenta_equal(p1, p2)
       return
     end if
@@ -271,9 +327,10 @@ contains
                   .gt. 0d0) then
             momenta(j, i, icontr) = &
               stored_event_momenta(j, i, soft_collinear_counterevent)
-          elseif (has_decay_chains() .and. i < nexternal) then
+          elseif ((has_decay_chains() .or. has_nlo_decay()) .and. &
+                  i < nexternal) then
             momenta(j, i, icontr) = p_born(j, i)
-          elseif (has_decay_chains()) then
+          elseif (has_decay_chains() .or. has_nlo_decay()) then
             momenta(j, i, icontr) = 0d0
           elseif (i .lt. fks_i_d(nFKSprocess)) then
             momenta(j, i, icontr) = p_born(j, i)
@@ -352,7 +409,8 @@ contains
       do j = 1, subproc_iproc
         parton_iproc(j, i) = parton_iproc(j, i)*wgt_wo_pdf
       end do
-      if (itype(i) .eq. virtual_contribution .and. .not. virt_found) then
+      if (itype(i) .eq. virtual_contribution .and. .not. virt_found .and. &
+          .not. has_nlo_contribution_bundle()) then
         virt_found = .true.
         decay_rescaling = decay_qcd_coupling_rescaling( &
              g_strong(i), decayqcdpower(i))
@@ -441,7 +499,7 @@ contains
       do k = 1, nexternal
         parton_pdg(k, j, ict) = idup_d(iFKS, k, j)
       end do
-      if (has_decay_chains()) then
+      if (has_decay_chains() .or. has_nlo_decay()) then
         call get_underlying_born_pdg_impl(iFKS, j, born_pdgs)
         parton_pdg_uborn(:, j, ict) = born_pdgs
         cycle
@@ -734,12 +792,12 @@ contains
     f(1) = abs(sigint)
     f(2) = sigint
     f(4) = virtual_over_born    ! not used for anything
-    do iamp = 0, amp_split_size
+    do iamp = 0, n_ord_virt
       if (iamp .eq. 0) then
         f(3) = 0d0
         f(6) = 0d0
         f(5) = 0d0
-        do i = 1, amp_split_size
+        do i = 1, n_ord_virt
           f(3) = f(3) + virt_wgt_mint(i)
           f(6) = f(6) + born_wgt_mint(i)
         end do
