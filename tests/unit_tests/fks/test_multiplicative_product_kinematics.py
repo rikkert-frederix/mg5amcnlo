@@ -133,6 +133,7 @@ program check_product_maps
   use multiplicative_product, only: product_stage_event
   use multiplicative_product_kinematics, only: map_product_final_state, &
        map_product_initial_state
+  use decay_chain_kinematics, only: boost_from_rest
   implicit none
   real(real64), parameter :: mt=173._real64, mw=80.4_real64, mb=4.7_real64
   real(real64), parameter :: energy=250._real64, tolerance=2.e-9_real64
@@ -141,7 +142,9 @@ program check_product_maps
   real(real64) :: local_p(0:3,5), local_m(5), phat(0:3)
   real(real64) :: sqrtshat, jacobian, q, eb, ew, beta, gamma, ptop
   real(real64) :: initial(0:3), top_before(0:3), antitop_before(0:3)
-  integer :: group_sizes(4), group_slots(2,4), real_to_born(5)
+  real(real64) :: w_before(0:3), w_parent(0:3)
+  real(real64) :: rest_u(0:3), rest_d(0:3)
+  integer :: group_sizes(4), group_slots(3,4), real_to_born(5)
   logical :: pass
 
   p = 0._real64
@@ -162,7 +165,7 @@ program check_product_maps
   group_sizes=(/1,1,2,2/)
   group_slots=0
   group_slots(1,1)=1; group_slots(1,2)=2
-  group_slots(:,3)=(/3,4/); group_slots(:,4)=(/5,6/)
+  group_slots(1:2,3)=(/3,4/); group_slots(1:2,4)=(/5,6/)
   real_to_born=(/1,2,3,4,0/)
   stage%stage_id=1; stage%xi=.12_real64; stage%y=-.3_real64
   stage%phi=.4_real64
@@ -196,7 +199,7 @@ program check_product_maps
   top_before=p(:,3)+p(:,4)
 
   group_sizes(1:3)=(/2,1,1/); group_slots=0
-  group_slots(:,1)=(/3,4/); group_slots(1,2)=3; group_slots(1,3)=4
+  group_slots(1:2,1)=(/3,4/); group_slots(1,2)=3; group_slots(1,3)=4
   real_to_born(1:4)=(/1,2,3,0/)
   stage%stage_id=2; stage%xi=.1_real64; stage%y=.3_real64
   stage%phi=1.1_real64
@@ -212,7 +215,7 @@ program check_product_maps
   call check_mass(p(:,8),0._real64)
   antitop_before=p(:,5)+p(:,6)
 
-  group_slots=0; group_slots(:,1)=(/5,6/)
+  group_slots=0; group_slots(1:2,1)=(/5,6/)
   group_slots(1,2)=5; group_slots(1,3)=6
   stage%stage_id=3; stage%xi=.07_real64; stage%y=-.25_real64
   stage%phi=2.2_real64
@@ -226,6 +229,49 @@ program check_product_maps
   call check_close(sum_columns(p,(/3,4,5,6,7,8,9/)),initial)
   call check_mass(p(:,5),mb); call check_mass(p(:,6),mw)
   call check_mass(p(:,9),0._real64)
+
+  ! Repeat the decay maps on one nested top -> W -> partons branch.  The
+  ! parent map must boost both W descendants coherently; the subsequent W
+  ! map must preserve that already-mapped W momentum.
+  p=0._real64; mass=0._real64
+  p(:,1)=(/eb,0._real64,0._real64,q/)
+  w_parent=(/ew,0._real64,0._real64,-q/)
+  rest_u=(/mw/2._real64,mw/2._real64,0._real64,0._real64/)
+  rest_d=(/mw/2._real64,-mw/2._real64,0._real64,0._real64/)
+  call boost_from_rest(rest_u,w_parent,mw,p(:,2))
+  call boost_from_rest(rest_d,w_parent,mw,p(:,3))
+  mass(1)=mb
+  top_before=p(:,1)+p(:,2)+p(:,3)
+  group_sizes(1:3)=(/3,1,2/); group_slots=0
+  group_slots(1:3,1)=(/1,2,3/); group_slots(1,2)=1
+  group_slots(1:2,3)=(/2,3/)
+  real_to_born(1:4)=(/1,2,3,0/)
+  stage%stage_id=2; stage%xi=.09_real64; stage%y=.15_real64
+  stage%phi=.6_real64
+  call map_product_final_state(stage,4,2,2,4,1,group_sizes(1:3), &
+       group_slots(:,1:3),real_to_born(1:4),p,jacobian,local_p(:,1:4), &
+       local_m(1:4),phat,sqrtshat,pass)
+  if (.not.pass .or. jacobian<=0._real64) error stop 7
+  call check_close(sum_columns(p,(/1,2,3,4/)),top_before)
+  call check_mass(sum_columns(p,(/1,2,3,4/)),mt)
+  call check_mass(p(:,2)+p(:,3),mw)
+  call check_mass(p(:,1),mb); call check_mass(p(:,4),0._real64)
+  w_before=p(:,2)+p(:,3)
+
+  group_sizes(1:3)=(/2,1,1/); group_slots=0
+  group_slots(1:2,1)=(/2,3/); group_slots(1,2)=2
+  group_slots(1,3)=3
+  stage%stage_id=3; stage%xi=.08_real64; stage%y=-.2_real64
+  stage%phi=1.7_real64
+  call map_product_final_state(stage,4,2,2,5,1,group_sizes(1:3), &
+       group_slots(:,1:3),real_to_born(1:4),p,jacobian,local_p(:,1:4), &
+       local_m(1:4),phat,sqrtshat,pass)
+  if (.not.pass .or. jacobian<=0._real64) error stop 8
+  call check_close(p(:,2)+p(:,3)+p(:,5),w_before)
+  call check_mass(p(:,2)+p(:,3)+p(:,5),mw)
+  call check_close(sum_columns(p,(/1,2,3,4,5/)),top_before)
+  call check_mass(sum_columns(p,(/1,2,3,4,5/)),mt)
+  call check_mass(p(:,5),0._real64)
 contains
   function sum_columns(values, indices) result(total)
     real(real64), intent(in) :: values(0:3,9)

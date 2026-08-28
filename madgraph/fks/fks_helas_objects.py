@@ -830,6 +830,7 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
                             fksmulti.nlo_decay_full_process_definition,
                             production_amplitude,
                             fksmulti.nlo_decay_path,
+                            fksmulti.nlo_decay_occurrence_path,
                             fksmulti.nlo_decay_selector,
                             fksmulti.nlo_decay_parent_pdg)
                     for composition in compositions:

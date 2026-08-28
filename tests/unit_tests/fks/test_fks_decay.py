@@ -1440,6 +1440,62 @@ class TestFKSDecayChains(unittest.TestCase):
              matrix_element.bundle_nlo_decay_metadata],
             [6, 24])
 
+        catalog = matrix_element.factorized_product_catalog
+        self.assertEqual(
+            [(stage.selector, stage.root_selector, stage.corrected_node)
+             for stage in catalog.stages[1:]],
+            [((6, 1), (6, 1), 2),
+             ((24, 1), (6, 1), 3)])
+        layout = catalog.canonical_layout
+        self.assertTrue(layout.supports_all_stages)
+        self.assertEqual(
+            (layout.initial_count, layout.base_count, layout.max_count),
+            (2, 7, 10))
+        self.assertEqual(layout.emission_slots, {1: 8, 2: 9, 3: 10})
+        self.assertEqual(layout.carrier_count, 16)
+
+        maximum = layout.carrier((1, 1, 1))
+        self.assertEqual(maximum.local_count, 10)
+        self.assertEqual(set(maximum.local_to_canonical), set(range(1, 11)))
+        self.assertEqual(maximum.pdgs.count(21), 3)
+        self.assertEqual(maximum.matrix_element.get(
+            'identical_particle_factor'), 1)
+        self.assertTrue(
+            maximum.matrix_element.fnlo_product_selected_squared_orders)
+        connectors = set(
+            (wavefunction.get('decay_node_id'), wavefunction.get('width'))
+            for wavefunction in maximum.matrix_element.get_all_wavefunctions()
+            if wavefunction.get('decay_node_id'))
+        self.assertEqual(set(node for node, _ in connectors), set([1, 2, 3]))
+        self.assertTrue(all(
+            width.startswith('FNLO_DECAY_DUMMY_WIDTH_RATIO()')
+            for _, width in connectors))
+
+        # Parent and child soft currents can act on the same visible colour
+        # line.  Repeating one non-trivial link must form a closed ordered
+        # generator chain, rather than leaving private dummy indices open.
+        base_key = (0, 0, 0)
+        links = []
+        for stage in catalog.stages:
+            for source, records in sorted(
+                    layout.stage_layouts[stage.id][
+                        'configurations'].items()):
+                for record in records:
+                    if record['info'].get('need_color_links'):
+                        links.extend(
+                            term['visible_link'] for term in
+                            layout.soft_link_terms(
+                                base_key, stage.id, source,
+                                record['configuration'])
+                            if term['visible_link'])
+        repeated = next(link for link in links if len(link) == 2)
+        insertion = layout.carrier(base_key).color_insertion(
+            (repeated, repeated))
+        self.assertTrue(insertion['basis'])
+        self.assertTrue(insertion['matrix'])
+        self.assertIn('STATUS COMPLETE\n',
+                      fks_product.product_layout_info_text(layout))
+
     def test_full_nlo_bundle_expands_identical_decay_occurrences(self):
         command = self.generate(
             'u u~ > z z [real=QCD], '
@@ -1478,6 +1534,31 @@ class TestFKSDecayChains(unittest.TestCase):
                 for real in matrix_element.real_processes),
             set([2]))
 
+        catalog = matrix_element.factorized_product_catalog
+        self.assertEqual(
+            [(stage.selector, stage.root_selector, stage.corrected_node)
+             for stage in catalog.stages[1:]],
+            [((23, 1), (23, 1), 1),
+             ((23, 2), (23, 2), 2)])
+        layout = catalog.canonical_layout
+        self.assertTrue(layout.supports_all_stages)
+        self.assertEqual(layout.emission_slots, {1: 7, 2: 8, 3: 9})
+        self.assertEqual(layout.carrier_count, 16)
+        first = layout.carrier((0, 1, 0))
+        second = layout.carrier((0, 0, 1))
+        double = layout.carrier((0, 1, 1))
+        self.assertIsNot(first.matrix_element, second.matrix_element)
+        self.assertIn(8, first.local_to_canonical)
+        self.assertNotIn(9, first.local_to_canonical)
+        self.assertIn(9, second.local_to_canonical)
+        self.assertNotIn(8, second.local_to_canonical)
+        self.assertEqual(double.pdgs.count(21), 2)
+        self.assertEqual(
+            set(carrier.matrix_element.get('identical_particle_factor')
+                for carrier in [layout.carrier((0, 0, 0)), first,
+                                second, double]),
+            set([2]))
+
     def test_full_nlo_bundle_distinguishes_identical_decay_modes(self):
         command = self.generate(
             'u u~ > z z [real=QCD], '
@@ -1507,6 +1588,48 @@ class TestFKSDecayChains(unittest.TestCase):
             set(real.matrix_element.get('identical_particle_factor')
                 for real in matrix_element.real_processes),
             set([born_factor]))
+
+    def test_full_nlo_bundle_expands_identical_nested_occurrences(self):
+        command = self.generate(
+            'u u~ > h z QED=2 QCD=0 [real=QCD], '
+            '(h > z z QED=2, z > b b~ QED=1 [real=QCD])')
+        self.assertEqual(
+            [member.nlo_decay_occurrence_path
+             for member in command._fks_multi_proc.decays],
+            [(1,), (2,)])
+        matrix_element = fks_helas_objects.FKSHelasMultiProcess(
+            command._fks_multi_proc,
+            loop_optimized=False)['matrix_elements'][0]
+
+        self.assertEqual(
+            [(metadata['corrected_node'],
+              metadata['parent_occurrence'])
+             for metadata in
+             matrix_element.bundle_nlo_decay_metadata],
+            [(2, 1), (3, 2)])
+        catalog = matrix_element.factorized_product_catalog
+        self.assertEqual(
+            [(stage.selector, stage.root_selector, stage.corrected_node)
+             for stage in catalog.stages[1:]],
+            [((23, 1), (25, 1), 2),
+             ((23, 2), (25, 1), 3)])
+        layout = catalog.canonical_layout
+        self.assertTrue(layout.supports_all_stages)
+        self.assertEqual(
+            (layout.base_count, layout.max_count), (7, 10))
+        self.assertEqual(layout.emission_slots, {1: 8, 2: 9, 3: 10})
+        first = layout.carrier((0, 1, 0))
+        second = layout.carrier((0, 0, 1))
+        double = layout.carrier((0, 1, 1))
+        self.assertIn(9, first.local_to_canonical)
+        self.assertNotIn(10, first.local_to_canonical)
+        self.assertIn(10, second.local_to_canonical)
+        self.assertNotIn(9, second.local_to_canonical)
+        self.assertEqual(double.pdgs.count(21), 2)
+        self.assertEqual(
+            set(carrier.matrix_element.get('identical_particle_factor')
+                for carrier in [first, second, double]),
+            set([2]))
 
     def test_full_nlo_bundle_groups_production_subprocesses(self):
         command = self.generate(

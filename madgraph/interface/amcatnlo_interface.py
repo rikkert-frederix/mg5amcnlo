@@ -867,6 +867,8 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                 production_amplitudes
             fksproc.nlo_decay_selector = nlo_decay_spec['selector']
             fksproc.nlo_decay_path = nlo_decay_spec['decay_path']
+            fksproc.nlo_decay_occurrence_path = \
+                nlo_decay_spec['decay_occurrence_path']
             fksproc.nlo_decay_parent_pdg = nlo_decay_spec['parent_pdg']
             fksproc.nlo_decay_root_parent_pdg = \
                 nlo_decay_spec['root_parent_pdg']
@@ -901,6 +903,8 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                     production_amplitudes
                 decay_fks.nlo_decay_selector = decay_spec['selector']
                 decay_fks.nlo_decay_path = decay_spec['decay_path']
+                decay_fks.nlo_decay_occurrence_path = \
+                    decay_spec['decay_occurrence_path']
                 decay_fks.nlo_decay_parent_pdg = \
                     decay_spec['parent_pdg']
                 decay_fks.nlo_decay_root_parent_pdg = \

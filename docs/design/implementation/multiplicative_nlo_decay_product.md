@@ -133,9 +133,10 @@ as coherent full HELAS matrix elements.  Both contain two simultaneous gluon
 emissions, two independently tagged top connectors, and a complete colour
 basis.
 
-This increment handles corrected currents attached to distinct production
-roots.  Simultaneous corrections at nested nodes on the same branch require
-recursive current substitution and belong to a later increment.
+This initial increment handled corrected currents attached to distinct
+production roots.  The recursive-current increment below extends the same
+representation to corrected nodes on one branch and to identical resonance
+histories.
 
 ## Composite-sector and counterevent increment
 
@@ -280,17 +281,59 @@ decay and antitop decay radiation.  Regression tests exercise production ISR
 and FSR followed by both decay maps, check momentum conservation and all
 on-shell constraints after every stage, and verify the decay-local parent
 momentum.  A numerical identity-operator contraction agrees with the ordinary
-carrier at machine precision.  Recursive corrected nodes on the same decay
-branch and identical-particle history handling remain outside this completed
-milestone.
+carrier at machine precision.
+
+## Recursive currents and resonance-history increment
+
+The original milestone 2 is complete.  Every decay node now has a stable
+topology-node ID, a stable root selector, and, where necessary, a concrete
+nested occurrence path.  A corrected nested definition is expanded over all
+physical occurrences of an identical sibling resonance.  Thus the two `Z`
+nodes in a concrete `h > z z` tree remain different stages even though their
+process definitions and local matrix elements are identical.  Their real
+emissions occupy different canonical slots and can be selected
+simultaneously.
+
+For each carrier, the catalog recursively selects the Born or real local
+factor at every topology node and rebuilds the chosen decay subtree with the
+native decay-chain HELAS generator.  The complete selected roots are then
+inserted into the selected production Born or real core in one coherent
+operation.  This route preserves the existing fermion-flow and polarization
+machinery for a real correction nested inside another decay current.  Exact
+real-to-Born leg maps are checked for every FKS configuration sharing a real
+source.  Distinct daughter species are matched by PDG and identical daughters
+by occurrence, so regenerated local leg ordering cannot exchange a coloured
+daughter with a colourless one or collapse two resonance histories.
+
+The carrier's identical-particle divisor is the product of the selected local
+factor divisors.  The additive reference path uses the same full-process
+divisor and rescales each real divisor relative to its local Born, avoiding a
+spurious factor when only one of several identical nested occurrences is
+corrected.  This is symmetry bookkeeping inside the factorized narrow-width
+approximation; it does not add interference between different resonance
+histories, which remains outside the stated objective.
+
+Repeated soft operators on one visible colour line now form one ordered
+generator chain with private internal indices.  Terms that induce the same
+visible link and eikonals are summed coherently before Fortran emission.  The
+result supports simultaneous parent/child soft insertions without disconnected
+colour indices and keeps the generated dispatcher compact.  All sixteen
+carriers of the nested production/top/W benchmark, their amplitude sources,
+and their contraction sources compile.
+
+Finally, the compiled phase-space regression now applies a top-decay map to a
+branch whose `W` already has explicit descendants, verifies their coherent
+boost and the top mass shell, then applies the nested `W`-decay map while
+preserving both the mapped `W` momentum and the upstream top momentum.  The
+canonical layout for that benchmark has three independent emission slots and
+all sixteen Born/real source combinations.
 
 ## Remaining implementation sequence
 
-Milestone 1 (canonical carriers and the generated FKS dispatcher) is complete.
-The next step is the original milestone 2:
+Milestones 1 (canonical carriers and generated FKS dispatch) and 2 (recursive
+currents and resonance histories) are complete.  The next step is the original
+milestone 3:
 
-2. Add recursive simultaneous current insertion for nested corrected nodes
-   and audit identical emissions belonging to different resonance histories.
 3. Export finite stage-local virtual interference data and implement exact
    virtual-real and virtual-virtual product contractions.  Only then add an
    unbiased product-aware version of the virtual-grid approximation.

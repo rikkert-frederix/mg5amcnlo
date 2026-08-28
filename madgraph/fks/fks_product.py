@@ -73,6 +73,40 @@ def _ordered_legs(tree):
                   key=lambda leg: leg.get('number'))
 
 
+def _selector_for_leg(process, number):
+    """Return a readable selector for one already identified final leg."""
+
+    final_legs = sorted(process.get_final_legs(),
+                        key=lambda leg: leg.get('number'))
+    matches = [leg for leg in final_legs if leg.get('number') == number]
+    if len(matches) != 1:
+        raise fks_common.FKSProcessError(
+            'Cannot identify product-current attachment leg %d' % number)
+    leg = matches[0]
+    same_pdg = [candidate for candidate in final_legs
+                if candidate.get('id') == leg.get('id')]
+    return (leg.get('id'), same_pdg.index(leg) + 1)
+
+
+def _tree_identical_particle_factor(tree):
+    """Return the symmetry divisor local to one factorized tree."""
+
+    if 'processes' in tree:
+        factor = tree.get('identical_particle_factor')
+        if isinstance(factor, int) and factor > 0:
+            return factor
+    return _factorial_multiplicity(_ordered_legs(tree))
+
+
+def _mark_decay_process_tree_level(process):
+    """Make a selected real/Born process insertable as a decay chain."""
+
+    process.set('NLO_mode', 'tree')
+    process.set('perturbation_couplings', [])
+    for decay in process.get('decay_chains'):
+        _mark_decay_process_tree_level(decay)
+
+
 def _metadata_leaf_ids(metadata, node_id):
     """Return stable leaf IDs below a product-carrier topology node."""
 
@@ -83,6 +117,46 @@ def _metadata_leaf_ids(metadata, node_id):
             result.extend(_metadata_leaf_ids(metadata, child_id))
         else:
             result.append(child_id)
+    return tuple(result)
+
+
+def _topology_children_for_legs(metadata, node, legs, label):
+    """Match local final legs to stable children by PDG and occurrence.
+
+    The standalone NLO generator may reorder distinct daughters relative to
+    the concrete LO decay tree used to build ``metadata``.  Identical
+    daughters are resolved by their occurrence in each ordering, preserving
+    the concrete resonance-history identity without relying on object
+    identity or regenerated leg numbers.
+    """
+
+    available = list(node['children'])
+    if len(available) != len(legs):
+        raise fks_common.FKSProcessError(
+            '%s has a different number of children than its topology' %
+            label)
+
+    def child_pdg(child):
+        kind, identifier = child
+        if kind == 'NODE':
+            return metadata['nodes'][identifier - 1]['pdg']
+        if kind == 'LEAF':
+            return metadata['leaves'][identifier - 1]['pdg']
+        raise fks_common.FKSProcessError(
+            'Unknown multiplicative topology child %s' % (kind,))
+
+    result = []
+    for leg in legs:
+        matches = [position for position, child in enumerate(available)
+                   if child_pdg(child) == leg.get('id')]
+        if not matches:
+            raise fks_common.FKSProcessError(
+                '%s has no topology child matching PDG %d' %
+                (label, leg.get('id')))
+        result.append(available.pop(matches[0]))
+    if available:
+        raise fks_common.FKSProcessError(
+            '%s leaves unmatched topology children' % label)
     return tuple(result)
 
 
@@ -370,7 +444,7 @@ class ProductStage(object):
 
     def __init__(self, stage_id, label, kind, born_tree, real_trees,
                  real_fks_infos, has_finite, selector=None,
-                 corrected_node=0, virtual_orders=()):
+                 root_selector=None, corrected_node=0, virtual_orders=()):
         if stage_id < 1 or not label:
             raise fks_common.FKSProcessError(
                 'A multiplicative stage requires a positive ID and label')
@@ -391,6 +465,8 @@ class ProductStage(object):
             tuple(configurations) for configurations in real_fks_infos)
         self.has_finite = bool(has_finite)
         self.selector = tuple(selector) if selector is not None else None
+        self.root_selector = (tuple(root_selector)
+                              if root_selector is not None else None)
         self.corrected_node = corrected_node
         self.virtual_orders = tuple(tuple(order) for order in virtual_orders)
         if bool(self.virtual_orders) != self.has_finite:
@@ -611,15 +687,16 @@ class ProductCarrierRecord(object):
             'matrix': color_amp.ColorMatrix(basis)}
 
     @staticmethod
-    def _remap_link(link, current_indices, insertion_index):
+    def _remap_link(link, insertion_index):
         """Give one colour-charge insertion private dummy indices.
 
         ``legs_to_color_link_string`` deliberately uses a fixed set of
         negative dummy indices because ordinary FKS inserts one operator at a
         time.  A tensor counterevent can insert several operators, including
-        several charges on the same external line.  The latter must form an
-        ordered generator chain.  Translate both the external continuation
-        index and every dummy index before multiplying the colour strings.
+        several charges on the same external line.  Give every insertion new
+        dummy indices, while retaining the physical external index.  On the
+        next insertion that external index occurs in the outermost generator
+        and is replaced there, producing the required ordered chain.
         """
 
         descriptor = fks_common.legs_to_color_link_string(
@@ -638,13 +715,9 @@ class ProductCarrierRecord(object):
             (old, -100000 - 100*insertion_index - position)
             for position, old in enumerate(sorted(dummy_indices), 1))
 
-        leg_numbers = set(leg.get('number') for leg in link)
-
         def translate(index):
             if index in dummy_map:
                 return dummy_map[index]
-            if index in leg_numbers:
-                return current_indices[index]
             return index
 
         string = descriptor['string'].create_copy()
@@ -654,8 +727,6 @@ class ProductCarrierRecord(object):
         replacements = []
         for old, new in descriptor['replacements']:
             replacements.append((translate(old), translate(new)))
-            if old in leg_numbers:
-                current_indices[old] = translate(new)
         return string, tuple(replacements)
 
     def color_insertion(self, local_links):
@@ -682,11 +753,10 @@ class ProductCarrierRecord(object):
 
         color_dicts = self.matrix_element.get('color_basis').\
             create_color_dict_list(amplitude)
-        current_indices = dict((number, number) for number in by_number)
         for insertion_index, pair in enumerate(key, 1):
             link = (by_number[pair[0]], by_number[pair[1]])
             string, replacements = self._remap_link(
-                link, current_indices, insertion_index)
+                link, insertion_index)
             next_dicts = []
             for old_dict in color_dicts:
                 new_dict = dict(old_dict)
@@ -746,6 +816,24 @@ class CanonicalProductLayout(object):
             catalog._build_tree_matrix_element_from_key(self.base_key)
         self.base_context = self.base_matrix_element.fnlo_product_context
         self.base_metadata = self.base_matrix_element.fnlo_product_metadata
+        topology_nodes = tuple(
+            (node['id'], node['parent'], node['pdg'],
+             tuple(node['children']))
+            for node in catalog.topology_metadata['nodes'])
+        base_nodes = tuple(
+            (node['id'], node['parent'], node['pdg'],
+             tuple(node['children']))
+            for node in self.base_metadata['nodes'])
+        topology_leaves = tuple(
+            (leaf['id'], leaf['parent'], leaf['pdg'])
+            for leaf in catalog.topology_metadata['leaves'])
+        base_leaves = tuple(
+            (leaf['id'], leaf['parent'], leaf['pdg'])
+            for leaf in self.base_metadata['leaves'])
+        if base_nodes != topology_nodes or base_leaves != topology_leaves:
+            raise fks_common.FKSProcessError(
+                'The canonical Born carrier changed the stable decay '
+                'topology')
         self.base_visible = tuple(sorted(
             self.base_matrix_element.get('processes')[0]
             .get_legs_with_decays(), key=lambda leg: leg.get('number')))
@@ -760,9 +848,14 @@ class CanonicalProductLayout(object):
             for position, stage in enumerate(radiation_stages, 1))
         self.max_count = self.base_count + len(radiation_stages)
         self._base_components = dict(
-            (tuple(component['selector']), component)
+            (component['topology_node_id'], component)
             for component in
             self.base_metadata['simultaneous_components'])
+        if (set(self._base_components) !=
+                set(catalog._baseline_by_root)):
+            raise fks_common.FKSProcessError(
+                'Canonical product roots disagree with the retained decay '
+                'topology')
         # At Born level a coloured resonance is required to have the unique
         # visible carrier already enforced by the additive decay-chain path.
         # Record it in the independently built product topology as well.  A
@@ -770,15 +863,11 @@ class CanonicalProductLayout(object):
         # those multi-carrier sums are generated per correlated carrier and
         # must not be collapsed here.
         model = self.base_matrix_element.get('processes')[0].get('model')
-        corrected_by_selector = dict(
-            (stage.selector, stage) for stage in catalog.stages[1:])
-        baseline_by_selector = dict(
-            (tuple(entry['selector']), entry)
-            for entry in catalog.baseline_decay_currents)
-        for selector, component in self._base_components.items():
-            stage = corrected_by_selector.get(selector)
-            current = (stage.born_tree if stage is not None else
-                       baseline_by_selector[selector]['current'])
+        root_currents = dict(
+            (entry['topology_node_id'], entry['current'])
+            for entry in self.base_matrix_element.fnlo_product_root_currents)
+        for root_node, component in self._base_components.items():
+            current = root_currents[root_node]
             fks_decay._set_decay_carriers(
                 current, component['root_node_id'], self.base_metadata,
                 model)
@@ -823,12 +912,11 @@ class CanonicalProductLayout(object):
         return (0 if not leaf else self.base_context['leaf_map'][leaf])
 
     def _decay_born_groups(self, stage):
-        try:
-            component = self._base_components[stage.selector]
-        except KeyError:
-            # Nested corrected nodes are intentionally the next milestone.
-            return None, None
-        root = component['root_node_id']
+        root = stage.corrected_node
+        if root < 1 or root > len(self.base_metadata['nodes']):
+            raise fks_common.FKSProcessError(
+                'Multiplicative stage %s refers to an unknown decay node' %
+                stage.label)
         root_target = ('NODE', root)
         node = self.base_metadata['nodes'][root - 1]
         legs = _ordered_legs(stage.born_tree)
@@ -845,7 +933,10 @@ class CanonicalProductLayout(object):
                     root_target)
                 carriers[leg.get('number')] = self._carrier_for_target(
                     root_target)
-        for leg, child in zip(final_legs, node['children']):
+        children = _topology_children_for_legs(
+            self.base_metadata, node, final_legs,
+            'Multiplicative stage %s' % stage.label)
+        for leg, child in zip(final_legs, children):
             groups[leg.get('number')] = self._group_for_target(child)
             carriers[leg.get('number')] = self._carrier_for_target(child)
         return groups, carriers
@@ -963,34 +1054,57 @@ class CanonicalProductLayout(object):
              if self._stage_layouts[stage.id]['supported'] else 1)
             for stage in self.catalog.stages)
 
-    def _component_groups(self, selector, source):
-        stage = next((candidate for candidate in self.catalog.stages[1:]
-                      if candidate.selector == selector), None)
-        if stage is not None:
-            layout = self._stage_layouts[stage.id]
-            if not layout['supported']:
-                source = 0
-            groups = (layout['real_groups'][source] if source else
-                      layout['born_groups'])
-            return stage, groups
+    def _node_visible_group(self, node_id, carrier_key):
+        """Return one node's selected leaves in exact carrier order."""
 
-        component = self._base_components[selector]
-        root = component['root_node_id']
-        node = self.base_metadata['nodes'][root - 1]
-        # Uncorrected root currents never change in this milestone.
-        baseline = next(
-            entry for entry in self.catalog.baseline_decay_currents
-            if tuple(entry['selector']) == selector)
-        legs = _ordered_legs(baseline['current'])
-        groups = {}
-        final_legs = [leg for leg in legs if leg.get('state')]
-        for leg in legs:
+        node = self.base_metadata['nodes'][node_id - 1]
+
+        def child_group(child):
+            if child[0] == 'NODE':
+                return self._node_visible_group(child[1], carrier_key)
+            return self._group_for_target(child)
+
+        stage = self.catalog._stage_by_node.get(node_id)
+        source = 0 if stage is None else carrier_key[stage.id - 1]
+        if not source:
+            return tuple(slot for child in node['children']
+                         for slot in child_group(child))
+
+        born_finals = [leg for leg in _ordered_legs(stage.born_tree)
+                       if leg.get('state')]
+        if len(born_finals) != len(node['children']):
+            raise fks_common.FKSProcessError(
+                'Real product stage %s disagrees with decay node %d' %
+                (stage.label, node_id))
+        children = _topology_children_for_legs(
+            self.base_metadata, node, born_finals,
+            'Real product stage %s' % stage.label)
+        child_by_born = dict(
+            (leg.get('number'), child)
+            for leg, child in zip(born_finals, children))
+        mapping = self.catalog._real_to_born_map(stage, source)
+        result = []
+        emissions = 0
+        for leg in _ordered_legs(stage.real_trees[source - 1]):
             if not leg.get('state'):
-                groups[leg.get('number')] = self._group_for_target(
-                    ('NODE', root))
-        for leg, child in zip(final_legs, node['children']):
-            groups[leg.get('number')] = self._group_for_target(child)
-        return None, groups
+                continue
+            born_number = mapping.get(leg.get('number'))
+            if born_number is None:
+                result.append(self.emission_slots[stage.id])
+                emissions += 1
+                continue
+            try:
+                child = child_by_born[born_number]
+            except KeyError:
+                raise fks_common.FKSProcessError(
+                    'Real product stage %s maps a final leg to non-final '
+                    'Born leg %d' % (stage.label, born_number))
+            result.extend(child_group(child))
+        if emissions != 1:
+            raise fks_common.FKSProcessError(
+                'Real product stage %s exposes %d emitted legs' %
+                (stage.label, emissions))
+        return tuple(result)
 
     def carrier(self, key):
         key = tuple(key)
@@ -1025,36 +1139,17 @@ class CanonicalProductLayout(object):
                     'A direct product core leg maps to several Born leaves')
             local_to_canonical[target[1] - 1] = group[0]
 
-        source_by_selector = dict(
-            (stage.selector, source)
-            for stage, source in zip(self.catalog.stages[1:], key[1:]))
         for component in metadata['simultaneous_components']:
-            selector = tuple(component['selector'])
-            source = source_by_selector.get(selector, 0)
-            stage, groups = self._component_groups(selector, source)
-            tree = (next(entry['current']
-                         for entry in self.catalog.baseline_decay_currents
-                         if tuple(entry['selector']) == selector)
-                    if stage is None else
-                    (stage.real_trees[source - 1] if source
-                     else stage.born_tree))
-            final_legs = [leg for leg in _ordered_legs(tree)
-                          if leg.get('state')]
             root = component['root_node_id']
-            node = metadata['nodes'][root - 1]
-            if len(final_legs) != len(node['children']):
+            topology_root = component['topology_node_id']
+            leaves = _metadata_leaf_ids(metadata, root)
+            group = self._node_visible_group(topology_root, key)
+            if len(leaves) != len(group):
                 raise fks_common.FKSProcessError(
-                    'A product carrier component has inconsistent children')
-            for leg, child in zip(final_legs, node['children']):
-                leaves = _metadata_leaf_ids(metadata, child[1]) \
-                    if child[0] == 'NODE' else (child[1],)
-                group = groups[leg.get('number')]
-                if len(leaves) != len(group):
-                    raise fks_common.FKSProcessError(
-                        'A product decay subtree changed its stable leaves')
-                for leaf, canonical in zip(leaves, group):
-                    local = context['leaf_map'][leaf]
-                    local_to_canonical[local - 1] = canonical
+                    'A product decay subtree changed its stable leaves')
+            for leaf, canonical in zip(leaves, group):
+                local = context['leaf_map'][leaf]
+                local_to_canonical[local - 1] = canonical
 
         if any(slot == 0 for slot in local_to_canonical):
             raise fks_common.FKSProcessError(
@@ -1132,7 +1227,11 @@ class CanonicalProductLayout(object):
             result.append((local, crossing))
         if not result:
             raise fks_common.FKSProcessError(
-                'A product colour endpoint has no coloured visible child')
+                'Product carrier %s maps colour endpoint %d of stage %d, '
+                'source %d, configuration %d to group %s, which has no '
+                'coloured visible child (PDGs %s)' % (
+                    carrier_key, real_leg, stage_id, source, configuration,
+                    group, carrier.pdgs))
         return tuple(result)
 
     def soft_link_terms(self, carrier_key, stage_id, source, configuration):
@@ -1240,7 +1339,8 @@ class CanonicalProductLayout(object):
 class FactorizedProductCatalog(object):
     """Lazy, mixed-radix catalog of all multiplicative NLO sectors."""
 
-    def __init__(self, stages, baseline_decay_currents):
+    def __init__(self, stages, baseline_decay_currents,
+                 topology_metadata=None):
         stages = tuple(stages)
         if not stages or stages[0].kind != 'PRODUCTION':
             raise fks_common.FKSProcessError(
@@ -1264,6 +1364,55 @@ class FactorizedProductCatalog(object):
         if len(set(baseline_selectors)) != len(baseline_selectors):
             raise fks_common.FKSProcessError(
                 'Baseline decay-current selectors must be unique')
+        try:
+            root_nodes = [int(entry['root_node_id'])
+                          for entry in self.baseline_decay_currents]
+        except (KeyError, TypeError, ValueError):
+            raise fks_common.FKSProcessError(
+                'A baseline decay current has no topology root identity')
+        if len(set(root_nodes)) != len(root_nodes):
+            raise fks_common.FKSProcessError(
+                'Baseline decay-current topology roots must be unique')
+        if topology_metadata is None:
+            raise fks_common.FKSProcessError(
+                'A multiplicative product requires decay topology metadata')
+        self.topology_metadata = topology_metadata
+        self._baseline_by_root = dict(zip(
+            root_nodes, self.baseline_decay_currents))
+        self._stage_by_node = {}
+        for stage in self.stages[1:]:
+            if (stage.corrected_node < 1 or
+                    stage.corrected_node > len(
+                        self.topology_metadata.get('nodes', ()))):
+                raise fks_common.FKSProcessError(
+                    'Multiplicative stage %s corrects an unknown decay node' %
+                    stage.label)
+            if stage.corrected_node in self._stage_by_node:
+                raise fks_common.FKSProcessError(
+                    'Two multiplicative stages correct decay node %d' %
+                    stage.corrected_node)
+            node = self.topology_metadata['nodes'][
+                stage.corrected_node - 1]
+            occurrence = 1 + len([
+                previous for previous in self.topology_metadata['nodes']
+                if (previous['id'] < node['id'] and
+                    previous['pdg'] == node['pdg'])])
+            if stage.selector != (node['pdg'], occurrence):
+                raise fks_common.FKSProcessError(
+                    'Multiplicative stage %s has an inconsistent corrected '
+                    'resonance identity' % stage.label)
+            root = node
+            while root['parent']:
+                root = self.topology_metadata['nodes'][root['parent'] - 1]
+            baseline = self._baseline_by_root.get(root['id'])
+            if (baseline is None or stage.root_selector !=
+                    tuple(baseline['selector'])):
+                raise fks_common.FKSProcessError(
+                    'Multiplicative stage %s has an inconsistent root '
+                    'resonance history' % stage.label)
+            self._stage_by_node[stage.corrected_node] = stage
+        self._node_processes = self._index_topology_processes()
+        self._node_born_currents = {}
         self.sector_count = _product(
             len(stage.choices) for stage in self.stages)
         self.max_real_order = sum(
@@ -1299,10 +1448,193 @@ class FactorizedProductCatalog(object):
                 stage_id, 'DECAY_%d' % (stage_id - 1), 'NLO_DECAY',
                 family['born_current'], family['real_currents'],
                 family['real_fks_infos'], contribution['has_virtual'],
-                selector=family['selector'],
+                selector=(family['parent_pdg'],
+                          contribution['parent_occurrence']),
+                root_selector=family.get('root_selector'),
                 corrected_node=family['corrected_node'],
                 virtual_orders=contribution.get('virtual_orders', ())))
-        return cls(stages, core.get('baseline_decay_currents', ()))
+        return cls(stages, core.get('baseline_decay_currents', ()),
+                   bundle.decay_metadata)
+
+    def _index_topology_processes(self):
+        """Bind every stable decay node to its concrete Born process.
+
+        The topology was constructed from these same concrete currents.  We
+        deliberately replay its ordered child matching instead of searching
+        globally by PDG: identical siblings can own different decay modes and
+        must remain distinct resonance histories.
+        """
+
+        nodes = self.topology_metadata.get('nodes', ())
+        result = {}
+
+        def visit(process, node_id):
+            if node_id < 1 or node_id > len(nodes):
+                raise fks_common.FKSProcessError(
+                    'A baseline current refers to decay node %d outside its '
+                    'topology' % node_id)
+            node = nodes[node_id - 1]
+            if process.get_initial_ids()[0] != node['pdg']:
+                raise fks_common.FKSProcessError(
+                    'Decay node %d has a process with the wrong parent' %
+                    node_id)
+            if node_id in result and result[node_id] is not process:
+                raise fks_common.FKSProcessError(
+                    'Two concrete processes claim decay node %d' % node_id)
+            result[node_id] = process
+            nested = list(process.get('decay_chains'))
+            final_legs = list(process.get_final_legs())
+            if len(final_legs) != len(node['children']):
+                raise fks_common.FKSProcessError(
+                    'Decay node %d disagrees with its concrete process' %
+                    node_id)
+            for leg, child in zip(final_legs, node['children']):
+                if child[0] != 'NODE':
+                    continue
+                match = None
+                for index, decay in enumerate(nested):
+                    if decay.get_initial_ids()[0] == leg.get('id'):
+                        match = nested.pop(index)
+                        break
+                if match is None:
+                    raise fks_common.FKSProcessError(
+                        'Decay node %d is missing nested child %d' %
+                        (node_id, child[1]))
+                visit(match, child[1])
+            if nested:
+                raise fks_common.FKSProcessError(
+                    'Decay node %d has an unmatched nested process' %
+                    node_id)
+
+        for root_id, entry in sorted(self._baseline_by_root.items()):
+            visit(entry['current'].get('processes')[0], root_id)
+        expected = set(node['id'] for node in nodes)
+        if set(result) != expected:
+            raise fks_common.FKSProcessError(
+                'The retained root currents do not cover the decay topology')
+        return result
+
+    def _node_born_current(self, node_id):
+        """Return the immutable direct Born current of one topology node."""
+
+        if node_id not in self._node_born_currents:
+            process = fks_decay._copy_process(
+                self._node_processes[node_id])
+            self._node_born_currents[node_id] = \
+                fks_decay._single_concrete_decay_matrix_element(
+                    process, 'The local multiplicative Born current')
+        return self._node_born_currents[node_id]
+
+    @staticmethod
+    def _real_to_born_map(stage, source):
+        """Return the source-wide stable real-to-Born leg identity map."""
+
+        real_legs = _ordered_legs(stage.real_trees[source - 1])
+        born_legs = _ordered_legs(stage.born_tree)
+        mappings = [fks_decay._real_to_born_leg_map(
+            real_legs, born_legs, info)
+            for info in stage.real_fks_infos[source - 1]]
+        first = mappings[0]
+        if any(mapping != first for mapping in mappings[1:]):
+            raise fks_common.FKSProcessError(
+                'FKS configurations sharing real source %d of %s disagree '
+                'on external-leg identity' % (source, stage.label))
+        return first
+
+    def _selected_node_tree(self, node_id, key):
+        stage = self._stage_by_node.get(node_id)
+        if stage is None:
+            tree = self._node_born_current(node_id)
+            return tree, tree, None, 0
+        source = key[stage.id - 1]
+        if source:
+            tree = stage.real_trees[source - 1]
+            return tree, tree, stage, source
+        # Use the concrete Born current from the common LO topology for HELAS
+        # insertion.  The independently generated NLO-stage Born remains the
+        # factor which owns coupling-order selection and normalization; its
+        # external fermion-flow convention need not be identical to the one
+        # chosen while constructing the enclosing concrete decay chain.
+        return (self._node_born_current(node_id), stage.born_tree,
+                stage, 0)
+
+    def _selected_leg_for_born(self, stage, source, born_number):
+        if not source:
+            return born_number
+        mapping = self._real_to_born_map(stage, source)
+        matches = [real for real, born in mapping.items()
+                   if born == born_number]
+        if len(matches) != 1:
+            raise fks_common.FKSProcessError(
+                'Real source %d of %s does not preserve Born leg %d' %
+                (source, stage.label, born_number))
+        return matches[0]
+
+    def _build_node_current(self, node_id, key):
+        """Recursively contract all selected currents below one decay node."""
+
+        local_tree, factor_tree, stage, source = \
+            self._selected_node_tree(node_id, key)
+        factors = [factor_tree]
+        node = self.topology_metadata['nodes'][node_id - 1]
+        born_tree = (stage.born_tree if stage is not None
+                     else self._node_born_current(node_id))
+        born_finals = [leg for leg in _ordered_legs(born_tree)
+                       if leg.get('state')]
+        if len(born_finals) != len(node['children']):
+            raise fks_common.FKSProcessError(
+                'Local current for decay node %d disagrees with its '
+                'topology' % node_id)
+
+        process = fks_decay._copy_process(_tree_process(local_tree))
+        nested_processes = []
+        children = _topology_children_for_legs(
+            self.topology_metadata, node, born_finals,
+            'Recursive product node %d' % node_id)
+        for born_leg, child in zip(born_finals, children):
+            if child[0] != 'NODE':
+                continue
+            child_current, child_factors = self._build_node_current(
+                child[1], key)
+            factors.extend(child_factors)
+            local_number = self._selected_leg_for_born(
+                stage, source, born_leg.get('number')) \
+                if stage is not None else born_leg.get('number')
+            nested_processes.append((
+                local_number,
+                fks_decay._copy_process_tree(
+                    child_current.get('processes')[0])))
+
+        if not nested_processes:
+            return local_tree, factors
+        for _, child_process in sorted(nested_processes):
+            process.get('decay_chains').append(child_process)
+        _mark_decay_process_tree_level(process)
+        combined = fks_decay._single_concrete_decay_matrix_element(
+            process, 'The recursive multiplicative decay current')
+        combined.set('identical_particle_factor', _product(
+            _tree_identical_particle_factor(factor)
+            for factor in factors))
+        combined.fnlo_product_topology_node_id = node_id
+        return combined, factors
+
+    def _production_root_leg(self, entry, core, source):
+        born_process = _tree_process(self.stages[0].born_tree)
+        born_leg = fks_decay._resolve_selector(
+            born_process, tuple(entry['selector']))
+        if not source:
+            return born_leg.get('number')
+        mapping = self._real_to_born_map(self.stages[0], source)
+        matches = [real for real, born in mapping.items()
+                   if born == born_leg.get('number')]
+        if len(matches) != 1:
+            raise fks_common.FKSProcessError(
+                'Production real source %d does not preserve decay root %s' %
+                (source, entry['selector']))
+        number = matches[0]
+        # Cross-check against the selected core before using the exact number.
+        _selector_for_leg(_tree_process(core), number)
+        return number
 
     @property
     def matrix_element_cache_size(self):
@@ -1397,50 +1729,33 @@ class FactorizedProductCatalog(object):
             core = self.stages[0].real_trees[key[0] - 1]
         else:
             core = self.stages[0].born_tree
-
-        direct_choices = {}
-        baseline_selectors = set(
-            entry['selector'] for entry in self.baseline_decay_currents)
-        for stage, carrier_source in zip(self.stages[1:], key[1:]):
-            selector = stage.selector
-            if selector not in baseline_selectors:
-                if carrier_source:
-                    raise fks_common.FKSProcessError(
-                        'Simultaneous real radiation from nested decay stage '
-                        '%s requires recursive current insertion' %
-                        stage.label)
-                continue
-            if selector in direct_choices:
-                raise fks_common.FKSProcessError(
-                    'Two multiplicative stages replace decay root %s' %
-                    (selector,))
-            direct_choices[selector] = (stage, carrier_source)
-
         components = []
+        factors = [core]
+        root_currents = []
         for baseline_index, entry in enumerate(
                 self.baseline_decay_currents, 1):
-            selected = direct_choices.get(entry['selector'])
-            if selected is None:
-                components.append({
-                    'selector': entry['selector'],
-                    'current': entry['current'],
-                    'stage': 'LO_DECAY_%d' % baseline_index,
-                    'state': BORN,
-                    'source_index': 1})
-                continue
-            stage, carrier_source = selected
-            if carrier_source:
-                current = stage.real_trees[carrier_source - 1]
-                state = REAL
-            else:
-                current = stage.born_tree
-                state = BORN
+            root_node = entry['root_node_id']
+            current, node_factors = self._build_node_current(
+                root_node, key)
+            factors.extend(node_factors)
+            root_stage = self._stage_by_node.get(root_node)
+            root_source = (0 if root_stage is None else
+                           key[root_stage.id - 1])
+            core_leg_number = self._production_root_leg(
+                entry, core, key[0])
             components.append({
                 'selector': entry['selector'],
+                'core_leg_number': core_leg_number,
+                'topology_node_id': root_node,
                 'current': current,
-                'stage': stage.label,
-                'state': state,
-                'source_index': (carrier_source if carrier_source else 1)})
+                'stage': ('LO_DECAY_%d' % baseline_index
+                          if root_stage is None else root_stage.label),
+                'state': REAL if root_source else BORN,
+                'source_index': root_source if root_source else 1})
+            root_currents.append({
+                'topology_node_id': root_node,
+                'selector': tuple(entry['selector']),
+                'current': current})
 
         if not components:
             raise fks_common.FKSProcessError(
@@ -1448,13 +1763,18 @@ class FactorizedProductCatalog(object):
         matrix_element, context, metadata = \
             fks_decay.compose_simultaneous_tree_matrix_element(
                 core, components, contraction_id=self._carrier_id(key))
-        _set_product_carrier_order_selection(
-            matrix_element,
-            [core] + [component['current'] for component in components])
+        expected_symmetry = _product(
+            _tree_identical_particle_factor(factor) for factor in factors)
+        matrix_element.set('identical_particle_factor', expected_symmetry)
+        _set_product_carrier_order_selection(matrix_element, factors)
         matrix_element.fnlo_product_carrier_key = key
         matrix_element.fnlo_product_core_state = (
             REAL if key[0] else BORN,
             key[0])
+        matrix_element.fnlo_product_root_currents = tuple(root_currents)
+        matrix_element.fnlo_product_factor_nodes = tuple(
+            (stage.id, stage.corrected_node, key[stage.id - 1])
+            for stage in self.stages[1:])
         metadata['product_carrier_key'] = key
         metadata['product_context_id'] = context['id']
         matrix_element.fnlo_product_context = context
@@ -1682,6 +2002,23 @@ def _product_runtime_plans(layout):
                                     term['local_first'],
                                     term['local_second'])
                                    for term in terms)})
+        # Charge expansion at a decayed resonance can reach the same visible
+        # operator/eikonal product through several local endpoint pairs.  Add
+        # those coefficients before emitting Fortran.  Besides being the
+        # natural coherent sum, this keeps nested parent/child dispatchers
+        # tractable without dropping a single correlation.
+        aggregated = []
+        positions = {}
+        for term in soft_terms:
+            signature = (term['link_id'], term['eikonals'])
+            position = positions.get(signature)
+            if position is None:
+                positions[signature] = len(aggregated)
+                aggregated.append(term)
+            else:
+                aggregated[position]['coefficient'] += term['coefficient']
+        soft_terms = [term for term in aggregated
+                      if term['coefficient'] != 0.]
         plans.append({
             'id': len(plans) + 1,
             'selected': selected,
