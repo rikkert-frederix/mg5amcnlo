@@ -11,9 +11,23 @@ Cards/run_card.dat, and fixed-order histogram settings are in
 Cards/FO_analyse_card.dat.
 
 Decay-chain outputs also contain Cards/decay_card.dat. It sets the physical
-total width and an independent renormalization scale for each decaying
-particle species. The generated scales default to the corresponding particle
-masses. PRODUCTION_REN_SCALE_MOMENTA selects whether the production
+total widths and an independent renormalization scale for each decaying
+particle species. Full NLO production-and-decay bundles require both
+LO_DECAY_WIDTH and NLO_DECAY_WIDTH for every NLO-corrected species. They use
+the strict O(alpha_s) expansion
+
+  dsigma = dsigma_LO + delta dsigma_prod
+         + sum_i delta dsigma_decay_i
+         - dsigma_LO sum_i (Gamma_NLO_i-Gamma_LO_i)/Gamma_LO_i.
+
+Every term uses LO widths in all narrow-width denominators. The supplied
+width differences are numerical O(alpha_s) inputs and are not multiplied by
+another strong coupling. Products of production, decay, and width corrections
+are never included. The width sum runs over physical resonance occurrences,
+including an occurrence whose selected partial decay has no QCD numerator
+correction when the same particle species has an NLO total width. The
+generated scales default to the corresponding particle masses.
+PRODUCTION_REN_SCALE_MOMENTA selects whether the production
 renormalization scale uses the undecayed production momenta (CORE, the
 default) or the fully decayed momenta (DECAYED). Production factorization and
 Ellis-Sexton scales always use the production momenta.

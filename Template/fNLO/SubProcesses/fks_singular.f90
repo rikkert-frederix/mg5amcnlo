@@ -175,7 +175,8 @@ contains
     ! Rebuild the same decay-local partner table written for the standalone
     ! 1 -> n process.  Configurations sharing a real matrix element share a
     ! row, including any massive incoming decay parent.
-    do configuration = 1, fks_configs
+    do configuration = active_contribution_fks_first(), &
+                       active_contribution_fks_last()
       if (nlo_decay_context_for_fks(configuration) /= context) cycle
       emitted = nlo_decay_fks_i(configuration)
       partner_count = nlo_decay_partner_count(configuration)

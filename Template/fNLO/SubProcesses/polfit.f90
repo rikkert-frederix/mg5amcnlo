@@ -17,7 +17,7 @@ module polynomial_fit
   double precision, allocatable :: w(:, :, :)
   double precision, allocatable :: x2d(:, :, :)
   double precision, allocatable :: a2d(:, :, :, :)
-  logical, allocatable :: valid_ord_virt(:)
+  logical, allocatable :: valid_ord_virt(:, :)
   logical :: fit_done = .false.
   logical :: initialized = .false.
 
@@ -59,7 +59,7 @@ contains
     allocate (yp(maxdeg))
     allocate (x2d(maxpoint, ndim, nchan))
     allocate (a2d(maxdeg*3 + 3, ndim, 0:n_ord_virt, nchan))
-    allocate (valid_ord_virt(0:n_ord_virt))
+    allocate (valid_ord_virt(0:n_ord_virt, nchan))
 
     n = 0
     fit_done = .false.
@@ -112,7 +112,7 @@ contains
       stop 1
     end if
 
-    valid_ord_virt(k_ord_virt) = .true.
+    valid_ord_virt(k_ord_virt, ichan) = .true.
     if (k_ord_virt == 0) then
       if (n(ichan) == maxpoint) call grow_point_storage()
       n(ichan) = n(ichan) + 1
@@ -180,21 +180,66 @@ contains
     integer :: ic
     integer :: ko
     integer :: i
+    integer :: ipoint
+    integer :: nfit
+    integer :: max_fit_degree
     integer :: ierr
     double precision :: eps
+    double precision, allocatable :: fit_x(:)
+    double precision, allocatable :: fit_y(:)
+    double precision, allocatable :: fit_w(:)
 
     call require_initialized('do_polyfit')
+    allocate (fit_x(maxpoint))
+    allocate (fit_y(maxpoint))
+    allocate (fit_w(maxpoint))
     do ic = 1, nchan
       do ko = 0, n_ord_virt
-        if (.not. valid_ord_virt(ko)) cycle
+        nfit = count(w(1:n(ic), ko, ic) > 0.0d0)
+        valid_ord_virt(ko, ic) = nfit > 0
+        if (.not. valid_ord_virt(ko, ic)) cycle
+        nfit = 0
+        do ipoint = 1, n(ic)
+          if (w(ipoint, ko, ic) <= 0.0d0) cycle
+          nfit = nfit + 1
+          fit_y(nfit) = y(ipoint, ko, ic)
+          fit_w(nfit) = w(ipoint, ko, ic)
+        end do
+        if (nfit == 1) then
+          max_fit_degree = 0
+        else
+          ! With EPS < 0, POLFIT requires at least two more points than
+          ! the requested maximum degree.  Sparse virtual sampling can
+          ! leave a channel/order with fewer than MAXDEG+2 points,
+          ! especially after restoring a grid checkpoint.
+          max_fit_degree = min(maxdeg, nfit - 2)
+        end if
         do i = 1, ndim
-          eps = -1.0d0
-          call polfit(n(ic), x2d(1, i, ic), y(1, ko, ic), &
-                      w(1, ko, ic), maxdeg, ndeg(i, ko, ic), eps, r, ierr, a)
+          nfit = 0
+          do ipoint = 1, n(ic)
+            if (w(ipoint, ko, ic) <= 0.0d0) cycle
+            nfit = nfit + 1
+            fit_x(nfit) = x2d(ipoint, i, ic)
+          end do
+          if (nfit == 1) then
+            eps = 0.0d0
+          else
+            eps = -1.0d0
+          end if
+          call polfit(nfit, fit_x, fit_y, fit_w, max_fit_degree, &
+                      ndeg(i, ko, ic), eps, r, ierr, a)
+          if (ierr == 2) then
+            write (*, *) 'Invalid polynomial fit for channel/order:', &
+                         ic, ko, nfit, max_fit_degree
+            stop 1
+          end if
           a2d(1:maxdeg*3 + 3, i, ko, ic) = a(1:maxdeg*3 + 3)
         end do
       end do
     end do
+    deallocate (fit_x)
+    deallocate (fit_y)
+    deallocate (fit_w)
     fit_done = .true.
   end subroutine do_polyfit
 
@@ -223,7 +268,7 @@ contains
     end if
 
     if ((.not. fit_done) .or. &
-        (.not. valid_ord_virt(k_ord_virt))) then
+        (.not. valid_ord_virt(k_ord_virt, ichan))) then
       fun_at_x = 0.0d0
       return
     end if
@@ -280,7 +325,7 @@ contains
     do ic = 1, nchan
       do ko = 0, n_ord_virt
         do i = 1, n(ic)
-          if (y(i, ko, ic) /= 0.0d0) valid_ord_virt(ko) = .true.
+          if (w(i, ko, ic) > 0.0d0) valid_ord_virt(ko, ic) = .true.
         end do
       end do
     end do

@@ -42,7 +42,8 @@
 !
 
 module mint_module
-  use fnlo_process_common, only: fnlo_maxchannels
+  use fnlo_process_common, only: fnlo_maxchannels, fks_configs, &
+                                 amp_split_size
   use FKSParams ! contains use_poly_virtual
   use mc_integer_module, only: regrid_MC_integer, empty_MC_integer, &
                                reset_MC_grid
@@ -52,8 +53,13 @@ module mint_module
   private
   integer, parameter, private :: nintervals = 32    ! max number of intervals in the integration grids
   integer, parameter, public  :: ndimmax = 60       ! max number of dimensions of the integral
-  integer, parameter, public  :: n_ave_virt = 10    ! max number of grids to set up to approx virtual
-  integer, parameter, public  :: nintegrals = 26    ! number of integrals to keep track of
+  ! A contribution bundle can assign one virtual grid to every
+  ! contribution/split-order pair.  Size the workspace from the generated
+  ! process instead of imposing the historical ten-grid limit.  Keep ten as
+  ! a floor so ordinary-process checkpoint layouts remain unchanged.
+  integer, parameter, public  :: n_ave_virt = &
+       max(10, fks_configs*amp_split_size)
+  integer, parameter, public  :: nintegrals = 6 + 2*n_ave_virt
   integer, parameter, private :: nintervals_virt = 8! max number of intervals in the grids for the approx virtual
   integer, parameter, private :: min_inter = 4      ! minimal number of intervals
   integer, parameter, private :: min_it0 = 4        ! minimal number of iterations in the mint step 0 phase
@@ -80,34 +86,6 @@ module mint_module
   logical, public :: new_point, pass_cuts_check
 
 ! private variables
-  character(len=13), parameter, dimension(nintegrals), private :: title = (/ &
-                                                                  'ABS integral ', & !  1
-                                                                  'Integral     ', & !  2
-                                                                  'Virtual      ', & !  3
-                                                                  'Virtual ratio', & !  4
-                                                                  'ABS virtual  ', & !  5
-                                                                  'Born         ', & !  6
-                                                                  'V  1         ', & !  7
-                                                                  'B  1         ', & !  8
-                                                                  'V  2         ', & !  9
-                                                                  'B  2         ', & ! 10
-                                                                  'V  3         ', & ! 11
-                                                                  'B  3         ', & ! 12
-                                                                  'V  4         ', & ! 13
-                                                                  'B  4         ', & ! 14
-                                                                  'V  5         ', & ! 15
-                                                                  'B  5         ', & ! 16
-                                                                  'V  6         ', & ! 17
-                                                                  'B  6         ', & ! 18
-                                                                  'V  7         ', & ! 19
-                                                                  'B  7         ', & ! 20
-                                                                  'V  8         ', & ! 21
-                                                                  'B  8         ', & ! 22
-                                                                  'V  9         ', & ! 23
-                                                                  'B  9         ', & ! 24
-                                                                  'V 10         ', & ! 25
-                                                                  'B 10         '/)  ! 26
-
   integer, private :: nit, nit_included, kpoint_iter, nint_used, nint_used_virt, min_it, ncalls, pass_cuts_point, ng, npg, k
   integer, allocatable, private :: icell(:), ncell(:)
   integer, dimension(nintegrals), private :: non_zero_point, ntotcalls
@@ -157,6 +135,32 @@ module mint_module
        &, get_channel, close_run_zero_res &
        &, initialize_even_random_numbers, get_ran
 contains
+
+  character(len=13) function integral_title(index)
+    implicit none
+    integer, intent(in) :: index
+
+    select case (index)
+    case (1)
+      integral_title = 'ABS integral '
+    case (2)
+      integral_title = 'Integral     '
+    case (3)
+      integral_title = 'Virtual      '
+    case (4)
+      integral_title = 'Virtual ratio'
+    case (5)
+      integral_title = 'ABS virtual  '
+    case (6)
+      integral_title = 'Born         '
+    case default
+      if (mod(index, 2) == 1) then
+        write (integral_title, '(a1,i3,9x)') 'V', (index - 5)/2
+      else
+        write (integral_title, '(a1,i3,9x)') 'B', (index - 6)/2
+      end if
+    end select
+  end function integral_title
 
   subroutine initialize_mint_state
     implicit none
@@ -466,7 +470,7 @@ contains
       end if
       if (ans_l3(i) .ne. 0d0 .and. unc_l3(i) .ne. 0d0) then
         write (*, '(a,1x,e10.4,1x,a,1x,e10.4,1x,a,1x,f7.3,1x,a)') &
-          'accumulated results last 3 iterations '//title(i)//' =', &
+          'accumulated results last 3 iterations '//integral_title(i)//' =', &
           ans_l3(i), ' +/- ', unc_l3(i), ' (', efrac(i)*100d0, '%)'
       end if
     end do
@@ -534,7 +538,8 @@ contains
       end if
       if (ans(i, 0) .ne. 0d0 .and. unc(i, 0) .ne. 0d0) then
         write (*, '(a,1x,e10.4,1x,a,1x,e10.4,1x,a,1x,f7.3,1x,a)') &
-          'accumulated results '//title(i)//' =', ans(i, 0), ' +/- ', unc(i, 0), ' (', efrac(i)*100d0, '%)'
+          'accumulated results '//integral_title(i)//' =', ans(i, 0), &
+          ' +/- ', unc(i, 0), ' (', efrac(i)*100d0, '%)'
       end if
     end do
     if (nit_included .le. 1) then
@@ -591,7 +596,8 @@ contains
     do i = 1, nintegrals
       if (vtot(i, 0) .ne. 0d0 .and. etot(i, 0) .ne. 0d0) then
         write (*, '(a,1x,e10.4,1x,a,1x,e10.4,1x,a,1x,f7.3,1x,a)') &
-          title(i)//' =', vtot(i, 0), ' +/- ', etot(i, 0), ' (', efrac(i)*100d0, '%)'
+          integral_title(i)//' =', vtot(i, 0), ' +/- ', etot(i, 0), &
+          ' (', efrac(i)*100d0, '%)'
       end if
     end do
   end subroutine print_results_current_iteration
@@ -1370,7 +1376,7 @@ contains
     unc(1:nintegrals, 1:nchans) = 0d0
     nhits_in_grids(1:nchans) = 0
     virtual_fraction(1:nchans) = 1d0
-    average_virtual(0, 1:nchans) = 0d0
+    average_virtual(0:n_ord_virt, 1:nchans) = 0d0
     call write_grids_to_file
     call write_results
     call regrid_MC_integer

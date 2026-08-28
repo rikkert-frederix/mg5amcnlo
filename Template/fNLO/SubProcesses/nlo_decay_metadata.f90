@@ -5,7 +5,8 @@ module nlo_decay_metadata
   use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
        active_nlo_contribution, active_contribution_is_nlo_decay, &
        contribution_fks_first, contribution_fks_last, &
-       global_fks_configuration, local_fks_configuration
+       contribution_parent_pdg, global_fks_configuration, &
+       local_fks_configuration
   implicit none
   private
 
@@ -251,6 +252,12 @@ contains
     if (corrected_parent_pdg_value == 0 .or. &
         corrected_parent_occurrence_value < 1) then
       call fail_metadata('invalid corrected-decay parent')
+    end if
+    if (has_nlo_contribution_bundle() .and. &
+        corrected_parent_pdg_value /= &
+        contribution_parent_pdg(target_contribution)) then
+      call fail_metadata(&
+           'the corrected parent disagrees with contribution metadata')
     end if
     if (number_of_contexts < 2 .or. &
         number_of_fks_maps < 1 .or. &
@@ -1456,7 +1463,14 @@ contains
   integer function bundle_local_configuration(configuration)
     integer, intent(in) :: configuration
     bundle_local_configuration = local_fks_configuration(configuration)
-    call check_configuration(bundle_local_configuration)
+    if (bundle_local_configuration < 1 .or. &
+        bundle_local_configuration > number_of_fks_maps) then
+      write (*, *) 'NLO-decay FKS mapping failure: global=', &
+           configuration, ' local=', bundle_local_configuration, &
+           ' contribution=', loaded_contribution, &
+           ' maps=', number_of_fks_maps
+      call fail_metadata('FKS configuration is out of range')
+    end if
   end function bundle_local_configuration
 
 

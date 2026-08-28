@@ -84,6 +84,12 @@ TAGTAGTAGTAGTAGTAGTAG for i in 1 ; do
     link1up decay_card.dat
     link1up decay_chain_info.dat
     link1up nlo_decay_info.dat
+    link1up nlo_contribution_info.dat
+    for metadata in ../nlo_decay_info_*.dat ; do
+	if [[ -e $metadata ]] ; then
+	    link1up "${metadata#../}"
+	fi
+    done
     link1up configs_and_props_info.dat
     link1up leshouche_info.dat
     link1up OLE_order.olc

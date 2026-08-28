@@ -74,15 +74,27 @@ contains
     end if
 
     if (module_initialized) then
-      if (particle_count /= nexternal_in .or. &
-          incoming_count /= nincoming_in .or. &
-          fks_energy_power /= fks_a_in .or. &
-          fks_angle_power /= fks_b_in .or. &
-          h_damp_power /= a_h_damp_in .or. &
-          h_damp_edge /= one_h_damp_in) then
-        call fail_validation('module was reinitialized with new values')
+      if (particle_count == nexternal_in .and. &
+          incoming_count == nincoming_in .and. &
+          fks_energy_power == fks_a_in .and. &
+          fks_angle_power == fks_b_in .and. &
+          h_damp_power == a_h_damp_in .and. &
+          h_damp_edge == one_h_damp_in) then
+        return
       end if
-      return
+      ! A bundled calculation alternates between the full production FKS
+      ! partition and one or more decay-local 1 -> n partitions.  Their
+      ! dimensions need not agree, so discard the cached state before
+      ! installing the next contribution's partition.
+      if (allocated(fks_j_from_i_state)) deallocate(fks_j_from_i_state)
+      if (allocated(particle_type_state)) deallocate(particle_type_state)
+      if (allocated(is_aorg_state)) deallocate(is_aorg_state)
+      if (allocated(particle_mass_state)) deallocate(particle_mass_state)
+      if (allocated(p_i_fks_cnt_state)) deallocate(p_i_fks_cnt_state)
+      if (allocated(ijskip)) deallocate(ijskip)
+      module_initialized = .false.
+      partition_state_ready = .false.
+      kinematic_state_ready = .false.
     end if
 
     particle_count = nexternal_in

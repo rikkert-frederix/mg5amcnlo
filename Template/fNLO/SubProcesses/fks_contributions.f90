@@ -3,7 +3,8 @@ module fks_contributions_module
                                 amp_split_size
   use timing_state, only: tBorn, tIS, tReal, tCount, tf_nb, tf_all
   use mint_module, only: virt_wgt_mint, born_wgt_mint
-  use split_orders, only: get_orders_tag, amp_split_pos_to_orders
+  use split_orders, only: get_orders_tag, orders_to_amp_split_pos, &
+                          amp_split_pos_to_orders
   use madfks_plot_module, only: initplot_impl
   use fks_model_state_module, only: g => strong_coupling, external_masses
   use decay_chain_metadata, only: has_decay_chains
@@ -11,7 +12,8 @@ module fks_contributions_module
   use nlo_decay_metadata, only: has_nlo_decay
   use nlo_decay_kinematics, only: nlo_decay_fks_sister_mass
   use nlo_contribution_bundle, only: active_contribution_has_virtual, &
-       active_virtual_grid_index
+       active_virtual_grid_index, active_contribution_is_production
+  use decay_chain_parameters, only: decay_width_expansion_coefficient
   use fks_singular_module, only: evaluate_fks_sij, sreal, sreal_deg, &
                                  bornsoftvirtual, fks_subtraction_shat
   use fks_weights_module, only: add_wgt, real_contribution, &
@@ -50,6 +52,7 @@ module fks_contributions_module
   double precision, parameter :: deltas = 1d0
 
   public :: compute_born, compute_nbody_noborn, compute_real_emission
+  public :: compute_decay_width_counterterm
   public :: compute_soft_counter_term, compute_collinear_counter_term
   public :: compute_soft_collinear_ct_impl
   public :: compute_prefactors_nbody, compute_prefactors_n1body
@@ -99,6 +102,49 @@ contains
     tBorn = tBorn + (tAfter - tBefore)
     return
   end subroutine compute_born
+
+
+  subroutine compute_decay_width_counterterm
+! Add the denominator term in the strict fixed-order expansion
+!
+!   product_i 1/Gamma_i = product_i 1/Gamma_i^(0)
+!       * (1 - sum_i delta_Gamma_i/Gamma_i^(0)) + O(alpha_s^2).
+!
+! The supplied width difference already is an O(alpha_s) quantity.  It must
+! therefore multiply the Born weight without changing its explicit coupling
+! powers; doing otherwise would introduce an additional running coupling and
+! would no longer represent the user-supplied NLO total width.
+    use extra_weights
+    implicit none
+    integer :: born_orders(nsplitorders), correction_orders(nsplitorders)
+    integer :: iamp
+    double precision :: coefficient, born_weight, weight
+
+    if (.not. active_contribution_is_production()) return
+    if (f_b .eq. 0d0) return
+    if (event_xi_hat(real_event)*event_xi_max(soft_counterevent) .gt. &
+        xiBSVcut_used) return
+    coefficient = decay_width_expansion_coefficient()
+    if (coefficient .eq. 0d0) return
+
+    call sborn(p_born, born_weight)
+    do iamp = 1, amp_split_size
+      if (amp_split(iamp) .eq. 0d0) cycle
+      call amp_split_pos_to_orders(iamp, born_orders)
+      correction_orders = born_orders
+      correction_orders(qcd_pos) = correction_orders(qcd_pos) + 2
+      ! The numerical width difference already contains its alpha_s, so the
+      ! coupling rescaling must remain that of the Born.  Nevertheless tag
+      ! this line with the NLO squared order so plots and contribution
+      ! bookkeeping cannot mistake the denominator counterterm for LO.
+      QCD_power = born_orders(qcd_pos)
+      orders_tag = get_orders_tag(correction_orders)
+      amp_pos = orders_to_amp_split_pos(correction_orders)
+      weight = coefficient*amp_split(iamp)*f_b/g**QCD_power
+      call add_wgt(soft_counterevent, integrated_contribution, &
+                   weight, 0d0, 0d0)
+    end do
+  end subroutine compute_decay_width_counterterm
 
   subroutine compute_nbody_noborn
 ! This subroutine computes the soft-virtual matrix elements and adds its

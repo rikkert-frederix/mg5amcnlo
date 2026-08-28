@@ -35,7 +35,8 @@ module driver_mintfo_module
                           t_cuts, t_isum, tOLP, tGenPS, t_coupl
   use fks_contributions_module, only: compute_prefactors_nbody, &
        compute_prefactors_n1body, include_multichannel_enhance, &
-       compute_born, compute_nbody_noborn, compute_soft_counter_term, &
+       compute_born, compute_decay_width_counterterm, &
+       compute_nbody_noborn, compute_soft_counter_term, &
        compute_soft_collinear_ct_impl, compute_collinear_counter_term, &
        compute_real_emission
   use fks_weights_module, only: include_pdf_and_alphas, reweight_scale, &
@@ -383,6 +384,10 @@ contains
               call compute_born()
             end if
             if (abrv /= 'born') then
+              if (abrv(1:2) /= 'vi' .and. &
+                  has_nlo_contribution_bundle()) then
+                call compute_decay_width_counterterm()
+              end if
               if (has_nlo_contribution_bundle()) then
                 call begin_bundle_virtual_tricks()
               end if

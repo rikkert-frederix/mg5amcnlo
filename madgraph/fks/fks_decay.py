@@ -33,6 +33,28 @@ DECAY_DUMMY_WIDTH_RATIO = 0.1
 DECAY_DUMMY_WIDTH_FUNCTION = 'FNLO_DECAY_DUMMY_WIDTH_RATIO()'
 
 
+def _decay_definition_signature(process):
+    """Return the exact generation signature of one decay subtree."""
+
+    return (
+        tuple((tuple(leg.get('ids')), leg.get('state'),
+               tuple(leg.get('polarization')))
+              for leg in process.get('legs')),
+        tuple(sorted(process.get('orders').items())),
+        tuple(sorted(process.get('squared_orders').items())),
+        tuple(process.get('perturbation_couplings')),
+        process.get('NLO_mode'),
+        tuple(_decay_definition_signature(decay)
+              for decay in process.get('decay_chains')))
+
+
+def _full_decay_tree_signature(process):
+    """Describe all decay definitions independently of the production core."""
+
+    return tuple(_decay_definition_signature(decay)
+                 for decay in process.get('decay_chains'))
+
+
 class FullNLOContributionMultiProcess(object):
     """Container for factorised NLO production and decay ingredients.
 
@@ -75,6 +97,48 @@ class FullNLOContributionMultiProcess(object):
         for member in self.members:
             result.extend(member.get_virt_amplitudes())
         return result
+
+    @staticmethod
+    def _decay_member_signature(member):
+        return (
+            member.nlo_decay_selector,
+            member.nlo_decay_path,
+            member.nlo_decay_parent_pdg,
+            member.nlo_decay_root_parent_pdg,
+            member.nlo_decay_mode,
+            _full_decay_tree_signature(
+                member.nlo_decay_full_process_definition))
+
+    def add(self, other):
+        """Add production channels with the same corrected decay tree."""
+
+        if not isinstance(other, FullNLOContributionMultiProcess):
+            raise InvalidCmd(
+                'A full NLO decay-chain bundle can only be combined with '
+                'another full NLO decay-chain bundle')
+        if len(self.decays) != len(other.decays):
+            raise InvalidCmd(
+                'Combined full NLO decay-chain processes must contain the '
+                'same number of corrected decays')
+        for current, additional in zip(self.decays, other.decays):
+            if (self._decay_member_signature(current) !=
+                    self._decay_member_signature(additional)):
+                raise InvalidCmd(
+                    'Combined full NLO decay-chain processes must use the '
+                    'same corrected decay definitions')
+
+        production_amplitudes = list(
+            self.decays[0].nlo_decay_production_amplitudes)
+        production_amplitudes.extend(
+            other.decays[0].nlo_decay_production_amplitudes)
+        self.production.add(other.production)
+        for current, additional in zip(self.decays, other.decays):
+            current.add(additional)
+            # All corrected members of one bundle intentionally share the
+            # same production-amplitude list.  Assign the merged list once
+            # instead of extending each alias (which would duplicate every
+            # added channel once per corrected decay).
+            current.nlo_decay_production_amplitudes = production_amplitudes
 
 
 def _iter_decay_definitions(decay_chains):
@@ -148,9 +212,18 @@ def validate_nlo_decay_to_lo_generation(process_definition, options,
             'perturbatively corrected decay; found %d' % len(corrected))
 
     decay, depth = corrected[0]
-    return _validate_nlo_decay_definition(
+    result = _validate_nlo_decay_definition(
         process_definition, decay, depth, options, correction_orders,
         ewsudakov=ewsudakov, require_lo_production=True)
+    if len(result['root_occurrences']) != 1:
+        raise InvalidCmd(
+            'A standalone NLO-decay ingredient requires exactly one '
+            'production occurrence of its root parent; use a full NLO '
+            'decay-chain bundle for identical resonances')
+    result['selector'] = (
+        result['root_parent_pdg'], result['root_occurrences'][0])
+    result.pop('root_occurrences')
+    return result
 
 
 def validate_full_nlo_decay_chain_generation(process_definition, options,
@@ -176,11 +249,87 @@ def validate_full_nlo_decay_chain_generation(process_definition, options,
             'The production process in a full NLO decay-chain bundle must '
             'use [QCD] or [real=QCD]')
 
-    return [
-        _validate_nlo_decay_definition(
+    descriptions = []
+    for decay, depth in corrected:
+        description = _validate_nlo_decay_definition(
             process_definition, decay, depth, options, correction_orders,
             ewsudakov=ewsudakov, require_lo_production=False)
-        for decay, depth in corrected]
+        root_occurrences = description.pop('root_occurrences')
+        for occurrence in root_occurrences:
+            instance = copy.copy(description)
+            instance['selector'] = (
+                description['root_parent_pdg'], occurrence)
+            descriptions.append(instance)
+    return descriptions
+
+
+def _corrected_root_occurrences(process_definition, root_index,
+                                root_parent_pdg):
+    """Return production occurrences assigned the selected root decay.
+
+    One decay definition is applied to every matching identical resonance.
+    If the command instead supplies one decay definition per decayed
+    production leg, ordinary decay-chain semantics pair those definitions
+    with the legs, positionally or by species. Mirror that distinction here
+    so a corrected mode is not also applied to an identical resonance that
+    was assigned a different decay mode.
+    """
+
+    root_decays = list(process_definition.get('decay_chains'))
+    decay_parent_ids = [
+        list(decay.get('legs')[0].get('ids')) for decay in root_decays]
+    all_parent_ids = set(
+        pdg for parent_ids in decay_parent_ids for pdg in parent_ids)
+    final_legs = [
+        leg for leg in process_definition.get_final_legs()
+        if any(pdg in all_parent_ids for pdg in leg.get('ids'))]
+    matching_legs = [
+        leg for leg in final_legs
+        if root_parent_pdg in leg.get('ids')]
+    if (not matching_legs or any(
+            list(leg.get('ids')) != [root_parent_pdg]
+            for leg in matching_legs)):
+        raise InvalidCmd(
+            'The fNLO NLO-decay implementation requires concrete '
+            'production occurrences of root decay parent %s' %
+            root_parent_pdg)
+
+    # A shared correction selector cannot depend on which concrete member of
+    # a production multiparticle is generated.
+    if any(len(leg.get('ids')) != 1 for leg in final_legs):
+        if len(root_decays) > 1:
+            raise InvalidCmd(
+                'Multiple root decay definitions with an NLO decay require '
+                'concrete decayed production particles')
+        return tuple(range(1, len(matching_legs) + 1))
+
+    final_ids = [leg.get('ids')[0] for leg in final_legs]
+    positional = (
+        len(final_legs) == len(root_decays) and
+        all(final_id in parent_ids for final_id, parent_ids in
+            zip(final_ids, decay_parent_ids)))
+    by_species = (
+        len(final_legs) == len(root_decays) and
+        all(len(parent_ids) == 1 for parent_ids in decay_parent_ids) and
+        sorted(final_ids) == sorted(
+            parent_ids[0] for parent_ids in decay_parent_ids))
+
+    if positional:
+        selected_leg = final_legs[root_index]
+        if selected_leg.get('ids')[0] != root_parent_pdg:
+            raise InvalidCmd(
+                'The corrected root decay does not match its assigned '
+                'production particle')
+        return (next(
+            index for index, leg in enumerate(matching_legs, 1)
+            if leg is selected_leg),)
+    if by_species:
+        same_species_indices = [
+            index for index, parent_ids in enumerate(decay_parent_ids)
+            if parent_ids == [root_parent_pdg]]
+        return (same_species_indices.index(root_index) + 1,)
+
+    return tuple(range(1, len(matching_legs) + 1))
 
 
 def _validate_nlo_decay_definition(process_definition, decay, depth,
@@ -231,15 +380,8 @@ def _validate_nlo_decay_definition(process_definition, decay, depth,
             'The fNLO NLO-decay prototype requires one concrete root decay '
             'parent on the branch containing the corrected decay')
     root_parent_pdg = root_parent_ids[0]
-    matching_legs = [
-        leg for leg in process_definition.get_final_legs()
-        if root_parent_pdg in leg.get('ids')]
-    if (len(matching_legs) != 1 or
-            list(matching_legs[0].get('ids')) != [root_parent_pdg]):
-        raise InvalidCmd(
-            'The fNLO NLO-decay prototype requires exactly one concrete '
-            'production occurrence of root decay parent %s' %
-            root_parent_pdg)
+    root_occurrences = _corrected_root_occurrences(
+        process_definition, decay_path[0], root_parent_pdg)
 
     branch = root_decay
     for child_index in decay_path[1:]:
@@ -270,6 +412,7 @@ def _validate_nlo_decay_definition(process_definition, decay, depth,
         'depth': depth,
         'parent_pdg': parent_pdg,
         'root_parent_pdg': root_parent_pdg,
+        'root_occurrences': root_occurrences,
         'mode': decay.get('NLO_mode'),
         'correction': 'QCD'}
 
@@ -1096,6 +1239,24 @@ def generate_nlo_decay_composition_inputs(full_process_definition,
     root_decay_ids = get_root_decay_ids(
         lo_definition.get('decay_chains'))
     for full_assignment in assignments:
+        # A corrected occurrence is temporarily distinguishable from its
+        # otherwise identical production siblings.  HELAS consequently drops
+        # the production symmetry divisor when the corrected current is glued
+        # back below.  Record the normalization of the complete LO assignment
+        # so every labeled NLO term retains the original 1/S factor; the
+        # explicit occurrence sum then supplies precisely the required
+        # \sum_i delta D_i and no extra multiplicity.
+        full_environment = helas_objects.HelasMatrixElement(
+            production_amplitude, decay_ids=root_decay_ids,
+            gen_color=False)
+        full_metadata = _build_decay_metadata(
+            full_assignment,
+            production_amplitude.get('process').get('model'))
+        full_context = _make_context(
+            full_environment, full_assignment, full_metadata,
+            1, 'BORN', 1)
+        full_metadata['contexts'].append(full_context)
+
         environment_assignment, corrected_process = _environment_assignment(
             full_assignment, decay_path, root_selector)
         environment = helas_objects.HelasMatrixElement(
@@ -1127,7 +1288,11 @@ def generate_nlo_decay_composition_inputs(full_process_definition,
             'decay_path': decay_path,
             'full_assignment': full_assignment,
             'corrected_process': corrected_process,
-            'root_process': production_amplitude.get('process')})
+            'root_process': production_amplitude.get('process'),
+            'full_identical_particle_factor':
+                full_environment.get('identical_particle_factor'),
+            'full_has_mirror_process':
+                full_environment.get('has_mirror_process')})
     return results
 
 
@@ -1519,32 +1684,95 @@ def _make_context(matrix_element, assignment, metadata, context_id,
     matrix_element.insert_decay_chains(decay_dict)
     visible_legs = matrix_element.get('processes')[0].get_legs_with_decays()
 
-    attachment_by_number = dict(resolved)
-    core_map = {}
-    leaf_map = {}
-    visible_number = 1
-    expected_pdgs = []
-    for leg in sorted(core_legs, key=lambda item: item.get('number')):
-        attachment = attachment_by_number.get(leg.get('number'))
-        if attachment is None:
-            core_map[leg.get('number')] = ('LEG', visible_number)
-            expected_pdgs.append(leg.get('id'))
-            visible_number += 1
-            continue
-        node_id = attachment['root_node_id']
-        core_map[leg.get('number')] = ('NODE', node_id)
-        for leaf_id in _tree_leaf_ids(node_id, metadata):
-            leaf_map[leaf_id] = visible_number
-            expected_pdgs.append(metadata['leaves'][leaf_id - 1]['pdg'])
-            visible_number += 1
-
     actual_pdgs = [
         leg.get('id') for leg in sorted(
             visible_legs, key=lambda item: item.get('number'))]
-    if expected_pdgs != actual_pdgs:
+    attachment_by_number = dict(resolved)
+    units = []
+    for leg in sorted(core_legs, key=lambda item: item.get('number')):
+        attachment = attachment_by_number.get(leg.get('number'))
+        if attachment is None:
+            units.append({
+                'leg': leg,
+                'target': ('LEG', None),
+                'leaves': [],
+                'pdgs': [leg.get('id')]})
+        else:
+            node_id = attachment['root_node_id']
+            leaves = _tree_leaf_ids(node_id, metadata)
+            units.append({
+                'leg': leg,
+                'target': ('NODE', node_id),
+                'leaves': leaves,
+                'pdgs': [metadata['leaves'][leaf_id - 1]['pdg']
+                         for leaf_id in leaves]})
+
+    # HELAS may place an undecayed member of a set of identical resonances
+    # after the decay products of its siblings.  Recover the actual unit
+    # ordering rather than assuming that partial decay insertion preserves
+    # the original final-leg order.  Initial legs are never reordered.
+    initial_units = [unit for unit in units
+                     if not unit['leg'].get('state')]
+    final_units = [unit for unit in units if unit['leg'].get('state')]
+    initial_pdgs = sum((unit['pdgs'] for unit in initial_units), [])
+    if actual_pdgs[:len(initial_pdgs)] != initial_pdgs:
+        raise fks_common.FKSProcessError(
+            'Decay insertion reordered or changed the initial-state legs')
+
+    def match_final_units(remaining, position):
+        if not remaining:
+            return [] if position == len(actual_pdgs) else None
+        for index, unit in enumerate(remaining):
+            end = position + len(unit['pdgs'])
+            if actual_pdgs[position:end] != unit['pdgs']:
+                continue
+            tail = match_final_units(
+                remaining[:index] + remaining[index + 1:], end)
+            if tail is not None:
+                return [unit] + tail
+        return None
+
+    ordered_final_units = match_final_units(
+        final_units, len(initial_pdgs))
+    if ordered_final_units is None:
+        expected_pdgs = initial_pdgs + sum(
+            (unit['pdgs'] for unit in final_units), [])
         raise fks_common.FKSProcessError(
             'Decay metadata does not reproduce the combined process legs: '
             '%s != %s' % (expected_pdgs, actual_pdgs))
+
+    ordered_visible_legs = sorted(
+        visible_legs, key=lambda item: item.get('number'))
+    visible_groups = {}
+    position = len(initial_pdgs)
+    for unit in ordered_final_units:
+        end = position + len(unit['pdgs'])
+        visible_groups[unit['leg'].get('number')] = \
+            ordered_visible_legs[position:end]
+        position = end
+    canonical_visible_legs = ordered_visible_legs[:len(initial_pdgs)]
+    for unit in final_units:
+        canonical_visible_legs.extend(
+            visible_groups[unit['leg'].get('number')])
+    for number, leg in enumerate(canonical_visible_legs, 1):
+        leg.set('number', number)
+    process.set('legs_with_decays', base_objects.LegList(
+        canonical_visible_legs))
+
+    core_map = {}
+    leaf_map = {}
+    visible_number = 1
+    for unit in initial_units + final_units:
+        leg_number = unit['leg'].get('number')
+        target_kind, target = unit['target']
+        if target_kind == 'LEG':
+            core_map[leg_number] = ('LEG', visible_number)
+            visible_number += 1
+        else:
+            core_map[leg_number] = ('NODE', target)
+            for leaf_id in unit['leaves']:
+                leaf_map[leaf_id] = visible_number
+                visible_number += 1
 
     context = {
         'id': context_id,
@@ -2092,14 +2320,24 @@ def _build_nlo_decay_topology(composition):
 
     model = composition['root_process'].get('model')
     metadata = _build_decay_metadata(composition['full_assignment'], model)
-    corrected_node = None
-    for attachment in composition['full_assignment']['attachments']:
-        process = attachment['decay_me'].get('processes')[0]
-        corrected_node = _concrete_decay_node_id(
-            process, composition['corrected_process'],
-            attachment['root_node_id'], metadata)
-        if corrected_node is not None:
-            break
+    # Concrete assignments of identical resonances may legitimately reuse
+    # the same decay-process object for more than one production occurrence.
+    # Object identity alone would then always select the first attachment.
+    # Anchor the lookup on the original production selector before following
+    # the concrete process tree to the corrected (possibly nested) node.
+    selected = [
+        attachment
+        for attachment in composition['full_assignment']['attachments']
+        if attachment['selector'] == composition['root_selector']]
+    if len(selected) != 1:
+        raise fks_common.FKSProcessError(
+            'The corrected decay does not identify exactly one root '
+            'attachment in the full topology')
+    attachment = selected[0]
+    process = attachment['decay_me'].get('processes')[0]
+    corrected_node = _concrete_decay_node_id(
+        process, composition['corrected_process'],
+        attachment['root_node_id'], metadata)
     if corrected_node is None:
         raise fks_common.FKSProcessError(
             'Could not identify the corrected node in the full decay tree')
@@ -2305,7 +2543,9 @@ def _local_decay_context(decay_matrix_element, decay_current,
         if (leg_number in component_direct_targets and
                 component_direct_targets[leg_number] != target):
             raise fks_common.FKSProcessError(
-                'The local and full-topology visible maps disagree')
+                'The local and full-topology visible maps disagree for '
+                'decay leg %s: component target %s, topology target %s' %
+                (leg_number, component_direct_targets[leg_number], target))
         local_map[leg_number] = ('LEG', target)
 
     visible_external_map = {}
@@ -2650,18 +2890,34 @@ def compose_nlo_decay_helas_process(fks_process, composition):
     combined_born, born_component_context, born_component_metadata = \
         _glue_nlo_decay_tree_component(
             production_amplitude, selector, born_current, 'BORN', 1)
+    raw_born_symmetry = combined_born.get('identical_particle_factor')
+    full_born_symmetry = composition['full_identical_particle_factor']
+    if (raw_born_symmetry < 1 or full_born_symmetry < 1 or
+            full_born_symmetry % raw_born_symmetry):
+        raise fks_common.FKSProcessError(
+            'The labeled NLO-decay Born has an incompatible identical-'
+            'particle normalization')
+    symmetry_multiplier = full_born_symmetry // raw_born_symmetry
+    combined_born.set('identical_particle_factor', full_born_symmetry)
+    combined_born.set(
+        'has_mirror_process', composition['full_has_mirror_process'])
 
     topology_metadata = _build_nlo_decay_topology(composition)
     root_amplitude = composition['root_amplitude']
     production_process = composition['root_process']
     decay_process = decay_born_me.get('processes')[0]
     prototype_metadata = topology_metadata
+    corrected_node = prototype_metadata['corrected_node']
+    parent_occurrence = 1 + len([
+        node for node in prototype_metadata['nodes']
+        if (node['id'] < corrected_node and
+            node['pdg'] == selector[0])])
     prototype_metadata.update({
         'format': 5,
         'status': 'INTEGRATION_READY',
         'correction': 'QCD',
         'parent_pdg': selector[0],
-        'parent_occurrence': selector[1],
+        'parent_occurrence': parent_occurrence,
         'contexts': [],
         'fks_maps': [],
         'color_links': [],
@@ -2695,6 +2951,12 @@ def compose_nlo_decay_helas_process(fks_process, composition):
         combined_real, component_context, component_metadata = \
             _glue_nlo_decay_tree_component(
                 production_amplitude, selector, real_current, 'REAL', index)
+        combined_real.set(
+            'identical_particle_factor',
+            combined_real.get('identical_particle_factor') *
+            symmetry_multiplier)
+        combined_real.set(
+            'has_mirror_process', composition['full_has_mirror_process'])
         real.matrix_element = combined_real
         combined_reals.append(real)
         context_id = len(prototype_metadata['contexts']) + 1
@@ -3167,7 +3429,7 @@ def write_decay_chain_info(path, metadata):
 def decay_card_text(widths, renormalization_scales,
                     dummy_width_ratio=DECAY_DUMMY_WIDTH_RATIO,
                     production_scale_momenta='CORE',
-                    nlo_width_pdgs=()):
+                    nlo_width_pdgs=(), nlo_widths=None):
     """Return a deterministic runtime card for on-shell decay parameters."""
 
     absolute_widths = dict(
@@ -3190,6 +3452,19 @@ def decay_card_text(widths, renormalization_scales,
     if not absolute_nlo_width_pdgs.issubset(absolute_widths):
         raise ValueError(
             'NLO decay-width PDGs must have a physical width entry')
+    if nlo_widths is None:
+        absolute_nlo_widths = dict(
+            (pdg, absolute_widths[pdg])
+            for pdg in absolute_nlo_width_pdgs)
+    else:
+        absolute_nlo_widths = dict(
+            (abs(pdg), value) for pdg, value in nlo_widths.items())
+        if len(absolute_nlo_widths) != len(nlo_widths):
+            raise ValueError(
+                'NLO decay widths contain duplicate absolute PDG codes')
+        if set(absolute_nlo_widths) != absolute_nlo_width_pdgs:
+            raise ValueError(
+                'NLO decay widths must cover exactly the NLO-width PDGs')
     production_scale_momenta = production_scale_momenta.upper()
     if production_scale_momenta not in ('CORE', 'DECAYED'):
         raise ValueError(
@@ -3197,18 +3472,22 @@ def decay_card_text(widths, renormalization_scales,
     lines = [
         '# FNLO_DECAY_CARD',
         '# Runtime parameters for fixed-on-shell decay chains.',
-        '# DECAY_WIDTH entries are physical total widths in GeV.',
-        '# NLO_DECAY_WIDTH entries must be NLO physical total widths in GeV.',
+        '# LO_DECAY_WIDTH entries are LO physical total widths in GeV.',
+        '# NLO_DECAY_WIDTH entries are NLO physical total widths in GeV.',
+        '# Bundled NLO results use the strict O(alpha_s) width expansion.',
+        '# All NWA denominators use LO widths; NLO-LO enters only linearly.',
         '# DECAY_REN_SCALE entries are independent decay scales in GeV.',
-        'FORMAT 3',
+        'FORMAT %d' % (4 if absolute_nlo_width_pdgs else 3),
         'DUMMY_WIDTH_RATIO %.16e' % dummy_width_ratio,
         'PRODUCTION_REN_SCALE_MOMENTA %s' % production_scale_momenta]
     for pdg in sorted(absolute_widths):
-        width_keyword = ('NLO_DECAY_WIDTH'
-                         if pdg in absolute_nlo_width_pdgs
-                         else 'DECAY_WIDTH')
-        lines.append('%s %d %.16e' % (width_keyword,
-            pdg, absolute_widths[pdg]))
+        width_keyword = ('LO_DECAY_WIDTH'
+                         if absolute_nlo_width_pdgs else 'DECAY_WIDTH')
+        lines.append('%s %d %.16e' % (
+            width_keyword, pdg, absolute_widths[pdg]))
+        if pdg in absolute_nlo_width_pdgs:
+            lines.append('NLO_DECAY_WIDTH %d %.16e' % (
+                pdg, absolute_nlo_widths[pdg]))
         lines.append('DECAY_REN_SCALE %d %.16e' % (
             pdg, absolute_scales[pdg]))
     lines.append('END')
@@ -3218,11 +3497,11 @@ def decay_card_text(widths, renormalization_scales,
 def write_decay_card(path, widths, renormalization_scales,
                      dummy_width_ratio=DECAY_DUMMY_WIDTH_RATIO,
                      production_scale_momenta='CORE',
-                     nlo_width_pdgs=()):
+                     nlo_width_pdgs=(), nlo_widths=None):
     """Write ``decay_card.dat`` containing runtime decay parameters."""
 
     filename = os.path.join(path, 'decay_card.dat')
     with open(filename, 'w') as stream:
         stream.write(decay_card_text(
             widths, renormalization_scales, dummy_width_ratio,
-            production_scale_momenta, nlo_width_pdgs))
+            production_scale_momenta, nlo_width_pdgs, nlo_widths))

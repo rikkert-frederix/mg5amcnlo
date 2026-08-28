@@ -22,10 +22,8 @@ endif
 
 FNLO_MADLOOP_LIBRARIES = $(if $(strip $(FNLO_VIRTUAL_LIBRARIES)),\
 	$(FNLO_VIRTUAL_LIBRARIES),$(libmadloop))
-FNLO_CUTTOOLS_LIBRARY = $(if $(strip $(FNLO_VIRTUAL_LIBRARIES)),\
-	-lcts,$(libcuttools))
 NLOLIBS=-L$(LIBDIR) $(FNLO_MADLOOP_LIBRARIES) \
-	$(FNLO_CUTTOOLS_LIBRARY) $(libOLP)
+	$(libcuttools) $(libOLP)
 
 # Uncomment the line below to compile with MadLoop without setting the environnement 
 # variables 'by hand'

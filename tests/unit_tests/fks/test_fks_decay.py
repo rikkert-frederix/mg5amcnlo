@@ -163,8 +163,10 @@ class TestFKSDecayChains(unittest.TestCase):
         self.assertEqual(card_text, (
             '# FNLO_DECAY_CARD\n'
             '# Runtime parameters for fixed-on-shell decay chains.\n'
-            '# DECAY_WIDTH entries are physical total widths in GeV.\n'
-            '# NLO_DECAY_WIDTH entries must be NLO physical total widths in GeV.\n'
+            '# LO_DECAY_WIDTH entries are LO physical total widths in GeV.\n'
+            '# NLO_DECAY_WIDTH entries are NLO physical total widths in GeV.\n'
+            '# Bundled NLO results use the strict O(alpha_s) width expansion.\n'
+            '# All NWA denominators use LO widths; NLO-LO enters only linearly.\n'
             '# DECAY_REN_SCALE entries are independent decay scales in GeV.\n'
             'FORMAT 3\n'
             'DUMMY_WIDTH_RATIO 1.0000000000000001e-01\n'
@@ -182,7 +184,12 @@ class TestFKSDecayChains(unittest.TestCase):
             'PRODUCTION_REN_SCALE_MOMENTA DECAYED\n',
             decayed_scale_text)
         nlo_card_text = fks_decay.decay_card_text(
-            {6: 1.3646}, {6: 173.0}, nlo_width_pdgs={6})
+            {6: 1.4915}, {6: 173.0}, nlo_width_pdgs={6},
+            nlo_widths={6: 1.3646})
+        self.assertIn('FORMAT 4\n', nlo_card_text)
+        self.assertIn(
+            'LO_DECAY_WIDTH 6 1.4915000000000000e+00\n',
+            nlo_card_text)
         self.assertIn(
             'NLO_DECAY_WIDTH 6 1.3646000000000000e+00\n',
             nlo_card_text)
@@ -933,7 +940,8 @@ class TestFKSDecayChains(unittest.TestCase):
             with open(os.path.join(
                     process_dir, 'Cards', 'decay_card.dat')) as stream:
                 decay_card = stream.read()
-            self.assertIn('FORMAT 3\n', decay_card)
+            self.assertIn('FORMAT 4\n', decay_card)
+            self.assertIn('LO_DECAY_WIDTH 6 ', decay_card)
             self.assertIn('NLO_DECAY_WIDTH 6 ', decay_card)
             self.assertNotIn('\nDECAY_WIDTH 6 ', decay_card)
             self.assertTrue(os.path.islink(os.path.join(
@@ -1038,6 +1046,15 @@ class TestFKSDecayChains(unittest.TestCase):
                 self.assertEqual(
                     virtual.get_nexternal_ninitial(),
                     matrix_element.born_me.get_nexternal_ninitial())
+                visible_legs = sorted(
+                    matrix_element.born_me['processes'][0].
+                    get_legs_with_decays(),
+                    key=lambda leg: leg.get('number'))
+                model = matrix_element.born_me['processes'][0].get('model')
+                self.assertEqual(
+                    virtual.get_external_masses()[:-2],
+                    [model.get_particle(leg.get('id')).get('mass')
+                     for leg in visible_legs])
                 self.assertEqual(
                     metadata['nodes'][metadata['corrected_node'] - 1]['pdg'],
                     corrected_pdg)
@@ -1155,6 +1172,74 @@ class TestFKSDecayChains(unittest.TestCase):
              matrix_element.bundle_nlo_decay_metadata],
             [6, 24])
 
+    def test_full_nlo_bundle_expands_identical_decay_occurrences(self):
+        command = self.generate(
+            'u u~ > z z [real=QCD], '
+            '(z > b b~ QED=1 [real=QCD])')
+        matrix_element = fks_helas_objects.FKSHelasMultiProcess(
+            command._fks_multi_proc,
+            loop_optimized=False)['matrix_elements'][0]
+
+        # The production Born retains its 1/2! identical-Z symmetry divisor,
+        # while the decay correction is represented once for each physical Z
+        # occurrence.  The two terms therefore form the required sum over
+        # resonance assignments without an extra combinatorial multiplier.
+        self.assertEqual(
+            matrix_element.born_me.get('identical_particle_factor'), 2)
+        self.assertEqual(
+            [entry['kind'] for entry in
+             matrix_element.bundle_contributions],
+            ['PRODUCTION', 'NLO_DECAY', 'NLO_DECAY'])
+        self.assertEqual(
+            [entry['parent_pdg'] for entry in
+             matrix_element.bundle_contributions],
+            [0, 23, 23])
+        self.assertEqual(
+            [(metadata['corrected_node'],
+              metadata['parent_occurrence'])
+             for metadata in
+             matrix_element.bundle_nlo_decay_metadata],
+            [(1, 1), (2, 2)])
+        self.assertEqual(
+            [metadata['nodes'][metadata['corrected_node'] - 1]['pdg']
+             for metadata in
+             matrix_element.bundle_nlo_decay_metadata],
+            [23, 23])
+        self.assertEqual(
+            set(real.matrix_element.get('identical_particle_factor')
+                for real in matrix_element.real_processes),
+            set([2]))
+
+    def test_full_nlo_bundle_distinguishes_identical_decay_modes(self):
+        command = self.generate(
+            'u u~ > z z [real=QCD], '
+            '(z > b b~ QED=1 [real=QCD]), '
+            '(z > e+ e- QED=2)')
+        matrix_element = fks_helas_objects.FKSHelasMultiProcess(
+            command._fks_multi_proc,
+            loop_optimized=False)['matrix_elements'][0]
+
+        # Only the Z assigned to b b~ owns a numerator correction.  Both Z
+        # nodes remain in the production topology, so the runtime width
+        # expansion can still apply delta Gamma_Z/Gamma_Z to both physical
+        # denominators.
+        self.assertEqual(
+            [entry['kind'] for entry in
+             matrix_element.bundle_contributions],
+            ['PRODUCTION', 'NLO_DECAY'])
+        self.assertEqual(
+            matrix_element.bundle_nlo_decay_metadata[0]
+            ['parent_occurrence'], 1)
+        self.assertEqual(
+            [node['pdg'] for node in matrix_element.decay_metadata['nodes']],
+            [23, 23])
+        born_factor = matrix_element.born_me.get(
+            'identical_particle_factor')
+        self.assertEqual(
+            set(real.matrix_element.get('identical_particle_factor')
+                for real in matrix_element.real_processes),
+            set([born_factor]))
+
     def test_full_nlo_bundle_groups_production_subprocesses(self):
         command = self.generate(
             'p p > t t~ [real=QCD], '
@@ -1176,6 +1261,50 @@ class TestFKSDecayChains(unittest.TestCase):
                  matrix_element.bundle_contributions],
                 ['PRODUCTION', 'NLO_DECAY'])
         self.assertEqual(actual_groups, expected_groups)
+
+    def test_full_nlo_bundle_supports_additional_production_processes(self):
+        command = self.generate(
+            'u u~ > t t~ [real=QCD], '
+            '(t > w+ b QED=1 [real=QCD]), '
+            '(t~ > w- b~ QED=1 [real=QCD])')
+        command.exec_cmd(
+            'add process d d~ > t t~ [real=QCD], '
+            '(t > w+ b QED=1 [real=QCD]), '
+            '(t~ > w- b~ QED=1 [real=QCD])',
+            printcmd=False, precmd=True)
+
+        self.assertTrue(command._fks_multi_proc.full_nlo_decay_bundle)
+        self.assertEqual(
+            len(command._fks_multi_proc.production['born_processes']), 2)
+        self.assertTrue(all(
+            len(member.nlo_decay_production_amplitudes) == 2
+            for member in command._fks_multi_proc.decays))
+
+        helas = fks_helas_objects.FKSHelasMultiProcess(
+            command._fks_multi_proc, loop_optimized=False)
+        self.assertEqual(len(helas['matrix_elements']), 1)
+        matrix_element = helas['matrix_elements'][0]
+        self.assertEqual(set(
+            tuple(process.get_initial_ids())
+            for process in matrix_element.born_me.get('processes')),
+            set([(2, -2), (1, -1)]))
+        self.assertEqual(
+            [entry['kind'] for entry in
+             matrix_element.bundle_contributions],
+            ['PRODUCTION', 'NLO_DECAY', 'NLO_DECAY'])
+
+    def test_full_nlo_bundle_rejects_mismatched_added_decay_trees(self):
+        command = self.generate(
+            'u u~ > t t~ [real=QCD], '
+            '(t > w+ b QED=1 [real=QCD], w+ > u d~), '
+            '(t~ > w- b~)')
+        with self.assertRaisesRegex(
+                InvalidCmd, 'same corrected decay definitions'):
+            command.exec_cmd(
+                'add process d d~ > t t~ [real=QCD], '
+                '(t > w+ b QED=1 [real=QCD], w+ > c s~), '
+                '(t~ > w- b~)',
+                printcmd=False, precmd=True)
 
     def test_full_nlo_bundle_exports_virtual_dispatchers(self):
         command = self.generate(

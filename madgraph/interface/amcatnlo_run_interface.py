@@ -5480,8 +5480,12 @@ RESTART = %(mint_mode)s
                      pjoin(cwd, 'leshouche_info.dat'),
                      pjoin(cwd, 'FKS_params.dat')]
 
-        for decay_file in ['decay_card.dat', 'decay_chain_info.dat',
-                           'nlo_decay_info.dat']:
+        decay_files = ['decay_card.dat', 'decay_chain_info.dat',
+                       'nlo_decay_info.dat', 'nlo_contribution_info.dat']
+        decay_files.extend(
+            os.path.basename(path)
+            for path in glob.glob(pjoin(cwd, 'nlo_decay_info_*.dat')))
+        for decay_file in decay_files:
             decay_path = pjoin(cwd, decay_file)
             if os.path.exists(decay_path):
                 input_files.append(decay_path)

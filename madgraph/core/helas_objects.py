@@ -4808,9 +4808,19 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         external particles."""
 
         mass_list=[]
-        external_wfs = sorted([wf for wf in self.get_all_wavefunctions() if wf.get('leg_state') != \
-                              'intermediate'],\
-                              key=lambda w: w['number_external'])
+        # ``leg_state`` is a boolean and therefore cannot distinguish an
+        # external wavefunction from an internal current.  In particular, a
+        # resonance introduced by inserting a decay chain retains the
+        # external number of the wavefunction it replaced.  Including such a
+        # current here can assign its mass to an unrelated visible daughter
+        # with the same external number.  Mothers are the authoritative HELAS
+        # distinction; loop matrix elements still expose their two L-cut
+        # wavefunctions without mothers and callers intentionally remove
+        # those two trailing entries.
+        external_wfs = sorted(
+            [wf for wf in self.get_all_wavefunctions()
+             if not wf.get('mothers')],
+            key=lambda w: w['number_external'])
         external_number=1
         for wf in external_wfs:
             if wf.get('number_external')==external_number:

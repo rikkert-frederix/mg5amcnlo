@@ -18,6 +18,9 @@ module check_poles_module
   use nlo_decay_kinematics, only: initialize_nlo_decay_kinematics, &
        nlo_decay_minimum_production_mass, &
        generate_nlo_decay_born_momenta
+  use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
+       nlo_contribution_count, contribution_has_virtual, &
+       contribution_fks_first, contribution_fks_last
   use fnlo_process_common, only: calculatedborn => calculated_born, &
                                  nfksprocess, qes2, force_polecheck, &
                                  polecheck_passed, &
@@ -148,8 +151,10 @@ contains
     double precision :: born_weight, virtual_weight, total_mass
     double precision :: strong_coupling
     double precision :: decay_variables(99), decay_jacobian, decay_weight
-    integer :: npoints, npoints_checked, nfail
-    integer :: particle, component
+    integer, allocatable :: target_configurations(:)
+    integer :: npoints, npoints_checked, nfail, total_fail, total_checked
+    integer :: particle, component, contribution, configuration
+    integer :: target_count, target_index, first_configuration
     logical :: decay_point_is_valid
 
     call init_process_dimensions_bridge()
@@ -181,6 +186,83 @@ contains
     ichan = 1
     iconfigs(1) = iconfig
 
+    write (*, *) ' Insert the number of points to test'
+    read (*, *) npoints
+    if (npoints < 1) call fail_check_poles('the point count must be positive')
+    write (*, *) 'Insert the relative tolerance'
+    write (*, *) ' A negative number will mean use the default one: ', &
+         tolerance_default
+    read (*, *) tolerance
+    if (tolerance <= zero) then
+      tolerance = tolerance_default
+    else
+      IRPoleCheckThreshold = tolerance
+    end if
+
+    allocate(rambo_masses(rambo_max_particles))
+    allocate(rambo_momenta(0:3, rambo_max_particles))
+    allocate(momentum(0:3, nexternal))
+    do particle = nincoming + 1, nexternal - 1
+      rambo_masses(particle - nincoming) = generated_masses(particle)
+    end do
+
+    allocate(target_configurations(fks_configs))
+    target_configurations = 0
+    target_count = 0
+    if (has_nlo_contribution_bundle()) then
+      do contribution = 1, nlo_contribution_count()
+        if (.not. contribution_has_virtual(contribution)) cycle
+        first_configuration = contribution_fks_first(contribution)
+        do configuration = contribution_fks_first(contribution), &
+                           contribution_fks_last(contribution)
+          nfksprocess = configuration
+          call fks_inc_chooser()
+          particle = fks_i_d(nfksprocess)
+          if (abs(pdg_type_d(nfksprocess, particle)) == 21 .or. &
+              pdg_type_d(nfksprocess, particle) == 22) then
+            first_configuration = configuration
+            exit
+          end if
+        end do
+        target_count = target_count + 1
+        target_configurations(target_count) = first_configuration
+      end do
+    else
+      first_configuration = 0
+      do configuration = 1, fks_configs
+        nfksprocess = configuration
+        call fks_inc_chooser()
+        particle = fks_i_d(nfksprocess)
+        if (abs(pdg_type_d(nfksprocess, particle)) == 21 .or. &
+            pdg_type_d(nfksprocess, particle) == 22) then
+          first_configuration = configuration
+          exit
+        end if
+      end do
+      if (first_configuration > 0) then
+        target_count = 1
+        target_configurations(1) = first_configuration
+      end if
+    end if
+    if (target_count == 0) return
+
+    call force_stability_check(.true.)
+    call collier_compute_uv_poles(.true.)
+    call collier_compute_ir_poles(.true.)
+
+    total_fail = 0
+    total_checked = 0
+    target_index = 1
+
+190 continue
+    nfksprocess = target_configurations(target_index)
+    call fks_inc_chooser()
+    call leshouche_inc_chooser()
+    call setfksfactor()
+    call initialize_nlo_decay_metadata()
+    if (has_decay_chains()) call initialize_decay_chain_kinematics()
+    if (has_nlo_decay()) call initialize_nlo_decay_kinematics()
+
     if (has_decay_chains()) then
       total_mass = minimum_core_final_mass()
     else if (has_nlo_decay()) then
@@ -196,54 +278,19 @@ contains
     else
       energy = ebeam(1) + ebeam(2)
     end if
-    renormalization_scale = energy / 2d0
-
-    write (*, *) ' Insert the number of points to test'
-    read (*, *) npoints
-    write (*, *) 'Insert the relative tolerance'
-    write (*, *) ' A negative number will mean use the default one: ', &
-         tolerance_default
-    read (*, *) tolerance
-    if (tolerance <= zero) then
-      tolerance = tolerance_default
-    else
-      IRPoleCheckThreshold = tolerance
-    end if
-
-    call check_poles_set_model_scale(renormalization_scale)
     if (has_nlo_decay()) then
-      qes2 = decay_renormalization_scale(corrected_parent_pdg())**2
+      renormalization_scale = &
+           decay_renormalization_scale(corrected_parent_pdg())
     else
-      qes2 = renormalization_scale**2
+      renormalization_scale = energy / 2d0
     end if
+    call check_poles_set_model_scale(renormalization_scale)
+    qes2 = renormalization_scale**2
 
-    allocate(rambo_masses(rambo_max_particles))
-    allocate(rambo_momenta(0:3, rambo_max_particles))
-    allocate(momentum(0:3, nexternal))
-    do particle = nincoming + 1, nexternal - 1
-      rambo_masses(particle - nincoming) = generated_masses(particle)
-    end do
-
-    iconfig = 1
-    ichan = 1
-    iconfigs(1) = iconfig
-    do nfksprocess = 1, fks_configs
-      call fks_inc_chooser()
-      particle = fks_i_d(nfksprocess)
-      if (abs(pdg_type_d(nfksprocess, particle)) == 21 .or. &
-          pdg_type_d(nfksprocess, particle) == 22) exit
-    end do
-    if (nfksprocess > fks_configs) return
-
-    call fks_inc_chooser()
-    call leshouche_inc_chooser()
-    call setfksfactor()
-
+    write (*, *) 'CHECKING VIRTUAL CONTRIBUTION ', target_index, &
+         ' OF ', target_count, ' WITH FKS CONFIGURATION ', nfksprocess
     nfail = 0
     npoints_checked = 0
-    call force_stability_check(.true.)
-    call collier_compute_uv_poles(.true.)
-    call collier_compute_ir_poles(.true.)
 
 200 continue
     calculatedborn = .false.
@@ -373,6 +420,14 @@ contains
     write (*, *) 'NUMBER OF POINTS PASSING THE CHECK', npoints - nfail
     write (*, *) 'NUMBER OF POINTS FAILING THE CHECK', nfail
     write (*, *) 'TOLERANCE ', tolerance
+    total_fail = total_fail + nfail
+    total_checked = total_checked + npoints
+    target_index = target_index + 1
+    if (target_index <= target_count) go to 190
+
+    write (*, *) 'TOTAL NUMBER OF POINTS PASSING THE CHECK', &
+         total_checked - total_fail
+    write (*, *) 'TOTAL NUMBER OF POINTS FAILING THE CHECK', total_fail
 
   end subroutine run_check_poles
 

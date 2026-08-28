@@ -28,6 +28,7 @@ module nlo_contribution_bundle
   public :: local_fks_configuration, global_fks_configuration
   public :: contribution_fks_first, contribution_fks_last
   public :: contribution_representative_fks
+  public :: contribution_is_nlo_decay, contribution_parent_pdg
   public :: active_contribution_fks_first, active_contribution_fks_last
   public :: active_contribution_is_production
   public :: active_contribution_is_nlo_decay
@@ -211,6 +212,11 @@ contains
           contribution_parent_values(contribution) == 0) then
         call fail_bundle('an NLO-decay member has no corrected parent')
       end if
+      if (contribution_kind_values(contribution) == &
+          production_contribution .and. &
+          contribution_parent_values(contribution) /= 0) then
+        call fail_bundle('the production member has a decay parent')
+      end if
       if (contribution_virtual_values(contribution) .neqv. &
           any(virtual_grid_values(:, contribution) > 0)) then
         call fail_bundle('a contribution has inconsistent virtual grids')
@@ -326,6 +332,28 @@ contains
     contribution_representative_fks = &
          contribution_representative_values(contribution)
   end function contribution_representative_fks
+
+
+  logical function contribution_is_nlo_decay(contribution)
+    integer, intent(in) :: contribution
+    if (.not. initialized) call initialize_nlo_contribution_bundle()
+    call check_contribution(contribution)
+    contribution_is_nlo_decay = enabled .and. &
+         contribution_kind_values(contribution) == nlo_decay_contribution
+  end function contribution_is_nlo_decay
+
+
+  integer function contribution_parent_pdg(contribution)
+    integer, intent(in) :: contribution
+    if (.not. initialized) call initialize_nlo_contribution_bundle()
+    call check_contribution(contribution)
+    if (.not. enabled .or. &
+        contribution_kind_values(contribution) /= nlo_decay_contribution) then
+      contribution_parent_pdg = 0
+    else
+      contribution_parent_pdg = contribution_parent_values(contribution)
+    end if
+  end function contribution_parent_pdg
 
 
   integer function active_contribution_fks_first()

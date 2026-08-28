@@ -508,7 +508,17 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
                 leg.get('id') for leg in sorted(
                     process.get('legs'), key=lambda item: item.get('number'))
                 if not leg.get('state')))
-        return tuple(sorted(initial_states))
+        visible = sorted(
+            matrix_element.born_me.get('processes')[0].
+            get_legs_with_decays(),
+            key=lambda item: item.get('number'))
+        # A corrected-decay compositor can temporarily order the same visible
+        # daughters differently; alignment below canonicalizes that order.
+        # The multiset is sufficient here and still separates added
+        # production processes with genuinely different visible states.
+        final_state = tuple(sorted(
+            leg.get('id') for leg in visible if leg.get('state')))
+        return tuple(sorted(initial_states)), final_state
 
     def initialize_full_nlo_decay_bundle(self, fksmulti, loop_optimized,
                                          gen_color, decay_ids):

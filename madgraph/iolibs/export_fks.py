@@ -455,10 +455,11 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             elif pdg in nlo_width_species:
                 logger.warning(
                     'The width %.8g for NLO-corrected parent PDG %d was '
-                    'copied from param_card.dat to NLO_DECAY_WIDTH. It must '
-                    'be the NLO physical total width; update decay_card.dat '
-                    'if the parameter-card value is only LO.', widths[pdg],
-                    pdg)
+                    'copied from param_card.dat to both LO_DECAY_WIDTH and '
+                    'NLO_DECAY_WIDTH. Set both entries in decay_card.dat to '
+                    'the corresponding physical total widths before running '
+                    'the strict O(alpha_s) expanded calculation.',
+                    widths[pdg], pdg)
             particle = self.model.get_particle(pdg)
             mass_name = particle.get('mass') if particle else None
             mass_value = self.model.get('parameter_dict').get(mass_name)
@@ -6054,7 +6055,8 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
             logger.warning(error.strerror + " " + dirpath)
 
         # Create the directory PN_xx_xxxxx in the specified path
-        name = "V%s" % matrix_element.get('processes')[0].shell_string()
+        name = (getattr(self, '_fnlo_virtual_directory_name', None) or
+                "V%s" % matrix_element.get('processes')[0].shell_string())
         dirpath = os.path.join(dir_name, name)
 
         try:
@@ -6116,7 +6118,16 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
         for file in linkfiles:
             ln('../../%s' % file)
                 
-        os.system("ln -s ../../makefile_loop makefile")
+        archive = getattr(self, '_fnlo_virtual_archive', None)
+        if archive:
+            with open('../../makefile_loop') as makefile_stream:
+                makefile_text = makefile_stream.read()
+            makefile_text = makefile_text.replace(
+                'LOOPLIB= libMadLoop.a', 'LOOPLIB= %s' % archive)
+            with open('makefile', 'w') as makefile_stream:
+                makefile_stream.write(makefile_text)
+        else:
+            os.system("ln -s ../../makefile_loop makefile")
         
 # We should move to MadLoop5_resources directory from the SubProcesses
         ln(pjoin(os.path.pardir,os.path.pardir,'MadLoopParams.dat'),

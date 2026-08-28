@@ -4,7 +4,12 @@ fNLO fixed-order calculation.
 Processes with on-shell decay chains additionally contain decay_card.dat.
 That card controls the physical widths, dummy-width ratio, decay
 renormalization scales, and the production renormalization-scale momentum
-choice.
+choice. Full NLO production-and-decay bundles require separate LO and NLO
+total widths for each corrected species and use their strict fixed-order
+O(alpha_s) expansion. All narrow-width denominators use the LO entries; the
+NLO-minus-LO differences enter only through the linear Born counterterm. That
+counterterm counts physical resonance occurrences, independently of which
+partial-decay numerators receive QCD corrections.
 
 The run-card switch cut_decays controls whether built-in and user-defined
 generation cuts see forced-decay products. It defaults to false; fixed-order

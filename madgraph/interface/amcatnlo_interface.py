@@ -874,12 +874,6 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
             fksproc.nlo_decay_full_process_definition = myprocdef
             self._fks_multi_proc = fksproc
         elif full_nlo_decay_specs is not None:
-            if (hasattr(self, '_fks_multi_proc') and
-                    self._fks_multi_proc.get('born_processes')):
-                raise self.InvalidCmd(
-                    'Full NLO decay-chain bundles do not yet support '
-                    'generate/add-process combinations')
-
             lo_decay_tree = fks_decay.prepare_lo_decay_tree(myprocdef)
             production_definition = copy.copy(lo_decay_tree)
             production_definition.set(
@@ -916,9 +910,19 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                     lo_decay_tree
                 decay_members.append(decay_fks)
 
-            self._fks_multi_proc = \
-                fks_decay.FullNLOContributionMultiProcess(
-                    production_fks, decay_members)
+            new_bundle = fks_decay.FullNLOContributionMultiProcess(
+                production_fks, decay_members)
+            if (hasattr(self, '_fks_multi_proc') and
+                    self._fks_multi_proc.get('born_processes')):
+                if not isinstance(
+                        self._fks_multi_proc,
+                        fks_decay.FullNLOContributionMultiProcess):
+                    raise self.InvalidCmd(
+                        'A full NLO decay-chain process cannot be combined '
+                        'with a non-bundled process')
+                self._fks_multi_proc.add(new_bundle)
+            else:
+                self._fks_multi_proc = new_bundle
         elif decay_chains:
             # FKS regions and all i/j/ij bookkeeping are generated from the
             # undecayed production process.  The decay specification is kept
