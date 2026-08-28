@@ -9,15 +9,19 @@ module genps_fks
   use fks_diagnostics, only: xmom_compare
   use genps_born, only: born_phase_space, generate_born_phase_space, &
                         invalidate_born_phase_space
-  use factorized_phase_space, only: reset_factorized_phase_space
+  use factorized_phase_space, only: factorized_radiation_state, &
+       reset_factorized_phase_space, store_factorized_kernel_momenta, &
+       store_factorized_radiation_state, &
+       scale_factorized_radiation_jacobians
   use decay_chain_metadata, only: has_decay_chains, context_for_fks, &
                                   real_phase_space_dimension
   use decay_chain_kinematics, only: get_core_born_momenta, &
        get_core_mass_buffer, active_core_count, expand_real_decay_momenta, &
        store_core_event_momenta, fks_leg_mass
-  use nlo_decay_metadata, only: has_nlo_decay
+  use nlo_decay_metadata, only: has_nlo_decay, nlo_decay_corrected_node
   use nlo_decay_kinematics, only: generate_nlo_decay_fks_event, &
                                   nlo_decay_fks_sister_mass, &
+                                  nlo_decay_parent_mass, &
                                   fill_nlo_decay_event_masses
   ! Generated parameters keep the phase-space normalization bit-identical
   ! to the NLO template's compile-time arithmetic.
@@ -96,6 +100,7 @@ contains
     do i = first_counterevent, real_event
       stored_event_jacobian(i) = stored_event_jacobian(i)*wgt
     end do
+    call scale_factorized_radiation_jacobians(wgt)
     wgt = stored_event_jacobian(real_event)
 
     call cpu_time(tAfter)
@@ -117,7 +122,8 @@ contains
     integer :: event_generation_order(4)
     double precision :: visible(0:3, nexternal), event_masses(-max_branch:max_particles)
     double precision :: xiimax, xinorm, xi_i, xi_hat, y_ij
-    double precision :: p_i_hat(0:3), xjac, xpswgt
+    double precision :: p_i_hat(0:3), kernel_p_i_hat(0:3), xjac, xpswgt
+    double precision :: decay_mass
     logical :: event_pass, real_pass, massive_sister, skip_counterevents
 
     event_generation_order = (/real_event, soft_counterevent, &
@@ -131,6 +137,7 @@ contains
     ybst_til_tolab = -ycm_born - 0.5d0*log(ebeam(1)/ebeam(2))
     ybst_til_tocm = 0d0
     event_masses = 0d0
+    decay_mass = nlo_decay_parent_mass()
     call fill_nlo_decay_event_masses(nfksprocess, &
                                      event_masses(1:nexternal))
     do event_slot = first_counterevent, real_event
@@ -158,10 +165,11 @@ contains
       xi_i = -1d0
       y_ij = -2d0
       p_i_hat = -1d0
+      kernel_p_i_hat = -1d0
       solution_sign = 1
       call generate_nlo_decay_fks_event(nfksprocess, event_slot, x, ndim, &
            xjac, xpswgt, visible, xiimax, xinorm, xi_i, xi_hat, y_ij, &
-           p_i_hat, solution_sign, event_pass)
+           p_i_hat, kernel_p_i_hat, solution_sign, event_pass)
       if (event_pass .and. xjac > 0d0) then
         call phspncheck_nocms(nexternal, sqrtshat_born, event_masses, &
                               visible, event_pass)
@@ -174,7 +182,9 @@ contains
         xjac = -196d0
       end if
       call store_FKS_event(event_slot, xiimax, xinorm, xi_i, xi_hat, &
-                           p_i_hat, y_ij, visible, p, xjac, jac)
+                           p_i_hat, y_ij, visible, p, xjac, jac, &
+                           nlo_decay_corrected_node(), kernel_p_i_hat, &
+                           decay_mass**2, decay_mass, 0d0)
 
       if (event_slot == real_event) then
         real_pass = event_pass .and. xjac > 0d0
@@ -382,10 +392,16 @@ contains
                                        visible_xp, pass)
         if (.not. pass) xjac = -198d0
       else
+        if (pass .and. xjac > 0d0) then
+          call store_factorized_kernel_momenta( &
+               icountevts, 0, core_particle_count, xp)
+        end if
         visible_xp = xp
       end if
       call store_FKS_event(icountevts, xiimax, xinorm, &
-        & xi_i_fks, xi_i_hat, p_i_fks, y_ij_fks, visible_xp, p, xjac, jac)
+        & xi_i_fks, xi_i_hat, p_i_fks, y_ij_fks, visible_xp, p, xjac, &
+        & jac, 0, p_i_fks, event_shat(icountevts), &
+        & event_sqrt_shat(icountevts), ybst_til_tocm(icountevts))
       if (icountevts .eq. real_event .and. isolsign .eq. -1) &
         skip_counterevents = .true.
     end do counterevent_loop
@@ -442,15 +458,19 @@ contains
   end subroutine compute_flux
 
   subroutine store_FKS_event(icountevts, xiimax, xinorm, &
-    & xi_i_fks, xi_i_hat, p_i_fks, y_ij_fks, xp, p, xjac, jac)
+    & xi_i_fks, xi_i_hat, p_i_fks, y_ij_fks, xp, p, xjac, jac, &
+    & radiation_block, kernel_p_i_fks, kernel_shat, kernel_sqrt_shat, &
+    & kernel_y_to_cm)
 
     implicit none
-    integer icountevts
+    integer icountevts, radiation_block
     double precision xiimax, xinorm, &
       & xi_i_fks, xi_i_hat, p_i_fks(0:3), y_ij_fks, xp(0:3, nexternal), p(0:3, nexternal), &
-      & xjac, jac
+      & xjac, jac, kernel_p_i_fks(0:3), kernel_shat, kernel_sqrt_shat, &
+      & kernel_y_to_cm
 
     integer i, j
+    type(factorized_radiation_state) :: radiation
 
 ! Catch the points for which there is no viable phase-space generation
 ! (still fill the shared state with some information that is needed
@@ -478,6 +498,19 @@ contains
       end do
     end do
     stored_event_jacobian(icountevts) = xjac
+
+    radiation%jacobian = xjac
+    radiation%xi = xi_i_fks
+    radiation%y = y_ij_fks
+    radiation%xi_hat = xi_i_hat
+    radiation%xi_max = xiimax
+    radiation%xi_norm = xinorm
+    radiation%fks_momentum = kernel_p_i_fks
+    radiation%shat = kernel_shat
+    radiation%sqrt_shat = kernel_sqrt_shat
+    radiation%y_to_cm = kernel_y_to_cm
+    call store_factorized_radiation_state( &
+         icountevts, radiation_block, radiation)
 
     if (icountevts .eq. real_event) then
       do i = 1, nexternal

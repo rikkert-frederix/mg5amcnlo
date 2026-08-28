@@ -650,9 +650,24 @@ class TestMadEventCmd(unittest.TestCase):
         with open(pjoin(subprocess_dir,
                         'nlo_decay_kinematics.f90')) as stream:
             nlo_decay_kinematics = stream.read().lower()
-        self.assertIn('local_event_cache', nlo_decay_kinematics)
-        self.assertIn('get_nlo_decay_event_momenta',
+        self.assertIn('store_factorized_kernel_momenta',
                       nlo_decay_kinematics)
+        self.assertNotIn('local_event_cache', nlo_decay_kinematics)
+        with open(pjoin(subprocess_dir,
+                        'decay_chain_kinematics.f90')) as stream:
+            production_kinematics = stream.read().lower()
+        self.assertNotIn('core_event_storage', production_kinematics)
+        self.assertNotIn('get_core_event_momenta', production_kinematics)
+
+        with open(pjoin(subprocess_dir,
+                        'factorized_phase_space.f90')) as stream:
+            factorized_phase_space = stream.read().lower()
+        self.assertIn('type, public :: factorized_radiation_state',
+                      factorized_phase_space)
+        self.assertIn('kernel_momenta', factorized_phase_space)
+
+        self.assertIn('fetch_factorized_kernel_momenta', fks_singular)
+        self.assertNotIn('get_nlo_decay_event_momenta', fks_singular)
 
         
     def test_v31_syntax_crash(self):

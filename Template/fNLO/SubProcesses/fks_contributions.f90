@@ -7,9 +7,11 @@ module fks_contributions_module
                           amp_split_pos_to_orders
   use madfks_plot_module, only: initplot_impl
   use fks_model_state_module, only: g => strong_coupling, external_masses
+  use factorized_phase_space, only: factorized_radiation_state, &
+       fetch_factorized_radiation_state
   use decay_chain_metadata, only: has_decay_chains
   use decay_chain_kinematics, only: fks_leg_mass
-  use nlo_decay_metadata, only: has_nlo_decay
+  use nlo_decay_metadata, only: has_nlo_decay, nlo_decay_corrected_node
   use nlo_decay_kinematics, only: nlo_decay_fks_sister_mass
   use nlo_contribution_bundle, only: active_contribution_has_virtual, &
        active_virtual_grid_index, active_contribution_is_production
@@ -59,6 +61,65 @@ module fks_contributions_module
 
 contains
 
+  logical function uses_factorized_radiation_state()
+    if (has_nlo_decay()) then
+      uses_factorized_radiation_state = .true.
+    else
+      uses_factorized_radiation_state = has_decay_chains()
+    end if
+  end function uses_factorized_radiation_state
+
+
+  integer function active_radiation_block()
+    if (has_nlo_decay()) then
+      active_radiation_block = nlo_decay_corrected_node()
+    else
+      active_radiation_block = 0
+    end if
+  end function active_radiation_block
+
+
+  subroutine load_radiation_state(event_slot, radiation)
+    integer, intent(in) :: event_slot
+    type(factorized_radiation_state), intent(out) :: radiation
+    logical :: available
+
+    if (uses_factorized_radiation_state()) then
+      call fetch_factorized_radiation_state( &
+           event_slot, active_radiation_block(), radiation, available)
+      if (available) return
+      ! Some massive mappings intentionally omit counterevents.  They retain
+      ! negative legacy sentinels and are never evaluated as physical blocks.
+      if (stored_event_jacobian(event_slot) > 0d0) then
+        write (*, '(a,i0)') &
+             'ERROR: block-local radiation state is unavailable for slot ', &
+             event_slot
+        stop 1
+      end if
+      ! A skipped massive counterevent has no independent mapping.  Retain
+      ! its negative Jacobian sentinel, but inherit all unused kinematic
+      ! fields from the physical real state of the same block.
+      call fetch_factorized_radiation_state( &
+           real_event, active_radiation_block(), radiation, available)
+      if (.not. available) then
+        write (*, '(a)') &
+             'ERROR: real block-local radiation state is unavailable'
+        stop 1
+      end if
+      radiation%jacobian = stored_event_jacobian(event_slot)
+      return
+    end if
+    radiation = factorized_radiation_state()
+    radiation%jacobian = stored_event_jacobian(event_slot)
+    radiation%xi = event_xi(event_slot)
+    radiation%y = event_y(event_slot)
+    radiation%xi_hat = event_xi_hat(event_slot)
+    radiation%xi_max = event_xi_max(event_slot)
+    radiation%xi_norm = event_xi_norm(event_slot)
+    radiation%shat = event_shat(event_slot)
+    radiation%sqrt_shat = sqrt(max(0d0, event_shat(event_slot)))
+  end subroutine load_radiation_state
+
   logical function fks_sister_is_massless()
     if (has_nlo_decay()) then
       fks_sister_is_massless = &
@@ -82,9 +143,12 @@ contains
 
     double precision wgt_c
     double precision wgt1
+    type(factorized_radiation_state) :: real_radiation, soft_radiation
     call cpu_time(tBefore)
     if (f_b .eq. 0d0) return
-    if (event_xi_hat(real_event)*event_xi_max(soft_counterevent) .gt. &
+    call load_radiation_state(real_event, real_radiation)
+    call load_radiation_state(soft_counterevent, soft_radiation)
+    if (real_radiation%xi_hat*soft_radiation%xi_max .gt. &
         xiBSVcut_used) return
     call sborn(p_born, wgt_c)
     do iamp = 1, amp_split_size
@@ -118,10 +182,13 @@ contains
     integer :: born_orders(nsplitorders), correction_orders(nsplitorders)
     integer :: iamp
     double precision :: born_weight, weight
+    type(factorized_radiation_state) :: real_radiation, soft_radiation
 
     if (.not. active_contribution_is_production()) return
     if (f_b .eq. 0d0) return
-    if (event_xi_hat(real_event)*event_xi_max(soft_counterevent) .gt. &
+    call load_radiation_state(real_event, real_radiation)
+    call load_radiation_state(soft_counterevent, soft_radiation)
+    if (real_radiation%xi_hat*soft_radiation%xi_max .gt. &
         xiBSVcut_used) return
     call sborn(p_born, born_weight)
     do iamp = 1, amp_split_size
@@ -157,9 +224,12 @@ contains
     integer iamp, virtual_grid
 
     double precision wgt1, wgt2, wgt3, bsv_wgt, virt_wgt, born_wgt, g22, wgt4
+    type(factorized_radiation_state) :: real_radiation, soft_radiation
     call cpu_time(tBefore)
     if (f_nb .eq. 0d0) return
-    if (event_xi_hat(real_event)*event_xi_max(soft_counterevent) .gt. &
+    call load_radiation_state(real_event, real_radiation)
+    call load_radiation_state(soft_counterevent, soft_radiation)
+    if (real_radiation%xi_hat*soft_radiation%xi_max .gt. &
         xiBSVcut_used) return
     call bornsoftvirtual(soft_counterevent, &
                          stored_event_momenta(:, :, soft_counterevent), &
@@ -225,13 +295,15 @@ contains
     integer orders(nsplitorders)
     integer iamp
     double precision s_ev, p(0:3, nexternal), wgt1, fx_ev
+    type(factorized_radiation_state) :: real_radiation
     call cpu_time(tBefore)
     if (f_r .eq. 0d0) return
+    call load_radiation_state(real_event, real_radiation)
     s_ev = evaluate_fks_sij(real_event, p, i_fks, j_fks, &
-                            event_xi(real_event), event_y(real_event))
+                            real_radiation%xi, real_radiation%y)
     if (s_ev .le. 0.d0) return
-    call sreal(real_event, p, event_xi(real_event), &
-               event_y(real_event), fx_ev)
+    call sreal(real_event, p, real_radiation%xi, &
+               real_radiation%y, fx_ev)
     do iamp = 1, amp_split_size
       if (amp_split(iamp) .eq. 0d0) cycle
       call amp_split_pos_to_orders(iamp, orders)
@@ -255,18 +327,21 @@ contains
     integer orders(nsplitorders)
     integer iamp
     double precision wgt1, s_s, fx_s, zero, g22
+    type(factorized_radiation_state) :: real_radiation, soft_radiation
     parameter(zero=0d0)
     call cpu_time(tBefore)
     if (f_s .eq. 0d0) return
-    if (event_xi_hat(real_event)*event_xi_max(soft_counterevent) .gt. &
+    call load_radiation_state(real_event, real_radiation)
+    call load_radiation_state(soft_counterevent, soft_radiation)
+    if (real_radiation%xi_hat*soft_radiation%xi_max .gt. &
         xiScut_used) return
     s_s = evaluate_fks_sij(soft_counterevent, &
             stored_event_momenta(:, :, soft_counterevent), &
-            i_fks, j_fks, zero, event_y(real_event))
+            i_fks, j_fks, zero, real_radiation%y)
     if (s_s .le. 0d0) return
     call sreal(soft_counterevent, &
                stored_event_momenta(:, :, soft_counterevent), &
-               0d0, event_y(real_event), fx_s)
+               0d0, real_radiation%y, fx_s)
 
     do iamp = 1, amp_split_size
       if (amp_split(iamp) .eq. 0d0) cycle
@@ -276,7 +351,7 @@ contains
       amp_pos = iamp
       g22 = g**(QCD_power)
       wgt1 = 0d0
-      if (event_xi(real_event) .le. xiScut_used) then
+      if (real_radiation%xi .le. xiScut_used) then
         wgt1 = -amp_split(iamp)*s_s*f_s/g22
       end if
       if (wgt1 .ne. 0d0) &
@@ -297,23 +372,26 @@ contains
     integer orders(nsplitorders)
     integer iamp
     double precision one, s_c, fx_c, deg_xi_c, deg_lxi_c, wgt1, wgt3, g22
+    type(factorized_radiation_state) :: real_radiation, collinear_radiation
     parameter(one=1d0)
     call cpu_time(tBefore)
     if (f_c .eq. 0d0 .and. f_dc .eq. 0d0) return
-    if (event_y(real_event) .le. 1d0 - deltaS .or. &
+    call load_radiation_state(real_event, real_radiation)
+    call load_radiation_state(collinear_counterevent, collinear_radiation)
+    if (real_radiation%y .le. 1d0 - deltaS .or. &
         .not. fks_sister_is_massless()) return
     s_c = evaluate_fks_sij(collinear_counterevent, &
             stored_event_momenta(:, :, collinear_counterevent), &
-            i_fks, j_fks, event_xi(collinear_counterevent), one)
+            i_fks, j_fks, collinear_radiation%xi, one)
     if (s_c .le. 0d0) return
 ! sreal_deg should be called **BEFORE** sreal
 ! in order not to overwrtie the amp_split array
     call sreal_deg(collinear_counterevent, &
                    stored_event_momenta(:, :, collinear_counterevent), &
-                   event_xi(collinear_counterevent), deg_xi_c, deg_lxi_c)
+                   collinear_radiation%xi, deg_xi_c, deg_lxi_c)
     call sreal(collinear_counterevent, &
                stored_event_momenta(:, :, collinear_counterevent), &
-               event_xi(collinear_counterevent), one, fx_c)
+               collinear_radiation%xi, one, fx_c)
 
     do iamp = 1, amp_split_size
       if (amp_split(iamp) .eq. 0d0 .and. &
@@ -328,7 +406,7 @@ contains
       wgt1 = -amp_split(iamp)*s_c*f_c/g22
       wgt1 = wgt1 + (amp_split_wgtdegrem_xi(iamp) + &
                      amp_split_wgtdegrem_lxi(iamp)* &
-                     log(event_xi(collinear_counterevent)))*f_dc/g22
+                     log(collinear_radiation%xi))*f_dc/g22
       wgt3 = amp_split_wgtdegrem_muF(iamp)*f_dc/g22
       if (wgt1 .ne. 0d0 .or. wgt3 .ne. 0d0) &
         call add_wgt(collinear_counterevent, collinear_contribution, &
@@ -349,11 +427,15 @@ contains
     integer orders(nsplitorders)
     integer iamp
     double precision zero, one, s_sc, fx_sc, wgt1, wgt3, deg_xi_sc, deg_lxi_sc, g22
+    type(factorized_radiation_state) :: real_radiation
+    type(factorized_radiation_state) :: collinear_radiation
     parameter(zero=0d0, one=1d0)
     call cpu_time(tBefore)
     if (f_sc .eq. 0d0 .and. f_dsc(1) .eq. 0d0 .and. f_dsc(2) .eq. 0d0 .and. f_dsc(3) .eq. 0d0 .and. f_dsc(4) .eq. 0d0) return
-    if (event_xi_hat(real_event)*event_xi_max(collinear_counterevent) &
-        .ge. xiScut_used .or. event_y(real_event) .le. 1d0 - deltaS &
+    call load_radiation_state(real_event, real_radiation)
+    call load_radiation_state(collinear_counterevent, collinear_radiation)
+    if (real_radiation%xi_hat*collinear_radiation%xi_max &
+        .ge. xiScut_used .or. real_radiation%y .le. 1d0 - deltaS &
         .or. .not. fks_sister_is_massless()) return
     s_sc = evaluate_fks_sij(soft_collinear_counterevent, &
              stored_event_momenta(:, :, soft_collinear_counterevent), &
@@ -379,12 +461,12 @@ contains
       g22 = g**(QCD_power)
       wgt1 = 0d0
       wgt3 = 0d0
-      if (event_xi(collinear_counterevent) .lt. xiScut_used) then
+      if (collinear_radiation%xi .lt. xiScut_used) then
         wgt1 = amp_split(iamp)*s_sc*f_sc/g22
         wgt1 = wgt1 + ( &
                -(amp_split_wgtdegrem_xi(iamp) + &
                  amp_split_wgtdegrem_lxi(iamp)* &
-                 log(event_xi(collinear_counterevent)))*f_dsc(1) &
+                 log(collinear_radiation%xi))*f_dsc(1) &
                - (amp_split_wgtdegrem_xi(iamp)*f_dsc(2) + &
                   amp_split_wgtdegrem_lxi(iamp)*f_dsc(3)))/g22
         wgt3 = -amp_split_wgtdegrem_muF(iamp)*f_dsc(4)/g22
@@ -408,6 +490,7 @@ contains
     implicit none
     real :: tBefore, tAfter
     double precision pi, vegas_wgt, subtraction_shat
+    type(factorized_radiation_state) :: real_radiation, soft_radiation
     logical firsttime
     data firsttime/.true./
     parameter(pi=3.1415926535897932385d0)
@@ -418,10 +501,12 @@ contains
       firsttime = .false.
     end if
 ! f_* multiplication factors for Born and nbody
+    call load_radiation_state(real_event, real_radiation)
+    call load_radiation_state(soft_counterevent, soft_radiation)
     subtraction_shat = fks_subtraction_shat(soft_counterevent)
-    f_b = stored_event_jacobian(soft_counterevent)* &
-          event_xi_norm(real_event)/ &
-          (min(event_xi_max(real_event), xiBSVcut_used)* &
+    f_b = soft_radiation%jacobian* &
+          real_radiation%xi_norm/ &
+          (min(real_radiation%xi_max, xiBSVcut_used)* &
            subtraction_shat/(16*pi**2))* &
           fkssymmetryfactorBorn*vegas_wgt
     f_nb = f_b
@@ -492,98 +577,106 @@ contains
     return
   end subroutine include_multichannel_enhance
 
-  subroutine compute_prefactors_n1body(vegas_wgt, jac_ev)
+  subroutine compute_prefactors_n1body(vegas_wgt)
 ! Compute all relevant prefactors for the real emission and counter
 ! terms.
     implicit none
     real :: tBefore, tAfter
     double precision vegas_wgt, prefact, prefact_cnt_ssc, prefact_deg
-    double precision prefact_c, prefact_coll, jac_ev, pi
+    double precision prefact_c, prefact_coll, pi
     double precision prefact_cnt_ssc_c, prefact_coll_c
     double precision prefact_deg_slxi, prefact_deg_sxi
     double precision collinear_shat, soft_collinear_shat
+    type(factorized_radiation_state) :: real_radiation, soft_radiation
+    type(factorized_radiation_state) :: collinear_radiation
+    type(factorized_radiation_state) :: soft_collinear_radiation
     integer i
     parameter(pi=3.1415926535897932385d0)
     call cpu_time(tBefore)
+    call load_radiation_state(real_event, real_radiation)
+    call load_radiation_state(soft_counterevent, soft_radiation)
+    call load_radiation_state(collinear_counterevent, collinear_radiation)
+    call load_radiation_state(soft_collinear_counterevent, &
+                              soft_collinear_radiation)
     collinear_shat = fks_subtraction_shat(collinear_counterevent)
     soft_collinear_shat = &
          fks_subtraction_shat(soft_collinear_counterevent)
 
 ! f_* multiplication factors for real-emission, soft counter, ... etc.
-    prefact = event_xi_norm(real_event)/event_xi(real_event)/ &
-              (1 - event_y(real_event))
-    f_r = prefact*jac_ev*fkssymmetryfactor*vegas_wgt
+    prefact = real_radiation%xi_norm/real_radiation%xi/ &
+              (1 - real_radiation%y)
+    f_r = prefact*real_radiation%jacobian*fkssymmetryfactor*vegas_wgt
     if (.not. nocntevents) then
-      prefact_cnt_ssc = event_xi_norm(real_event)/ &
-                        min(event_xi_max(real_event), xiScut_used)* &
-                        log(xicut_used/min(event_xi_max(real_event), &
+      prefact_cnt_ssc = real_radiation%xi_norm/ &
+                        min(real_radiation%xi_max, xiScut_used)* &
+                        log(xicut_used/min(real_radiation%xi_max, &
                                           xiScut_used))/ &
-                        (1 - event_y(real_event))
+                        (1 - real_radiation%y)
       f_s = (prefact + prefact_cnt_ssc)* &
-            stored_event_jacobian(soft_counterevent)* &
+            soft_radiation%jacobian* &
             fkssymmetryfactor*vegas_wgt
       if (fks_sister_is_massless()) then
 ! For the soft-collinear, these should be itwo. But they are always
 ! equal to ione, so no need to define separate factors.
-        prefact_c = event_xi_norm(collinear_counterevent)/ &
-                    event_xi(collinear_counterevent)/ &
-                    (1 - event_y(real_event))
-        prefact_coll = event_xi_norm(collinear_counterevent)/ &
-                       event_xi(collinear_counterevent)* &
+        prefact_c = collinear_radiation%xi_norm/ &
+                    collinear_radiation%xi/ &
+                    (1 - real_radiation%y)
+        prefact_coll = collinear_radiation%xi_norm/ &
+                       collinear_radiation%xi* &
                        log(delta_used/deltaS)/deltaS
         f_c = (prefact_c + prefact_coll)* &
-              stored_event_jacobian(collinear_counterevent)* &
+              collinear_radiation%jacobian* &
               fkssymmetryfactor*vegas_wgt
-        prefact_deg = event_xi_norm(collinear_counterevent)/ &
-                      event_xi(collinear_counterevent)/deltaS
-        prefact_cnt_ssc_c = event_xi_norm(collinear_counterevent)/ &
-                            min(event_xi_max(collinear_counterevent), &
+        prefact_deg = collinear_radiation%xi_norm/ &
+                      collinear_radiation%xi/deltaS
+        prefact_cnt_ssc_c = collinear_radiation%xi_norm/ &
+                            min(collinear_radiation%xi_max, &
                                 xiScut_used) &
                             *log(xicut_used/ &
-                                 min(event_xi_max(collinear_counterevent), &
+                                 min(collinear_radiation%xi_max, &
                                      xiScut_used)) &
-                            /(1 - event_y(real_event))
-        prefact_coll_c = event_xi_norm(collinear_counterevent)/ &
-                         min(event_xi_max(collinear_counterevent), &
+                            /(1 - real_radiation%y)
+        prefact_coll_c = collinear_radiation%xi_norm/ &
+                         min(collinear_radiation%xi_max, &
                              xiScut_used) &
                          *log(xicut_used/ &
-                              min(event_xi_max(collinear_counterevent), &
+                              min(collinear_radiation%xi_max, &
                                   xiScut_used)) &
                          *log(delta_used/deltaS)/deltaS
-        f_dc = stored_event_jacobian(collinear_counterevent)*prefact_deg/ &
+        f_dc = collinear_radiation%jacobian*prefact_deg/ &
                (collinear_shat/(32*pi**2))* &
                fkssymmetryfactorDeg*vegas_wgt
         f_sc = (prefact_c + prefact_coll + prefact_cnt_ssc_c + &
-                prefact_coll_c)* &
-               stored_event_jacobian(soft_collinear_counterevent)* &
+               prefact_coll_c)* &
+               soft_collinear_radiation%jacobian* &
                fkssymmetryfactorDeg*vegas_wgt
-        prefact_deg_sxi = event_xi_norm(collinear_counterevent)/ &
-                          min(event_xi_max(collinear_counterevent), &
+        prefact_deg_sxi = collinear_radiation%xi_norm/ &
+                          min(collinear_radiation%xi_max, &
                               xiScut_used)* &
                           log(xicut_used/ &
-                              min(event_xi_max(collinear_counterevent), &
+                              min(collinear_radiation%xi_max, &
                                   xiScut_used))*1/deltaS
-        prefact_deg_slxi = event_xi_norm(collinear_counterevent)/ &
-                           min(event_xi_max(collinear_counterevent), &
+        prefact_deg_slxi = collinear_radiation%xi_norm/ &
+                           min(collinear_radiation%xi_max, &
                                xiScut_used) &
                            *(log(xicut_used)**2 &
-                             - log(min(event_xi_max(collinear_counterevent), &
+                             - log(min(collinear_radiation%xi_max, &
                                        xiScut_used))**2) &
                            /(2.d0*deltaS)
         f_dsc(1) = prefact_deg* &
-                   stored_event_jacobian(soft_collinear_counterevent)/ &
+                   soft_collinear_radiation%jacobian/ &
                    (soft_collinear_shat/(32*pi**2))* &
                    fkssymmetryfactorDeg*vegas_wgt
         f_dsc(2) = prefact_deg_sxi* &
-                   stored_event_jacobian(soft_collinear_counterevent)/ &
+                   soft_collinear_radiation%jacobian/ &
                    (soft_collinear_shat/(32*pi**2))* &
                    fkssymmetryfactorDeg*vegas_wgt
         f_dsc(3) = prefact_deg_slxi* &
-                   stored_event_jacobian(soft_collinear_counterevent)/ &
+                   soft_collinear_radiation%jacobian/ &
                    (soft_collinear_shat/(32*pi**2))* &
                    fkssymmetryfactorDeg*vegas_wgt
         f_dsc(4) = (prefact_deg + prefact_deg_sxi)* &
-                   stored_event_jacobian(soft_collinear_counterevent)/ &
+                   soft_collinear_radiation%jacobian/ &
                    (soft_collinear_shat/(32*pi**2))* &
                    fkssymmetryfactorDeg*vegas_wgt
       else

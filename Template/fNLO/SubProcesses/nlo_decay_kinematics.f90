@@ -5,7 +5,8 @@ module nlo_decay_kinematics
   use boostwdir2_module, only: boostwdir2_in_place
   use decay_chain_kinematics, only: generate_nbody, generate_nbody_rest, &
        boost_from_rest, boost_nbody_from_rest, minkowski_square
-  use factorized_phase_space, only: store_factorized_block_momenta
+  use factorized_phase_space, only: store_factorized_block_momenta, &
+       store_factorized_kernel_momenta
   use decay_chain_parameters, only: decay_dummy_width_ratio, &
                                     decay_physical_width
   use nlo_decay_metadata, only: initialize_nlo_decay_metadata, &
@@ -44,10 +45,6 @@ module nlo_decay_kinematics
   integer, allocatable, save :: node_random_start(:)
   double precision, allocatable, save :: node_rest_storage(:, :, :)
   logical, allocatable, save :: node_rest_valid(:)
-  double precision, allocatable, save :: local_event_cache(:, :, :)
-  double precision, allocatable, save :: local_fks_momentum_cache(:, :)
-  integer, allocatable, save :: local_event_configuration(:)
-  logical, allocatable, save :: local_event_valid(:)
   double precision, save :: parent_born(0:3) = 0d0
 
   public :: initialize_nlo_decay_kinematics
@@ -59,9 +56,7 @@ module nlo_decay_kinematics
   public :: generate_nlo_decay_born_momenta
   public :: generate_nlo_decay_fks_event
   public :: nlo_decay_fks_sister_mass
-  public :: get_nlo_decay_event_momenta
   public :: get_nlo_decay_born_kernel
-  public :: get_nlo_decay_counterevent_fks_momenta
   public :: get_nlo_decay_mass_buffer
   public :: nlo_decay_parent_mass
   public :: set_nlo_decay_cut_mask
@@ -98,10 +93,6 @@ contains
     allocate(node_random_start(nlo_decay_node_count()))
     allocate(node_rest_storage(0:3, nexternal, nlo_decay_node_count()))
     allocate(node_rest_valid(nlo_decay_node_count()))
-    allocate(local_event_cache(0:3, nexternal, 0:real_event))
-    allocate(local_fks_momentum_cache(0:3, 0:real_event))
-    allocate(local_event_configuration(0:real_event))
-    allocate(local_event_valid(0:real_event))
     production_masses = 0d0
     born_local_masses = 0d0
     node_masses = 0d0
@@ -111,10 +102,6 @@ contains
     node_random_start = 0
     node_rest_storage = 0d0
     node_rest_valid = .false.
-    local_event_cache = 0d0
-    local_fks_momentum_cache = -1d0
-    local_event_configuration = 0
-    local_event_valid = .false.
     parent_born = 0d0
 
     do node = 1, nlo_decay_node_count()
@@ -173,12 +160,6 @@ contains
     if (allocated(node_random_start)) deallocate(node_random_start)
     if (allocated(node_rest_storage)) deallocate(node_rest_storage)
     if (allocated(node_rest_valid)) deallocate(node_rest_valid)
-    if (allocated(local_event_cache)) deallocate(local_event_cache)
-    if (allocated(local_fks_momentum_cache)) &
-         deallocate(local_fks_momentum_cache)
-    if (allocated(local_event_configuration)) &
-         deallocate(local_event_configuration)
-    if (allocated(local_event_valid)) deallocate(local_event_valid)
     parent_mass = 0d0
     massive_xjac_cache = 1d0
     parent_born = 0d0
@@ -270,23 +251,6 @@ contains
   end subroutine get_nlo_decay_mass_buffer
 
 
-  subroutine get_nlo_decay_event_momenta(configuration, event_slot, momenta)
-    integer, intent(in) :: configuration, event_slot
-    double precision, intent(out) :: momenta(0:3, nexternal)
-
-    call require_enabled()
-    call check_event_slot(event_slot)
-    if (.not. local_event_valid(event_slot) .or. &
-        local_event_configuration(event_slot) /= configuration) then
-      write (*, *) 'NLO-decay event cache request:', configuration, &
-           event_slot, local_event_valid(event_slot), &
-           local_event_configuration(event_slot)
-      call fail_kinematics('decay-local event momenta are unavailable')
-    end if
-    momenta = local_event_cache(:, :, event_slot)
-  end subroutine get_nlo_decay_event_momenta
-
-
   subroutine get_nlo_decay_born_kernel(configuration, momenta, masses, &
                                        particle_count)
     integer, intent(in) :: configuration
@@ -322,22 +286,6 @@ contains
       end if
     end do
   end subroutine get_nlo_decay_born_kernel
-
-
-  subroutine get_nlo_decay_counterevent_fks_momenta(configuration, momenta)
-    integer, intent(in) :: configuration
-    double precision, intent(out) :: momenta(0:3, 0:2)
-    integer :: event_slot
-
-    call require_enabled()
-    momenta = -1d0
-    do event_slot = soft_counterevent, soft_collinear_counterevent
-      if (local_event_valid(event_slot) .and. &
-          local_event_configuration(event_slot) == configuration) then
-        momenta(:, event_slot) = local_fks_momentum_cache(:, event_slot)
-      end if
-    end do
-  end subroutine get_nlo_decay_counterevent_fks_momenta
 
 
   subroutine fill_nlo_decay_born_masses(masses)
@@ -428,10 +376,6 @@ contains
     node_rest_storage = 0d0
     node_rest_valid = .false.
     parent_born = 0d0
-    local_event_cache = 0d0
-    local_fks_momentum_cache = -1d0
-    local_event_configuration = 0
-    local_event_valid = .false.
     context = nlo_decay_born_context()
 
     system = 0d0
@@ -637,13 +581,13 @@ contains
 
   subroutine generate_nlo_decay_fks_event(configuration, event_slot, x, ndim, &
        xjac, xpswgt, visible, xiimax, xinorm, xi_i, xi_hat, y_ij, &
-       p_i_hat, solution_sign, pass)
+       p_i_hat, kernel_p_i_hat, solution_sign, pass)
     integer, intent(in) :: configuration, event_slot, ndim
     double precision, intent(in) :: x(99)
     double precision, intent(inout) :: xjac, xpswgt, xi_hat
     double precision, intent(out) :: visible(0:3, nexternal)
     double precision, intent(out) :: xiimax, xinorm, xi_i, y_ij
-    double precision, intent(out) :: p_i_hat(0:3)
+    double precision, intent(out) :: p_i_hat(0:3), kernel_p_i_hat(0:3)
     integer, intent(out) :: solution_sign
     logical, intent(out) :: pass
 
@@ -656,14 +600,11 @@ contains
 
     call require_enabled()
     call check_event_slot(event_slot)
-    local_event_valid(event_slot) = .false.
-    local_event_configuration(event_slot) = 0
-    local_event_cache(:, :, event_slot) = 0d0
-    local_fks_momentum_cache(:, event_slot) = -1d0
     pass = .false.
     visible = 0d0
     local_rest = 0d0
     local_event = 0d0
+    kernel_p_i_hat = -1d0
     context = nlo_decay_context_for_fks(configuration)
     local_i = nlo_decay_fks_i(configuration)
     local_j = nlo_decay_fks_j(configuration)
@@ -724,13 +665,13 @@ contains
       end if
     end do
     reference_rest = p_i_hat
+    kernel_p_i_hat = reference_rest
     call boost_from_rest(reference_rest, parent_born, parent_mass, p_i_hat)
     call validate_local_recoil(context, local_event, pass)
     if (.not. pass) return
-    local_event_cache(:, :, event_slot) = local_rest
-    local_fks_momentum_cache(:, event_slot) = reference_rest
-    local_event_configuration(event_slot) = configuration
-    local_event_valid(event_slot) = .true.
+    call store_factorized_kernel_momenta( &
+         event_slot, nlo_decay_corrected_node(), &
+         nlo_decay_local_count(context), local_rest)
     ! Keep slot zero in the Born provider layout.  The soft projection of a
     ! real decay still has the extra emitted local leg and is not a valid
     ! input array for the Born density matrix.

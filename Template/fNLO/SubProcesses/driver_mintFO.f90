@@ -476,7 +476,7 @@ contains
                               vegas_variables, momentum)
         if (p_born(0, 1) < 0d0) cycle
 
-        call compute_prefactors_n1body(vegas_wgt, jacobian)
+        call compute_prefactors_n1body(vegas_wgt)
         passcuts_nbody = passcuts( &
                          event_momenta(0, 1, soft_counterevent), reweight, &
                          ybst_til_tolab(soft_counterevent))

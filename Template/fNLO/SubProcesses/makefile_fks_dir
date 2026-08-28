@@ -279,6 +279,7 @@ fks_singular.o: process_dimensions.o fks_model_state.o fks_metadata.o \
 	mint_module.o FKSParams.o splitorders_stuff.o fks_Sij.o \
 	chooser_functions.o phase_space_kinematics.o decay_chain_metadata.o \
 	decay_chain_kinematics.o decay_chain_scales.o \
+	factorized_phase_space.o \
 	nlo_decay_metadata.o nlo_decay_kinematics.o \
 	nlo_contribution_bundle.o \
 	fks_qcd_splitting.o fks_soft_kernels.o \
@@ -296,6 +297,7 @@ fks_weights.o: process_dimensions.o fks_model_state.o fks_metadata.o \
 	$(LIBDIR)extra_weights.mod $(LIBDIR)alfas_functions_module.mod
 fks_contributions.o: process_dimensions.o fks_model_state.o \
 	decay_chain_metadata.o decay_chain_kinematics.o \
+	factorized_phase_space.o nlo_decay_metadata.o \
 	nlo_contribution_bundle.o fks_singular.o fks_weights.o mint_module.o \
 	splitorders_stuff.o \
 	madfks_plot.o $(LIBDIR)timing_state.mod $(LIBDIR)extra_weights.mod

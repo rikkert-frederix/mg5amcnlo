@@ -1094,13 +1094,44 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn('generate_nbody_rest', kinematics)
             self.assertIn('boost_nbody_from_rest', kinematics)
             self.assertIn('store_factorized_block_momenta', kinematics)
+            self.assertIn('store_factorized_kernel_momenta', kinematics)
+            self.assertNotIn('local_event_cache', kinematics)
+            self.assertNotIn('get_nlo_decay_event_momenta', kinematics)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'decay_chain_kinematics.f90')) as stream:
+                production_kinematics = stream.read().lower()
+            self.assertNotIn('core_event_storage', production_kinematics)
+            self.assertNotIn(
+                'get_core_event_momenta', production_kinematics)
             self.assertIn(
                 'event_slot /= soft_counterevent', kinematics)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'factorized_phase_space.f90')) as stream:
+                block_state = stream.read().lower()
+            self.assertIn(
+                'type, public :: factorized_radiation_state', block_state)
+            self.assertIn('kernel_momenta', block_state)
+            self.assertIn(
+                'scale_factorized_radiation_jacobians', block_state)
             with open(os.path.join(
                     subprocess_dir, 'genps_fks.f90')) as stream:
                 phase_space = stream.read().lower()
             self.assertIn(
                 'generate_nlo_decay_fks_kinematics', phase_space)
+            self.assertIn(
+                'store_factorized_radiation_state', phase_space)
+            with open(os.path.join(
+                    subprocess_dir, 'fks_singular.f90')) as stream:
+                singular = stream.read().lower()
+            self.assertIn('fetch_factorized_kernel_momenta', singular)
+            self.assertNotIn('get_nlo_decay_event_momenta', singular)
+            with open(os.path.join(
+                    subprocess_dir, 'fks_contributions.f90')) as stream:
+                contributions = stream.read().lower()
+            self.assertIn('load_radiation_state', contributions)
+            self.assertIn('real_radiation%jacobian', contributions)
             self.assertTrue(os.path.isfile(os.path.join(
                 process_dir, 'Cards', 'decay_card.dat')))
             with open(os.path.join(

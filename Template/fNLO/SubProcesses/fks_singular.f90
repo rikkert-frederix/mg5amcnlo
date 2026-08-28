@@ -10,10 +10,13 @@ module fks_singular_module
   use split_orders, only: amp_split_pos_to_orders
   use kin_functions_module, only: dot => dot_impl
   use phase_space_kinematics, only: getaziangles
+  use factorized_phase_space, only: factorized_radiation_state, &
+       fetch_factorized_kernel_momenta, &
+       fetch_factorized_radiation_state
   use decay_chain_metadata, only: has_decay_chains, context_for_fks, &
        born_context, context_core_count, core_leg_pdg
-  use decay_chain_kinematics, only: get_core_event_momenta, &
-       get_core_born_momenta, get_core_mass_buffer, active_core_count, &
+  use decay_chain_kinematics, only: get_core_born_momenta, &
+       get_core_mass_buffer, active_core_count, &
        map_core_color_pair
   use decay_chain_scales, only: corrected_born_qcd_squared_order
   use nlo_decay_metadata, only: has_nlo_decay, &
@@ -21,10 +24,8 @@ module fks_singular_module
        nlo_decay_local_count, nlo_decay_local_pdg, &
        nlo_decay_local_is_final, nlo_decay_fks_i, nlo_decay_fks_j, &
        nlo_decay_partner_count, nlo_decay_partner_local, &
-       nlo_decay_map_color_link
-  use nlo_decay_kinematics, only: get_nlo_decay_event_momenta, &
-       get_nlo_decay_born_kernel, &
-       get_nlo_decay_counterevent_fks_momenta, &
+       nlo_decay_map_color_link, nlo_decay_corrected_node
+  use nlo_decay_kinematics, only: get_nlo_decay_born_kernel, &
        get_nlo_decay_mass_buffer, nlo_decay_parent_mass
   use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
        active_contribution_fks_first, active_contribution_fks_last, &
@@ -122,6 +123,9 @@ contains
     integer, intent(in) :: event_slot, ii_fks, jj_fks
     double precision :: kernel_momenta(0:3, nexternal)
     double precision :: kernel_masses(nexternal)
+    double precision :: kernel_fks_momenta(0:3, &
+         soft_counterevent:soft_collinear_counterevent)
+    type(factorized_radiation_state) :: radiation
 
     call require_fks_singular_state()
     if (has_nlo_decay()) then
@@ -131,15 +135,16 @@ contains
     end if
     call select_kernel_event(event_slot, p, kernel_momenta, &
                              kernel_masses)
+    call load_kernel_radiation(event_slot, radiation)
+    call load_counterevent_fks_momenta(kernel_fks_momenta)
     call initialize_fks_sij_module(nexternal, nincoming, fks_a, fks_b, &
                                    a_h_damp, one_h_damp)
     call set_fks_sij_partition_state(fks_j_from_i, particle_type, is_aorg, &
                                      i_fks, j_fks, &
-                                     ybst_til_tocm(event_slot), &
-                                     event_sqrt_shat(event_slot), &
-                                     event_shat(event_slot), &
-                                     event_fks_momentum(:, &
-                                       soft_counterevent:soft_collinear_counterevent), &
+                                     radiation%y_to_cm, &
+                                     radiation%sqrt_shat, &
+                                     radiation%shat, &
+                                     kernel_fks_momenta, &
                                      kernel_masses)
     evaluate_fks_sij = fks_sij_impl(kernel_momenta, ii_fks, jj_fks, &
                                     xi_i_fks, y_ij_fks)
@@ -159,6 +164,8 @@ contains
     double precision :: local_masses(nexternal)
     double precision :: local_fks_momenta(0:3, 0:2)
     double precision :: decay_mass
+    type(factorized_radiation_state) :: radiation
+    logical :: available
 
     if (ii_fks /= i_fks .or. jj_fks /= j_fks) then
       call fail_fks_singular_state( &
@@ -205,11 +212,18 @@ contains
       local_particle_type(leg) = get_color(nlo_decay_local_pdg(context, leg))
       local_is_aorg(leg) = abs(nlo_decay_local_pdg(context, leg)) == 21
     end do
-    call get_nlo_decay_event_momenta(nfksprocess, event_slot, local_event)
+    local_event = 0d0
+    call fetch_factorized_kernel_momenta( &
+         event_slot, active_factorized_block(), local_count, &
+         local_event(:, 1:local_count), available)
+    if (.not. available) then
+      call fail_fks_singular_state( &
+           'decay-local S-function momenta are unavailable')
+    end if
     call get_nlo_decay_mass_buffer(nfksprocess, local_masses)
-    call get_nlo_decay_counterevent_fks_momenta( &
-         nfksprocess, local_fks_momenta)
-    decay_mass = nlo_decay_parent_mass()
+    call load_counterevent_fks_momenta(local_fks_momenta)
+    call load_kernel_radiation(event_slot, radiation)
+    decay_mass = radiation%sqrt_shat
     call initialize_fks_sij_module(local_count, 1, fks_a, fks_b, &
                                    a_h_damp, one_h_damp, .true.)
     call set_fks_sij_partition_state( &
@@ -304,6 +318,67 @@ contains
   end subroutine fail_fks_singular_state
 
 
+  logical function uses_factorized_kernel_state()
+    if (has_nlo_decay()) then
+      uses_factorized_kernel_state = .true.
+    else
+      uses_factorized_kernel_state = has_decay_chains()
+    end if
+  end function uses_factorized_kernel_state
+
+
+  integer function active_factorized_block()
+    if (has_nlo_decay()) then
+      active_factorized_block = nlo_decay_corrected_node()
+    else
+      active_factorized_block = 0
+    end if
+  end function active_factorized_block
+
+
+  subroutine load_kernel_radiation(event_slot, radiation)
+    integer, intent(in) :: event_slot
+    type(factorized_radiation_state), intent(out) :: radiation
+    logical :: available
+
+    if (uses_factorized_kernel_state()) then
+      call fetch_factorized_radiation_state( &
+           event_slot, active_factorized_block(), radiation, available)
+      if (.not. available) then
+        call fail_fks_singular_state( &
+             'block-local radiation state is unavailable')
+      end if
+    else
+      radiation = factorized_radiation_state()
+      radiation%fks_momentum = event_fks_momentum(:, event_slot)
+      radiation%sqrt_shat = event_sqrt_shat(event_slot)
+      radiation%shat = event_shat(event_slot)
+      radiation%y_to_cm = ybst_til_tocm(event_slot)
+    end if
+  end subroutine load_kernel_radiation
+
+
+  subroutine load_counterevent_fks_momenta(momenta)
+    double precision, intent(out) :: momenta(0:3, &
+         soft_counterevent:soft_collinear_counterevent)
+    type(factorized_radiation_state) :: radiation
+    integer :: event_slot
+    logical :: available
+
+    if (.not. uses_factorized_kernel_state()) then
+      momenta = event_fks_momentum(:, &
+           soft_counterevent:soft_collinear_counterevent)
+      return
+    end if
+    momenta = -1d0
+    do event_slot = soft_counterevent, soft_collinear_counterevent
+      call fetch_factorized_radiation_state( &
+           event_slot, active_factorized_block(), radiation, available)
+      if (available) momenta(:, event_slot) = radiation%fks_momentum
+    end do
+  end subroutine load_counterevent_fks_momenta
+
+
   subroutine select_kernel_event(event_slot, visible_momenta, &
                                  kernel_momenta, kernel_masses, &
                                  kernel_count)
@@ -313,19 +388,37 @@ contains
     double precision, intent(out) :: kernel_masses(nexternal)
     integer, intent(out), optional :: kernel_count
 
+    logical :: available
+    integer :: selected_count
+
     if (has_nlo_decay()) then
+      selected_count = nlo_decay_local_count( &
+           nlo_decay_context_for_fks(nfksprocess))
       if (present(kernel_count)) then
-        kernel_count = nlo_decay_local_count( &
-             nlo_decay_context_for_fks(nfksprocess))
+        kernel_count = selected_count
       end if
-      call get_nlo_decay_event_momenta( &
-           nfksprocess, event_slot, kernel_momenta)
+      kernel_momenta = 0d0
+      call fetch_factorized_kernel_momenta( &
+           event_slot, active_factorized_block(), selected_count, &
+           kernel_momenta(:, 1:selected_count), available)
+      if (.not. available) then
+        call fail_fks_singular_state( &
+             'decay-local kernel momenta are unavailable')
+      end if
       call get_nlo_decay_mass_buffer(nfksprocess, kernel_masses)
     else if (has_decay_chains()) then
+      selected_count = active_core_count(nfksprocess)
       if (present(kernel_count)) then
-        kernel_count = active_core_count(nfksprocess)
+        kernel_count = selected_count
       end if
-      call get_core_event_momenta(event_slot, kernel_momenta)
+      kernel_momenta = 0d0
+      call fetch_factorized_kernel_momenta( &
+           event_slot, 0, selected_count, &
+           kernel_momenta(:, 1:selected_count), available)
+      if (.not. available) then
+        call fail_fks_singular_state( &
+             'production-kernel momenta are unavailable')
+      end if
       call get_core_mass_buffer(context_for_fks(nfksprocess), &
                                 kernel_masses)
     else
@@ -338,8 +431,27 @@ contains
 
   double precision function fks_subtraction_shat(event_slot)
     integer, intent(in) :: event_slot
-    if (has_nlo_decay()) then
-      fks_subtraction_shat = nlo_decay_parent_mass()**2
+    type(factorized_radiation_state) :: radiation
+    logical :: available
+    if (uses_factorized_kernel_state()) then
+      call fetch_factorized_radiation_state( &
+           event_slot, active_factorized_block(), radiation, available)
+      if (available) then
+        fks_subtraction_shat = radiation%shat
+      else if (has_nlo_decay()) then
+        ! Massive decay emitters do not have collinear counterevents.
+        fks_subtraction_shat = nlo_decay_parent_mass()**2
+      else
+        ! A massive production mapping can omit counterevents as well.  Its
+        ! physical real event is still owned by the production block.
+        call fetch_factorized_radiation_state( &
+             real_event, active_factorized_block(), radiation, available)
+        if (.not. available) then
+          call fail_fks_singular_state( &
+               'production radiation scale is unavailable')
+        end if
+        fks_subtraction_shat = radiation%shat
+      end if
     else
       fks_subtraction_shat = event_shat(event_slot)
     end if
@@ -551,9 +663,11 @@ contains
     double precision amp_split_local(amp_split_size)
     double precision kernel_born(0:3, nexternal)
     double precision kernel_masses(nexternal)
+    type(factorized_radiation_state) :: radiation
     complex(kind=kind(0d0)) wgt1(2)
 !
     amp_split_local(1:amp_split_size) = 0d0
+    call load_kernel_radiation(real_event, radiation)
     kernel_born = 0d0
     if (has_nlo_decay()) then
       selected_i_fks = nlo_decay_fks_i(nfksprocess)
@@ -594,12 +708,7 @@ contains
         azifact = xij_aor
       else
         do i = 0, 3
-          if (has_nlo_decay()) then
-            pi(i) = p(i, selected_i_fks)*sqrt(partonic_shat)/ &
-                    (2d0*E_i_fks)
-          else
-            pi(i) = event_fks_momentum(i, real_event)
-          end if
+          pi(i) = radiation%fks_momentum(i)
           pj(i) = p(i, selected_j_fks)
         end do
         call IXXXSO(pi, ZERO, +1, +1, W1)
@@ -657,10 +766,12 @@ contains
     complex(kind=kind(0d0)) ximag
     parameter(ximag=(0.d0, 1.d0))
     double precision amp_split_local(amp_split_size)
+    type(factorized_radiation_state) :: radiation
     complex(kind=kind(0d0)) amp_split_cnt_local(amp_split_size, 2, nsplitorders)
     complex(kind=kind(0d0)) wgt1(2)
 !
     amp_split_local(1:amp_split_size) = 0d0
+    call load_kernel_radiation(real_event, radiation)
 
     p_born_used(:, :) = p_born(:, :)
 
@@ -694,7 +805,7 @@ contains
         azifact = xij_aor
       else
         do i = 0, 3
-          pi(i) = event_fks_momentum(i, real_event)
+          pi(i) = radiation%fks_momentum(i)
           pj(i) = p(i, j_fks)
         end do
         if (j_fks .eq. 2 .and. nincoming .eq. 2) then
@@ -750,6 +861,8 @@ contains
 
 
     double precision zero, pmass(nexternal)
+    double precision kernel_fks_momenta(0:3, &
+         soft_counterevent:soft_collinear_counterevent)
     parameter(zero=0d0)
 
 
@@ -759,6 +872,7 @@ contains
     end if
 
     call select_kernel_masses(pmass)
+    call load_counterevent_fks_momenta(kernel_fks_momenta)
 !
 ! Call the Born to be sure that 'CalculatedBorn' is done correctly. This
 ! should always be done before calling the color-correlated Borns,
@@ -781,8 +895,7 @@ contains
           if (wgt .ne. 0d0) then
             call eikonal_reduced( &
               pp, m, n, i_fks, j_fks, xi_i_fks, y_ij_fks, &
-              event_fks_momentum(:, &
-                soft_counterevent:soft_collinear_counterevent), &
+              kernel_fks_momenta, &
               pmass, partonic_sqrt_shat, eik)
             softcontr = softcontr + wgt*eik*iden_comp
 ! update the amp_split array
@@ -806,19 +919,27 @@ contains
     double precision, intent(out) :: wgt
     integer :: first_position, second_position, m, n
     integer :: visible_m, visible_n, local_i, local_j
-    integer :: partner_count
+    integer :: partner_count, local_count
     double precision :: softcontr, eik, link_weight, born_weight
     double precision :: link_multiplier, decay_mass
     double precision :: local_momenta(0:3, nexternal)
     double precision :: local_masses(nexternal)
     double precision :: local_fks_momenta(0:3, 0:2)
     double precision, parameter :: zero = 0d0
+    logical :: available
 
-    call get_nlo_decay_event_momenta( &
-         nfksprocess, event_slot, local_momenta)
+    local_count = nlo_decay_local_count( &
+         nlo_decay_context_for_fks(nfksprocess))
+    local_momenta = 0d0
+    call fetch_factorized_kernel_momenta( &
+         event_slot, active_factorized_block(), local_count, &
+         local_momenta(:, 1:local_count), available)
+    if (.not. available) then
+      call fail_fks_singular_state( &
+           'decay-local soft-kernel momenta are unavailable')
+    end if
     call get_nlo_decay_mass_buffer(nfksprocess, local_masses)
-    call get_nlo_decay_counterevent_fks_momenta( &
-         nfksprocess, local_fks_momenta)
+    call load_counterevent_fks_momenta(local_fks_momenta)
     local_i = nlo_decay_fks_i(nfksprocess)
     local_j = nlo_decay_fks_j(nfksprocess)
     decay_mass = nlo_decay_parent_mass()
@@ -883,6 +1004,7 @@ contains
 
     double precision amp_split_collrem_xi(amp_split_size), amp_split_collrem_lxi(amp_split_size)
     double precision prefact_xi
+    double precision subtraction_shat
 
     amp_split_collrem_xi(1:amp_split_size) = 0d0
     amp_split_collrem_lxi(1:amp_split_size) = 0d0
@@ -891,6 +1013,7 @@ contains
     amp_split_wgtdegrem_muF(1:amp_split_size) = 0d0
 
     p_born_used(:, :) = p_born(:, :)
+    subtraction_shat = fks_subtraction_shat(event_slot)
 
     if (j_fks .gt. nincoming) then
 ! Do not include this contribution for final-state branchings
@@ -913,9 +1036,9 @@ contains
     else
       shattmp = p(0, 1)**2
     end if
-    if (abs(shattmp/event_shat(event_slot) - 1.d0) .gt. 1.d-5) then
+    if (abs(shattmp/subtraction_shat - 1.d0) .gt. 1.d-5) then
       write (*, *) 'Error in sreal: inconsistent shat'
-      write (*, *) shattmp, event_shat(event_slot)
+      write (*, *) shattmp, subtraction_shat
       stop
     end if
 
@@ -937,7 +1060,7 @@ contains
     wgt1(2) = ans_cnt(2, iord)
 
     collrem_xi_tmp = ap(iap)*log( &
-                       event_shat(event_slot)*delta_used/ &
+                       subtraction_shat*delta_used/ &
                        (2*q2fact(j_fks))) - apprime(iap)
     collrem_lxi_tmp = 2*ap(iap)
 
@@ -959,7 +1082,7 @@ contains
       *collrem_lxi_tmp*xnorm
 
     prefact_xi = ap(iap)*log( &
-                   event_shat(event_slot)*delta_used/(2*QES2)) - &
+                   subtraction_shat*delta_used/(2*QES2)) - &
                  apprime(iap)
     amp_split_wgtdegrem_xi(1:amp_split_size) = &
       amp_split_wgtdegrem_xi(1:amp_split_size) + &
@@ -1021,6 +1144,7 @@ contains
     double precision amp_split_bsv(amp_split_size)
     double precision kernel_momenta(0:3, nexternal)
     double precision kernel_shat, kernel_sqrt_shat, link_multiplier
+    type(factorized_radiation_state) :: radiation
     if (has_nlo_contribution_bundle()) then
       need_color_links_used = .false.
       nFKSprocess_col = 0
@@ -1054,20 +1178,11 @@ contains
       nFKSprocess = nFKSprocess_save
       call fks_inc_chooser()
     end if
-    if (has_nlo_decay()) then
-      call get_nlo_decay_event_momenta( &
-           nfksprocess, event_slot, kernel_momenta)
-      call get_nlo_decay_mass_buffer(nfksprocess, pmass)
-      kernel_count = nlo_decay_local_count( &
-           nlo_decay_context_for_fks(nfksprocess))
-      kernel_sqrt_shat = nlo_decay_parent_mass()
-      kernel_shat = kernel_sqrt_shat**2
-    else
-      call select_kernel_event(event_slot, p, kernel_momenta, pmass, &
-                               kernel_count)
-      kernel_sqrt_shat = event_sqrt_shat(event_slot)
-      kernel_shat = event_shat(event_slot)
-    end if
+    call select_kernel_event(event_slot, p, kernel_momenta, pmass, &
+                             kernel_count)
+    call load_kernel_radiation(event_slot, radiation)
+    kernel_sqrt_shat = radiation%sqrt_shat
+    kernel_shat = radiation%shat
     call select_kernel_properties(kernel_particle_type, kernel_i, &
                                   kernel_initial_count)
 

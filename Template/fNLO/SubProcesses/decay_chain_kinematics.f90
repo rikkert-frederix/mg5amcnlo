@@ -2,7 +2,8 @@ module decay_chain_kinematics
   use process_dimensions, only: nexternal, nincoming, validate_process_dimensions
   use fnlo_process_common, only: event_from_decay => from_decay, &
        soft_counterevent
-  use factorized_phase_space, only: store_factorized_block_momenta
+  use factorized_phase_space, only: store_factorized_block_momenta, &
+       store_factorized_kernel_momenta
   use phase_space_kinematics, only: phase_space_lambda
   use decay_chain_metadata, only: has_decay_chains, decay_node_count, &
        decay_leaf_count, decay_random_dimension, born_context, &
@@ -21,14 +22,13 @@ module decay_chain_kinematics
   double precision, allocatable, save :: node_masses(:)
   double precision, allocatable, save :: leaf_masses(:)
   double precision, allocatable, save :: core_born_storage(:, :)
-  double precision, allocatable, save :: core_event_storage(:, :, :)
   double precision, allocatable, save :: node_rest_storage(:, :, :)
   logical, allocatable, save :: node_rest_valid(:)
 
   public :: initialize_decay_chain_kinematics
   public :: minimum_core_final_mass, core_mass
   public :: generate_core_born_and_decays, expand_real_decay_momenta
-  public :: store_core_event_momenta, get_core_event_momenta
+  public :: store_core_event_momenta
   public :: get_core_born_momenta, get_core_mass_buffer
   public :: active_core_count, fks_leg_mass
   public :: map_core_color_pair
@@ -59,11 +59,9 @@ contains
     allocate(node_masses(decay_node_count()))
     allocate(leaf_masses(decay_leaf_count()))
     allocate(core_born_storage(0:3, nexternal - 1))
-    allocate(core_event_storage(0:3, nexternal, 0:3))
     allocate(node_rest_storage(0:3, nexternal, decay_node_count()))
     allocate(node_rest_valid(decay_node_count()))
     core_born_storage = 0d0
-    core_event_storage = 0d0
     node_rest_storage = 0d0
     node_rest_valid = .false.
 
@@ -489,7 +487,6 @@ contains
   subroutine store_core_event_momenta(event_slot, momenta, particle_count)
     integer, intent(in) :: event_slot, particle_count
     double precision, intent(in) :: momenta(0:, :)
-    integer :: count
     call require_enabled()
     if (event_slot < 0 .or. event_slot > 3) then
       call fail_kinematics('event slot is out of range')
@@ -497,24 +494,16 @@ contains
     if (particle_count < 1 .or. particle_count > nexternal) then
       call fail_kinematics('the production block size is out of range')
     end if
-    count = min(size(momenta, 2), particle_count)
-    core_event_storage(:, :, event_slot) = 0d0
-    core_event_storage(:, 1:count, event_slot) = momenta(:, 1:count)
+    if (size(momenta, 1) < 4 .or. size(momenta, 2) < particle_count) then
+      call fail_kinematics('the production block momentum shape is invalid')
+    end if
+    call store_factorized_kernel_momenta( &
+         event_slot, 0, particle_count, momenta)
     if (event_slot /= soft_counterevent) then
-      call store_factorized_block_momenta(event_slot, 0, count, momenta)
+      call store_factorized_block_momenta( &
+           event_slot, 0, particle_count, momenta)
     end if
   end subroutine store_core_event_momenta
-
-
-  subroutine get_core_event_momenta(event_slot, momenta)
-    integer, intent(in) :: event_slot
-    double precision, intent(out) :: momenta(0:3, nexternal)
-    call require_enabled()
-    if (event_slot < 0 .or. event_slot > 3) then
-      call fail_kinematics('event slot is out of range')
-    end if
-    momenta = core_event_storage(:, :, event_slot)
-  end subroutine get_core_event_momenta
 
 
   subroutine get_core_born_momenta(momenta)
