@@ -68,6 +68,7 @@ FILES= fnlo_process_common.o process_dimensions.o			\
 	 multiplicative_production_channels.o			\
 	 spin_density_matrix_results.o					\
 	 multiplicative_density_terms.o				\
+	 multiplicative_lambda_validation.o			\
 	 density_operator_recorder.o				\
 	 $(if $(wildcard spin_density_multiplicative_contraction.f),\
 	 multiplicative_fks_density.o multiplicative_nbody_density.o \
@@ -275,6 +276,7 @@ spin_density_matrix_results.o: process_dimensions.o fnlo_process_common.o \
 	factorized_phase_space.o
 multiplicative_density_terms.o: process_dimensions.o fnlo_process_common.o \
 	spin_density_matrix_results.o
+multiplicative_lambda_validation.o:
 density_operator_recorder.o: multiplicative_density_terms.o
 multiplicative_fks_density.o: factorized_phase_space.o fks_singular.o \
 	nlo_contribution_bundle.o spin_density_matrix_results.o \
@@ -330,7 +332,8 @@ analysis_HwU_pp_hjj.o: boostwdir2.o
 analysis_HwU_pp_tj.o: $(LIBDIR)run_state.mod
 analysis_HwU_pp_V.o analysis_HwU_pp_taptam.o \
 	analysis_HwU_pp_ttx_v2.o: $(LIBDIR)kin_functions_module.mod
-mint_module.o : FKSParams.o MC_integer.o polfit.o nlo_contribution_bundle.o
+mint_module.o : FKSParams.o MC_integer.o polfit.o nlo_contribution_bundle.o \
+	decay_chain_parameters.o
 BinothLHA_OLP.o: process_dimensions.o FKSParams.o fks_singular.o
 BinothLHA.o: process_dimensions.o FKSParams.o splitorders_stuff.o cuts.o \
 	fks_singular.o nlo_contribution_bundle.o
@@ -372,7 +375,7 @@ driver_mintFO.o: process_dimensions.o fks_metadata.o fks_channel_map.o \
 	multiplicative_density_terms.o multiplicative_block_distribution.o \
 	multiplicative_kinematics.o multiplicative_scale_state.o \
 	multiplicative_production_channels.o \
-	multiplicative_runtime.o \
+	multiplicative_runtime.o multiplicative_lambda_validation.o \
 	fnlo_scale_variations.o \
 	fks_random.o genps_fks.o \
 	weight_lines.o mint_module.o FKSParams.o MC_integer.o setscales.o \

@@ -113,6 +113,23 @@ and evaluates cuts and observables. Only those separately evaluated tuple
 weights are finally added. Thus “finite block” means a finite signed
 distribution, never a matrix or scalar formed by pre-adding unlike events.
 
+Every MULTIPLICATIVE run also accumulates a formal validation parameter for
+each block,
+
+  B_b(lambda_b) = B_b(LO) + lambda_b Delta B_b(NLO).
+
+The bookkeeping happens only after each signed momentum tuple has passed
+cuts and has been sent separately to the observable. For a common lambda it
+reports the exact lambda=1 product, the lambda=0 LO result, the derivative at
+zero, and their strictly additive sum in
+`multiplicative_validation_results.dat`. The width normalization is expanded
+at the same time: each corrected physical decay node contributes
+Gamma(NLO)/(Gamma(LO)+lambda*(Gamma(NLO)-Gamma(LO))). Consequently the
+reported derivative includes the additive width counterterm rather than only
+the numerator correction. Pointwise checks require lambda=1 to reproduce the
+exact multiplicative estimator and the sum of the block derivatives to
+reproduce the global derivative.
+
 calculate_xsect
 ---------------
 

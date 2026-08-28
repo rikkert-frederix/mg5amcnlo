@@ -51,6 +51,7 @@ module mint_module
   use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
        factorized_shared_dimension, factorized_radiation_block, &
        bundle_nlo_component
+  use decay_chain_parameters, only: uses_multiplicative_nlo_combination
   use polynomial_fit, only: init_polyfit, add_point_polyfit, &
                             do_polyfit, get_polyfit, save_polyfit, restore_polyfit
   implicit none
@@ -69,6 +70,14 @@ module mint_module
   integer, parameter, public  :: max_bundle_components = fks_configs + 2
   integer, parameter, public  :: first_bundle_component_integral = &
        7 + 2*n_ave_virt
+  ! The multiplicative path does not use the two legacy virtual-ratio
+  ! diagnostics.  Reuse only those inert slots for formal-lambda validation;
+  ! slots 3 and 6 participate in virtual-grid control and must remain zero.
+  ! Existing MINT checkpoint dimensions remain byte-for-byte compatible.
+  integer, parameter, public :: multiplicative_lo_integral = &
+       4
+  integer, parameter, public :: multiplicative_additive_integral = &
+       5
   integer, parameter, public  :: nintegrals = &
        6 + 2*n_ave_virt + max_bundle_components
   integer, parameter, private :: nintervals_virt = 8! max number of intervals in the grids for the approx virtual
@@ -160,9 +169,17 @@ contains
     case (3)
       integral_title = 'Virtual      '
     case (4)
-      integral_title = 'Virtual ratio'
+      if (show_multiplicative_validation_titles()) then
+        integral_title = 'Mult LO      '
+      else
+        integral_title = 'Virtual ratio'
+      end if
     case (5)
-      integral_title = 'ABS virtual  '
+      if (show_multiplicative_validation_titles()) then
+        integral_title = 'Mult additive'
+      else
+        integral_title = 'ABS virtual  '
+      end if
     case (6)
       integral_title = 'Born         '
     case default
@@ -176,6 +193,14 @@ contains
       end if
     end select
   end function integral_title
+
+
+  logical function show_multiplicative_validation_titles()
+    show_multiplicative_validation_titles = .false.
+    if (.not. has_nlo_contribution_bundle()) return
+    show_multiplicative_validation_titles = &
+         uses_multiplicative_nlo_combination()
+  end function show_multiplicative_validation_titles
 
   subroutine initialize_mint_state
     implicit none

@@ -8,7 +8,9 @@ module driver_mintfo_module
                          iconfig, ichan, &
                          iconfigs, accuracy, wgt_mult, new_point, pass_cuts_check, &
                          virt_wgt_mint, born_wgt_mint, mint, &
-                         first_bundle_component_integral
+                         first_bundle_component_integral, &
+                         multiplicative_lo_integral, &
+                         multiplicative_additive_integral
   use mint_module, only: ans_result => ans, unc_result => unc
   use FKSParams, only: min_virt_fraction, virt_fraction, FKSParamReader
   use weight_lines, only: icontr, deallocate_weight_lines
@@ -26,7 +28,8 @@ module driver_mintfo_module
                        do_rwgt_scale, do_rwgt_decay_scale, do_rwgt_pdf, &
                        q2fact
   use genps_fks, only: generate_momenta
-  use decay_chain_metadata, only: real_phase_space_dimension
+  use decay_chain_metadata, only: real_phase_space_dimension, &
+       decay_node_count, node_pdg
   use fnlo_scale_variations, only: configure_fnlo_scale_variations, &
        fnlo_scale_point_count, decode_fnlo_scale_point
   use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
@@ -38,10 +41,10 @@ module driver_mintfo_module
        contribution_fks_channel_configuration, &
        multiplicative_mc_integer_dimension, &
        nlo_virtual_grid_count, bundle_component_count, &
-       bundle_component_label
+       bundle_component_label, bundle_species_is_nlo
   use decay_chain_parameters, only: uses_multiplicative_nlo_combination, &
        decay_width_denominator_rescaling, decay_scale_species_count, &
-       decay_scale_species
+       decay_scale_species, decay_lo_width, decay_nlo_width
   use multiplicative_phase_space, only: &
        multiplicative_phase_space_assembly, &
        initialize_multiplicative_phase_space_assembly, &
@@ -61,6 +64,13 @@ module driver_mintfo_module
        multiplicative_production_channel_partition
   use multiplicative_runtime, only: multiplicative_event_evaluation, &
        evaluate_multiplicative_event_tuple
+  use multiplicative_lambda_validation, only: &
+       multiplicative_lambda_accumulator, &
+       initialize_multiplicative_lambda_accumulator, &
+       accumulate_multiplicative_lambda_atom, &
+       formal_lambda_lo_weight, formal_lambda_additive_weight, &
+       require_formal_lambda_closure, &
+       require_formal_lambda_linear_closure
   use setscales_module, only: set_alphas
   use split_orders, only: check_amp_split
   use cuts_module, only: passcuts, passcuts_multiplicative
@@ -372,7 +382,10 @@ contains
     character(len=96) :: label
 
     if (.not. has_nlo_contribution_bundle()) return
-    if (uses_multiplicative_nlo_combination()) return
+    if (uses_multiplicative_nlo_combination()) then
+      call write_multiplicative_validation_results()
+      return
+    end if
     component_count = bundle_component_count()
     open(newunit=unit_number, file='contribution_results.dat', &
          status='replace', action='write', iostat=ios)
@@ -396,6 +409,38 @@ contains
     write(unit_number, '(a)') 'END'
     close(unit_number)
   end subroutine write_bundle_contribution_results
+
+
+  subroutine write_multiplicative_validation_results()
+    integer :: unit_number, ios
+
+    open(newunit=unit_number, file='multiplicative_validation_results.dat', &
+         status='replace', action='write', iostat=ios)
+    if (ios /= 0) then
+      call fail_driver('cannot open multiplicative_validation_results.dat')
+    end if
+    write(unit_number, '(a)') 'FORMAT 1'
+    write(unit_number, '(a,1x,es24.16,1x,es24.16)') &
+         'EXACT', ans_result(2, 0), unc_result(2, 0)
+    write(unit_number, '(a,1x,es24.16,1x,es24.16)') &
+         'LAMBDA_ONE', ans_result(2, 0), unc_result(2, 0)
+    write(unit_number, '(a,1x,es24.16)') 'LAMBDA_ONE_CLOSURE', &
+         0d0
+    write(unit_number, '(a,1x,es24.16,1x,es24.16)') &
+         'LO', ans_result(multiplicative_lo_integral, 0), &
+         unc_result(multiplicative_lo_integral, 0)
+    write(unit_number, '(a,1x,es24.16,1x,es24.16)') &
+         'ADDITIVE', ans_result(multiplicative_additive_integral, 0), &
+         unc_result(multiplicative_additive_integral, 0)
+    ! The derivative is reported as a correlated central-value difference.
+    ! Its separate uncertainty would require retaining the LO/additive
+    ! covariance, so do not manufacture one from the marginal errors.
+    write(unit_number, '(a,1x,es24.16)') 'LINEAR_CORRECTION', &
+         ans_result(multiplicative_additive_integral, 0) - &
+         ans_result(multiplicative_lo_integral, 0)
+    write(unit_number, '(a)') 'END'
+    close(unit_number)
+  end subroutine write_multiplicative_validation_results
 
   double precision function sigint_impl(xx, vegas_wgt, ifl, f, &
                                         ini_fin_fks, nndim, nbody, event_momenta, p_born, virtual_over_born, &
@@ -608,6 +653,7 @@ contains
     type(multiplicative_density_tuple) :: tuple
     type(multiplicative_event_evaluation) :: evaluation
     type(multiplicative_event_evaluation) :: variation_evaluation
+    type(multiplicative_lambda_accumulator) :: lambda_validation
     double precision :: vegas_variables(99), momentum(0:3,nexternal)
     double precision :: jacobian, volume
     double precision :: logarithmic_mu2_r(0:nexternal)
@@ -616,10 +662,14 @@ contains
     double precision :: production_mu2_r, production_mu2_f
     double precision :: luminosity, reweight, tuple_weight, total_weight
     double precision :: width_rescaling, production_channel_partition
+    double precision, allocatable :: validation_lo_widths(:)
+    double precision, allocatable :: validation_nlo_widths(:)
     double precision, allocatable :: plotted_weight(:)
     integer, allocatable :: sampled_fks(:), sampled_integer(:)
     integer, allocatable :: sampled_dimension(:)
     integer, allocatable :: factor_indices(:)
+    integer, allocatable :: validation_block_orders(:)
+    integer, allocatable :: validation_width_blocks(:)
     double precision, allocatable :: sampled_volume(:)
     integer :: decay_block_factor_indices(0:nexternal)
     logical, allocatable :: component_owned(:)
@@ -641,6 +691,20 @@ contains
     if (contribution_count < 1 .or. component_count < contribution_count) then
       call fail_driver('the multiplicative block graph is incomplete')
     end if
+    if (allocated(validation_block_orders)) then
+      deallocate(validation_block_orders)
+    end if
+    if (allocated(validation_width_blocks)) then
+      deallocate(validation_width_blocks)
+    end if
+    if (allocated(validation_lo_widths)) deallocate(validation_lo_widths)
+    if (allocated(validation_nlo_widths)) deallocate(validation_nlo_widths)
+    call initialize_multiplicative_lambda_accumulator( &
+         lambda_validation, component_count)
+    allocate(validation_block_orders(component_count))
+    call initialize_validation_widths( &
+         validation_width_blocks, validation_lo_widths, &
+         validation_nlo_widths)
     if (allocated(sampled_fks)) deallocate(sampled_fks)
     if (allocated(sampled_integer)) deallocate(sampled_integer)
     if (allocated(sampled_dimension)) deallocate(sampled_dimension)
@@ -828,10 +892,25 @@ contains
       call outfun_multiplicative_impl( &
            evaluation%momenta, evaluation%y_to_lab, plotted_weight, &
            evaluation%pdgs, evaluation%origin_blocks)
+      call extract_validation_block_orders( &
+           tuple, distributions, evaluation%nlo_order, &
+           validation_block_orders)
+      call accumulate_multiplicative_lambda_atom( &
+           lambda_validation, validation_block_orders, tuple_weight)
     end do
 
+    call require_formal_lambda_closure( &
+         lambda_validation, total_weight, validation_lo_widths, &
+         validation_nlo_widths)
+    call require_formal_lambda_linear_closure( &
+         lambda_validation, validation_width_blocks, &
+         validation_lo_widths, validation_nlo_widths)
     f(1) = abs(total_weight)
     f(2) = total_weight
+    f(multiplicative_lo_integral) = formal_lambda_lo_weight( &
+         lambda_validation, validation_lo_widths, validation_nlo_widths)
+    f(multiplicative_additive_integral) = formal_lambda_additive_weight( &
+         lambda_validation, validation_lo_widths, validation_nlo_widths)
     call fill_multiplicative_discrete_grids(abs(total_weight))
 
   contains
@@ -849,6 +928,75 @@ contains
              weight*sampled_volume(selected))
       end do
     end subroutine fill_multiplicative_discrete_grids
+
+
+    subroutine initialize_validation_widths( &
+         width_blocks, lo_widths, nlo_widths)
+      integer, allocatable, intent(out) :: width_blocks(:)
+      double precision, allocatable, intent(out) :: lo_widths(:)
+      double precision, allocatable, intent(out) :: nlo_widths(:)
+      integer :: corrected_count, node, occurrence, owner, candidate
+      integer :: pdg
+
+      corrected_count = 0
+      do node = 1, decay_node_count()
+        if (bundle_species_is_nlo(node_pdg(node))) then
+          corrected_count = corrected_count + 1
+        end if
+      end do
+      allocate(width_blocks(corrected_count))
+      allocate(lo_widths(corrected_count))
+      allocate(nlo_widths(corrected_count))
+      occurrence = 0
+      do node = 1, decay_node_count()
+        pdg = node_pdg(node)
+        if (.not. bundle_species_is_nlo(pdg)) cycle
+        owner = 0
+        do candidate = 1, component_count
+          if (sdm_multiplicative_physical_block(candidate) /= node) cycle
+          owner = candidate
+          exit
+        end do
+        if (owner == 0) then
+          call fail_driver( &
+               'a corrected width has no multiplicative decay block')
+        end if
+        occurrence = occurrence + 1
+        width_blocks(occurrence) = owner
+        lo_widths(occurrence) = decay_lo_width(pdg)
+        nlo_widths(occurrence) = decay_nlo_width(pdg)
+      end do
+    end subroutine initialize_validation_widths
+
+
+    subroutine extract_validation_block_orders( &
+         selected_tuple, selected_distributions, evaluated_order, &
+         block_orders)
+      type(multiplicative_density_tuple), intent(in) :: selected_tuple
+      type(block_nlo_distribution), intent(in) :: selected_distributions(:)
+      integer, intent(in) :: evaluated_order
+      integer, intent(out) :: block_orders(:)
+      integer :: component, term
+
+      if (size(block_orders) /= size(selected_distributions) .or. &
+          selected_tuple%distribution_count /= &
+          size(selected_distributions)) then
+        call fail_driver('the validation block layout is inconsistent')
+      end if
+      do component = 1, size(selected_distributions)
+        term = selected_tuple%term_indices(component)
+        if (term < 1 .or. &
+            term > selected_distributions(component)%term_count) then
+          call fail_driver('a validation tuple term is out of range')
+        end if
+        block_orders(component) = &
+             selected_distributions(component)%terms(term)%nlo_order
+      end do
+      if (sum(block_orders) /= selected_tuple%nlo_order .or. &
+          sum(block_orders) /= evaluated_order) then
+        call fail_driver('the validation NLO order does not close')
+      end if
+    end subroutine extract_validation_block_orders
 
 
     integer function multiplicative_plot_weight_count()
