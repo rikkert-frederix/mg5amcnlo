@@ -24,6 +24,7 @@ from madgraph import InvalidCmd, MG5DIR
 from madgraph.fks import fks_common
 from madgraph.fks import fks_decay
 from madgraph.fks import fks_helas_objects
+from madgraph.fks import fks_product
 from madgraph.interface.master_interface import MasterCmd
 
 
@@ -1267,6 +1268,107 @@ class TestFKSDecayChains(unittest.TestCase):
         self.assertEqual(production_decay_pdgs.count(21), 2)
         assert_top_connectors(production_decay_real)
 
+        catalog = bundled.factorized_product_catalog
+        self.assertEqual(bundled.factorized_product_mode,
+                         'STAGEWISE_NLO_PRODUCT')
+        self.assertEqual(
+            [(stage.label, len(stage.choices))
+             for stage in catalog.stages],
+            [('PRODUCTION', 7), ('DECAY_1', 2), ('DECAY_2', 2)])
+        self.assertEqual(len(catalog), 28)
+        self.assertEqual(catalog.first_order_sector_count, 8)
+
+        triple_reals = [
+            sector for sector in catalog.iter_sectors()
+            if (sector.states == (fks_product.REAL,) * 3 and
+                sector.choices[0].source_index == 1)]
+        self.assertEqual(len(triple_reals), 4)
+        sector = triple_reals[0]
+        self.assertEqual(sector.perturbative_order, 3)
+        self.assertEqual(sector.real_order, 3)
+        self.assertEqual(sector.counterevent_count, 16)
+        counterevents = dict(
+            (event.codes, event) for event in sector.iter_counterevents())
+        for codes in [('R', 'R', 'R'), ('S', 'R', 'R'),
+                      ('R', 'S', 'R'), ('R', 'R', 'S'),
+                      ('S', 'S', 'S')]:
+            self.assertIn(codes, counterevents)
+        self.assertEqual(counterevents[('R', 'R', 'R')].inclusion_sign, 1)
+        self.assertEqual(counterevents[('S', 'S', 'S')].inclusion_sign, -1)
+
+        carrier_expectations = {
+            ('R', 'R', 'R'): (9, 3),
+            ('S', 'R', 'R'): (8, 2),
+            ('R', 'S', 'R'): (8, 2),
+            ('R', 'R', 'S'): (8, 2),
+            ('S', 'S', 'S'): (6, 0)}
+        carriers = {}
+        for codes, (nexternal, gluons) in carrier_expectations.items():
+            carrier = counterevents[codes].build_tree_matrix_element()
+            carriers[codes] = carrier
+            self.assertEqual(
+                carrier.get_nexternal_ninitial(), (nexternal, 2))
+            self.assertEqual([
+                leg.get('id') for leg in carrier['processes'][0]
+                .get_legs_with_decays()].count(21), gluons)
+
+        # Four production FKS configurations share the first real amplitude.
+        # Their sectors must therefore share one coherently contracted ME.
+        same_tree_sector = triple_reals[1]
+        same_tree_rr = next(
+            event for event in same_tree_sector.iter_counterevents()
+            if event.codes == ('R', 'R', 'R'))
+        self.assertIs(
+            same_tree_rr.build_tree_matrix_element(),
+            carriers[('R', 'R', 'R')])
+
+        phase_space = sector.phase_space(born_dimension=2)
+        self.assertEqual(phase_space.dimension, 11)
+        mixed_limit = counterevents[('SC', 'S', 'S')]
+        event = phase_space.event(
+            mixed_limit,
+            (10., 11., .2, .3, .4, .5, .6, .7, .8, .9, 1.))
+        self.assertEqual(event.born_coordinates, (10., 11.))
+        self.assertEqual(
+            [(radiation['slot'], radiation['xi'], radiation['y'])
+             for radiation in event.radiation_coordinates],
+            [('SOFT_COLLINEAR', 0., 1.),
+             ('SOFT', 0., .6),
+             ('SOFT', 0., .9)])
+        self.assertEqual(event.inclusion_sign, 1)
+        self.assertEqual(event.matrix_element.get_nexternal_ninitial(),
+                         (6, 2))
+
+        product_info = fks_product.product_info_text(catalog)
+        self.assertIn('ENUMERATION CARTESIAN_LAZY\n', product_info)
+        self.assertIn('COUNTEREVENTS TENSOR_PRODUCT\n', product_info)
+        self.assertIn('STAGES 3\n', product_info)
+        self.assertIn('SECTORS 28\n', product_info)
+        self.assertEqual(product_info.count('\nSTAGE '), 3)
+        self.assertEqual(product_info.count('\nCHOICE '), 11)
+
+    def test_product_sector_retains_uncorrected_root_decays(self):
+        command = self.generate(
+            'u u~ > t t~ [real=QCD], '
+            '(t > w+ b QED=1 [real=QCD]), (t~ > w- b~)')
+        bundled = fks_helas_objects.FKSHelasMultiProcess(
+            command._fks_multi_proc,
+            loop_optimized=False)['matrix_elements'][0]
+        catalog = bundled.factorized_product_catalog
+        self.assertEqual(len(catalog.baseline_decay_currents), 2)
+        sector = next(
+            candidate for candidate in catalog.iter_sectors()
+            if candidate.states == (fks_product.BORN, fks_product.REAL))
+        matrix_element = sector.build_tree_matrix_element()
+        pdgs = [
+            leg.get('id') for leg in
+            matrix_element['processes'][0].get_legs_with_decays()]
+        self.assertNotIn(6, pdgs)
+        self.assertNotIn(-6, pdgs)
+        self.assertEqual(pdgs.count(24), 1)
+        self.assertEqual(pdgs.count(-24), 1)
+        self.assertEqual(pdgs.count(21), 1)
+
     def test_full_nlo_bundle_supports_nested_corrected_decays(self):
         command = self.generate(
             'u u~ > t t~ [real=QCD], '
@@ -1481,6 +1583,19 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn('COUNT 3\n', metadata)
             self.assertIn('VIRTUAL_GRIDS 3\n', metadata)
             self.assertEqual(metadata.count('\nVIRTUAL_GRID '), 3)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'multiplicative_product_info.dat')) as stream:
+                product_metadata = stream.read()
+            self.assertIn('PRESCRIPTION STAGEWISE_NLO_PRODUCT\n',
+                          product_metadata)
+            self.assertIn('ENUMERATION CARTESIAN_LAZY\n',
+                          product_metadata)
+            self.assertIn('COUNTEREVENTS TENSOR_PRODUCT\n',
+                          product_metadata)
+            self.assertIn('STAGES 3\n', product_metadata)
+            self.assertEqual(product_metadata.count(' FINITE '), 3)
+            self.assertEqual(product_metadata.count('\nVIRTUAL_ORDER '), 3)
             self.assertTrue(os.path.isfile(os.path.join(
                 subprocess_dir, 'nlo_decay_info_2.dat')))
             self.assertTrue(os.path.isfile(os.path.join(

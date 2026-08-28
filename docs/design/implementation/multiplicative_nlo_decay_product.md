@@ -135,26 +135,72 @@ basis.
 
 This increment handles corrected currents attached to distinct production
 roots.  Simultaneous corrections at nested nodes on the same branch require
-recursive current substitution and belong to the composite-sector increment.
+recursive current substitution and belong to a later increment.
+
+## Composite-sector and counterevent increment
+
+`madgraph/fks/fks_product.py` now defines the stage-local and composite
+objects used by the multiplicative approximation.  Production and every
+corrected decay expose a compact list of choices:
+
+```text
+BORN
+FINITE                         (when a virtual contribution exists)
+REAL(real source, FKS configuration)
+```
+
+The full sectors are a deterministic mixed-radix Cartesian product of those
+lists.  A sector ID can be decoded directly, and iteration is lazy: neither
+the sectors nor their HELAS matrix elements are allocated up front.  The
+ordinary `[real=QCD]` top-pair example has 28 sectors once the six distinct
+production FKS configurations are retained; only a requested sector is
+constructed.
+
+Every real stage owns its local non-zero FKS basis.  Soft slots are inferred
+from MadFKS' colour/charge-link requirement and collinear slots are retained
+only for massless FKS pairs.  A composite sector lazily takes the tensor
+product of these bases.  Thus a sector with production, top-decay and
+antitop-decay radiation has explicit `R*R*R`, `S*R*R`, `R*S*R`, and all
+other required soft/collinear combinations.  Inclusion-exclusion signs are
+products of the local signs, rather than a single global four-slot index.
+
+The first phase-space layer assigns three `(xi,y,phi)` coordinates to every
+real stage and projects the same integration point independently onto each
+counterevent: a soft projection sets `xi=0`, and a collinear projection sets
+`y=1`.  Each projected point requests the appropriate coherent HELAS tree
+carrier.  For example, `S*R*R` uses the Born production core with both real
+decay currents, while `R*S*R` keeps the production real and reduces only the
+first decay.  Carriers are cached by their actual tree sources, so several
+FKS configurations of one real matrix element and the S/C/SC reductions of
+one stage do not generate duplicate HELAS objects.
+
+The production member retains immutable FKS information for each undecayed
+real source and a baseline current for every concrete root decay.  The latter
+ensures that an uncorrected LO decay is not lost when another root is selected
+at NLO.  The exporter writes the compact stage-local description to
+`multiplicative_product_info.dat`; it deliberately does not dump the
+potentially exponential list of sectors.
+
+This increment constructs the multi-emission coordinate projections and the
+correct reduced matrix-element topologies on the Python generation side.
+The Fortran momentum maps and numerical FKS kernels still use the legacy
+single-emission slots and are the next runtime increment.
 
 ## Remaining implementation sequence
 
-1. Define composite stage/sector metadata and lazily enumerate or sample
-   `BORN`, finite soft-virtual, and real-subtracted choices.
-2. Generalize the resonance-aware phase space to several simultaneous real
-   emissions and construct tensor-product FKS counterevents.  For two real
-   stages this includes `RR`, `SR`, `RS`, and `SS` kinematics, with the
-   analogous soft/collinear subdivisions.
-3. Add recursive simultaneous current insertion for nested corrected nodes
+1. Consume the tensor-event description in the Fortran phase-space runtime,
+   compose several resonance-aware radiation maps, and evaluate the local
+   FKS kernels for every tensor counterevent.
+2. Add recursive simultaneous current insertion for nested corrected nodes
    and audit identical emissions belonging to different resonance histories.
-4. Export finite stage-local virtual interference data and implement exact
+3. Export finite stage-local virtual interference data and implement exact
    virtual-real and virtual-virtual product contractions.  Only then add an
    unbiased product-aware version of the virtual-grid approximation.
-5. Move the NLO width normalization inside each decay factor and multiply the
+4. Move the NLO width normalization inside each decay factor and multiply the
    factor-local scale-weight polynomials instead of using one linear global
    weight line.
-6. Extend the MINT driver, cuts, histograms, restart data, and resolved output
+5. Extend the MINT driver, cuts, histograms, restart data, and resolved output
    to composite sectors.
-7. Validate that the first-order expansion equals the additive result,
+6. Validate that the first-order expansion equals the additive result,
    inclusive normalized decays integrate to one, and all multi-real sectors
    are independent of the FKS cut parameters.

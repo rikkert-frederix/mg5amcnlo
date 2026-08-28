@@ -2979,6 +2979,21 @@ def _build_nlo_decay_color_links(combined_born, decay_born,
     return color_links, records
 
 
+def _factorized_fks_info(info):
+    """Copy the stage-local fields needed by a product-sector catalog.
+
+    In particular, do not retain ``underlying_born`` Leg objects.  They are
+    generation scratch data and would make an otherwise small immutable
+    stage description depend on the original FKSProcess object graph.
+    """
+
+    fields = [
+        'i', 'j', 'ij', 'ij_id', 'splitting_type',
+        'need_color_links', 'need_charge_links', 'extra_cnt_index']
+    return dict((field, copy.deepcopy(info[field]))
+                for field in fields if field in info)
+
+
 def compose_nlo_decay_helas_process(fks_process, composition):
     """Compose a decay-owned FKS family with one LO production amplitude.
 
@@ -3066,8 +3081,11 @@ def compose_nlo_decay_helas_process(fks_process, composition):
 
     combined_reals = []
     factorized_real_currents = []
+    factorized_real_fks_infos = []
     for index, (real, decay_real_me) in enumerate(
             zip(fks_process.real_processes, decay_real_mes), 1):
+        factorized_real_fks_infos.append(tuple(
+            _factorized_fks_info(info) for info in real.fks_infos))
         real_current = _matrix_element_as_decay_current(decay_real_me)
         real_current = _attach_corrected_downstream_decays(
             real_current, corrected_process)
@@ -3169,7 +3187,8 @@ def compose_nlo_decay_helas_process(fks_process, composition):
         'corrected_node': prototype_metadata['corrected_node'],
         'parent_pdg': prototype_metadata['parent_pdg'],
         'born_current': factorized_born_current,
-        'real_currents': tuple(factorized_real_currents)}
+        'real_currents': tuple(factorized_real_currents),
+        'real_fks_infos': tuple(factorized_real_fks_infos)}
     decay_trees = tuple((
         attachment['selector'],
         _process_grouping_signature(
@@ -3423,7 +3442,17 @@ def apply_decay_assignment(fks_process, assignment):
     # FKSMultiProcess object at export time.
     fks_process.factorized_core_tree_family = {
         'born_amplitude': core_born_amplitude,
-        'real_amplitudes': tuple(core_real_amplitudes)}
+        'real_amplitudes': tuple(core_real_amplitudes),
+        'real_fks_infos': tuple(
+            tuple(_factorized_fks_info(info) for info in real.fks_infos)
+            for real in fks_process.real_processes),
+        # A multiplicative sector still has to insert roots whose decays are
+        # LO only.  Keep an immutable current for every concrete root and let
+        # corrected stage choices replace the matching selector lazily.
+        'baseline_decay_currents': tuple({
+            'selector': tuple(attachment['selector']),
+            'current': copy.deepcopy(attachment['decay_me'])}
+            for attachment in assignment['attachments'])}
 
     model = fks_process.born_me.get('processes')[0].get('model')
     metadata = _build_decay_metadata(assignment, model)

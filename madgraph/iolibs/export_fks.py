@@ -35,6 +35,7 @@ import madgraph.fks.fks_helas_objects as fks_helas_objects
 import madgraph.fks.fks_base as fks
 import madgraph.fks.fks_common as fks_common
 import madgraph.fks.fks_decay as fks_decay
+import madgraph.fks.fks_product as fks_product
 import madgraph.iolibs.drawing_eps as draw
 import madgraph.iolibs.gen_infohtml as gen_infohtml
 import madgraph.iolibs.files as files
@@ -1004,6 +1005,11 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             fks_decay.write_contribution_bundle_files(
                 os.getcwd(), matrix_element.bundle_contributions,
                 matrix_element.bundle_nlo_decay_metadata)
+            product_catalog = getattr(
+                matrix_element, 'factorized_product_catalog', None)
+            if product_catalog is not None:
+                fks_product.write_product_info(
+                    os.getcwd(), product_catalog)
 
 ## write the files corresponding to the born process in the P* directory
         self.generate_born_fks_files(matrix_element,

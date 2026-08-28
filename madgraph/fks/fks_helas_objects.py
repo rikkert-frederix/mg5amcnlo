@@ -27,6 +27,7 @@ import madgraph.core.color_algebra as color_algebra
 import madgraph.fks.fks_base as fks_base
 import madgraph.fks.fks_common as fks_common
 import madgraph.fks.fks_decay as fks_decay
+import madgraph.fks.fks_product as fks_product
 import madgraph.loop.loop_helas_objects as loop_helas_objects
 import madgraph.loop.loop_diagram_generation as loop_diagram_generation
 from madgraph import InvalidCmd
@@ -662,6 +663,9 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
 
             fks_decay.set_bundle_color_links(
                 production, member_metadata)
+            production.factorized_product_catalog = \
+                fks_product.FactorizedProductCatalog.from_bundle(production)
+            production.factorized_product_mode = 'STAGEWISE_NLO_PRODUCT'
             production.contribution_bundle = True
             production.virt_matrix_element = None
             production.nlo_decay_virtual_matrix_element = None
