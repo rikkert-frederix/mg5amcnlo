@@ -566,6 +566,29 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
             production.bundle_virtual_matrix_elements = []
             production.bundle_fks_info_list = []
             production.bundle_contributions = []
+            core_family = getattr(
+                production, 'factorized_core_tree_family', None)
+            if core_family is None:
+                raise fks_common.FKSProcessError(
+                    'The production member has no undecayed tree-current '
+                    'family')
+            production.factorized_production_core_family = core_family
+            factorized_families = []
+            for member in decay_members:
+                family = getattr(
+                    member, 'factorized_decay_current_family', None)
+                if family is None:
+                    raise fks_common.FKSProcessError(
+                        'A bundled decay correction has no factorized '
+                        'current family')
+                factorized_families.append(family)
+            # This is the lazy input of the multiplicative compositor.  No
+            # Cartesian products are generated here: the future composite-
+            # sector sampler will request only the matrix elements it owns.
+            production.factorized_decay_current_families = tuple(
+                factorized_families)
+            production.factorized_contraction_mode = \
+                'HELAS_CURRENT_PRODUCT'
 
             real_offset = 0
             configuration_offset = 0

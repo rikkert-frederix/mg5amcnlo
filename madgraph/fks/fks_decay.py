@@ -2246,32 +2246,149 @@ def compose_nlo_decay_virtual(production_amplitude, selector,
     return combined, len(pieces)
 
 
-def _glue_nlo_decay_tree_component(production_amplitude, selector,
-                                   decay_current, kind, source_index):
-    """Insert one Born/real decay current in a fresh LO production ME."""
+def compose_simultaneous_tree_matrix_element(core_amplitude, components,
+                                             contraction_id=1,
+                                             ordering_for_pol=None):
+    """Coherently insert several factorized tree currents into one core.
 
-    production_me = helas_objects.HelasMatrixElement(
-        production_amplitude, decay_ids=[selector[0]], gen_color=False)
+    ``components`` is a sequence of dictionaries with the following fields:
+
+      * ``selector``: the concrete ``(PDG, occurrence)`` in the core;
+      * ``current``: an ordinary tree-level HELAS matrix element;
+      * ``stage``: a stable, user-facing stage label;
+      * ``state``: normally ``BORN`` or ``REAL``;
+      * ``source_index``: the stage-local matrix-element index.
+
+    Inserting all currents in one call to ``insert_decay_chains`` lets HELAS
+    perform the resonance-helicity and colour contraction before squaring.
+    This is deliberately not a product of already spin-summed weights.  Loop
+    matrix elements are rejected: simultaneous virtual factors retain one
+    independent MadLoop object per corrected stage and require a separate
+    finite-interference product wrapper.
+    """
+
+    if not isinstance(core_amplitude, diagram_generation.Amplitude):
+        raise fks_common.FKSProcessError(
+            'A simultaneous contraction requires one core amplitude')
+    if not components:
+        raise fks_common.FKSProcessError(
+            'A simultaneous contraction requires at least one current')
+    if not isinstance(contraction_id, int) or contraction_id < 1:
+        raise fks_common.FKSProcessError(
+            'A simultaneous contraction requires a positive identifier')
+
+    normalized = []
+    core_process = core_amplitude.get('process')
+    resolved_numbers = set()
+    for component_index, component in enumerate(components, 1):
+        try:
+            selector = tuple(component['selector'])
+            current = component['current']
+            stage = str(component['stage'])
+            state = str(component['state']).upper()
+            source_index = int(component['source_index'])
+        except (KeyError, TypeError, ValueError):
+            raise fks_common.FKSProcessError(
+                'Simultaneous component %d is incomplete' % component_index)
+        if (len(selector) != 2 or
+                not all(isinstance(value, int) for value in selector) or
+                selector[1] < 1):
+            raise fks_common.FKSProcessError(
+                'Simultaneous component %d has an invalid selector' %
+                component_index)
+        if (not isinstance(current, helas_objects.HelasMatrixElement) or
+                isinstance(current,
+                           loop_helas_objects.LoopHelasMatrixElement)):
+            raise fks_common.FKSProcessError(
+                'Simultaneous component %d is not a tree HELAS current' %
+                component_index)
+        if len(current.get('processes')) != 1:
+            raise fks_common.FKSProcessError(
+                'Simultaneous component %d must contain one process' %
+                component_index)
+        if not stage or source_index < 1:
+            raise fks_common.FKSProcessError(
+                'Simultaneous component %d has invalid provenance' %
+                component_index)
+        resolved = _resolve_selector(core_process, selector)
+        if resolved.get('number') in resolved_numbers:
+            raise fks_common.FKSProcessError(
+                'Two simultaneous currents select core leg %d' %
+                resolved.get('number'))
+        resolved_numbers.add(resolved.get('number'))
+        normalized.append({
+            'selector': selector,
+            'current': current,
+            'stage': stage,
+            'state': state,
+            'source_index': source_index})
+
+    decay_ids = misc.make_unique([
+        component['selector'][0] for component in normalized])
+    combined = helas_objects.HelasMatrixElement(
+        core_amplitude, decay_ids=decay_ids, gen_color=False)
     metadata = {
         'format': 1,
         'nodes': [],
         'leaves': [],
         'contexts': [],
         'fks_maps': [],
-        'color_links': []}
-    attachment = {
-        'selector': selector,
-        'decay_me': decay_current}
-    attachment['root_node_id'] = _append_decay_tree(
-        decay_current.get('processes')[0], 0, metadata)
-    metadata['forced_species'] = [abs(selector[0])]
+        'color_links': [],
+        'simultaneous_components': []}
+    attachments = []
+    for component in normalized:
+        attachment = {
+            'selector': component['selector'],
+            'decay_me': component['current']}
+        attachment['root_node_id'] = _append_decay_tree(
+            component['current'].get('processes')[0], 0, metadata)
+        attachments.append(attachment)
+        metadata['simultaneous_components'].append({
+            'stage': component['stage'],
+            'state': component['state'],
+            'source_index': component['source_index'],
+            'selector': component['selector'],
+            'root_node_id': attachment['root_node_id']})
+
+    metadata['forced_species'] = misc.make_unique([
+        abs(component['selector'][0]) for component in normalized])
+    if ordering_for_pol is None:
+        ordering_for_pol = dict(
+            (component['selector'][0], False) for component in normalized)
+    else:
+        ordering_for_pol = copy.copy(ordering_for_pol)
     assignment = {
-        'attachments': [attachment],
-        'ordering_for_pol': {selector[0]: False}}
+        'attachments': attachments,
+        'ordering_for_pol': ordering_for_pol}
+    if len(normalized) == 1:
+        context_kind = normalized[0]['state']
+        context_source = normalized[0]['source_index']
+    else:
+        context_kind = 'COMPOSITE'
+        context_source = contraction_id
     context = _make_context(
-        production_me, assignment, metadata, 1, kind, source_index)
+        combined, assignment, metadata, 1, context_kind, context_source)
     metadata['contexts'].append(context)
-    return production_me, context, metadata
+    combined.fnlo_simultaneous_contraction = tuple(
+        (component['stage'], component['state'],
+         component['source_index'], component['selector'])
+        for component in normalized)
+    combined.fnlo_simultaneous_metadata = metadata
+    return combined, context, metadata
+
+
+def _glue_nlo_decay_tree_component(production_amplitude, selector,
+                                   decay_current, kind, source_index):
+    """Insert one Born/real decay current in a fresh LO production ME."""
+
+    return compose_simultaneous_tree_matrix_element(
+        production_amplitude, [{
+            'selector': selector,
+            'current': decay_current,
+            'stage': 'DECAY_%d' % selector[0],
+            'state': kind,
+            'source_index': source_index}],
+        ordering_for_pol={selector[0]: False})
 
 
 def _attach_corrected_downstream_decays(matrix_element, corrected_process):
@@ -2948,11 +3065,21 @@ def compose_nlo_decay_helas_process(fks_process, composition):
     prototype_metadata['contexts'].append(born_local_context)
 
     combined_reals = []
+    factorized_real_currents = []
     for index, (real, decay_real_me) in enumerate(
             zip(fks_process.real_processes, decay_real_mes), 1):
         real_current = _matrix_element_as_decay_current(decay_real_me)
         real_current = _attach_corrected_downstream_decays(
             real_current, corrected_process)
+        # ``insert_decay_chains`` is allowed to normalize the supplied
+        # current's external wavefunctions while composing the ordinary
+        # additive member.  Retain an independently regenerated current for
+        # later simultaneous insertions so the family is immutable input.
+        factorized_real_current = _matrix_element_as_decay_current(
+            decay_real_me)
+        factorized_real_current = _attach_corrected_downstream_decays(
+            factorized_real_current, corrected_process)
+        factorized_real_currents.append(factorized_real_current)
         combined_real, component_context, component_metadata = \
             _glue_nlo_decay_tree_component(
                 production_amplitude, selector, real_current, 'REAL', index)
@@ -3029,6 +3156,20 @@ def compose_nlo_decay_helas_process(fks_process, composition):
     fks_process.nlo_decay_metadata = prototype_metadata
     fks_process.nlo_decay_virtual_matrix_element = None
     fks_process.virt_matrix_element = combined_virtual
+    # Retain the stage-local tree currents as the inputs of the
+    # multiplicative compositor.  They are intentionally kept separate from
+    # the flattened full-event MEs above: simultaneous insertion must happen
+    # before HELAS contracts the resonance spin and colour indices.
+    factorized_born_current = _matrix_element_as_decay_current(
+        decay_born_me)
+    factorized_born_current = _attach_corrected_downstream_decays(
+        factorized_born_current, corrected_process)
+    fks_process.factorized_decay_current_family = {
+        'selector': selector,
+        'corrected_node': prototype_metadata['corrected_node'],
+        'parent_pdg': prototype_metadata['parent_pdg'],
+        'born_current': factorized_born_current,
+        'real_currents': tuple(factorized_real_currents)}
     decay_trees = tuple((
         attachment['selector'],
         _process_grouping_signature(
@@ -3266,6 +3407,23 @@ def _append_loonly_fake_context(metadata, model):
 
 def apply_decay_assignment(fks_process, assignment):
     """Attach an assignment to Born, real, counterterm, and loop HELAS MEs."""
+
+    core_born_amplitude = fks_process.born_me.get('base_amplitude')
+    if core_born_amplitude is None:
+        core_born_amplitude = fks_process.born_me.get_base_amplitude()
+    core_real_amplitudes = []
+    for real in fks_process.real_processes:
+        amplitude = real.matrix_element.get('base_amplitude')
+        if amplitude is None:
+            amplitude = real.matrix_element.get_base_amplitude()
+        core_real_amplitudes.append(amplitude)
+    # Preserve the undecayed cores before _make_context replaces their
+    # external resonances.  Together with the stage-local current families,
+    # these make the later Cartesian compositor independent of the original
+    # FKSMultiProcess object at export time.
+    fks_process.factorized_core_tree_family = {
+        'born_amplitude': core_born_amplitude,
+        'real_amplitudes': tuple(core_real_amplitudes)}
 
     model = fks_process.born_me.get('processes')[0].get('model')
     metadata = _build_decay_metadata(assignment, model)

@@ -1171,6 +1171,102 @@ class TestFKSDecayChains(unittest.TestCase):
                 len(owned), contribution['last'] -
                 contribution['first'] + 1)
 
+    def test_simultaneous_tree_current_contraction(self):
+        """Contract two decay reals, and a production/decay real pair."""
+
+        command = self.generate(
+            'u u~ > t t~ [real=QCD], '
+            '(t > w+ b QED=1 [real=QCD]), '
+            '(t~ > w- b~ QED=1 [real=QCD])')
+        helas = fks_helas_objects.FKSHelasMultiProcess(
+            command._fks_multi_proc, loop_optimized=False)
+        bundled = helas['matrix_elements'][0]
+        self.assertEqual(
+            bundled.factorized_contraction_mode,
+            'HELAS_CURRENT_PRODUCT')
+        families = bundled.factorized_decay_current_families
+        self.assertEqual(len(families), 2)
+        self.assertEqual(
+            set(family['selector'] for family in families),
+            set([(6, 1), (-6, 1)]))
+        for family in families:
+            self.assertTrue(family['real_currents'])
+
+        def assert_top_connectors(matrix_element):
+            connectors = [
+                wavefunction for wavefunction in
+                matrix_element.get_all_wavefunctions()
+                if (abs(wavefunction.get('pdg_code')) == 6 and
+                    wavefunction.get('decay_node_id'))]
+            self.assertEqual(
+                set(wavefunction.get('decay_node_id')
+                    for wavefunction in connectors), set([1, 2]))
+            for wavefunction in connectors:
+                self.assertEqual(
+                    wavefunction.get('width'),
+                    'FNLO_DECAY_DUMMY_WIDTH_RATIO()*mdl_MT')
+
+        production_family = bundled.factorized_production_core_family
+        self.assertEqual(
+            [leg.get('id') for leg in production_family[
+                'born_amplitude']['process']['legs']],
+            [2, -2, 6, -6])
+        self.assertTrue(production_family['real_amplitudes'])
+        decay_real_components = [{
+            'selector': family['selector'],
+            'current': family['real_currents'][0],
+            'stage': 'DECAY_%d' % index,
+            'state': 'REAL',
+            'source_index': 1}
+            for index, family in enumerate(families, 1)]
+        double_decay_real, context, metadata = \
+            fks_decay.compose_simultaneous_tree_matrix_element(
+                production_family['born_amplitude'], decay_real_components,
+                contraction_id=7)
+        double_decay_pdgs = [
+            leg.get('id') for leg in
+            double_decay_real['processes'][0].get_legs_with_decays()]
+        self.assertEqual(
+            double_decay_real.get_nexternal_ninitial(), (8, 2))
+        self.assertEqual(double_decay_pdgs.count(21), 2)
+        self.assertEqual(context['kind'], 'COMPOSITE')
+        self.assertEqual(context['source_index'], 7)
+        self.assertEqual(
+            double_decay_real.fnlo_simultaneous_contraction,
+            (('DECAY_1', 'REAL', 1, families[0]['selector']),
+             ('DECAY_2', 'REAL', 1, families[1]['selector'])))
+        self.assertEqual(
+            [component['root_node_id'] for component in
+             metadata['simultaneous_components']], [1, 2])
+        assert_top_connectors(double_decay_real)
+        self.assertTrue(double_decay_real.get('color_basis'))
+        self.assertTrue(double_decay_real.get('color_matrix'))
+
+        production_real = next(
+            amplitude for amplitude in
+            production_family['real_amplitudes']
+            if amplitude.get('diagrams'))
+        production_decay_components = []
+        for index, family in enumerate(families, 1):
+            production_decay_components.append({
+                'selector': family['selector'],
+                'current': (family['real_currents'][0] if index == 1
+                            else family['born_current']),
+                'stage': 'DECAY_%d' % index,
+                'state': 'REAL' if index == 1 else 'BORN',
+                'source_index': 1})
+        production_decay_real, _, _ = \
+            fks_decay.compose_simultaneous_tree_matrix_element(
+                production_real, production_decay_components,
+                contraction_id=8)
+        production_decay_pdgs = [
+            leg.get('id') for leg in
+            production_decay_real['processes'][0].get_legs_with_decays()]
+        self.assertEqual(
+            production_decay_real.get_nexternal_ninitial(), (8, 2))
+        self.assertEqual(production_decay_pdgs.count(21), 2)
+        assert_top_connectors(production_decay_real)
+
     def test_full_nlo_bundle_supports_nested_corrected_decays(self):
         command = self.generate(
             'u u~ > t t~ [real=QCD], '
