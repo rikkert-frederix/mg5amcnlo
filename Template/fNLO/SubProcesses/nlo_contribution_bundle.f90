@@ -15,6 +15,8 @@ module nlo_contribution_bundle
   integer, allocatable, save :: contribution_last_values(:)
   integer, allocatable, save :: contribution_representative_values(:)
   integer, allocatable, save :: contribution_parent_values(:)
+  integer, allocatable, save :: contribution_occurrence_values(:)
+  integer, allocatable, save :: contribution_node_values(:)
   logical, allocatable, save :: contribution_virtual_values(:)
   integer, allocatable, save :: configuration_owner_values(:)
   integer, allocatable, save :: virtual_grid_values(:, :)
@@ -29,12 +31,16 @@ module nlo_contribution_bundle
   public :: contribution_fks_first, contribution_fks_last
   public :: contribution_representative_fks
   public :: contribution_is_nlo_decay, contribution_parent_pdg
+  public :: contribution_parent_occurrence, contribution_corrected_node
   public :: active_contribution_fks_first, active_contribution_fks_last
   public :: active_contribution_is_production
   public :: active_contribution_is_nlo_decay
   public :: contribution_has_virtual, active_contribution_has_virtual
   public :: nlo_virtual_grid_count, active_virtual_grid_index
   public :: bundle_species_is_nlo
+  public :: bundle_component_count, bundle_born_component
+  public :: bundle_production_nlo_component, bundle_width_component
+  public :: bundle_decay_component, bundle_component_label
 
 contains
 
@@ -42,7 +48,8 @@ contains
     logical :: exists, end_seen
     integer :: unit_number, ios, metadata_format, contribution_count
     integer :: contribution, first, last, representative, has_virtual
-    integer :: parent, configuration, expected_first, virtual_grid_count
+    integer :: parent, occurrence, corrected_node
+    integer :: configuration, expected_first, virtual_grid_count
     integer :: virtual_grid, amp_position
     integer, allocatable :: virtual_orders(:)
     character(len=512) :: line
@@ -80,7 +87,9 @@ contains
       end select
       if (ios /= 0) call fail_bundle('malformed contribution header')
     end do
-    if (metadata_format /= 2) call fail_bundle('FORMAT 2 is required')
+    if (metadata_format /= 2 .and. metadata_format /= 3) then
+      call fail_bundle('FORMAT 2 or FORMAT 3 is required')
+    end if
     if (contribution_count < 2 .or. contribution_count > fks_configs) then
       call fail_bundle('invalid contribution count')
     end if
@@ -96,6 +105,8 @@ contains
     allocate(contribution_last_values(number_of_contributions))
     allocate(contribution_representative_values(number_of_contributions))
     allocate(contribution_parent_values(number_of_contributions))
+    allocate(contribution_occurrence_values(number_of_contributions))
+    allocate(contribution_node_values(number_of_contributions))
     allocate(contribution_virtual_values(number_of_contributions))
     allocate(configuration_owner_values(fks_configs))
     allocate(virtual_grid_values(&
@@ -106,6 +117,8 @@ contains
     contribution_last_values = 0
     contribution_representative_values = 0
     contribution_parent_values = 0
+    contribution_occurrence_values = 0
+    contribution_node_values = 0
     contribution_virtual_values = .false.
     configuration_owner_values = 0
     virtual_grid_values = 0
@@ -124,8 +137,16 @@ contains
       case ('FORMAT', 'COUNT', 'VIRTUAL_GRIDS')
         continue
       case ('CONTRIBUTION')
-        read(line, *, iostat=ios) keyword, contribution, kind, first, &
-             last, representative, has_virtual, parent
+        occurrence = 0
+        corrected_node = 0
+        if (metadata_format == 3) then
+          read(line, *, iostat=ios) keyword, contribution, kind, first, &
+               last, representative, has_virtual, parent, occurrence, &
+               corrected_node
+        else
+          read(line, *, iostat=ios) keyword, contribution, kind, first, &
+               last, representative, has_virtual, parent
+        end if
         if (ios /= 0) call fail_bundle('malformed CONTRIBUTION record')
         call check_contribution(contribution)
         if (contribution_kind_values(contribution) /= 0) then
@@ -151,6 +172,8 @@ contains
         contribution_representative_values(contribution) = representative
         contribution_virtual_values(contribution) = has_virtual /= 0
         contribution_parent_values(contribution) = parent
+        contribution_occurrence_values(contribution) = occurrence
+        contribution_node_values(contribution) = corrected_node
         configuration_owner_values(first:last) = contribution
       case ('VIRTUAL_GRID')
         read(line, *, iostat=ios) keyword, contribution, virtual_grid, &
@@ -212,10 +235,23 @@ contains
           contribution_parent_values(contribution) == 0) then
         call fail_bundle('an NLO-decay member has no corrected parent')
       end if
+      if (metadata_format == 3 .and. &
+          contribution_kind_values(contribution) == &
+          nlo_decay_contribution .and. &
+          (contribution_occurrence_values(contribution) < 1 .or. &
+           contribution_node_values(contribution) < 1)) then
+        call fail_bundle('an NLO-decay member has no occurrence or node')
+      end if
       if (contribution_kind_values(contribution) == &
           production_contribution .and. &
           contribution_parent_values(contribution) /= 0) then
         call fail_bundle('the production member has a decay parent')
+      end if
+      if (contribution_kind_values(contribution) == &
+          production_contribution .and. &
+          (contribution_occurrence_values(contribution) /= 0 .or. &
+           contribution_node_values(contribution) /= 0)) then
+        call fail_bundle('the production member has decay identifiers')
       end if
       if (contribution_virtual_values(contribution) .neqv. &
           any(virtual_grid_values(:, contribution) > 0)) then
@@ -356,6 +392,33 @@ contains
   end function contribution_parent_pdg
 
 
+  integer function contribution_parent_occurrence(contribution)
+    integer, intent(in) :: contribution
+    if (.not. initialized) call initialize_nlo_contribution_bundle()
+    call check_contribution(contribution)
+    if (.not. enabled .or. &
+        contribution_kind_values(contribution) /= nlo_decay_contribution) then
+      contribution_parent_occurrence = 0
+    else
+      contribution_parent_occurrence = &
+           contribution_occurrence_values(contribution)
+    end if
+  end function contribution_parent_occurrence
+
+
+  integer function contribution_corrected_node(contribution)
+    integer, intent(in) :: contribution
+    if (.not. initialized) call initialize_nlo_contribution_bundle()
+    call check_contribution(contribution)
+    if (.not. enabled .or. &
+        contribution_kind_values(contribution) /= nlo_decay_contribution) then
+      contribution_corrected_node = 0
+    else
+      contribution_corrected_node = contribution_node_values(contribution)
+    end if
+  end function contribution_corrected_node
+
+
   integer function active_contribution_fks_first()
     active_contribution_fks_first = contribution_fks_first(&
          active_nlo_contribution())
@@ -460,6 +523,80 @@ contains
       end if
     end do
   end function bundle_species_is_nlo
+
+
+  integer function bundle_component_count()
+    if (.not. initialized) call initialize_nlo_contribution_bundle()
+    if (enabled) then
+      ! Born, production NLO, one component per decay correction, and the
+      ! strict width-expansion counterterm.
+      bundle_component_count = number_of_contributions + 2
+    else
+      bundle_component_count = 0
+    end if
+  end function bundle_component_count
+
+
+  integer function bundle_born_component()
+    bundle_born_component = 1
+  end function bundle_born_component
+
+
+  integer function bundle_production_nlo_component()
+    bundle_production_nlo_component = 2
+  end function bundle_production_nlo_component
+
+
+  integer function bundle_decay_component(contribution)
+    integer, intent(in) :: contribution
+    if (.not. initialized) call initialize_nlo_contribution_bundle()
+    call check_contribution(contribution)
+    if (.not. enabled .or. &
+        contribution_kind_values(contribution) /= nlo_decay_contribution) then
+      call fail_bundle('a decay component requires an NLO-decay member')
+    end if
+    bundle_decay_component = contribution + 1
+  end function bundle_decay_component
+
+
+  integer function bundle_width_component()
+    if (.not. initialized) call initialize_nlo_contribution_bundle()
+    if (.not. enabled) then
+      bundle_width_component = 0
+    else
+      bundle_width_component = number_of_contributions + 2
+    end if
+  end function bundle_width_component
+
+
+  subroutine bundle_component_label(component, label)
+    integer, intent(in) :: component
+    character(len=*), intent(out) :: label
+    integer :: contribution
+
+    if (.not. initialized) call initialize_nlo_contribution_bundle()
+    label = ''
+    if (.not. enabled) call fail_bundle('component labels require a bundle')
+    if (component == bundle_born_component()) then
+      label = 'BORN'
+    else if (component == bundle_production_nlo_component()) then
+      label = 'PRODUCTION_NLO'
+    else if (component == bundle_width_component()) then
+      label = 'WIDTH_COUNTERTERM'
+    else
+      contribution = component - 1
+      call check_contribution(contribution)
+      if (contribution_kind_values(contribution) /= &
+          nlo_decay_contribution) then
+        call fail_bundle('unknown contribution component')
+      end if
+      write(label, '(a,i0,a,i0,a,i0,a,i0)') &
+           'DECAY_NLO_', contribution - 1, '_PDG_', &
+           contribution_parent_values(contribution), '_OCC_', &
+           contribution_occurrence_values(contribution), '_NODE_', &
+           contribution_node_values(contribution)
+    end if
+  end subroutine bundle_component_label
 
 
   subroutine check_configuration(configuration)

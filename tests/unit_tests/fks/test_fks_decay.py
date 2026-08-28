@@ -194,6 +194,29 @@ class TestFKSDecayChains(unittest.TestCase):
             'NLO_DECAY_WIDTH 6 1.3646000000000000e+00\n',
             nlo_card_text)
         self.assertNotIn('\nDECAY_WIDTH 6 ', nlo_card_text)
+        varied_card_text = fks_decay.decay_card_text(
+            {6: 1.4915}, {6: 173.0}, nlo_width_pdgs={6},
+            nlo_widths={6: 1.3646},
+            decay_scale_variation_mode='independent',
+            decay_scale_factors=(1.0, 0.5, 2.0),
+            lo_width_variations={
+                (6, 0.5): 1.42, (6, 2.0): 1.55},
+            nlo_width_variations={
+                (6, 0.5): 1.29, (6, 2.0): 1.43})
+        self.assertIn('FORMAT 5\n', varied_card_text)
+        self.assertIn(
+            'DECAY_SCALE_VARIATION_MODE INDEPENDENT\n',
+            varied_card_text)
+        self.assertIn(
+            'DECAY_SCALE_FACTORS 3 1.0000000000000000e+00 '
+            '5.0000000000000000e-01 2.0000000000000000e+00\n',
+            varied_card_text)
+        self.assertIn(
+            'LO_DECAY_WIDTH_VARIATION 6 5.0000000000000000e-01 '
+            '1.4199999999999999e+00\n', varied_card_text)
+        self.assertIn(
+            'NLO_DECAY_WIDTH_VARIATION 6 2.0000000000000000e+00 '
+            '1.4299999999999999e+00\n', varied_card_text)
 
     def test_qcd_decay_order_is_stored_per_node(self):
         command = self.generate(
@@ -1358,7 +1381,7 @@ class TestFKSDecayChains(unittest.TestCase):
                     subprocess_dir,
                     'nlo_contribution_info.dat')) as stream:
                 metadata = stream.read()
-            self.assertIn('FORMAT 2\n', metadata)
+            self.assertIn('FORMAT 3\n', metadata)
             self.assertIn('COUNT 3\n', metadata)
             self.assertIn('VIRTUAL_GRIDS 3\n', metadata)
             self.assertEqual(metadata.count('\nVIRTUAL_GRID '), 3)

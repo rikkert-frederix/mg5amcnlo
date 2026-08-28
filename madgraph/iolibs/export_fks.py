@@ -1355,6 +1355,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               'nlo_decay_metadata.f90',
                               'decay_chain_metadata.f90',
                               'decay_chain_parameters.f90',
+                              'fnlo_scale_variations.f90',
                               'decay_chain_parameters_bridge.f90',
                               'decay_chain_kinematics.f90',
                               'nlo_decay_kinematics.f90',
@@ -4620,10 +4621,15 @@ Parameters              %(params)s\n\
         decay_metadata = getattr(fksborn, 'decay_metadata', None)
         decay_visible_count = None
         if decay_metadata is not None:
-            decay_visible_count = max(
-                context['visible_count']
-                for context in decay_metadata['contexts']
-                if context['kind'] == 'REAL')
+            real_contexts = [
+                context for context in decay_metadata['contexts']
+                if context['kind'] == 'REAL']
+            visible_contexts = real_contexts or [
+                context for context in decay_metadata['contexts']
+                if context['kind'] == 'BORN']
+            if visible_contexts:
+                decay_visible_count = max(
+                    context['visible_count'] for context in visible_contexts)
         fks_info_list = fksborn.get_fks_info_list()
         split_orders = fksborn.born_me['processes'][0]['split_orders']
         replace_dict['nconfs'] = max(len(fks_info_list), 1)
@@ -4750,30 +4756,48 @@ Parameters              %(params)s\n\
         # - i_fks = nexternal, pdg type = -21 and color =8
         # - j_fks = the last colored particle
             bornproc = fksborn.born_me.get('processes')[0]
-            pdgs = [l.get('id') for l in bornproc.get('legs')] + [-21]
-            colors = [l.get('color') for l in bornproc.get('legs')] + [8]
-            charges = [l.get('charge') for l in bornproc.get('legs')] + [0.]
+            born_legs = bornproc.get('legs')
+            pdgs = [l.get('id') for l in born_legs] + [-21]
+            colors = [l.get('color') for l in born_legs] + [8]
+            charges = [l.get('charge') for l in born_legs] + [0.]
+            fake_core_count = len(colors)
             if not fixed_order_only:
                 tags = [l.get('is_tagged') for l in
-                        bornproc.get('legs')] + [False]
+                        born_legs] + [False]
 
-            fks_i = len(colors)
+            # The fake emitter remains numbered in the undecayed production
+            # core.  Pad only the generated particle-property arrays to the
+            # flattened decay-chain NEXTERNAL; the decay metadata maps that
+            # core leg to the final visible slot.
+            if decay_visible_count is not None:
+                padding = decay_visible_count - len(colors)
+                if padding < 0:
+                    raise MadGraph5Error(
+                        'The LO-only decay context is shorter than its core')
+                pdgs.extend([0] * padding)
+                colors.extend([1] * padding)
+                charges.extend([0.] * padding)
+                if not fixed_order_only:
+                    tags.extend([False] * padding)
+
+            fks_i = fake_core_count
             # fist look for a colored legs (set j to 1 otherwise)
             fks_j=0
-            for cpos, col in enumerate(colors[:-1]):
+            for cpos, col in enumerate(colors[:fake_core_count - 1]):
                 if col != 1:
                     fks_j = cpos+1
             # if no colored leg exist, look for a charged leg
             if fks_j == 0:
-                for cpos, chg in enumerate(charges[:-1]):
+                for cpos, chg in enumerate(
+                        charges[:fake_core_count - 1]):
                     if chg != 0.:
                         fks_j = cpos+1
             # no coloured or charged particle found. Pick the final particle in the (Born) process
-            if fks_j==0: fks_j=len(colors)-1    
+            if fks_j==0: fks_j=fake_core_count-1
 
             # this is special for 2->1 processes: j must be picked initial
             # keep in mind that colors include the fake extra particle
-            if len(colors) == 4:
+            if fake_core_count == 4:
                 fks_j = 2
 
             replace_dict['fks_i_values'] = str(fks_i)

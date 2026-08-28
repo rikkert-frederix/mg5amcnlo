@@ -205,7 +205,8 @@ contains
     end do
     icolup_values = icolup_input(:, :, :, 1:maxflow_used_in)
     leshouche_initialized = .true.
-    if (has_decay_chains() .or. has_nlo_contribution_bundle()) then
+    if (has_decay_chains() .or. has_nlo_decay() .or. &
+        has_nlo_contribution_bundle()) then
       call initialize_decay_born_process_map()
     end if
   end subroutine initialize_leshouche_data
@@ -636,8 +637,10 @@ contains
     decay_born_process_values = 0
     do configuration = 1, fks_configs
       do real_process = 1, niprocs_values(configuration)
-        if (has_nlo_contribution_bundle() .and. &
-            contribution_for_fks(configuration) /= 1) then
+        if ((.not. has_nlo_contribution_bundle() .and. &
+             has_nlo_decay()) .or. &
+            (has_nlo_contribution_bundle() .and. &
+             contribution_for_fks(configuration) /= 1)) then
           decay_born_process_values(configuration, real_process) = &
                find_nlo_decay_born_process(configuration, real_process)
         else

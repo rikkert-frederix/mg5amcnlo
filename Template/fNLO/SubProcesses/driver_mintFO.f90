@@ -6,7 +6,8 @@ module driver_mintfo_module
                          itmax, imode, ndim, ndimmax, nintegrals, nchans, &
                          iconfig, ichan, &
                          iconfigs, accuracy, wgt_mult, new_point, pass_cuts_check, &
-                         virt_wgt_mint, born_wgt_mint, mint
+                         virt_wgt_mint, born_wgt_mint, mint, &
+                         first_bundle_component_integral
   use mint_module, only: ans_result => ans, unc_result => unc
   use FKSParams, only: min_virt_fraction, virt_fraction, FKSParamReader
   use weight_lines, only: icontr, deallocate_weight_lines
@@ -20,12 +21,14 @@ module driver_mintfo_module
   use fks_random_module, only: random_unit_interval
   use run_state, only: lpp, fixed_fac_scale, muf1_over_ref, &
                        muf2_over_ref, muf1_ref_fixed, muf2_ref_fixed, &
-                       do_rwgt_scale, do_rwgt_pdf
+                       do_rwgt_scale, do_rwgt_decay_scale, do_rwgt_pdf
   use genps_fks, only: generate_momenta
   use decay_chain_metadata, only: real_phase_space_dimension
+  use fnlo_scale_variations, only: configure_fnlo_scale_variations
   use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
        nlo_contribution_count, contribution_representative_fks, &
-       nlo_virtual_grid_count
+       nlo_virtual_grid_count, bundle_component_count, &
+       bundle_component_label
   use setscales_module, only: set_alphas
   use split_orders, only: check_amp_split
   use cuts_module, only: passcuts
@@ -179,6 +182,7 @@ contains
 
     call setrun()
     call setpara('param_card.dat')
+    call configure_fnlo_scale_variations()
     call init_fks_singular_bridge()
     call setcuts()
     call printout()
@@ -216,13 +220,16 @@ contains
       if (imode == 0) then
         doreweight = .false.
         do_rwgt_scale = .false.
+        do_rwgt_decay_scale = .false.
         do_rwgt_pdf = .false.
       else
-        doreweight = do_rwgt_scale .or. do_rwgt_pdf
+        doreweight = do_rwgt_scale .or. do_rwgt_decay_scale .or. &
+             do_rwgt_pdf
       end if
       write (*, *) 'imode is ', imode
       call mint(sigint)
       call topout_impl()
+      call write_bundle_contribution_results()
       call deallocate_weight_lines()
     else
       write (*, *) 'Unknown imode', imode
@@ -296,6 +303,38 @@ contains
       write (*, *) momcmp_count, xratmax
     end if
   end subroutine run_mintfo_driver
+
+
+  subroutine write_bundle_contribution_results()
+    implicit none
+    integer :: component, component_count, integral, unit_number, ios
+    double precision :: component_sum
+    character(len=96) :: label
+
+    if (.not. has_nlo_contribution_bundle()) return
+    component_count = bundle_component_count()
+    open(newunit=unit_number, file='contribution_results.dat', &
+         status='replace', action='write', iostat=ios)
+    if (ios /= 0) call fail_driver('cannot open contribution_results.dat')
+    write(unit_number, '(a)') 'FORMAT 1'
+    write(unit_number, '(a,1x,i0)') 'COUNT', component_count
+    component_sum = 0d0
+    do component = 1, component_count
+      integral = first_bundle_component_integral + component - 1
+      call bundle_component_label(component, label)
+      write(unit_number, '(a,1x,i0,1x,a,1x,es24.16,1x,es24.16)') &
+           'COMPONENT', component, trim(label), ans_result(integral, 0), &
+           unc_result(integral, 0)
+      component_sum = component_sum + ans_result(integral, 0)
+    end do
+    write(unit_number, '(a,1x,es24.16)') 'SUM_COMPONENTS', component_sum
+    write(unit_number, '(a,1x,es24.16,1x,es24.16)') &
+         'TOTAL', ans_result(2, 0), unc_result(2, 0)
+    write(unit_number, '(a,1x,es24.16)') &
+         'CLOSURE', component_sum - ans_result(2, 0)
+    write(unit_number, '(a)') 'END'
+    close(unit_number)
+  end subroutine write_bundle_contribution_results
 
   double precision function sigint_impl(xx, vegas_wgt, ifl, f, &
                                         ini_fin_fks, nndim, nbody, event_momenta, p_born, virtual_over_born, &
@@ -462,7 +501,7 @@ contains
 
     call include_pdf_and_alphas()
     if (doreweight) then
-      if (do_rwgt_scale) call reweight_scale()
+      if (do_rwgt_scale .or. do_rwgt_decay_scale) call reweight_scale()
       if (do_rwgt_pdf) call reweight_pdf()
     end if
 

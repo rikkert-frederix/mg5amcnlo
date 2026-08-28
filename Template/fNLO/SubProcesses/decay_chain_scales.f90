@@ -3,7 +3,8 @@ module decay_chain_scales
   use decay_chain_metadata, only: has_decay_chains, decay_node_count, &
        context_for_fks, node_pdg, node_qcd_order
   use decay_chain_parameters, only: decay_renormalization_scale, &
-       use_decayed_production_ren_scale_momenta
+       use_decayed_production_ren_scale_momenta, &
+       decay_scale_species_count, decay_scale_species_index
   use decay_chain_kinematics, only: contract_visible_momenta
   use nlo_decay_metadata, only: has_nlo_decay, corrected_parent_pdg, &
        nlo_decay_production_born_qcd_order, nlo_decay_born_qcd_order, &
@@ -73,9 +74,12 @@ contains
   end function production_qcd_squared_order
 
 
-  double precision function decay_qcd_coupling_weight(qcd_power)
+  double precision function decay_qcd_coupling_weight(qcd_power, &
+                                                       factor_indices)
     integer, intent(in), optional :: qcd_power
+    integer, intent(in), optional :: factor_indices(:)
     integer :: node, qcd_order, total_power, corrected_power
+    integer :: factor_index
     double precision :: coupling, scale
     double precision, parameter :: pi = 3.14159265358979323846d0
 
@@ -94,7 +98,10 @@ contains
           qcd_order = 2*nlo_decay_node_qcd_order(node)
         end if
         if (qcd_order == 0) cycle
-        scale = decay_renormalization_scale(nlo_decay_node_pdg(node))
+        factor_index = selected_factor_index(&
+             nlo_decay_node_pdg(node), factor_indices)
+        scale = decay_renormalization_scale(&
+             nlo_decay_node_pdg(node), factor_index)
         coupling = sqrt(4d0*pi*alphas(scale))
         decay_qcd_coupling_weight = decay_qcd_coupling_weight* &
              coupling**qcd_order
@@ -105,7 +112,8 @@ contains
     do node = 1, decay_node_count()
       qcd_order = node_qcd_order(node)
       if (qcd_order == 0) cycle
-      scale = decay_renormalization_scale(node_pdg(node))
+      factor_index = selected_factor_index(node_pdg(node), factor_indices)
+      scale = decay_renormalization_scale(node_pdg(node), factor_index)
       coupling = sqrt(4d0*pi*alphas(scale))
       decay_qcd_coupling_weight = decay_qcd_coupling_weight* &
            coupling**(2*qcd_order)
@@ -131,9 +139,11 @@ contains
 
 
   double precision function decay_qcd_coupling_rescaling(production_g, &
-                                                          qcd_power)
+                                                          qcd_power, &
+                                                          factor_indices)
     double precision, intent(in) :: production_g
     integer, intent(in), optional :: qcd_power
+    integer, intent(in), optional :: factor_indices(:)
     integer :: power
 
     power = decay_qcd_squared_order()
@@ -148,8 +158,26 @@ contains
       stop 1
     end if
     decay_qcd_coupling_rescaling = &
-         decay_qcd_coupling_weight(power)/production_g**power
+         decay_qcd_coupling_weight(power, factor_indices)/production_g**power
   end function decay_qcd_coupling_rescaling
+
+
+  integer function selected_factor_index(pdg, factor_indices)
+    integer, intent(in) :: pdg
+    integer, intent(in), optional :: factor_indices(:)
+    integer :: species_index
+
+    selected_factor_index = 1
+    if (.not. present(factor_indices)) return
+    if (size(factor_indices) == 0) return
+    if (size(factor_indices) /= decay_scale_species_count()) then
+      call fail_scales('decay factor-index array has the wrong size')
+    end if
+    species_index = decay_scale_species_index(pdg)
+    if (species_index > 0) then
+      selected_factor_index = factor_indices(species_index)
+    end if
+  end function selected_factor_index
 
 
   integer function corrected_born_qcd_squared_order(total_nlo_qcd_order)

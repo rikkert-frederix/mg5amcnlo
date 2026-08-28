@@ -15,7 +15,7 @@ module run_state
   public :: muf1_ref_fixed, muf2_ref_fixed, qes_ref_fixed
   public :: mur2_current, muf12_current, muf22_current, qes2_current
   public :: lpp, ebeam, q2fact, bwcutoff
-  public :: do_rwgt_scale, do_rwgt_pdf
+  public :: do_rwgt_scale, do_rwgt_decay_scale, do_rwgt_pdf
   public :: pdg_cut, ptmin4pdg, ptmax4pdg, mxxmin4pdg
   public :: mxxpart_antipart
   public :: jetalgo, jetradius, ptj, etaj, ptl, etal, drll, drll_sf
@@ -50,6 +50,7 @@ module run_state
   double precision :: bwcutoff
 
   logical :: do_rwgt_scale
+  logical :: do_rwgt_decay_scale
   logical :: do_rwgt_pdf
 
   integer :: pdg_cut(0:25)
@@ -108,6 +109,7 @@ contains
     q2fact = 0d0
     bwcutoff = 0d0
     do_rwgt_scale = .false.
+    do_rwgt_decay_scale = .false.
     do_rwgt_pdf = .false.
     pdg_cut = 0
     ptmin4pdg = 0d0

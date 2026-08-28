@@ -18,6 +18,7 @@ from __future__ import absolute_import
 
 import copy
 import itertools
+import math
 import os
 
 import madgraph.core.base_objects as base_objects
@@ -658,6 +659,10 @@ def _core_particle_grouping_signature(pdg, model):
     """
 
     particle = model.get_particle(pdg)
+    if particle is None and pdg == -21:
+        # MadFKS uses -21 only for the synthetic LO-only emitter.  Gluons are
+        # self-conjugate in the model, so their physical lookup key is +21.
+        particle = model.get_particle(21)
     if particle is None:
         raise fks_common.FKSProcessError(
             'Cannot identify core particle %s while grouping processes' %
@@ -3148,7 +3153,7 @@ def contribution_bundle_info_text(contributions):
         len(contribution.get('virtual_orders', []))
         for contribution in contributions)
     lines = [
-        'FORMAT 2',
+        'FORMAT 3',
         'COUNT %d' % len(contributions),
         'VIRTUAL_GRIDS %d' % virtual_grid_count]
     expected_first = 1
@@ -3165,12 +3170,14 @@ def contribution_bundle_info_text(contributions):
         if bool(virtual_orders) != bool(contribution['has_virtual']):
             raise fks_common.FKSProcessError(
                 'A bundled virtual has inconsistent split-order metadata')
-        lines.append('CONTRIBUTION %d %s %d %d %d %d %d' % (
+        lines.append('CONTRIBUTION %d %s %d %d %d %d %d %d %d' % (
             contribution['id'], contribution['kind'],
             contribution['first'], contribution['last'],
             contribution['representative'],
             int(contribution['has_virtual']),
-            contribution['parent_pdg']))
+            contribution['parent_pdg'],
+            contribution['parent_occurrence'],
+            contribution['corrected_node']))
         for orders in virtual_orders:
             virtual_grid += 1
             lines.append('VIRTUAL_GRID %d %d %s' % (
@@ -3197,6 +3204,66 @@ def write_contribution_bundle_files(path, contributions,
             stream.write(nlo_decay_info_text(metadata))
 
 
+def _append_loonly_fake_context(metadata, model):
+    """Describe the synthetic real configuration used by ``[LOonly]``.
+
+    MadFKS represents a Born-only process by appending an unphysical
+    anti-gluon to the production core.  Decay-chain phase space still needs a
+    REAL context for that generated FKS configuration, even though no real
+    matrix element exists.  Keep the fake leg in core numbering and map it to
+    the last flattened visible slot, exactly as a genuine production real
+    emission would be mapped.
+    """
+
+    born_contexts = [
+        context for context in metadata['contexts']
+        if context['kind'] == 'BORN']
+    if len(born_contexts) != 1:
+        raise fks_common.FKSProcessError(
+            'An LO-only decay chain requires exactly one Born context')
+    born_context = born_contexts[0]
+    fake_context = copy.deepcopy(born_context)
+    fake_context['id'] = len(metadata['contexts']) + 1
+    fake_context['kind'] = 'REAL'
+    fake_context['source_index'] = 1
+    fake_core = born_context['core_count'] + 1
+    fake_visible = born_context['visible_count'] + 1
+    fake_context['core_count'] = fake_core
+    fake_context['visible_count'] = fake_visible
+    fake_context['core_map'][fake_core] = ('LEG', fake_visible)
+    fake_context['core_legs'].append({
+        'number': fake_core, 'pdg': -21, 'state': 'F'})
+    fake_context['_core_legs'].append(base_objects.Leg({
+        'number': fake_core, 'id': -21, 'state': True}))
+
+    colors = []
+    charges = []
+    for leg in born_context['_core_legs']:
+        particle = model.get_particle(leg.get('id'))
+        colors.append(particle.get_color())
+        charges.append(particle.get_charge())
+    fks_j = 0
+    for position, color in enumerate(colors, 1):
+        if color != 1:
+            fks_j = position
+    if fks_j == 0:
+        for position, charge in enumerate(charges, 1):
+            if charge != 0.:
+                fks_j = position
+    if fks_j == 0:
+        fks_j = fake_core - 1
+    if fake_core == 4:
+        fks_j = 2
+
+    metadata['contexts'].append(fake_context)
+    metadata['fks_maps'].append({
+        'configuration': 1,
+        'real_context': fake_context['id'],
+        'i': fake_core,
+        'j': fks_j,
+        'ij': fks_j})
+
+
 def apply_decay_assignment(fks_process, assignment):
     """Attach an assignment to Born, real, counterterm, and loop HELAS MEs."""
 
@@ -3215,6 +3282,9 @@ def apply_decay_assignment(fks_process, assignment):
             'REAL', index)
         metadata['contexts'].append(context)
         real_context_ids[index] = context_id
+
+    if not fks_process.real_processes:
+        _append_loonly_fake_context(metadata, model)
 
     for index, counterterm in enumerate(fks_process.extra_cnt_me_list, 1):
         context_id = len(metadata['contexts']) + 1
@@ -3429,7 +3499,11 @@ def write_decay_chain_info(path, metadata):
 def decay_card_text(widths, renormalization_scales,
                     dummy_width_ratio=DECAY_DUMMY_WIDTH_RATIO,
                     production_scale_momenta='CORE',
-                    nlo_width_pdgs=(), nlo_widths=None):
+                    nlo_width_pdgs=(), nlo_widths=None,
+                    decay_scale_variation_mode='NONE',
+                    decay_scale_factors=(1.0,),
+                    lo_width_variations=None,
+                    nlo_width_variations=None):
     """Return a deterministic runtime card for on-shell decay parameters."""
 
     absolute_widths = dict(
@@ -3469,6 +3543,82 @@ def decay_card_text(widths, renormalization_scales,
     if production_scale_momenta not in ('CORE', 'DECAYED'):
         raise ValueError(
             'Production scale momenta must be CORE or DECAYED')
+    decay_scale_variation_mode = decay_scale_variation_mode.upper()
+    if decay_scale_variation_mode not in (
+            'NONE', 'CORRELATED', 'INDEPENDENT'):
+        raise ValueError(
+            'Decay scale variation mode must be NONE, CORRELATED or '
+            'INDEPENDENT')
+    decay_scale_factors = tuple(float(factor)
+                                for factor in decay_scale_factors)
+    if not decay_scale_factors or decay_scale_factors[0] != 1.0:
+        raise ValueError('The first decay scale factor must be 1')
+    if (any(not math.isfinite(factor) or factor <= 0.0
+            for factor in decay_scale_factors) or
+            len(set(decay_scale_factors)) != len(decay_scale_factors)):
+        raise ValueError(
+            'Decay scale factors must be distinct, finite and positive')
+
+    def normalize_width_variations(variations, name):
+        normalized = {}
+        for key, value in (variations or {}).items():
+            try:
+                pdg, factor = key
+            except (TypeError, ValueError):
+                raise ValueError(
+                    '%s width-variation keys must be (PDG, factor) pairs' %
+                    name)
+            key = (abs(int(pdg)), float(factor))
+            if key[0] == 0 or key[0] not in absolute_widths:
+                raise ValueError(
+                    '%s width variation has an unknown PDG' % name)
+            if key[1] == 1.0 or key[1] not in decay_scale_factors:
+                raise ValueError(
+                    '%s width variation has an unknown or central factor' %
+                    name)
+            if key in normalized:
+                raise ValueError('Duplicate %s width variation' % name)
+            value = float(value)
+            if not math.isfinite(value) or value <= 0.0:
+                raise ValueError(
+                    '%s varied widths must be finite and positive' % name)
+            normalized[key] = value
+        return normalized
+
+    absolute_lo_width_variations = normalize_width_variations(
+        lo_width_variations, 'LO')
+    absolute_nlo_width_variations = normalize_width_variations(
+        nlo_width_variations, 'NLO')
+    if any(pdg not in absolute_nlo_width_pdgs
+           for pdg, factor in absolute_nlo_width_variations):
+        raise ValueError(
+            'NLO width variations are only valid for NLO-width PDGs')
+    variation_requested = (
+        decay_scale_variation_mode != 'NONE' or
+        decay_scale_factors != (1.0,) or
+        bool(absolute_lo_width_variations) or
+        bool(absolute_nlo_width_variations))
+    if variation_requested and not absolute_nlo_width_pdgs:
+        raise ValueError(
+            'Decay-scale variations require explicit LO and NLO widths')
+    if decay_scale_variation_mode == 'NONE' and variation_requested:
+        raise ValueError(
+            'Decay scale factors or varied widths require a non-NONE mode')
+    if decay_scale_variation_mode != 'NONE' and \
+            len(decay_scale_factors) < 2:
+        raise ValueError(
+            'Decay-scale variation requires at least two scale factors')
+    if variation_requested:
+        for pdg in absolute_nlo_width_pdgs:
+            for factor in decay_scale_factors[1:]:
+                if (pdg, factor) not in absolute_lo_width_variations:
+                    raise ValueError(
+                        'Every varied NLO-width PDG needs an explicit LO '
+                        'width at every noncentral factor')
+                if (pdg, factor) not in absolute_nlo_width_variations:
+                    raise ValueError(
+                        'Every varied NLO-width PDG needs an explicit NLO '
+                        'width at every noncentral factor')
     lines = [
         '# FNLO_DECAY_CARD',
         '# Runtime parameters for fixed-on-shell decay chains.',
@@ -3477,9 +3627,20 @@ def decay_card_text(widths, renormalization_scales,
         '# Bundled NLO results use the strict O(alpha_s) width expansion.',
         '# All NWA denominators use LO widths; NLO-LO enters only linearly.',
         '# DECAY_REN_SCALE entries are independent decay scales in GeV.',
-        'FORMAT %d' % (4 if absolute_nlo_width_pdgs else 3),
+        'FORMAT %d' % (5 if variation_requested else
+                       (4 if absolute_nlo_width_pdgs else 3)),
         'DUMMY_WIDTH_RATIO %.16e' % dummy_width_ratio,
         'PRODUCTION_REN_SCALE_MOMENTA %s' % production_scale_momenta]
+    if variation_requested:
+        lines.extend([
+            '# Scale variations evaluate the same strict O(alpha_s) sum.',
+            '# Every non-central point needs explicit LO/NLO total widths.',
+            'DECAY_SCALE_VARIATION_MODE %s' %
+            decay_scale_variation_mode,
+            'DECAY_SCALE_FACTORS %d %s' % (
+                len(decay_scale_factors),
+                ' '.join('%.16e' % factor
+                         for factor in decay_scale_factors))])
     for pdg in sorted(absolute_widths):
         width_keyword = ('LO_DECAY_WIDTH'
                          if absolute_nlo_width_pdgs else 'DECAY_WIDTH')
@@ -3490,6 +3651,17 @@ def decay_card_text(widths, renormalization_scales,
                 pdg, absolute_nlo_widths[pdg]))
         lines.append('DECAY_REN_SCALE %d %.16e' % (
             pdg, absolute_scales[pdg]))
+    if variation_requested:
+        for (pdg, factor), value in sorted(
+                absolute_lo_width_variations.items()):
+            lines.append(
+                'LO_DECAY_WIDTH_VARIATION %d %.16e %.16e' %
+                (pdg, factor, value))
+        for (pdg, factor), value in sorted(
+                absolute_nlo_width_variations.items()):
+            lines.append(
+                'NLO_DECAY_WIDTH_VARIATION %d %.16e %.16e' %
+                (pdg, factor, value))
     lines.append('END')
     return '\n'.join(lines) + '\n'
 
@@ -3497,11 +3669,17 @@ def decay_card_text(widths, renormalization_scales,
 def write_decay_card(path, widths, renormalization_scales,
                      dummy_width_ratio=DECAY_DUMMY_WIDTH_RATIO,
                      production_scale_momenta='CORE',
-                     nlo_width_pdgs=(), nlo_widths=None):
+                     nlo_width_pdgs=(), nlo_widths=None,
+                     decay_scale_variation_mode='NONE',
+                     decay_scale_factors=(1.0,),
+                     lo_width_variations=None,
+                     nlo_width_variations=None):
     """Write ``decay_card.dat`` containing runtime decay parameters."""
 
     filename = os.path.join(path, 'decay_card.dat')
     with open(filename, 'w') as stream:
         stream.write(decay_card_text(
             widths, renormalization_scales, dummy_width_ratio,
-            production_scale_momenta, nlo_width_pdgs, nlo_widths))
+            production_scale_momenta, nlo_width_pdgs, nlo_widths,
+            decay_scale_variation_mode, decay_scale_factors,
+            lo_width_variations, nlo_width_variations))

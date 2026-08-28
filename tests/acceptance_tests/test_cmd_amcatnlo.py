@@ -40,6 +40,8 @@ import madgraph.interface.launch_ext_program as launch_ext
 import madgraph.iolibs.files as files
 import madgraph.various.misc as misc
 import madgraph.various.banner as banner
+import madgraph.various.histograms as histograms
+import madgraph.fks.fks_decay as fks_decay
 
 
 _file_path = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0]
@@ -848,6 +850,222 @@ class MECmdShell(IOTests.IOTestManager):
                     log = stream.read()
                 self.assertNotIn('ERROR in nlo_decay', log)
                 self.assertNotIn('Fatal error in NLO-decay', log)
+
+
+    @set_global()
+    def test_full_nlo_decay_bundle_integration_decomposition_and_scales(self):
+        """Compare one bundled run with its separately generated ingredients."""
+
+        lo_width = 1.4915
+        nlo_width = 1.3646
+        width_coefficient = -2.0*(nlo_width - lo_width)/lo_width
+        process_definitions = {
+            'lo': (
+                'u u~ > t t~ [LOonly], '
+                '(t > w+ b QED=1), (t~ > w- b~ QED=1)', 'LO'),
+            'production': (
+                'u u~ > t t~ [real=QCD], '
+                '(t > w+ b QED=1), (t~ > w- b~ QED=1)', 'NLO'),
+            'decay_t': (
+                'u u~ > t t~ [LOonly], '
+                '(t > w+ b QED=1 [real=QCD]), '
+                '(t~ > w- b~ QED=1)', 'NLO'),
+            'decay_tbar': (
+                'u u~ > t t~ [LOonly], '
+                '(t > w+ b QED=1), '
+                '(t~ > w- b~ QED=1 [real=QCD])', 'NLO'),
+            'bundle': (
+                'u u~ > t t~ [real=QCD], '
+                '(t > w+ b QED=1 [real=QCD]), '
+                '(t~ > w- b~ QED=1 [real=QCD])', 'NLO')}
+
+        def export_and_integrate(label, process, mode):
+            process_dir = pjoin(self.tmpdir, 'fnlo_bundle_' + label)
+            interface = MGCmd.MasterCmd()
+            interface.no_notification()
+            interface.exec_cmd(
+                'import model loop_sm', errorhandling=False,
+                printcmd=False, precmd=True, postcmd=True)
+            interface.exec_cmd(
+                'generate ' + process, errorhandling=False,
+                printcmd=False, precmd=True, postcmd=True)
+            interface.exec_cmd(
+                'output fNLO %s -f' % process_dir,
+                errorhandling=False, printcmd=False,
+                precmd=True, postcmd=True)
+
+            run_card_path = pjoin(process_dir, 'Cards', 'run_card.dat')
+            run_card = banner.RunCardNLO(run_card_path)
+            run_card['req_acc_fo'] = -1.
+            run_card['npoints_fo_grid'] = 40
+            run_card['niters_fo_grid'] = 1
+            run_card['npoints_fo'] = 60
+            run_card['niters_fo'] = 1
+            run_card['fixed_ren_scale'] = True
+            run_card['fixed_fac_scale'] = True
+            run_card['mur_ref_fixed'] = 173.
+            run_card['muf_ref_fixed'] = 173.
+            run_card['cut_decays'] = True
+            run_card['ptj'] = 10.
+            run_card['etaj'] = 5.
+            run_card['reweight_scale'] = label == 'bundle'
+            run_card.write(
+                run_card_path,
+                template=pjoin(process_dir, 'Cards',
+                               'run_card_default.dat'))
+
+            if label in ('decay_t', 'decay_tbar'):
+                fks_decay.write_decay_card(
+                    pjoin(process_dir, 'Cards'), {6: lo_width},
+                    {6: 173.}, nlo_width_pdgs={6},
+                    nlo_widths={6: nlo_width})
+            elif label == 'bundle':
+                fks_decay.write_decay_card(
+                    pjoin(process_dir, 'Cards'), {6: lo_width},
+                    {6: 173.}, nlo_width_pdgs={6},
+                    nlo_widths={6: nlo_width},
+                    decay_scale_variation_mode='INDEPENDENT',
+                    decay_scale_factors=(1., .5, 2.),
+                    lo_width_variations={
+                        (6, .5): 1.40, (6, 2.): 1.55},
+                    nlo_width_variations={
+                        (6, .5): 1.25, (6, 2.): 1.45})
+
+            shell = NLOCmd.aMCatNLOCmdShell(me_dir=process_dir)
+            shell.no_notification()
+            shell.run_cmd('set automatic_html_opening False --no_save')
+            shell.exec_cmd(
+                'calculate_xsect %s -f' % mode,
+                errorhandling=False, precmd=True)
+            event_name = 'run_01_LO' if mode == 'LO' else 'run_01'
+            event_dir = pjoin(process_dir, 'Events', event_name)
+            with open(pjoin(event_dir, 'summary.txt')) as summary_file:
+                summary = summary_file.read()
+            match = re.search(
+                r'(?:Total cross section|Partial decay width):\s*'
+                r'([-+0-9.eE]+)\s*\+-\s*([-+0-9.eE]+)', summary)
+            self.assertIsNotNone(match)
+            value, error = map(float, match.groups())
+            return {
+                'dir': process_dir, 'event_dir': event_dir,
+                'value': value, 'error': error,
+                'histograms': histograms.HwUList(
+                    pjoin(event_dir, 'MADatNLO.HwU'))}
+
+        results = {}
+        for label in ['lo', 'production', 'decay_t',
+                      'decay_tbar', 'bundle']:
+            process, mode = process_definitions[label]
+            results[label] = export_and_integrate(label, process, mode)
+
+        bundle_event = results['bundle']['event_dir']
+        for step in [0, 1]:
+            self.assertTrue(os.path.isfile(pjoin(
+                bundle_event, 'contribution_results_%d.txt' % step)))
+        contribution_result = \
+            NLOCmd.aMCatNLOCmdShell.read_fnlo_contribution_results(
+                pjoin(bundle_event, 'contribution_results_1.txt'))
+        components = dict(
+            (component['label'], component)
+            for component in contribution_result['components'])
+        self.assertEqual(set(components), {
+            'BORN', 'PRODUCTION_NLO',
+            'DECAY_NLO_1_PDG_6_OCC_1_NODE_2',
+            'DECAY_NLO_2_PDG_-6_OCC_1_NODE_1',
+            'WIDTH_COUNTERTERM'})
+        self.assertAlmostEqual(
+            contribution_result['closure'], 0., delta=1e-9*max(
+                1., abs(contribution_result['total'])))
+        self.assertAlmostEqual(
+            components['WIDTH_COUNTERTERM']['value'],
+            width_coefficient*components['BORN']['value'],
+            delta=1e-9*max(1., abs(components['BORN']['value'])))
+
+        width_ratio = nlo_width/lo_width
+        separately_summed = (
+            results['production']['value'] +
+            width_ratio*results['decay_t']['value'] +
+            width_ratio*results['decay_tbar']['value'] +
+            (width_coefficient - 2.)*results['lo']['value'])
+        separately_summed_error = math.sqrt(
+            results['production']['error']**2 +
+            (width_ratio*results['decay_t']['error'])**2 +
+            (width_ratio*results['decay_tbar']['error'])**2 +
+            ((width_coefficient - 2.)*results['lo']['error'])**2 +
+            results['bundle']['error']**2)
+        self.assertAlmostEqual(
+            results['bundle']['value'], separately_summed,
+            delta=max(1e-9, 6.*separately_summed_error))
+
+        # The same strict sum must hold bin-by-bin with decay cuts active.
+        reference_histograms = results['bundle']['histograms']
+        for ingredient in ['lo', 'production', 'decay_t', 'decay_tbar']:
+            self.assertEqual(
+                [histogram.title for histogram in reference_histograms],
+                [histogram.title for histogram in
+                 results[ingredient]['histograms']])
+        for histogram_index, bundle_histogram in enumerate(
+                reference_histograms):
+            ingredient_histograms = dict(
+                (label, results[label]['histograms'][histogram_index])
+                for label in ['lo', 'production',
+                              'decay_t', 'decay_tbar'])
+            for bin_index, bundle_bin in enumerate(bundle_histogram.bins):
+                expected = (
+                    ingredient_histograms['production'].bins[
+                        bin_index].wgts['central'] +
+                    width_ratio*ingredient_histograms['decay_t'].bins[
+                        bin_index].wgts['central'] +
+                    width_ratio*ingredient_histograms['decay_tbar'].bins[
+                        bin_index].wgts['central'] +
+                    (width_coefficient - 2.)*
+                    ingredient_histograms['lo'].bins[
+                        bin_index].wgts['central'])
+                uncertainty = math.sqrt(
+                    bundle_bin.wgts['stat_error']**2 +
+                    ingredient_histograms['production'].bins[
+                        bin_index].wgts['stat_error']**2 +
+                    (width_ratio*ingredient_histograms['decay_t'].bins[
+                        bin_index].wgts['stat_error'])**2 +
+                    (width_ratio*ingredient_histograms['decay_tbar'].bins[
+                        bin_index].wgts['stat_error'])**2 +
+                    ((width_coefficient - 2.)*
+                     ingredient_histograms['lo'].bins[
+                         bin_index].wgts['stat_error'])**2)
+                self.assertAlmostEqual(
+                    bundle_bin.wgts['central'], expected,
+                    delta=max(1e-9, 6.*uncertainty))
+
+        subprocess_root = pjoin(results['bundle']['dir'], 'SubProcesses')
+        bundle_subprocesses = [pjoin(subprocess_root, name)
+                               for name in os.listdir(subprocess_root)
+                               if name.startswith('P')]
+        self.assertTrue(bundle_subprocesses)
+        for subprocess_dir in bundle_subprocesses:
+            integration_dirs = [pjoin(subprocess_dir, name)
+                                for name in os.listdir(subprocess_dir)
+                                if name.startswith('all_G')]
+            self.assertTrue(integration_dirs)
+            for integration_dir in integration_dirs:
+                for filename in [
+                        'mint_grids', 'grid.MC_integer',
+                        'contribution_results_0.dat',
+                        'contribution_results_1.dat']:
+                    self.assertTrue(os.path.isfile(pjoin(
+                        integration_dir, filename)))
+                with open(pjoin(
+                        integration_dir,
+                        'scale_pdf_dependence.dat')) as scale_file:
+                    scale_lines = [line.split() for line in scale_file
+                                   if line.strip()]
+                scale_header = next(
+                    fields for fields in scale_lines
+                    if len(fields) > 3 and fields[3] == 'INDEPENDENT')
+                self.assertEqual(int(scale_header[1]), 27)
+
+            with open(pjoin(subprocess_dir, 'test_ME.log')) as test_me_file:
+                test_me = test_me_file.read()
+            self.assertNotIn('FAILED', test_me)
 
 
     def test_calculate_xsect_lo(self):

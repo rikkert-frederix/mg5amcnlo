@@ -58,6 +58,9 @@ TAGTAGTAGTAGTAGTAGTAG for i in 1 ; do
     if  [[ -e res.dat ]] ; then
 	rm -f res.dat
     fi
+    if  [[ -e contribution_results.dat ]] ; then
+	rm -f contribution_results.dat
+    fi
     if  [[ -e log.txt ]] ; then
 	rm -f log.txt
     fi
@@ -103,6 +106,9 @@ TAGTAGTAGTAGTAGTAGTAG for i in 1 ; do
     echo "Time in seconds: ${T}" >>log.txt
     cp -f log.txt log_MINT$integration_step.txt  >/dev/null 2>&1
     cp -f res.dat res_$integration_step.dat  >/dev/null 2>&1
+    if [[ -e contribution_results.dat ]] ; then
+        cp -f contribution_results.dat contribution_results_$integration_step.dat >/dev/null 2>&1
+    fi
     exit $status
 done
 exit $status

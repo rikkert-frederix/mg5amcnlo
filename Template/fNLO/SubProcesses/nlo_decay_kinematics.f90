@@ -1270,7 +1270,9 @@ contains
       denominator_scale = decay_dummy_width_ratio()*node_masses(node)**2
       nlo_decay_nwa_weight = nlo_decay_nwa_weight*denominator_scale**2/ &
            (2d0*node_masses(node)* &
-            decay_physical_width(nlo_decay_node_pdg(node)))
+            decay_physical_width(&
+                 nlo_decay_node_pdg(node), &
+                 node == nlo_decay_corrected_node()))
     end do
   end function nlo_decay_nwa_weight
 

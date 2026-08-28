@@ -32,6 +32,45 @@ renormalization scale uses the undecayed production momenta (CORE, the
 default) or the fully decayed momenta (DECAYED). Production factorization and
 Ellis-Sexton scales always use the production momenta.
 
+For a full bundle, the final run directory contains
+contribution_results_0.txt and contribution_results_1.txt. The latter is the
+final integration result and resolves BORN, PRODUCTION_NLO, every labeled
+DECAY_NLO term, WIDTH_COUNTERTERM, their sum, the ordinary total, and a
+closure check. Each component carries its own Monte-Carlo error. These errors
+are correlated because all components are evaluated on the same integration
+points, so they must not be combined in quadrature to reconstruct the total
+error.
+
+Decay-scale variations
+----------------------
+
+FORMAT 5 decay cards enable contribution-aware scale variations. Set
+DECAY_SCALE_VARIATION_MODE to CORRELATED to tie every decay scale factor to
+the production renormalization-scale factor, or to INDEPENDENT to form the
+Cartesian product of production muR, production muF, and one scale factor for
+each distinct scale-dependent decay species. DECAY_SCALE_FACTORS must begin
+with 1 and, in correlated mode, must equal rw_rscale in the same order.
+
+Every non-central scale factor requires an explicit
+LO_DECAY_WIDTH_VARIATION for each varied decay species and an explicit
+NLO_DECAY_WIDTH_VARIATION for each NLO-corrected species. At a scale point k,
+the code evaluates
+
+  R_LO(k) [ B(k) + delta P(k) + sum_i delta D_i(k) + C_Gamma(k) B(k) ],
+
+where
+
+  R_LO(k) = product_nodes Gamma_LO(central)/Gamma_LO(k),
+  C_Gamma(k) = -sum_corrected_nodes
+      [Gamma_NLO(k)-Gamma_LO(k)]/Gamma_LO(k).
+
+Only the raw Born receives C_Gamma. R_LO consistently changes the LO
+narrow-width denominators of every additive term. Thus a varied point still
+contains exactly one NLO numerator correction at a time and never contains a
+production-times-decay, decay-times-decay, or width-times-NLO correction.
+Scale-point labels and the complete point set are written to the HwU weight
+metadata and scale_pdf_dependence.dat.
+
 The run-card switch cut_decays defaults to false. With that setting, forced
 decay products are omitted from built-in and user-defined generation cuts,
 while fixed-order analyses still receive the complete decayed event. Set it

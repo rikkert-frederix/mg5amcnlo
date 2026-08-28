@@ -623,7 +623,11 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
                         virtual is not None and virtual.optimized_output),
                     'virtual_orders': virtual_orders,
                     'parent_pdg': (0 if contribution_id == 1 else
-                                   metadata['parent_pdg'])})
+                                   metadata['parent_pdg']),
+                    'parent_occurrence': (0 if contribution_id == 1 else
+                                          metadata['parent_occurrence']),
+                    'corrected_node': (0 if contribution_id == 1 else
+                                       metadata['corrected_node'])})
                 if virtual is not None:
                     virtual.fnlo_contribution_id = contribution_id
                     production.bundle_virtual_matrix_elements.append(

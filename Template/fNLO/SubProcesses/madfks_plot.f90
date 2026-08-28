@@ -5,10 +5,15 @@ module madfks_plot_module
   use mint_module, only: itmax, ncalls0
   use process_dimensions, only: nexternal, nincoming, &
        validate_process_dimensions
-  use run_state, only: do_rwgt_pdf, do_rwgt_scale
-  use fnlo_process_common, only: xsecScale_acc, xsecPDFr_acc
+  use run_state, only: do_rwgt_pdf, do_rwgt_scale, do_rwgt_decay_scale
+  use fnlo_process_common, only: xsecPDFr_acc
+  use fnlo_scale_variations, only: fnlo_scale_point_count, &
+       fnlo_scale_max_point_count, fnlo_scale_point_label, &
+       fnlo_scale_mode_name
   implicit none
   private
+
+  double precision, allocatable, save :: xsec_scale_points(:, :)
 
   public :: initplot_impl, topout_impl, outfun_impl
 
@@ -50,20 +55,16 @@ contains
   subroutine initplot_impl()
     implicit none
 
-    character(len=50), allocatable :: weights_info(:)
+    character(len=200), allocatable :: weights_info(:)
     character(len=13) :: temp
-    integer :: ii, jj, kk, n, nn, nwgt
+    integer :: kk, n, nn, nwgt, point
 
     call validate_process_dimensions()
     ! Determine the PDF members before allocating the weight descriptions.
     nwgt = 1
-    if (do_rwgt_scale) then
+    if (do_rwgt_scale .or. do_rwgt_decay_scale) then
       do kk = 1, dyn_scale(0)
-        if (lscalevar(kk)) then
-          nwgt = nwgt + nint(scalevarF(0))*nint(scalevarR(0))
-        else
-          nwgt = nwgt + 1
-        end if
+        nwgt = nwgt + fnlo_scale_point_count(kk)
       end do
     end if
 
@@ -115,25 +116,13 @@ contains
     weights_info(1) = 'central value'
     nwgt = 1
 
-    if (do_rwgt_scale) then
+    if (do_rwgt_scale .or. do_rwgt_decay_scale) then
       do kk = 1, dyn_scale(0)
-        if (lscalevar(kk)) then
-          do ii = 1, nint(scalevarF(0))
-            do jj = 1, nint(scalevarR(0))
-              nwgt = nwgt + 1
-              write (weights_info(nwgt), &
-                   '(a4,i4,1x,a4,f6.3,1x,a4,f6.3)') &
-                   'dyn=', dyn_scale(kk), 'muR=', scalevarR(jj), &
-                   'muF=', scalevarF(ii)
-            end do
-          end do
-        else
+        do point = 1, fnlo_scale_point_count(kk)
           nwgt = nwgt + 1
-          write (weights_info(nwgt), &
-               '(a4,i4,1x,a4,f6.3,1x,a4,f6.3)') &
-               'dyn=', dyn_scale(kk), 'muR=', scalevarR(1), &
-               'muF=', scalevarF(1)
-        end if
+          call fnlo_scale_point_label(&
+               kk, point, weights_info(nwgt))
+        end do
       end do
     end if
 
@@ -160,17 +149,10 @@ contains
     call analysis_begin(nwgt, weights_info)
 
     ! Keep track of accumulated scale and PDF results.
-    do kk = 1, dyn_scale(0)
-      if (lscalevar(kk)) then
-        do ii = 1, nint(scalevarF(0))
-          do jj = 1, nint(scalevarR(0))
-            xsecScale_acc(jj, ii, kk) = 0d0
-          end do
-        end do
-      else
-        xsecScale_acc(1, 1, kk) = 0d0
-      end if
-    end do
+    if (allocated(xsec_scale_points)) deallocate(xsec_scale_points)
+    allocate(xsec_scale_points(&
+         fnlo_scale_max_point_count(), dyn_scale(0)))
+    xsec_scale_points = 0d0
     do nn = 1, lhaPDFid(0)
       if (lpdfvar(nn)) then
         do n = 0, nmemPDF(nn)
@@ -187,7 +169,8 @@ contains
     implicit none
 
     double precision :: xnorm
-    integer :: ii, jj, kk, n, nn
+    integer :: kk, n, nn, point
+    character(len=16) :: scale_mode
 
     xnorm = 1d0/float(ncalls0)
     call analysis_end()
@@ -195,19 +178,14 @@ contains
     open (unit=34, file='scale_pdf_dependence.dat', status='unknown')
     xnorm = xnorm/float(itmax)
 
-    if (do_rwgt_scale) then
+    if (do_rwgt_scale .or. do_rwgt_decay_scale) then
+      call fnlo_scale_mode_name(scale_mode)
       write (34, *) 'scale variations:'
       do kk = 1, dyn_scale(0)
-        if (lscalevar(kk)) then
-          write (34, *) dyn_scale(kk), nint(scalevarR(0)), &
-               nint(scalevarF(0))
-          write (34, *) ((xsecScale_acc(jj, ii, kk)*xnorm, &
-               jj=1, nint(scalevarR(0))), &
-               ii=1, nint(scalevarF(0)))
-        else
-          write (34, *) dyn_scale(kk), 1, 1
-          write (34, *) xsecScale_acc(1, 1, kk)*xnorm
-        end if
+        write (34, *) dyn_scale(kk), fnlo_scale_point_count(kk), 1, &
+             trim(scale_mode)
+        write (34, *) (xsec_scale_points(point, kk)*xnorm, &
+             point=1, fnlo_scale_point_count(kk))
       end do
     end if
 
@@ -246,7 +224,7 @@ contains
     double precision :: chybst, chybstmo, p(0:4, nexternal)
     double precision :: pplab(0:3, nexternal), shybst
     double precision, parameter :: xd(3) = (/ 0d0, 0d0, 1d0 /)
-    integer :: i, ibody, ii, i_wgt, jj, kk, n, nn
+    integer :: i, ibody, i_wgt, kk, n, nn, point
     integer :: istatus(nexternal)
 
     call validate_process_dimensions()
@@ -283,21 +261,13 @@ contains
     call analysis_fill(p, istatus, ipdg, www, ibody)
 
     i_wgt = 1
-    if (do_rwgt_scale) then
+    if (do_rwgt_scale .or. do_rwgt_decay_scale) then
       do kk = 1, dyn_scale(0)
-        if (lscalevar(kk)) then
-          do ii = 1, nint(scalevarF(0))
-            do jj = 1, nint(scalevarR(0))
-              i_wgt = i_wgt + 1
-              xsecScale_acc(jj, ii, kk) = &
-                   xsecScale_acc(jj, ii, kk) + www(i_wgt)
-            end do
-          end do
-        else
+        do point = 1, fnlo_scale_point_count(kk)
           i_wgt = i_wgt + 1
-          xsecScale_acc(1, 1, kk) = &
-               xsecScale_acc(1, 1, kk) + www(i_wgt)
-        end if
+          xsec_scale_points(point, kk) = &
+               xsec_scale_points(point, kk) + www(i_wgt)
+        end do
       end do
     end if
 

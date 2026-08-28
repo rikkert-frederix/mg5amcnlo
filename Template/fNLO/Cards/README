@@ -11,6 +11,24 @@ NLO-minus-LO differences enter only through the linear Born counterterm. That
 counterterm counts physical resonance occurrences, independently of which
 partial-decay numerators receive QCD corrections.
 
+FORMAT 5 adds explicit decay-scale variations:
+
+  DECAY_SCALE_VARIATION_MODE CORRELATED
+  DECAY_SCALE_FACTORS 3 1.0 2.0 0.5
+  LO_DECAY_WIDTH_VARIATION 6 2.0 <LO width at 2 mu_decay>
+  NLO_DECAY_WIDTH_VARIATION 6 2.0 <NLO width at 2 mu_decay>
+  LO_DECAY_WIDTH_VARIATION 6 0.5 <LO width at mu_decay/2>
+  NLO_DECAY_WIDTH_VARIATION 6 0.5 <NLO width at mu_decay/2>
+
+Use CORRELATED to identify the decay factors with rw_rscale; the factor lists
+must then match exactly and in the same order. Use INDEPENDENT for the full
+Cartesian product of production muR, production muF, and one factor per
+distinct scale-dependent decay species. The first factor must be 1. Every
+non-central point needs an explicit LO total width for each varied species
+and an explicit NLO total width for each NLO-corrected species. Missing widths
+are a fatal input error; they are never inferred by running or rescaling a
+central width.
+
 The run-card switch cut_decays controls whether built-in and user-defined
 generation cuts see forced-decay products. It defaults to false; fixed-order
 analyses always see the complete decayed event.

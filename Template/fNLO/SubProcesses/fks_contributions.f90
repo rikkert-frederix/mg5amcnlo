@@ -13,7 +13,6 @@ module fks_contributions_module
   use nlo_decay_kinematics, only: nlo_decay_fks_sister_mass
   use nlo_contribution_bundle, only: active_contribution_has_virtual, &
        active_virtual_grid_index, active_contribution_is_production
-  use decay_chain_parameters, only: decay_width_expansion_coefficient
   use fks_singular_module, only: evaluate_fks_sij, sreal, sreal_deg, &
                                  bornsoftvirtual, fks_subtraction_shat
   use fks_weights_module, only: add_wgt, real_contribution, &
@@ -118,15 +117,12 @@ contains
     implicit none
     integer :: born_orders(nsplitorders), correction_orders(nsplitorders)
     integer :: iamp
-    double precision :: coefficient, born_weight, weight
+    double precision :: born_weight, weight
 
     if (.not. active_contribution_is_production()) return
     if (f_b .eq. 0d0) return
     if (event_xi_hat(real_event)*event_xi_max(soft_counterevent) .gt. &
         xiBSVcut_used) return
-    coefficient = decay_width_expansion_coefficient()
-    if (coefficient .eq. 0d0) return
-
     call sborn(p_born, born_weight)
     do iamp = 1, amp_split_size
       if (amp_split(iamp) .eq. 0d0) cycle
@@ -140,9 +136,13 @@ contains
       QCD_power = born_orders(qcd_pos)
       orders_tag = get_orders_tag(correction_orders)
       amp_pos = orders_to_amp_split_pos(correction_orders)
-      weight = coefficient*amp_split(iamp)*f_b/g**QCD_power
+      ! Store the raw Born line.  The width coefficient belongs to the
+      ! selected scale point and is applied when the central/reweighted
+      ! weight is evaluated.  This also permits a zero central coefficient
+      ! with non-zero varied coefficients.
+      weight = amp_split(iamp)*f_b/g**QCD_power
       call add_wgt(soft_counterevent, integrated_contribution, &
-                   weight, 0d0, 0d0)
+                   weight, 0d0, 0d0, is_width_counterterm=.true.)
     end do
   end subroutine compute_decay_width_counterterm
 

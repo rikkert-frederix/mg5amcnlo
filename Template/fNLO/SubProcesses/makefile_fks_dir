@@ -44,6 +44,7 @@ FILES= fnlo_process_common.o process_dimensions.o			\
 	 nlo_contribution_bundle.o					\
 	 nlo_decay_metadata.o decay_chain_metadata.o			\
 	 decay_chain_parameters.o					\
+	 fnlo_scale_variations.o					\
 	 decay_chain_parameters_bridge.o phase_space_kinematics.o	\
 	 decay_chain_kinematics.o nlo_decay_kinematics.o		\
 	 decay_chain_scales.o						\
@@ -223,6 +224,9 @@ decay_chain_metadata.o: process_dimensions.o fks_metadata.o \
 decay_chain_parameters.o: decay_chain_metadata.o nlo_decay_metadata.o \
 	nlo_contribution_bundle.o
 decay_chain_parameters_bridge.o: decay_chain_parameters.o
+fnlo_scale_variations.o: decay_chain_metadata.o nlo_decay_metadata.o \
+	decay_chain_parameters.o $(LIBDIR)run_state.mod \
+	$(LIBDIR)extra_weights.mod
 phase_space_kinematics.o: process_dimensions.o \
 	$(LIBDIR)kin_functions_module.mod
 decay_chain_kinematics.o: process_dimensions.o fnlo_process_common.o \
@@ -279,6 +283,7 @@ fks_singular.o: process_dimensions.o fks_model_state.o fks_metadata.o \
 	$(LIBDIR)kin_functions_module.mod
 fks_weights.o: process_dimensions.o fks_model_state.o fks_metadata.o \
 	decay_chain_metadata.o decay_chain_scales.o \
+	decay_chain_parameters.o fnlo_scale_variations.o \
 	nlo_decay_metadata.o nlo_contribution_bundle.o \
 	weight_lines.o mint_module.o FKSParams.o setscales.o \
 	splitorders_stuff.o chooser_functions.o madfks_plot.o \
@@ -295,6 +300,7 @@ fks_singular_bridge.o: fks_model_state.o fks_singular.o \
 fks_random_bridge.o: fks_random.o mint_module.o
 driver_mintFO.o: process_dimensions.o fks_metadata.o fks_channel_map.o \
 	decay_chain_metadata.o nlo_contribution_bundle.o \
+	fnlo_scale_variations.o \
 	fks_random.o genps_fks.o \
 	weight_lines.o mint_module.o FKSParams.o MC_integer.o setscales.o \
 	splitorders_stuff.o cuts.o fks_singular.o fks_weights.o \
@@ -338,7 +344,8 @@ test_soft_col_limits.o: process_dimensions.o fks_metadata.o \
 test_soft_col_limits_bridge.o: test_soft_col_limits.o \
 	process_dimensions_bridge.o fks_metadata_bridge.o \
 	fks_singular.o
-madfks_plot.o: boostwdir2.o mint_module.o process_dimensions.o
+madfks_plot.o: boostwdir2.o mint_module.o process_dimensions.o \
+	fnlo_scale_variations.o
 madfks_plot_bridge.o: madfks_plot.o
 check_poles.o: process_dimensions.o fks_metadata.o mint_module.o \
 	decay_chain_metadata.o decay_chain_kinematics.o \

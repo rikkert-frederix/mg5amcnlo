@@ -5,7 +5,7 @@ module weight_lines
   public :: max_contr, max_wgt, max_iproc, icontr, iwgt
   public :: itype, nFKS, QCDpower, decayQCDpower, pdg, pdg_uborn
   public :: parton_pdg_uborn, parton_pdg, plot_id, niproc, ipr
-  public :: orderstag, amppos
+  public :: orderstag, amppos, bundle_component, correction_scale_pdg
   public :: momenta, wgt, bjx, scales2
   public :: g_strong, wgts, parton_iproc, y_bst, plot_wgts
   public :: weight_lines_allocated, deallocate_weight_lines
@@ -16,6 +16,7 @@ module weight_lines
   integer, allocatable :: pdg_uborn(:,:), parton_pdg_uborn(:,:,:)
   integer, allocatable :: parton_pdg(:,:,:), plot_id(:), niproc(:)
   integer, allocatable :: ipr(:), orderstag(:), amppos(:)
+  integer, allocatable :: bundle_component(:), correction_scale_pdg(:)
   double precision, allocatable :: momenta(:,:,:)
   double precision, allocatable :: wgt(:,:), bjx(:,:)
   double precision, allocatable :: scales2(:,:), g_strong(:), wgts(:,:)
@@ -171,6 +172,20 @@ contains
       amppos(1:max_contr) = itemp1
       deallocate(itemp1)
 
+      allocate(itemp1(max_contr))
+      itemp1 = bundle_component
+      deallocate(bundle_component)
+      allocate(bundle_component(n_contr))
+      bundle_component(1:max_contr) = itemp1
+      deallocate(itemp1)
+
+      allocate(itemp1(max_contr))
+      itemp1 = correction_scale_pdg
+      deallocate(correction_scale_pdg)
+      allocate(correction_scale_pdg(n_contr))
+      correction_scale_pdg(1:max_contr) = itemp1
+      deallocate(itemp1)
+
       allocate(temp3(0:3, nexternal, max_contr))
       temp3 = momenta
       deallocate(momenta)
@@ -255,6 +270,8 @@ contains
     allocate(ipr(1))
     allocate(orderstag(1))
     allocate(amppos(1))
+    allocate(bundle_component(1))
+    allocate(correction_scale_pdg(1))
     allocate(momenta(0:3, nexternal, 1))
     allocate(wgt(3, 1))
     allocate(bjx(2, 1))
@@ -288,6 +305,8 @@ contains
     if (allocated(ipr)) deallocate(ipr)
     if (allocated(orderstag)) deallocate(orderstag)
     if (allocated(amppos)) deallocate(amppos)
+    if (allocated(bundle_component)) deallocate(bundle_component)
+    if (allocated(correction_scale_pdg)) deallocate(correction_scale_pdg)
     if (allocated(momenta)) deallocate(momenta)
     if (allocated(wgt)) deallocate(wgt)
     if (allocated(bjx)) deallocate(bjx)

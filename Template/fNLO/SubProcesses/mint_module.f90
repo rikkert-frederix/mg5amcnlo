@@ -38,7 +38,8 @@
 ! points for which we include the virtual.
 ! nintegrals=5 : abs of 3
 ! nintegrals=6 : born
-! nintegrals>6 : virtual and born order by order
+! nintegrals=7..6+2*n_ave_virt : virtual and born order by order
+! remaining integrals: resolved Born/production/decay/width components
 !
 
 module mint_module
@@ -59,7 +60,11 @@ module mint_module
   ! a floor so ordinary-process checkpoint layouts remain unchanged.
   integer, parameter, public  :: n_ave_virt = &
        max(10, fks_configs*amp_split_size)
-  integer, parameter, public  :: nintegrals = 6 + 2*n_ave_virt
+  integer, parameter, public  :: max_bundle_components = fks_configs + 2
+  integer, parameter, public  :: first_bundle_component_integral = &
+       7 + 2*n_ave_virt
+  integer, parameter, public  :: nintegrals = &
+       6 + 2*n_ave_virt + max_bundle_components
   integer, parameter, private :: nintervals_virt = 8! max number of intervals in the grids for the approx virtual
   integer, parameter, private :: min_inter = 4      ! minimal number of intervals
   integer, parameter, private :: min_it0 = 4        ! minimal number of iterations in the mint step 0 phase
@@ -72,7 +77,7 @@ module mint_module
   ! where 'n' is an integer smaller than or equal to min_it0.
   !
   ! The number of intergrals should be equal to
-  !     nintegrals=6+2*n_ave_virt
+  !     nintegrals=6+2*n_ave_virt+max_bundle_components
   !
 
 ! public variables
@@ -154,7 +159,10 @@ contains
     case (6)
       integral_title = 'Born         '
     case default
-      if (mod(index, 2) == 1) then
+      if (index >= first_bundle_component_integral) then
+        write (integral_title, '(a1,i3,9x)') &
+             'C', index - first_bundle_component_integral + 1
+      else if (mod(index, 2) == 1) then
         write (integral_title, '(a1,i3,9x)') 'V', (index - 5)/2
       else
         write (integral_title, '(a1,i3,9x)') 'B', (index - 6)/2

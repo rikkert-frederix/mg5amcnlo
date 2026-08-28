@@ -3088,6 +3088,31 @@ RESTART = %(mint_mode)s
             job['niters_done']=int(results[4])
             job['npoints_done']=int(results[5])
             job['time_spend']=float(results[6])
+            contribution_filename = ('contribution_results_%s.dat' %
+                                     integration_step
+                                     if integration_step >= 0 else
+                                     'contribution_results.dat')
+            contribution_path = pjoin(
+                job['dirname'], contribution_filename)
+            bundle_metadata = pjoin(
+                os.path.dirname(job['dirname']),
+                'nlo_contribution_info.dat')
+            if os.path.exists(bundle_metadata):
+                try:
+                    job['contribution_results'] = \
+                        self.read_fnlo_contribution_results(
+                            contribution_path)
+                    resolved_total = job[
+                        'contribution_results']['total']
+                    tolerance = 1e-9 * max(
+                        1.0, abs(job['result']), abs(resolved_total))
+                    if abs(job['result'] - resolved_total) > tolerance:
+                        raise ValueError(
+                            'resolved TOTAL does not match res.dat')
+                except (IOError, OSError, ValueError) as error:
+                    raise aMCatNLOError(
+                        'Could not collect the resolved NLO contributions '
+                        'from %s: %s' % (contribution_path, error))
             if job['resultABS'] != 0:
                 job['err_percABS'] = job['errorABS']/job['resultABS']*100.
                 job['err_perc'] = job['error']/job['result']*100.
@@ -3098,6 +3123,65 @@ RESTART = %(mint_mode)s
             raise aMCatNLOError('An error occurred during the collection of results.\n' + 
                    'Please check the .log files inside the directories which failed:\n' +
                                 '\n'.join(error_log)+'\n')
+
+
+    @staticmethod
+    def read_fnlo_contribution_results(path):
+        """Read the strict component result emitted by a bundled fNLO job."""
+
+        with open(path) as result_file:
+            records = [line.split() for line in result_file
+                       if line.strip()]
+        if not records or records[0] != ['FORMAT', '1']:
+            raise ValueError('FORMAT 1 header is absent')
+        if len(records) < 6 or records[1][0] != 'COUNT':
+            raise ValueError('COUNT record is absent')
+        try:
+            count = int(records[1][1])
+        except (IndexError, ValueError):
+            raise ValueError('malformed COUNT record')
+        if count < 4:
+            raise ValueError('a bundled result must contain at least four components')
+
+        components = []
+        position = 2
+        for expected in range(1, count + 1):
+            try:
+                record = records[position]
+                component = {
+                    'id': int(record[1]),
+                    'label': record[2],
+                    'value': float(record[3].replace('D', 'E')),
+                    'error': float(record[4].replace('D', 'E'))}
+            except (IndexError, ValueError):
+                raise ValueError('malformed COMPONENT record')
+            if record[0] != 'COMPONENT' or component['id'] != expected:
+                raise ValueError('non-contiguous COMPONENT records')
+            components.append(component)
+            position += 1
+
+        expected_tail = ['SUM_COMPONENTS', 'TOTAL', 'CLOSURE', 'END']
+        if [record[0] for record in records[position:]] != expected_tail:
+            raise ValueError('malformed contribution-result trailer')
+        try:
+            component_sum = float(records[position][1].replace('D', 'E'))
+            total = float(records[position + 1][1].replace('D', 'E'))
+            total_error = float(records[position + 1][2].replace('D', 'E'))
+            closure = float(records[position + 2][1].replace('D', 'E'))
+        except (IndexError, ValueError):
+            raise ValueError('malformed contribution-result values')
+        calculated_sum = sum(component['value'] for component in components)
+        tolerance = 1e-10 * max(1.0, abs(component_sum), abs(total))
+        if abs(calculated_sum - component_sum) > tolerance:
+            raise ValueError('SUM_COMPONENTS does not match its components')
+        if abs(component_sum - total - closure) > tolerance:
+            raise ValueError('CLOSURE does not match the reported total')
+        return {
+            'components': components,
+            'sum': component_sum,
+            'total': total,
+            'error': total_error,
+            'closure': closure}
 
 
     def getSysSummaryFromLog(self, kpath=None,knext_name=None):
@@ -3212,6 +3296,74 @@ RESTART = %(mint_mode)s
             cross_sect_dict[p_label]['erra'] = math.sqrt(cross_sect_dict[p_label]['erra'])
             cross_sect_dict[p_label]['errt'] = math.sqrt(cross_sect_dict[p_label]['errt'])
 
+        contribution_jobs = [job for job in jobs
+                             if 'contribution_results' in job]
+        if contribution_jobs:
+            if len(contribution_jobs) != len(jobs):
+                raise aMCatNLOError(
+                    'Resolved contribution results are missing for some '
+                    'bundled fNLO integration channels')
+            reference = contribution_jobs[0]['contribution_results']
+            aggregated = []
+            for component in reference['components']:
+                aggregated.append({
+                    'id': component['id'],
+                    'label': component['label'],
+                    'value': 0.0,
+                    'error2': 0.0})
+            for job in contribution_jobs:
+                result = job['contribution_results']
+                signature = [(component['id'], component['label'])
+                             for component in result['components']]
+                reference_signature = [
+                    (component['id'], component['label'])
+                    for component in reference['components']]
+                if signature != reference_signature:
+                    raise aMCatNLOError(
+                        'Bundled fNLO channels report inconsistent '
+                        'contribution labels')
+                for target, component in zip(
+                        aggregated, result['components']):
+                    target['value'] += component['value']*job['wgt_frac']
+                    target['error2'] += (component['error']**2 *
+                                        job['wgt_frac'])
+            for component in aggregated:
+                component['error'] = math.sqrt(component.pop('error2'))
+            contribution_sum = sum(component['value']
+                                   for component in aggregated)
+            closure = contribution_sum - cross_sect_dict['xsect']
+            closure_tolerance = 1e-9 * max(
+                1.0, abs(contribution_sum),
+                abs(cross_sect_dict['xsect']))
+            if abs(closure) > closure_tolerance:
+                raise aMCatNLOError(
+                    'Resolved bundled contributions do not close to the '
+                    'fixed-order total')
+            contribution_result = {
+                'components': aggregated,
+                'sum': contribution_sum,
+                'total': cross_sect_dict['xsect'],
+                'error': cross_sect_dict['errt'],
+                'closure': closure}
+            cross_sect_dict['contributions'] = contribution_result
+            contribution_path = pjoin(
+                self.me_dir, 'SubProcesses',
+                'contribution_results_%s.txt' % integration_step)
+            with open(contribution_path, 'w') as contribution_file:
+                contribution_file.write('FORMAT 1\n')
+                contribution_file.write('COUNT %d\n' % len(aggregated))
+                for component in aggregated:
+                    contribution_file.write(
+                        'COMPONENT %(id)d %(label)s %(value).16e '
+                        '%(error).16e\n' % component)
+                contribution_file.write(
+                    'SUM_COMPONENTS %.16e\n' % contribution_sum)
+                contribution_file.write(
+                    'TOTAL %.16e %.16e\n' %
+                    (cross_sect_dict['xsect'], cross_sect_dict['errt']))
+                contribution_file.write('CLOSURE %.16e\n' % closure)
+                contribution_file.write('END\n')
+
         if jobs:
             content.append('\nTotal ABS and \nTotal: \n                      %(xseca)10.8e +- %(erra)6.4e  (%(fraca)6.4e%%)\n                      %(xsect)10.8e +- %(errt)6.4e  (%(fract)6.4e%%) \n' % cross_sect_dict)
         with open(pjoin(self.me_dir,'SubProcesses','res_%s.txt' % integration_step),'w') as res_file:
@@ -3225,8 +3377,10 @@ RESTART = %(mint_mode)s
     def collect_scale_pdf_info(self,options,jobs):
         """read the scale_pdf_dependence.dat files and collects there results"""
         scale_pdf_info=[]
+        decay_scale_mode = self.fnlo_decay_scale_variation_mode()
         if any(self.run_card['reweight_scale']) or any(self.run_card['reweight_PDF']) or \
-           len(self.run_card['dynamical_scale_choice']) > 1 or len(self.run_card['lhaid']) > 1:
+           len(self.run_card['dynamical_scale_choice']) > 1 or len(self.run_card['lhaid']) > 1 or \
+           decay_scale_mode != 'NONE':
             evt_files=[]
             evt_wghts=[]
             for job in jobs:
@@ -3234,6 +3388,27 @@ RESTART = %(mint_mode)s
                 evt_wghts.append(job['wgt_frac'])
             scale_pdf_info = self.pdf_scale_from_reweighting(evt_files,evt_wghts)
         return scale_pdf_info
+
+
+    def fnlo_decay_scale_variation_mode(self):
+        """Return the decay-card scale mode, if this is an fNLO decay run."""
+
+        decay_card = pjoin(self.me_dir, 'Cards', 'decay_card.dat')
+        try:
+            with open(decay_card) as card:
+                for line in card:
+                    fields = line.split()
+                    if fields and fields[0] == \
+                            'DECAY_SCALE_VARIATION_MODE':
+                        if len(fields) != 2 or fields[1] not in (
+                                'NONE', 'CORRELATED', 'INDEPENDENT'):
+                            raise aMCatNLOError(
+                                'Malformed DECAY_SCALE_VARIATION_MODE in %s' %
+                                decay_card)
+                        return fields[1]
+        except IOError:
+            pass
+        return 'NONE'
 
 
     def combine_plots_FO(self,folder_name,jobs):
@@ -3493,6 +3668,12 @@ RESTART = %(mint_mode)s
         res_files = misc.glob('res_*.txt', pjoin(self.me_dir, 'SubProcesses'))
         for res_file in res_files:
             files.mv(res_file,pjoin(self.me_dir, 'Events', self.run_name))
+        contribution_files = misc.glob(
+            'contribution_results_*.txt',
+            pjoin(self.me_dir, 'SubProcesses'))
+        for contribution_file in contribution_files:
+            files.mv(contribution_file,
+                     pjoin(self.me_dir, 'Events', self.run_name))
         # Collect the plots and put them in the Events/run* folder
         self.combine_plots_FO(folder_name,jobs)
         # PineAPPL remains available to the full NLO template only.
@@ -3640,6 +3821,19 @@ RESTART = %(mint_mode)s
             message = message + \
                       '\n      %(xsec_string)s: %(xsect)8.3e +- %(errt)6.1e %(unit)s' % \
                       self.cross_sect_dict
+            if self.cross_sect_dict.get('contributions'):
+                message += '\n      Resolved strict O(alpha_s) contributions:'
+                for component in self.cross_sect_dict[
+                        'contributions']['components']:
+                    message += ('\n          %(label)-34s %(value)8.3e +- '
+                                '%(error)6.1e %(unit)s') % dict(
+                                    component,
+                                    unit=self.cross_sect_dict['unit'])
+                message += ('\n          %-34s %8.3e %s' %
+                            ('component closure',
+                             self.cross_sect_dict[
+                                 'contributions']['closure'],
+                             self.cross_sect_dict['unit']))
             message = message + \
                       '\n   --------------------------------------------------------------'
             if scale_pdf_info and (self.run_card['nevents']>=10000 or mode in ['NLO', 'LO']):
@@ -3649,9 +3843,16 @@ RESTART = %(mint_mode)s
                     for s in scale_pdf_info[0]:
                         if s['unc']:
                             if self.run_card['ickkw'] != -1:
+                                variation_kind = (
+                                    'production scales'
+                                    if s.get('mode', 'NONE') == 'NONE' else
+                                    '%s production/decay scales' %
+                                    s['mode'].lower())
                                 message = message + \
-                                          ('\n          Dynamical_scale_choice %(label)i (envelope of %(size)s values): '\
-                                           '\n              %(cen)8.3e pb  +%(max)0.1f%% -%(min)0.1f%%') % s
+                                          ('\n          Dynamical_scale_choice %(label)i '
+                                           '(%(kind)s; envelope of %(size)s values): '
+                                           '\n              %(cen)8.3e pb  +%(max)0.1f%% -%(min)0.1f%%') % dict(
+                                               s, kind=variation_kind)
                             else:
                                 message = message + \
                                           ('\n          Soft and hard scale dependence (added in quadrature): '\
@@ -5165,6 +5366,7 @@ RESTART = %(mint_mode)s
         xsec_pdf0 xsec_pdf1 ...."""
 
         scales=[]
+        scale_modes=[]
         pdfs=[]
         for i,evt_file in enumerate(evt_files):
             path, evt=os.path.split(evt_file)
@@ -5173,11 +5375,27 @@ RESTART = %(mint_mode)s
                 if "scale variations:" in data_line:
                     for j,scale in enumerate(self.run_card['dynamical_scale_choice']):
                         data_line = f.readline().split()
+                        scale_mode = (data_line[3]
+                                      if len(data_line) > 3 else 'NONE')
+                        if scale_mode not in (
+                                'NONE', 'CORRELATED', 'INDEPENDENT'):
+                            raise aMCatNLOError(
+                                'Unknown fNLO scale-variation mode %s' %
+                                scale_mode)
                         scales_this = [float(val)*evt_wghts[i] for val in f.readline().replace("D", "E").split()]
                         try:
+                            if scale_modes[j] != scale_mode:
+                                raise aMCatNLOError(
+                                    'Inconsistent scale-variation modes '
+                                    'between integration channels')
+                            if len(scales[j]) != len(scales_this):
+                                raise aMCatNLOError(
+                                    'Inconsistent number of scale points '
+                                    'between integration channels')
                             scales[j] = [a + b for a, b in zip(scales[j], scales_this)]
                         except IndexError:
                             scales+=[scales_this]
+                            scale_modes += [scale_mode]
                     data_line=f.readline()
                 if "pdf variations:" in data_line:
                     for j,pdf in enumerate(self.run_card['lhaid']):
@@ -5192,19 +5410,27 @@ RESTART = %(mint_mode)s
         scale_info=[]
         for j,scale in enumerate(scales):
             s_cen=scale[0]
-            if s_cen != 0.0 and self.run_card['reweight_scale'][j]:
+            scale_mode = (scale_modes[j]
+                          if j < len(scale_modes) else 'NONE')
+            has_uncertainty = (self.run_card['reweight_scale'][j] or
+                               scale_mode != 'NONE')
+            if s_cen != 0.0 and has_uncertainty:
                 # max and min of the full envelope
                 s_max=(max(scale)/s_cen-1)*100
                 s_min=(1-min(scale)/s_cen)*100
                 # ren and fac scale dependence added in quadrature
-                ren_var=[]
-                fac_var=[]
-                for i in range(len(self.run_card['rw_rscale'])):
-                    ren_var.append(scale[i]-s_cen) # central fac scale
-                for i in range(len(self.run_card['rw_fscale'])):
-                    fac_var.append(scale[i*len(self.run_card['rw_rscale'])]-s_cen) # central ren scale
-                s_max_q=((s_cen+math.sqrt(math.pow(max(ren_var),2)+math.pow(max(fac_var),2)))/s_cen-1)*100
-                s_min_q=(1-(s_cen-math.sqrt(math.pow(min(ren_var),2)+math.pow(min(fac_var),2)))/s_cen)*100
+                if scale_mode == 'NONE':
+                    ren_var=[]
+                    fac_var=[]
+                    for i in range(len(self.run_card['rw_rscale'])):
+                        ren_var.append(scale[i]-s_cen) # central fac scale
+                    for i in range(len(self.run_card['rw_fscale'])):
+                        fac_var.append(scale[i*len(self.run_card['rw_rscale'])]-s_cen) # central ren scale
+                    s_max_q=((s_cen+math.sqrt(math.pow(max(ren_var),2)+math.pow(max(fac_var),2)))/s_cen-1)*100
+                    s_min_q=(1-(s_cen-math.sqrt(math.pow(min(ren_var),2)+math.pow(min(fac_var),2)))/s_cen)*100
+                else:
+                    s_max_q = s_max
+                    s_min_q = s_min
                 s_size=len(scale)
             else:
                 s_max=0.0
@@ -5215,7 +5441,7 @@ RESTART = %(mint_mode)s
             scale_info.append({'cen':s_cen, 'min':s_min, 'max':s_max, \
                                'min_q':s_min_q, 'max_q':s_max_q, 'size':s_size, \
                                'label':self.run_card['dynamical_scale_choice'][j], \
-                               'unc':self.run_card['reweight_scale'][j]})
+                               'unc':has_uncertainty, 'mode':scale_mode})
 
         # check if we can use LHAPDF to compute the PDF uncertainty
         if any(self.run_card['reweight_pdf']):
@@ -5526,6 +5752,10 @@ RESTART = %(mint_mode)s
             required_output.append('%s/results.dat' % current)
             required_output.append('%s/res_%s.dat' % (current,args[3]))
             required_output.append('%s/log_MINT%s.txt' % (current,args[3]))
+            if os.path.exists(pjoin(cwd, 'nlo_contribution_info.dat')):
+                required_output.append(
+                    '%s/contribution_results_%s.dat' %
+                    (current, args[3]))
             required_output.append('%s/mint_grids' % current)
             required_output.append('%s/grid.MC_integer' % current)
             if args[3] != '0':

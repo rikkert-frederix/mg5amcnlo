@@ -1,22 +1,33 @@
 module fks_weights_module
   use process_dimensions, only: nexternal, nincoming, maxproc, &
                                 nsplitorders, qcd_pos, amp_split_size
-  use run_state, only: q2fact, scale, dynamical_scale_choice
+  use run_state, only: q2fact, scale, dynamical_scale_choice, &
+       do_rwgt_decay_scale
   use timing_state, only: t_as, tr_s, tr_pdf, t_plot
   use mint_module, only: nintegrals, n_ave_virt, n_ord_virt, &
-       virt_wgt_mint, born_wgt_mint
+       virt_wgt_mint, born_wgt_mint, max_bundle_components, &
+       first_bundle_component_integral
   use fks_metadata, only: fks_i_d, fks_j_d
   use setscales_module, only: set_ren_scale, set_fac_scale
   use split_orders, only: amp_split_pos_to_orders
   use chooser_functions_module, only: set_pdg_impl, &
        get_underlying_born_pdg_impl
   use decay_chain_metadata, only: has_decay_chains
-  use nlo_decay_metadata, only: has_nlo_decay
+  use nlo_decay_metadata, only: has_nlo_decay, corrected_parent_pdg
   use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
-       active_contribution_has_virtual, active_virtual_grid_index
+       active_nlo_contribution, active_contribution_has_virtual, &
+       active_contribution_is_production, active_virtual_grid_index, &
+       bundle_born_component, bundle_production_nlo_component, &
+       bundle_decay_component, bundle_width_component, &
+       bundle_component_count
   use decay_chain_scales, only: production_qcd_squared_order, &
        decay_qcd_squared_order, decay_qcd_coupling_weight, &
        decay_qcd_coupling_rescaling
+  use decay_chain_parameters, only: decay_width_expansion_coefficient, &
+       decay_width_denominator_rescaling, decay_scale_species_count, &
+       decay_scale_species_index, decay_scale_factor
+  use fnlo_scale_variations, only: fnlo_scale_point_count, &
+       decode_fnlo_scale_point
   use madfks_plot_module, only: outfun_impl
   use fks_model_state_module, only: g => strong_coupling, external_masses
   use fnlo_process_common, only: nfksprocess, soft_counterevent, &
@@ -184,7 +195,8 @@ contains
     momenta_equal_uborn = momenta_equal(pb1, pb2)
   end function momenta_equal_uborn
 
-  subroutine add_wgt(event_slot, type, wgt1, wgt2, wgt3)
+  subroutine add_wgt(event_slot, type, wgt1, wgt2, wgt3, &
+                     is_width_counterterm)
 ! Adds a contribution to the list in weight_lines. 'type' sets the type
 ! of the contribution and wgt1..wgt3 are the coefficients multiplying
 ! the logs. The arguments are:
@@ -252,8 +264,10 @@ contains
     use extra_weights
     use FKSParams
     implicit none
-    integer event_slot, type, i, j
+    integer event_slot, type, i, j, contribution
     logical foundIt
+    logical, intent(in), optional :: is_width_counterterm
+    logical :: width_counterterm
     double precision wgt1, wgt2, wgt3
 
     if (wgt1 .eq. 0d0 .and. wgt2 .eq. 0d0 .and. wgt3 .eq. 0d0) return
@@ -298,6 +312,27 @@ contains
     decayqcdpower(icontr) = decay_qcd_squared_order(QCD_power)
     orderstag(icontr) = orders_tag
     amppos(icontr) = amp_pos
+    bundle_component(icontr) = 0
+    correction_scale_pdg(icontr) = 0
+    if (has_nlo_decay()) then
+      correction_scale_pdg(icontr) = corrected_parent_pdg()
+    end if
+    if (has_nlo_contribution_bundle()) then
+      contribution = active_nlo_contribution()
+      width_counterterm = .false.
+      if (present(is_width_counterterm)) then
+        width_counterterm = is_width_counterterm
+      end if
+      if (width_counterterm) then
+        bundle_component(icontr) = bundle_width_component()
+      else if (type == born_contribution) then
+        bundle_component(icontr) = bundle_born_component()
+      else if (active_contribution_is_production()) then
+        bundle_component(icontr) = bundle_production_nlo_component()
+      else
+        bundle_component(icontr) = bundle_decay_component(contribution)
+      end if
+    end if
     ipr(icontr) = 0
     call set_pdg_impl(icontr, nFKSprocess, idup)
 
@@ -347,6 +382,62 @@ contains
     end if
     return
   end subroutine add_wgt
+
+
+  double precision function evaluate_weight_line(index, mu2_r, mu2_f, &
+                                                  production_g, &
+                                                  factor_indices)
+    use weight_lines
+    implicit none
+    integer, intent(in) :: index
+    double precision, intent(in) :: mu2_r, mu2_f, production_g
+    integer, intent(in) :: factor_indices(:)
+    integer :: species_index, factor_index
+    double precision :: logarithmic_mu2_r, decay_coupling_weight
+    double precision :: denominator_rescaling, width_coefficient
+
+    logarithmic_mu2_r = mu2_r
+    if (correction_scale_pdg(index) /= 0) then
+      factor_index = 1
+      if (size(factor_indices) > 0) then
+        species_index = decay_scale_species_index(&
+             correction_scale_pdg(index))
+        if (species_index < 1 .or. &
+            species_index > size(factor_indices)) then
+          write (*, *) 'ERROR: corrected decay has no scale factor', &
+               correction_scale_pdg(index)
+          stop 1
+        end if
+        factor_index = factor_indices(species_index)
+      end if
+      ! scales2(1) stores the central Ellis--Sexton scale of this line.
+      ! An NLO-decay logarithm runs with its corrected decay scale, not
+      ! with the production renormalisation scale.
+      logarithmic_mu2_r = scales2(1, index)* &
+           decay_scale_factor(factor_index)**2
+    end if
+
+    decay_coupling_weight = decay_qcd_coupling_weight(&
+         decayqcdpower(index), factor_indices)
+    denominator_rescaling = 1d0
+    width_coefficient = 1d0
+    if (has_nlo_contribution_bundle()) then
+      denominator_rescaling = &
+           decay_width_denominator_rescaling(factor_indices)
+      if (bundle_component(index) == bundle_width_component()) then
+        width_coefficient = &
+             decay_width_expansion_coefficient(factor_indices)
+      end if
+    end if
+    evaluate_weight_line = &
+         (wgt(1, index) + &
+          wgt(2, index)*log(logarithmic_mu2_r/scales2(1, index)) + &
+          wgt(3, index)*log(mu2_f/scales2(1, index))) * &
+         production_g**QCDpower(index)*decay_coupling_weight* &
+         denominator_rescaling*width_coefficient
+  end function evaluate_weight_line
+
+
   subroutine include_PDF_and_alphas
 ! Multiply the saved wgt() info by the PDFs, alpha_S and the scale
 ! dependence and saves the weights in the wgts() array. The weights in
@@ -361,11 +452,13 @@ contains
     integer orders(nsplitorders)
     integer i, j, iamp, icontr_orig
     logical virt_found
-    double precision xlum, mu2_r, mu2_f, mu2_q, wgt_wo_pdf, conv
-    double precision decay_coupling_weight, decay_rescaling
+    double precision xlum, mu2_r, mu2_f, wgt_wo_pdf, conv
+    double precision decay_rescaling
+    integer, allocatable :: central_factor_indices(:)
     parameter(conv=389379660d0) ! conversion to picobarns
     call cpu_time(tBefore)
     if (icontr .eq. 0) return
+    allocate(central_factor_indices(0))
     virt_found = .false.
 ! number of contributions before they are (possibly) increased through a
 ! call to separate_flavour_config().
@@ -374,7 +467,6 @@ contains
     do while (i .lt. icontr)
       i = i + 1
       nFKSprocess = nFKS(i)
-      mu2_q = scales2(1, i)
       mu2_r = scales2(2, i)
       mu2_f = scales2(3, i)
       q2fact(1) = mu2_f
@@ -400,11 +492,8 @@ contains
           xlum = subproc_pd(ipr(i))
         end if
       end if
-      decay_coupling_weight = &
-           decay_qcd_coupling_weight(decayqcdpower(i))
-      wgt_wo_pdf = (wgt(1, i) + wgt(2, i)*log(mu2_r/mu2_q) &
-                    + wgt(3, i)*log(mu2_f/mu2_q)) &
-                    *g_strong(i)**QCDpower(i)*decay_coupling_weight
+      wgt_wo_pdf = evaluate_weight_line(&
+           i, mu2_r, mu2_f, g_strong(i), central_factor_indices)
       wgts(iwgt, i) = xlum*wgt_wo_pdf
       do j = 1, subproc_iproc
         parton_iproc(j, i) = parton_iproc(j, i)*wgt_wo_pdf
@@ -431,6 +520,7 @@ contains
         end do
       end if
     end do
+    deallocate(central_factor_indices)
     call cpu_time(tAfter)
     t_as = t_as + (tAfter - tBefore)
     return
@@ -463,6 +553,9 @@ contains
       QCDpower(ict_new) = QCDpower(ict)
       decayQCDpower(ict_new) = decayQCDpower(ict)
       orderstag(ict_new) = orderstag(ict)
+      amppos(ict_new) = amppos(ict)
+      bundle_component(ict_new) = bundle_component(ict)
+      correction_scale_pdg(ict_new) = correction_scale_pdg(ict)
       do k = 1, nexternal
         do j = 0, 3
           momenta(j, k, ict_new) = momenta(j, k, ict)
@@ -541,63 +634,53 @@ contains
     use alfas_functions_module, only: alphas
     implicit none
     real :: tBefore, tAfter
-    integer i, kr, kf, iwgt_save, dd
-    double precision xlum(maxscales), pi, mu2_r(maxscales), c_mu2_r, c_mu2_f
-    double precision mu2_f(maxscales), mu2_q, g(maxscales), conv
-    double precision decay_coupling_weight
+    integer i, kr, kf, iwgt_save, dd, point, point_count
+    integer :: factor_count
+    integer, allocatable :: factor_indices(:)
+    double precision xlum, pi, mu2_r, c_mu2_r, c_mu2_f
+    double precision mu2_f, g, conv
     parameter(pi=3.1415926535897932385d0)
     parameter(conv=389379660d0) ! conversion to picobarns
     call cpu_time(tBefore)
     if (icontr .eq. 0) return
+    factor_count = 0
+    if (do_rwgt_decay_scale) factor_count = decay_scale_species_count()
+    allocate(factor_indices(factor_count))
 ! currently we have 'iwgt' weights in the wgts() array.
     iwgt_save = iwgt
 ! loop over all the contributions in the weight lines module
     do i = 1, icontr
       iwgt = iwgt_save
       nFKSprocess = nFKS(i)
-      mu2_q = scales2(1, i)
 ! Loop over the dynamical_scale_choices
       do dd = 1, dyn_scale(0)
-! renormalisation scale variation (requires recomputation of the strong
-! coupling)
         call set_mu_central(i, dd, c_mu2_r, c_mu2_f)
-        do kr = 1, nint(scalevarR(0))
-          if ((.not. lscalevar(dd)) .and. kr .ne. 1) exit
-          mu2_r(kr) = c_mu2_r*scalevarR(kr)**2
-          g(kr) = sqrt(4d0*pi*alphas(sqrt(mu2_r(kr))))
-        end do
-! factorisation scale variation (require recomputation of the PDFs)
-        do kf = 1, nint(scalevarF(0))
-          if ((.not. lscalevar(dd)) .and. kf .ne. 1) exit
-          mu2_f(kf) = c_mu2_f*scalevarF(kf)**2
-          q2fact(1) = mu2_f(kf)
-          q2fact(2) = mu2_f(kf)
-          xlum(kf) = dlum(bjx(:, i))
+        point_count = fnlo_scale_point_count(dd)
+        do point = 1, point_count
+          call decode_fnlo_scale_point(&
+               dd, point, kr, kf, factor_indices)
+          mu2_r = c_mu2_r*scalevarR(kr)**2
+          mu2_f = c_mu2_f*scalevarF(kf)**2
+          g = sqrt(4d0*pi*alphas(sqrt(mu2_r)))
+          q2fact(1) = mu2_f
+          q2fact(2) = mu2_f
+          xlum = dlum(bjx(:, i))
           if (separate_flavour_configs .and. ipr(i) .ne. 0) then
             if (nincoming .eq. 2) then
-              xlum(kf) = subproc_pd(ipr(i))*conv
+              xlum = subproc_pd(ipr(i))*conv
             else
-              xlum(kf) = subproc_pd(ipr(i))
+              xlum = subproc_pd(ipr(i))
             end if
           end if
-        end do
-        do kf = 1, nint(scalevarF(0))
-          if ((.not. lscalevar(dd)) .and. kf .ne. 1) exit
-          do kr = 1, nint(scalevarR(0))
-            if ((.not. lscalevar(dd)) .and. kr .ne. 1) exit
-            iwgt = iwgt + 1   ! increment the iwgt for the wgts() array
-            call weight_lines_allocated(nexternal, max_contr, iwgt, max_iproc)
-! add the weights to the array
-            decay_coupling_weight = &
-                 decay_qcd_coupling_weight(decayqcdpower(i))
-            wgts(iwgt, i) = xlum(kf) &
-                            *(wgt(1, i) + wgt(2, i)*log(mu2_r(kr)/mu2_q) &
-                              + wgt(3, i)*log(mu2_f(kf)/mu2_q)) &
-                            *g(kr)**QCDpower(i)*decay_coupling_weight
-          end do
+          iwgt = iwgt + 1
+          call weight_lines_allocated(&
+               nexternal, max_contr, iwgt, max_iproc)
+          wgts(iwgt, i) = xlum*evaluate_weight_line(&
+               i, mu2_r, mu2_f, g, factor_indices)
         end do
       end do
     end do
+    deallocate(factor_indices)
     call cpu_time(tAfter)
     tr_s = tr_s + (tAfter - tBefore)
     return
@@ -613,12 +696,13 @@ contains
     implicit none
     real :: tBefore, tAfter
     integer n, i, nn
-    double precision xlum, pi, mu2_r, mu2_f, mu2_q, g, conv
-    double precision decay_coupling_weight
+    double precision xlum, pi, mu2_r, mu2_f, g, conv
+    integer, allocatable :: central_factor_indices(:)
     parameter(pi=3.1415926535897932385d0)
     parameter(conv=389379660d0) ! conversion to picobarns
     call cpu_time(tBefore)
     if (icontr .eq. 0) return
+    allocate(central_factor_indices(0))
     do nn = 1, lhaPDFid(0)
 ! Use as external loop the one over the PDF sets and as internal the one
 ! over the icontr. This reduces the number of calls to InitPDF and
@@ -629,7 +713,6 @@ contains
         call InitPDFm(nn, n)
         do i = 1, icontr
           nFKSprocess = nFKS(i)
-          mu2_q = scales2(1, i)
           mu2_r = scales2(2, i)
           mu2_f = scales2(3, i)
           q2fact(1) = mu2_f
@@ -646,15 +729,12 @@ contains
 ! Recompute the strong coupling: alpha_s in the PDF might change
           g = sqrt(4d0*pi*alphas(sqrt(mu2_r)))
 ! add the weights to the array
-          decay_coupling_weight = &
-               decay_qcd_coupling_weight(decayqcdpower(i))
-          wgts(iwgt, i) = xlum &
-               *(wgt(1, i) + wgt(2, i)*log(mu2_r/mu2_q) &
-               + wgt(3, i)*log(mu2_f/mu2_q)) &
-               *g**QCDpower(i)*decay_coupling_weight
+          wgts(iwgt, i) = xlum*evaluate_weight_line(&
+               i, mu2_r, mu2_f, g, central_factor_indices)
         end do
       end do
     end do
+    deallocate(central_factor_indices)
     call InitPDFm(1, 0)
     call cpu_time(tAfter)
     tr_pdf = tr_pdf + (tAfter - tBefore)
@@ -783,11 +863,24 @@ contains
     use weight_lines
     use mint_module
     implicit none
-    integer i, iamp, ithree, isix
+    integer i, iamp, ithree, isix, component, component_integral
     double precision f(nintegrals), sigint
+    f = 0d0
     sigint = 0d0
     do i = 1, icontr
       sigint = sigint + wgts(1, i)
+      component = bundle_component(i)
+      if (component > 0) then
+        if (component > bundle_component_count() .or. &
+            component > max_bundle_components) then
+          write (*, *) 'ERROR: bundle component index is out of range', &
+               component
+          stop 1
+        end if
+        component_integral = first_bundle_component_integral + &
+             component - 1
+        f(component_integral) = f(component_integral) + wgts(1, i)
+      end if
     end do
     f(1) = abs(sigint)
     f(2) = sigint
