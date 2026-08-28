@@ -652,6 +652,10 @@ class TestMadEventCmd(unittest.TestCase):
             nlo_decay_kinematics = stream.read().lower()
         self.assertIn('store_factorized_kernel_momenta',
                       nlo_decay_kinematics)
+        self.assertIn('factorized_block_kinematics',
+                      nlo_decay_kinematics)
+        self.assertNotIn('use decay_chain_kinematics',
+                         nlo_decay_kinematics)
         self.assertNotIn('local_event_cache', nlo_decay_kinematics)
         with open(pjoin(subprocess_dir,
                         'decay_chain_kinematics.f90')) as stream:
@@ -663,6 +667,10 @@ class TestMadEventCmd(unittest.TestCase):
                         'factorized_phase_space.f90')) as stream:
             factorized_phase_space = stream.read().lower()
         self.assertIn('type, public :: factorized_radiation_state',
+                      factorized_phase_space)
+        self.assertIn('type, public :: factorized_measure_state',
+                      factorized_phase_space)
+        self.assertIn('compose_factorized_event_measure',
                       factorized_phase_space)
         self.assertIn('kernel_momenta', factorized_phase_space)
 

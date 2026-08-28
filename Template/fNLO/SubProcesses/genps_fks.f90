@@ -10,9 +10,14 @@ module genps_fks
   use genps_born, only: born_phase_space, generate_born_phase_space, &
                         invalidate_born_phase_space
   use factorized_phase_space, only: factorized_radiation_state, &
+       factorized_measure_state, &
        reset_factorized_phase_space, store_factorized_kernel_momenta, &
        store_factorized_radiation_state, &
-       scale_factorized_radiation_jacobians
+       scale_factorized_radiation_jacobians, &
+       store_factorized_event_measure, &
+       multiply_factorized_event_measure, &
+       compose_factorized_event_measure, &
+       scale_factorized_event_measures
   use decay_chain_metadata, only: has_decay_chains, context_for_fks, &
                                   real_phase_space_dimension
   use decay_chain_kinematics, only: get_core_born_momenta, &
@@ -73,8 +78,8 @@ contains
     pass = born%valid
     if (pass) then
       if (has_nlo_decay()) then
-        call generate_nlo_decay_FKS_kinematics(x, ndim, born%xjac, &
-             born%xpswgt, born%shat, born%sqrtshat, born%ycm, born%xbjrk, &
+        call generate_nlo_decay_FKS_kinematics(x, ndim, born%shat, &
+             born%sqrtshat, born%ycm, born%xbjrk, &
              jac, p, pass)
       else
         call generate_FKS_kinematics(x, ndim, born%xjac, born%xpswgt, &
@@ -100,6 +105,9 @@ contains
     do i = first_counterevent, real_event
       stored_event_jacobian(i) = stored_event_jacobian(i)*wgt
     end do
+    if (has_nlo_decay() .or. has_decay_chains()) then
+      call scale_factorized_event_measures(wgt)
+    end if
     call scale_factorized_radiation_jacobians(wgt)
     wgt = stored_event_jacobian(real_event)
 
@@ -108,11 +116,11 @@ contains
   end subroutine generate_momenta
 
 
-  subroutine generate_nlo_decay_FKS_kinematics(x, ndim, xjac0, xpswgt0, &
+  subroutine generate_nlo_decay_FKS_kinematics(x, ndim, &
        shat_born, sqrtshat_born, ycm_born, xbjrk_born, jac, p, pass)
     implicit none
     integer, intent(in) :: ndim
-    double precision, intent(in) :: x(99), xjac0, xpswgt0
+    double precision, intent(in) :: x(99)
     double precision, intent(in) :: shat_born, sqrtshat_born, ycm_born
     double precision, intent(in) :: xbjrk_born(2)
     double precision, intent(out) :: jac, p(0:3, nexternal)
@@ -123,6 +131,7 @@ contains
     double precision :: visible(0:3, nexternal), event_masses(-max_branch:max_particles)
     double precision :: xiimax, xinorm, xi_i, xi_hat, y_ij
     double precision :: p_i_hat(0:3), kernel_p_i_hat(0:3), xjac, xpswgt
+    double precision :: radiation_jacobian, radiation_weight
     double precision :: decay_mass
     logical :: event_pass, real_pass, massive_sister, skip_counterevents
 
@@ -158,8 +167,8 @@ contains
           (event_slot == collinear_counterevent .or. &
            event_slot == soft_collinear_counterevent)) cycle
 
-      xjac = xjac0
-      xpswgt = xpswgt0
+      xjac = 1d0
+      xpswgt = 1d0
       xiimax = -1d0
       xinorm = -1d0
       xi_i = -1d0
@@ -176,15 +185,22 @@ contains
         if (.not. event_pass) xjac = -197d0
       end if
       if (event_pass .and. xjac > 0d0) then
-        call compute_flux(shat_born, sqrtshat_born, event_masses(1), &
-                          event_masses(2), xpswgt, xjac)
+        radiation_jacobian = xjac
+        radiation_weight = xpswgt
+        call finalize_factorized_event_measure( &
+             event_slot, nlo_decay_corrected_node(), &
+             radiation_jacobian, radiation_weight, shat_born, &
+             sqrtshat_born, event_masses(1), event_masses(2), xjac)
       else
         xjac = -196d0
+        radiation_jacobian = -1d0
+        radiation_weight = -1d0
       end if
       call store_FKS_event(event_slot, xiimax, xinorm, xi_i, xi_hat, &
                            p_i_hat, y_ij, visible, p, xjac, jac, &
                            nlo_decay_corrected_node(), kernel_p_i_hat, &
-                           decay_mass**2, decay_mass, 0d0)
+                           decay_mass**2, decay_mass, 0d0, &
+                           radiation_jacobian, radiation_weight)
 
       if (event_slot == real_event) then
         real_pass = event_pass .and. xjac > 0d0
@@ -220,6 +236,7 @@ contains
     double precision xmrec2, m_j_fks, phi_i_fks, rat_xi, &
       & xi_i_fks, y_ij_fks, xi_i_hat, xiimax, xinorm, xjac, xpswgt, &
       & xp(0:3, nexternal), visible_xp(0:3, nexternal), p_i_fks(0:3)
+    double precision :: radiation_jacobian, radiation_weight
     double precision :: core_born(0:3, nexternal - 1)
     double precision :: core_mass_values(nexternal)
     integer i
@@ -304,8 +321,13 @@ contains
           icountevts .gt. soft_counterevent .and. &
           (m_j_fks .ne. 0d0 .or. nbody)) cycle counterevent_loop
 
-      xjac = xjac0
-      xpswgt = xpswgt0
+      if (has_decay_chains()) then
+        xjac = 1d0
+        xpswgt = 1d0
+      else
+        xjac = xjac0
+        xpswgt = xpswgt0
+      end if
 !
 ! Put the Born momenta in the xp momenta, making sure that the mapping
 ! is correct; put i_fks momenta equal to zero.
@@ -382,8 +404,21 @@ contains
         if (.not. pass) xjac = -199
       end if
       if (pass) then
-        call compute_flux(event_shat(icountevts), event_sqrt_shat(icountevts), &
-                          m(1), m(2), xpswgt, xjac)
+        radiation_jacobian = xjac
+        radiation_weight = xpswgt
+        if (has_decay_chains()) then
+          call finalize_factorized_event_measure( &
+               icountevts, 0, radiation_jacobian, radiation_weight, &
+               event_shat(icountevts), event_sqrt_shat(icountevts), &
+               m(1), m(2), xjac)
+        else
+          call compute_flux(event_shat(icountevts), &
+                            event_sqrt_shat(icountevts), &
+                            m(1), m(2), xpswgt, xjac)
+        end if
+      else
+        radiation_jacobian = -1d0
+        radiation_weight = -1d0
       end if
 !
       if (has_decay_chains() .and. pass .and. xjac > 0d0) then
@@ -401,7 +436,8 @@ contains
       call store_FKS_event(icountevts, xiimax, xinorm, &
         & xi_i_fks, xi_i_hat, p_i_fks, y_ij_fks, visible_xp, p, xjac, &
         & jac, 0, p_i_fks, event_shat(icountevts), &
-        & event_sqrt_shat(icountevts), ybst_til_tocm(icountevts))
+        & event_sqrt_shat(icountevts), ybst_til_tocm(icountevts), &
+        & radiation_jacobian, radiation_weight)
       if (icountevts .eq. real_event .and. isolsign .eq. -1) &
         skip_counterevents = .true.
     end do counterevent_loop
@@ -435,39 +471,72 @@ contains
 
     double precision pwgt, flux
 
-    double precision pi
-    parameter(pi=3.1415926535897932d0)
-
-    if (nincoming .eq. 2) then
-      flux = 1d0/(2.d0*sqrt(phase_space_lambda(shat, m1**2, m2**2)))
-    else                      ! Decays
-      flux = 1d0/(2d0*sqrtshat)
-    end if
-! The pi-dependent factor inserted below is due to the fact that the
-! weight computed above is relevant to R_n, as defined in Kajantie's
-! book, eq.(III.3.1), while we need the full n-body phase space
-    flux = flux/(2d0*pi)**real_phase_space_dimension()
-! This extra pi-dependent factor is due to the fact that the phase-space
-! part relevant to i_fks and j_fks does contain all the pi's needed for
-! the correct normalization of the phase space
-    flux = flux*(2d0*pi)**3
+    flux = phase_space_flux_factor(shat, sqrtshat, m1, m2)
     pwgt = max(xjac*xpswgt, 1d-99)
     xjac = pwgt*flux
 !
     return
   end subroutine compute_flux
 
+
+  double precision function phase_space_flux_factor( &
+       shat, sqrtshat, m1, m2)
+    double precision, intent(in) :: shat, sqrtshat, m1, m2
+    double precision, parameter :: pi = 3.1415926535897932d0
+
+    if (nincoming == 2) then
+      phase_space_flux_factor = &
+           1d0/(2d0*sqrt(phase_space_lambda(shat, m1**2, m2**2)))
+    else
+      phase_space_flux_factor = 1d0/(2d0*sqrtshat)
+    end if
+    ! Convert Kajantie's R_n normalization to the complete phase space,
+    ! retaining the three pi factors already present in the FKS map.
+    phase_space_flux_factor = phase_space_flux_factor/ &
+         (2d0*pi)**real_phase_space_dimension()*(2d0*pi)**3
+  end function phase_space_flux_factor
+
+
+  subroutine finalize_factorized_event_measure(event_slot, radiation_block, &
+       radiation_jacobian, radiation_weight, shat, sqrtshat, m1, m2, xjac)
+    integer, intent(in) :: event_slot, radiation_block
+    double precision, intent(in) :: radiation_jacobian, radiation_weight
+    double precision, intent(in) :: shat, sqrtshat, m1, m2
+    double precision, intent(out) :: xjac
+    type(factorized_measure_state) :: radiation_measure, flux_measure
+    double precision :: composed_jacobian, composed_weight, flux
+    logical :: available
+
+    radiation_measure%jacobian = radiation_jacobian
+    radiation_measure%phase_space_weight = radiation_weight
+    call store_factorized_event_measure( &
+         event_slot, radiation_block, radiation_measure)
+    call compose_factorized_event_measure( &
+         event_slot, composed_jacobian, composed_weight, available)
+    if (.not. available) then
+      write (*, '(a)') &
+           'ERROR in genps_fks: a factorized base measure is unavailable'
+      stop 1
+    end if
+
+    flux = phase_space_flux_factor(shat, sqrtshat, m1, m2)
+    xjac = max(composed_jacobian*composed_weight, 1d-99)*flux
+    flux_measure = factorized_measure_state()
+    flux_measure%phase_space_weight = flux
+    call multiply_factorized_event_measure(event_slot, 0, flux_measure)
+  end subroutine finalize_factorized_event_measure
+
   subroutine store_FKS_event(icountevts, xiimax, xinorm, &
     & xi_i_fks, xi_i_hat, p_i_fks, y_ij_fks, xp, p, xjac, jac, &
     & radiation_block, kernel_p_i_fks, kernel_shat, kernel_sqrt_shat, &
-    & kernel_y_to_cm)
+    & kernel_y_to_cm, radiation_jacobian, radiation_weight)
 
     implicit none
     integer icountevts, radiation_block
     double precision xiimax, xinorm, &
       & xi_i_fks, xi_i_hat, p_i_fks(0:3), y_ij_fks, xp(0:3, nexternal), p(0:3, nexternal), &
       & xjac, jac, kernel_p_i_fks(0:3), kernel_shat, kernel_sqrt_shat, &
-      & kernel_y_to_cm
+      & kernel_y_to_cm, radiation_jacobian, radiation_weight
 
     integer i, j
     type(factorized_radiation_state) :: radiation
@@ -500,6 +569,8 @@ contains
     stored_event_jacobian(icountevts) = xjac
 
     radiation%jacobian = xjac
+    radiation%radiation_jacobian = radiation_jacobian
+    radiation%radiation_weight = radiation_weight
     radiation%xi = xi_i_fks
     radiation%y = y_ij_fks
     radiation%xi_hat = xi_i_hat

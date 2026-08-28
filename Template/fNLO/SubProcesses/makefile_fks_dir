@@ -46,7 +46,7 @@ FILES= fnlo_process_common.o process_dimensions.o			\
 	 decay_chain_parameters.o					\
 	 fnlo_scale_variations.o					\
 	 decay_chain_parameters_bridge.o phase_space_kinematics.o	\
-	 factorized_phase_space.o					\
+	 factorized_phase_space.o factorized_block_kinematics.o	\
 	 decay_chain_kinematics.o nlo_decay_kinematics.o		\
 	 decay_chain_scales.o						\
 	 fks_diagnostics.o fks_qcd_splitting.o fks_soft_kernels.o	\
@@ -218,7 +218,7 @@ fnlo_process_common.o: $(LIBDIR)extra_weights.mod
 $(FNLO_PROCESS_COMMON_USERS): fnlo_process_common.o
 fks_metadata.o: process_dimensions.o
 fks_metadata_bridge.o: fks_metadata.o
-nlo_contribution_bundle.o: process_dimensions.o
+nlo_contribution_bundle.o: process_dimensions.o fnlo_process_common.o
 nlo_decay_metadata.o: process_dimensions.o fks_metadata.o \
 	nlo_contribution_bundle.o
 decay_chain_metadata.o: process_dimensions.o fks_metadata.o \
@@ -232,12 +232,13 @@ fnlo_scale_variations.o: decay_chain_metadata.o nlo_decay_metadata.o \
 phase_space_kinematics.o: process_dimensions.o \
 	$(LIBDIR)kin_functions_module.mod
 factorized_phase_space.o: process_dimensions.o fnlo_process_common.o
+factorized_block_kinematics.o: process_dimensions.o phase_space_kinematics.o
 decay_chain_kinematics.o: process_dimensions.o fnlo_process_common.o \
 	decay_chain_metadata.o \
 	decay_chain_parameters.o phase_space_kinematics.o \
-	factorized_phase_space.o
+	factorized_phase_space.o factorized_block_kinematics.o
 nlo_decay_kinematics.o: process_dimensions.o nlo_decay_metadata.o \
-	decay_chain_metadata.o decay_chain_parameters.o decay_chain_kinematics.o \
+	decay_chain_parameters.o factorized_block_kinematics.o \
 	phase_space_kinematics.o boostwdir2.o fnlo_process_common.o \
 	factorized_phase_space.o
 decay_chain_scales.o: process_dimensions.o decay_chain_metadata.o \

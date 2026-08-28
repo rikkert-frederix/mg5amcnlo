@@ -2,8 +2,15 @@ module decay_chain_kinematics
   use process_dimensions, only: nexternal, nincoming, validate_process_dimensions
   use fnlo_process_common, only: event_from_decay => from_decay, &
        soft_counterevent
-  use factorized_phase_space, only: store_factorized_block_momenta, &
-       store_factorized_kernel_momenta
+  use factorized_phase_space, only: factorized_measure_state, &
+       store_factorized_block_momenta, store_factorized_kernel_momenta, &
+       store_factorized_base_measure, compose_factorized_base_measure
+  use factorized_block_kinematics, only: &
+       generate_nbody => generate_factorized_nbody, &
+       generate_nbody_rest => generate_factorized_nbody_rest, &
+       boost_nbody_from_rest => boost_factorized_block_from_rest, &
+       boost_from_rest => boost_factorized_momentum_from_rest, &
+       minkowski_square => factorized_minkowski_square
   use phase_space_kinematics, only: phase_space_lambda
   use decay_chain_metadata, only: has_decay_chains, decay_node_count, &
        decay_leaf_count, decay_random_dimension, born_context, &
@@ -132,6 +139,8 @@ contains
     double precision :: parent(0:3)
     double precision :: final_masses(nexternal)
     double precision :: final_momenta(0:3, nexternal)
+    type(factorized_measure_state) :: production_measure
+    logical :: measure_available
 
     call require_enabled()
     node_rest_storage = 0d0
@@ -145,9 +154,15 @@ contains
       final_masses(leg) = core_mass(context, nincoming + leg)
     end do
 
+    production_measure%jacobian = xjac
+    production_measure%phase_space_weight = xpswgt
     call generate_nbody(parent, final_count, final_masses, x, 1, &
-                        final_momenta, xjac, xpswgt, pass)
+         final_momenta, production_measure%jacobian, &
+         production_measure%phase_space_weight, pass)
     if (.not. pass) return
+    if (final_count == 1) production_measure%phase_space_weight = &
+         production_measure%phase_space_weight/(2d0*sqrtshat)
+    call store_factorized_base_measure(0, production_measure)
 
     core_born_storage = 0d0
     call fill_incoming_momenta(shat, sqrtshat, context, &
@@ -162,13 +177,16 @@ contains
     visible_momenta = 0d0
     index = decay_variable_start()
     call expand_context(context, soft_counterevent, core_born_storage, x, &
-                        index, &
-                        visible_momenta, xjac, xpswgt, .true., pass)
+                        index, visible_momenta, .true., pass)
     if (.not. pass) return
     if (index /= decay_variable_start() + decay_random_dimension()) then
       call fail_kinematics('decay random-variable accounting is inconsistent')
     end if
-    xpswgt = xpswgt*decay_nwa_weight()
+    call compose_factorized_base_measure( &
+         xjac, xpswgt, measure_available)
+    if (.not. measure_available) then
+      call fail_kinematics('the production measure is unavailable')
+    end if
   end subroutine generate_core_born_and_decays
 
 
@@ -181,17 +199,13 @@ contains
     double precision, intent(out) :: visible_momenta(0:3, nexternal)
     logical, intent(out) :: pass
     integer :: context, index
-    double precision :: unused_jacobian, unused_weight
 
     call require_enabled()
     context = context_for_fks(configuration)
     visible_momenta = 0d0
     index = decay_variable_start()
-    unused_jacobian = 1d0
-    unused_weight = 1d0
     call expand_context(context, event_slot, core_momenta, x, index, &
-                        visible_momenta, unused_jacobian, unused_weight, &
-                        .false., pass)
+                        visible_momenta, .false., pass)
     if (.not. pass) return
     if (index /= decay_variable_start() + decay_random_dimension()) then
       call fail_kinematics('real decay random-variable accounting is inconsistent')
@@ -200,12 +214,11 @@ contains
 
 
   subroutine expand_context(context, event_slot, core_momenta, x, index, &
-                            visible_momenta, xjac, xpswgt, keep_weight, pass)
+                            visible_momenta, keep_weight, pass)
     integer, intent(in) :: context, event_slot
     double precision, intent(in) :: core_momenta(0:, :), x(99)
     integer, intent(inout) :: index
     double precision, intent(out) :: visible_momenta(0:, :)
-    double precision, intent(inout) :: xjac, xpswgt
     logical, intent(in) :: keep_weight
     logical, intent(out) :: pass
 
@@ -218,8 +231,7 @@ contains
         visible_momenta(:, target) = core_momenta(:, leg)
       else
         call expand_node(context, event_slot, target, core_momenta(:, leg), &
-                         x, index, visible_momenta, xjac, xpswgt, &
-                         keep_weight, pass)
+                         x, index, visible_momenta, keep_weight, pass)
         if (.not. pass) return
       end if
     end do
@@ -241,13 +253,12 @@ contains
 
   recursive subroutine expand_node(context, event_slot, node, &
                                    parent_momentum, x, &
-                                   index, visible_momenta, xjac, xpswgt, &
+                                   index, visible_momenta, &
                                    keep_weight, pass)
     integer, intent(in) :: context, event_slot, node
     double precision, intent(in) :: parent_momentum(0:3), x(99)
     integer, intent(inout) :: index
     double precision, intent(inout) :: visible_momenta(0:, :)
-    double precision, intent(inout) :: xjac, xpswgt
     logical, intent(in) :: keep_weight
     logical, intent(out) :: pass
 
@@ -257,6 +268,7 @@ contains
     double precision :: rest_momenta(0:3, nexternal)
     double precision :: block_momenta(0:3, nexternal)
     double precision :: local_jacobian, local_weight
+    type(factorized_measure_state) :: decay_measure
 
     child_count = node_child_count(node)
     do child = 1, child_count
@@ -291,8 +303,10 @@ contains
                                node_masses(node), child_momenta)
     index = index + 3*child_count - 4
     if (keep_weight) then
-      xjac = xjac*local_jacobian
-      xpswgt = xpswgt*local_weight
+      decay_measure%jacobian = local_jacobian
+      decay_measure%phase_space_weight = &
+           local_weight*decay_node_nwa_weight(node)
+      call store_factorized_base_measure(node, decay_measure)
     end if
 
     block_momenta = 0d0
@@ -313,7 +327,7 @@ contains
       if (child_kind == decay_node_child) then
         call expand_node(context, event_slot, identifier, &
                          child_momenta(:, child), x, index, &
-                         visible_momenta, xjac, xpswgt, keep_weight, pass)
+                         visible_momenta, keep_weight, pass)
         if (.not. pass) return
       else
         visible_momenta(:, leaf_visible_leg(context, identifier)) = &
@@ -321,138 +335,6 @@ contains
       end if
     end do
   end subroutine expand_node
-
-
-  subroutine generate_nbody(parent_momentum, particle_count, masses, x, &
-                            first_index, momenta, xjac, xpswgt, pass)
-    double precision, intent(in) :: parent_momentum(0:3)
-    integer, intent(in) :: particle_count, first_index
-    double precision, intent(in) :: masses(:), x(99)
-    double precision, intent(out) :: momenta(0:, :)
-    double precision, intent(inout) :: xjac, xpswgt
-    logical, intent(out) :: pass
-
-    integer :: particle, random_index
-    double precision :: parent_mass2, parent_mass, lower, upper, invariant
-    double precision :: remainder_masses(nexternal)
-    double precision :: remainder(0:3), child(0:3), next_remainder(0:3)
-    double precision :: costheta, phi, lambda_value, momentum_length
-    double precision :: rest_child(0:3), rest_remainder(0:3)
-    double precision, parameter :: pi = 3.141592653589793238462643d0
-    double precision, parameter :: tolerance = 1d-10
-
-    pass = .false.
-    momenta = 0d0
-    if (particle_count < 1 .or. particle_count > size(masses) .or. &
-        particle_count > size(momenta, 2)) return
-    parent_mass2 = minkowski_square(parent_momentum)
-    if (parent_mass2 <= 0d0) return
-    parent_mass = sqrt(parent_mass2)
-    if (parent_mass + tolerance < sum(masses(1:particle_count))) return
-
-    if (particle_count == 1) then
-      if (abs(parent_mass - masses(1)) > &
-          tolerance*max(1d0, parent_mass)) return
-      momenta(:, 1) = parent_momentum
-      pass = .true.
-      return
-    end if
-
-    remainder_masses = 0d0
-    remainder_masses(1) = parent_mass
-    remainder_masses(particle_count) = masses(particle_count)
-    random_index = first_index
-    do particle = particle_count - 1, 2, -1
-      lower = masses(particle) + remainder_masses(particle + 1)
-      upper = parent_mass - sum(masses(1:particle - 1))
-      if (upper + tolerance < lower) return
-      lower = lower**2
-      upper = max(lower, upper**2)
-      invariant = lower + (upper - lower)*x(random_index)
-      remainder_masses(particle) = sqrt(max(0d0, invariant))
-      xjac = xjac*(upper - lower)
-      random_index = random_index + 1
-    end do
-
-    remainder = parent_momentum
-    do particle = 1, particle_count - 1
-      parent_mass = remainder_masses(particle)
-      lambda_value = phase_space_lambda(parent_mass**2, &
-           masses(particle)**2, remainder_masses(particle + 1)**2)
-      if (lambda_value < -tolerance*max(1d0, parent_mass**4)) return
-      lambda_value = max(0d0, lambda_value)
-      momentum_length = sqrt(lambda_value)/(2d0*parent_mass)
-      costheta = 2d0*x(random_index) - 1d0
-      phi = 2d0*pi*x(random_index + 1)
-      random_index = random_index + 2
-      rest_child(0) = sqrt(masses(particle)**2 + momentum_length**2)
-      rest_child(1) = momentum_length*sqrt(max(0d0, 1d0 - costheta**2))*cos(phi)
-      rest_child(2) = momentum_length*sqrt(max(0d0, 1d0 - costheta**2))*sin(phi)
-      rest_child(3) = momentum_length*costheta
-      rest_remainder(0) = sqrt(remainder_masses(particle + 1)**2 + &
-                               momentum_length**2)
-      rest_remainder(1:3) = -rest_child(1:3)
-      call boost_from_rest(rest_child, remainder, parent_mass, child)
-      call boost_from_rest(rest_remainder, remainder, parent_mass, &
-                           next_remainder)
-      momenta(:, particle) = child
-      remainder = next_remainder
-      xjac = xjac*4d0*pi
-      xpswgt = xpswgt*sqrt(lambda_value)/(8d0*parent_mass**2)
-    end do
-    momenta(:, particle_count) = remainder
-    pass = .true.
-  end subroutine generate_nbody
-
-
-  subroutine generate_nbody_rest(parent_mass, particle_count, masses, x, &
-                                 first_index, rest_momenta, xjac, xpswgt, &
-                                 pass)
-    double precision, intent(in) :: parent_mass
-    integer, intent(in) :: particle_count, first_index
-    double precision, intent(in) :: masses(:), x(99)
-    double precision, intent(out) :: rest_momenta(0:, :)
-    double precision, intent(inout) :: xjac, xpswgt
-    logical, intent(out) :: pass
-    double precision :: rest_parent(0:3)
-
-    rest_parent = 0d0
-    rest_parent(0) = parent_mass
-    call generate_nbody(rest_parent, particle_count, masses, x, &
-                        first_index, rest_momenta, xjac, xpswgt, pass)
-  end subroutine generate_nbody_rest
-
-
-  subroutine boost_nbody_from_rest(rest_momenta, particle_count, &
-                                   parent_momentum, parent_mass, momenta)
-    double precision, intent(in) :: rest_momenta(0:, :)
-    integer, intent(in) :: particle_count
-    double precision, intent(in) :: parent_momentum(0:3), parent_mass
-    double precision, intent(out) :: momenta(0:, :)
-    integer :: particle
-
-    momenta = 0d0
-    do particle = 1, particle_count
-      call boost_from_rest(rest_momenta(0:3, particle), parent_momentum, &
-                           parent_mass, momenta(0:3, particle))
-    end do
-  end subroutine boost_nbody_from_rest
-
-
-  subroutine boost_from_rest(rest_momentum, parent_momentum, parent_mass, &
-                             lab_momentum)
-    double precision, intent(in) :: rest_momentum(0:3)
-    double precision, intent(in) :: parent_momentum(0:3), parent_mass
-    double precision, intent(out) :: lab_momentum(0:3)
-    double precision :: spatial_product, denominator
-
-    spatial_product = dot_product(parent_momentum(1:3), rest_momentum(1:3))
-    denominator = parent_mass*(parent_momentum(0) + parent_mass)
-    lab_momentum(0) = (parent_momentum(0)*rest_momentum(0) + &
-                       spatial_product)/parent_mass
-    lab_momentum(1:3) = rest_momentum(1:3) + parent_momentum(1:3)*( &
-         rest_momentum(0)/parent_mass + spatial_product/denominator)
-  end subroutine boost_from_rest
 
 
   subroutine fill_incoming_momenta(shat, sqrtshat, context, momenta, pass)
@@ -593,30 +475,24 @@ contains
   end subroutine sum_decay_node_momenta
 
 
-  double precision function decay_nwa_weight()
-    integer :: node
+  double precision function decay_node_nwa_weight(node)
+    integer, intent(in) :: node
     double precision :: denominator_scale, physical_width
     include 'decay_matrix_factorization.inc'
     call require_enabled()
-    decay_nwa_weight = 1d0
-    do node = 1, decay_node_count()
-      physical_width = decay_physical_width(node_pdg(node))
-      if (factorized_decay_matrix_elements) then
-        decay_nwa_weight = decay_nwa_weight/ &
-             (2d0*node_masses(node)*physical_width)
-      else
-        denominator_scale = decay_dummy_width_ratio()*node_masses(node)**2
-        decay_nwa_weight = decay_nwa_weight*denominator_scale**2/ &
-             (2d0*node_masses(node)*physical_width)
-      end if
-    end do
-  end function decay_nwa_weight
-
-
-  double precision function minkowski_square(momentum)
-    double precision, intent(in) :: momentum(0:3)
-    minkowski_square = momentum(0)**2 - sum(momentum(1:3)**2)
-  end function minkowski_square
+    if (node < 1 .or. node > decay_node_count()) then
+      call fail_kinematics('a decay measure requested an invalid node')
+    end if
+    physical_width = decay_physical_width(node_pdg(node))
+    if (factorized_decay_matrix_elements) then
+      decay_node_nwa_weight = &
+           1d0/(2d0*node_masses(node)*physical_width)
+    else
+      denominator_scale = decay_dummy_width_ratio()*node_masses(node)**2
+      decay_node_nwa_weight = denominator_scale**2/ &
+           (2d0*node_masses(node)*physical_width)
+    end if
+  end function decay_node_nwa_weight
 
 
   subroutine require_enabled()

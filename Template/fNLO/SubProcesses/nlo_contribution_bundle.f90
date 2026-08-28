@@ -1,6 +1,7 @@
 module nlo_contribution_bundle
   use process_dimensions, only: fks_configs, nsplitorders, &
        amp_split_size, amp_split_orders, validate_process_dimensions
+  use fnlo_process_common, only: nfksprocess
   implicit none
   private
 
@@ -20,9 +21,6 @@ module nlo_contribution_bundle
   logical, allocatable, save :: contribution_virtual_values(:)
   integer, allocatable, save :: configuration_owner_values(:)
   integer, allocatable, save :: virtual_grid_values(:, :)
-
-  integer :: nfksprocess
-  common /c_nfksprocess/ nfksprocess
 
   public :: initialize_nlo_contribution_bundle
   public :: has_nlo_contribution_bundle, nlo_contribution_count

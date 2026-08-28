@@ -278,8 +278,6 @@ contains
       call invalidate_born_phase_space()
       return
     end if
-    if (final_count == 1) point%xpswgt = &
-         point%xpswgt/(2d0*minimum_mass)
     born_momenta = visible_born
     born_lab_momenta = visible_born
     point%valid = .true.
@@ -363,8 +361,6 @@ contains
       call invalidate_born_phase_space()
       return
     end if
-    if (final_count == 1) point%xpswgt = &
-         point%xpswgt/(2d0*minimum_mass)
     born_momenta = visible_born
     born_lab_momenta = visible_born
     point%valid = .true.

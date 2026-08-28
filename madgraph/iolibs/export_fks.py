@@ -1389,6 +1389,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               'decay_chain_parameters.f90',
                               'fnlo_scale_variations.f90',
                               'decay_chain_parameters_bridge.f90',
+                              'factorized_block_kinematics.f90',
                               'decay_chain_kinematics.f90',
                               'nlo_decay_kinematics.f90',
                               'factorized_phase_space.f90',

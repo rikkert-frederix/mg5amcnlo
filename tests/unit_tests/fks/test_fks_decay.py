@@ -1080,7 +1080,8 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn('REAL_BORN_MAP 1 2 2\n', metadata)
             for runtime_source in [
                     'nlo_decay_metadata.f90',
-                    'nlo_decay_kinematics.f90']:
+                    'nlo_decay_kinematics.f90',
+                    'factorized_block_kinematics.f90']:
                 self.assertTrue(os.path.isfile(os.path.join(
                     subprocess_dir, runtime_source)))
             with open(os.path.join(
@@ -1093,8 +1094,12 @@ class TestFKSDecayChains(unittest.TestCase):
                 'no production momentum participates', flat_kinematics)
             self.assertIn('generate_nbody_rest', kinematics)
             self.assertIn('boost_nbody_from_rest', kinematics)
+            self.assertIn('factorized_block_kinematics', kinematics)
+            self.assertNotIn('use decay_chain_kinematics', kinematics)
             self.assertIn('store_factorized_block_momenta', kinematics)
             self.assertIn('store_factorized_kernel_momenta', kinematics)
+            self.assertIn('store_factorized_base_measure', kinematics)
+            self.assertIn('compose_factorized_base_measure', kinematics)
             self.assertNotIn('local_event_cache', kinematics)
             self.assertNotIn('get_nlo_decay_event_momenta', kinematics)
             with open(os.path.join(
@@ -1105,7 +1110,23 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertNotIn(
                 'get_core_event_momenta', production_kinematics)
             self.assertIn(
+                'store_factorized_base_measure', production_kinematics)
+            self.assertIn(
+                'compose_factorized_base_measure', production_kinematics)
+            self.assertNotIn(
+                'xjac = xjac*local_jacobian', production_kinematics)
+            self.assertIn(
                 'event_slot /= soft_counterevent', kinematics)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'factorized_block_kinematics.f90')) as stream:
+                block_kinematics = stream.read().lower()
+            self.assertIn(
+                'module factorized_block_kinematics', block_kinematics)
+            self.assertIn(
+                'generate_factorized_nbody_rest', block_kinematics)
+            self.assertIn(
+                'boost_factorized_block_from_rest', block_kinematics)
             with open(os.path.join(
                     subprocess_dir,
                     'factorized_phase_space.f90')) as stream:
@@ -1115,6 +1136,12 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn('kernel_momenta', block_state)
             self.assertIn(
                 'scale_factorized_radiation_jacobians', block_state)
+            self.assertIn(
+                'type, public :: factorized_measure_state', block_state)
+            self.assertIn('base_measure', block_state)
+            self.assertIn('event_measure', block_state)
+            self.assertIn(
+                'compose_factorized_event_measure', block_state)
             with open(os.path.join(
                     subprocess_dir, 'genps_fks.f90')) as stream:
                 phase_space = stream.read().lower()
@@ -1122,6 +1149,9 @@ class TestFKSDecayChains(unittest.TestCase):
                 'generate_nlo_decay_fks_kinematics', phase_space)
             self.assertIn(
                 'store_factorized_radiation_state', phase_space)
+            self.assertIn(
+                'finalize_factorized_event_measure', phase_space)
+            self.assertIn('radiation_jacobian', phase_space)
             with open(os.path.join(
                     subprocess_dir, 'fks_singular.f90')) as stream:
                 singular = stream.read().lower()
