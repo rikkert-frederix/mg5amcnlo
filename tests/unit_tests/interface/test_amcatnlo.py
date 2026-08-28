@@ -652,6 +652,17 @@ class TestMadEventCmd(unittest.TestCase):
             nlo_decay_kinematics = stream.read().lower()
         self.assertIn('store_factorized_kernel_momenta',
                       nlo_decay_kinematics)
+        self.assertIn('sample_nlo_decay_context', nlo_decay_kinematics)
+        self.assertIn('embed_nlo_decay_born_context',
+                      nlo_decay_kinematics)
+        self.assertIn('embed_nlo_decay_fks_context',
+                      nlo_decay_kinematics)
+        self.assertIn('materialize_nlo_decay_event',
+                      nlo_decay_kinematics)
+        self.assertNotIn('recursive subroutine expand_born_node',
+                         nlo_decay_kinematics)
+        self.assertNotIn('recursive subroutine expand_event_node',
+                         nlo_decay_kinematics)
         self.assertIn('factorized_block_kinematics',
                       nlo_decay_kinematics)
         self.assertNotIn('use decay_chain_kinematics',
@@ -662,6 +673,11 @@ class TestMadEventCmd(unittest.TestCase):
             production_kinematics = stream.read().lower()
         self.assertNotIn('core_event_storage', production_kinematics)
         self.assertNotIn('get_core_event_momenta', production_kinematics)
+        self.assertIn('sample_decay_context', production_kinematics)
+        self.assertIn('embed_decay_context', production_kinematics)
+        self.assertIn('materialize_decay_event', production_kinematics)
+        self.assertNotIn('recursive subroutine expand_node',
+                         production_kinematics)
 
         with open(pjoin(subprocess_dir,
                         'factorized_phase_space.f90')) as stream:
@@ -673,9 +689,33 @@ class TestMadEventCmd(unittest.TestCase):
         self.assertIn('compose_factorized_event_measure',
                       factorized_phase_space)
         self.assertIn('kernel_momenta', factorized_phase_space)
+        self.assertIn('embedded_momenta', factorized_phase_space)
+        self.assertIn('store_factorized_embedded_momenta',
+                      factorized_phase_space)
 
         self.assertIn('fetch_factorized_kernel_momenta', fks_singular)
+        self.assertIn('subroutine evaluate_born_matrix', fks_singular)
+        self.assertIn('subroutine evaluate_real_matrix', fks_singular)
+        self.assertNotIn('evaluate_fks_sij(event_slot, p', fks_singular)
+        self.assertNotIn('subroutine sreal(event_slot, pp', fks_singular)
+        self.assertNotIn('subroutine sreal_deg(event_slot, p',
+                         fks_singular)
+        self.assertNotIn('subroutine bornsoftvirtual(event_slot, p',
+                         fks_singular)
         self.assertNotIn('get_nlo_decay_event_momenta', fks_singular)
+
+        for caller_name in [
+                'test_soft_col_limits.f90', 'symmetry_fks_v3.f90']:
+            with open(pjoin(subprocess_dir, caller_name)) as stream:
+                matrix_caller = stream.read().lower()
+            self.assertIn('evaluate_born_matrix', matrix_caller)
+            self.assertNotIn('call sborn(', matrix_caller)
+        with open(pjoin(subprocess_dir, 'check_poles.f90')) as stream:
+            pole_check = stream.read().lower()
+        self.assertIn('evaluate_born_matrix', pole_check)
+        self.assertIn('evaluate_virtual_matrix', pole_check)
+        self.assertNotIn('call sborn(', pole_check)
+        self.assertNotIn('call binothlha(', pole_check)
 
         
     def test_v31_syntax_crash(self):

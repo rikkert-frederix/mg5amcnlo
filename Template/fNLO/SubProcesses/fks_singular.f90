@@ -60,6 +60,7 @@ module fks_singular_module
                                  c, gamma, gammap, beta0, abrv, &
                                  multi_channel, nbody, qes2, amp_split, &
                                  amp_split_cnt, p_born, &
+                                 stored_event_momenta => event_momenta, &
                                  idup, &
                                  fks_j_from_i, particle_type, pdg_type, &
                                  is_aorg, ans_cnt, &
@@ -108,6 +109,7 @@ module fks_singular_module
   logical, save :: fks_singular_state_initialized = .false.
 
   public :: evaluate_fks_sij, sreal, sreal_deg, bornsoftvirtual
+  public :: evaluate_born_matrix, evaluate_virtual_matrix
   public :: getpoles, setfksfactor, fill_configurations_common
   public :: fks_subtraction_shat
   public :: initialize_fks_generated_state
@@ -115,10 +117,9 @@ module fks_singular_module
 
 contains
 
-  double precision function evaluate_fks_sij(event_slot, p, ii_fks, &
-                                             jj_fks, xi_i_fks, y_ij_fks)
+  double precision function evaluate_fks_sij(event_slot, ii_fks, jj_fks, &
+                                             xi_i_fks, y_ij_fks)
     implicit none
-    double precision, intent(in) :: p(0:3, nexternal)
     double precision, intent(in) :: xi_i_fks, y_ij_fks
     integer, intent(in) :: event_slot, ii_fks, jj_fks
     double precision :: kernel_momenta(0:3, nexternal)
@@ -133,8 +134,7 @@ contains
            event_slot, ii_fks, jj_fks, xi_i_fks, y_ij_fks)
       return
     end if
-    call select_kernel_event(event_slot, p, kernel_momenta, &
-                             kernel_masses)
+    call select_kernel_event(event_slot, kernel_momenta, kernel_masses)
     call load_kernel_radiation(event_slot, radiation)
     call load_counterevent_fks_momenta(kernel_fks_momenta)
     call initialize_fks_sij_module(nexternal, nincoming, fks_a, fks_b, &
@@ -336,6 +336,81 @@ contains
   end function active_factorized_block
 
 
+  subroutine evaluate_born_matrix(event_slot, weight)
+    integer, intent(in) :: event_slot
+    double precision, intent(out) :: weight
+    double precision :: legacy_momenta(0:3, nexternal - 1)
+
+    legacy_momenta = 0d0
+    if (uses_factorized_kernel_state()) then
+      if (event_slot /= soft_counterevent) then
+        call fail_fks_singular_state( &
+             'a factorized Born matrix requested a non-Born event slot')
+      end if
+    else
+      legacy_momenta = p_born
+    end if
+    ! The density-matrix implementation ignores this compatibility array
+    ! and obtains every boosted component from factorized_phase_space.
+    call sborn(legacy_momenta, weight)
+  end subroutine evaluate_born_matrix
+
+
+  subroutine evaluate_born_color_matrix(event_slot, first, second, weight)
+    integer, intent(in) :: event_slot, first, second
+    double precision, intent(out) :: weight
+    double precision :: legacy_momenta(0:3, nexternal - 1)
+
+    legacy_momenta = 0d0
+    if (uses_factorized_kernel_state()) then
+      if (event_slot /= soft_counterevent) then
+        call fail_fks_singular_state( &
+             'a factorized color matrix requested a non-Born event slot')
+      end if
+    else
+      legacy_momenta = p_born
+    end if
+    call sborn_sf(legacy_momenta, first, second, weight)
+  end subroutine evaluate_born_color_matrix
+
+
+  subroutine evaluate_real_matrix(event_slot, weight)
+    integer, intent(in) :: event_slot
+    double precision, intent(out) :: weight
+    double precision :: legacy_momenta(0:3, nexternal)
+
+    legacy_momenta = 0d0
+    if (uses_factorized_kernel_state()) then
+      if (event_slot /= real_event) then
+        call fail_fks_singular_state( &
+             'a factorized real matrix requested a counterevent slot')
+      end if
+    else
+      legacy_momenta = stored_event_momenta(:, :, event_slot)
+    end if
+    call smatrix_real(legacy_momenta, weight)
+  end subroutine evaluate_real_matrix
+
+
+  subroutine evaluate_virtual_matrix(event_slot, born_weight, virtual_weight)
+    integer, intent(in) :: event_slot
+    double precision, intent(inout) :: born_weight
+    double precision, intent(out) :: virtual_weight
+    double precision :: legacy_momenta(0:3, nexternal - 1)
+
+    legacy_momenta = 0d0
+    if (uses_factorized_kernel_state()) then
+      if (event_slot /= soft_counterevent) then
+        call fail_fks_singular_state( &
+             'a factorized virtual matrix requested a non-Born event slot')
+      end if
+    else
+      legacy_momenta = p_born
+    end if
+    call BinothLHA(legacy_momenta, born_weight, virtual_weight)
+  end subroutine evaluate_virtual_matrix
+
+
   subroutine load_kernel_radiation(event_slot, radiation)
     integer, intent(in) :: event_slot
     type(factorized_radiation_state), intent(out) :: radiation
@@ -379,11 +454,9 @@ contains
   end subroutine load_counterevent_fks_momenta
 
 
-  subroutine select_kernel_event(event_slot, visible_momenta, &
-                                 kernel_momenta, kernel_masses, &
+  subroutine select_kernel_event(event_slot, kernel_momenta, kernel_masses, &
                                  kernel_count)
     integer, intent(in) :: event_slot
-    double precision, intent(in) :: visible_momenta(0:3, nexternal)
     double precision, intent(out) :: kernel_momenta(0:3, nexternal)
     double precision, intent(out) :: kernel_masses(nexternal)
     integer, intent(out), optional :: kernel_count
@@ -423,7 +496,7 @@ contains
                                 kernel_masses)
     else
       if (present(kernel_count)) kernel_count = nexternal
-      kernel_momenta = visible_momenta
+      kernel_momenta = stored_event_momenta(:, :, event_slot)
       kernel_masses = external_masses
     end if
   end subroutine select_kernel_event
@@ -553,15 +626,15 @@ contains
     end if
   end function selected_partner
 
-  subroutine sreal(event_slot, pp, xi_i_fks, y_ij_fks, wgt)
+  subroutine sreal(event_slot, xi_i_fks, y_ij_fks, wgt)
 ! Wrapper for the n+1 contribution. Returns the n+1 matrix element
 ! squared reduced by the FKS damping factor xi**2*(1-y).
 ! Close to the soft or collinear limits it calls the corresponding
 ! Born and multiplies with the AP splitting function or eikonal factors.
     implicit none
     integer, intent(in) :: event_slot
-    double precision pp(0:3, nexternal), wgt
-    double precision xi_i_fks, y_ij_fks
+    double precision, intent(in) :: xi_i_fks, y_ij_fks
+    double precision, intent(out) :: wgt
 
     double precision shattmp, partonic_shat, partonic_sqrt_shat
     integer :: kernel_i, kernel_j, kernel_initial_count
@@ -574,7 +647,7 @@ contains
 
     double precision pmass(nexternal)
     double precision kernel_momenta(0:3, nexternal)
-    call select_kernel_event(event_slot, pp, kernel_momenta, pmass)
+    call select_kernel_event(event_slot, kernel_momenta, pmass)
     partonic_shat = fks_subtraction_shat(event_slot)
     partonic_sqrt_shat = sqrt(partonic_shat)
     if (has_nlo_decay()) then
@@ -592,7 +665,7 @@ contains
       tiny = 1d-6
     end if
 
-    if (pp(0, 1) .le. 0.d0) then
+    if (kernel_momenta(0, 1) .le. 0.d0) then
 ! Unphysical kinematics: set matrix elements equal to zero
       wgt = 0.d0
       return
@@ -634,7 +707,7 @@ contains
         amp_split(1:amp_split_size) = 0d0
       end if
     else
-      call smatrix_real(pp, wgt)
+      call evaluate_real_matrix(event_slot, wgt)
       wgt = wgt*xi_i_fks**2*(1d0 - y_ij_fks)
       amp_split(1:amp_split_size) = amp_split(1:amp_split_size)*xi_i_fks**2*(1d0 - y_ij_fks)
     end if
@@ -692,7 +765,7 @@ contains
     E_i_fks = p(0, selected_i_fks)
     z = 1d0 - E_i_fks/(E_i_fks + E_j_fks)
     t = z*partonic_shat/4d0
-    call sborn(p_born, wgt_born)
+    call evaluate_born_matrix(soft_counterevent, wgt_born)
     call AP_reduced(j_type, i_type, t, z, g, ap)
     call Qterms_reduced_timelike(j_type, i_type, t, z, g, Q)
     wgt = 0d0
@@ -791,7 +864,7 @@ contains
     call Qterms_reduced_spacelike(m_type, i_type, t, z, g, Q)
     wgt = 0d0
     iord = qcd_pos
-    call sborn(p_born_used, wgt_born)
+    call evaluate_born_matrix(soft_counterevent, wgt_born)
     wgt1(1:2) = ans_cnt(1:2, iord)
     amp_split_cnt_local(1:amp_split_size, 1, iord) = amp_split_cnt(1:amp_split_size, 1, iord)
     amp_split_cnt_local(1:amp_split_size, 2, iord) = amp_split_cnt(1:amp_split_size, 2, iord)
@@ -878,7 +951,7 @@ contains
 ! should always be done before calling the color-correlated Borns,
 ! because of the caching of the diagrams.
 !
-    call sborn(p_born, wgt1)
+    call evaluate_born_matrix(soft_counterevent, wgt1)
 !
 ! Reset the amp_split array
     amp_split(1:amp_split_size) = 0d0
@@ -891,7 +964,8 @@ contains
         if ((m .ne. n .or. (m .eq. n .and. pmass(m) .ne. ZERO)) .and. n .ne. i_fks .and. m .ne. i_fks) then
 ! wgt includes the gs/w^2
           call select_visible_color_pair(m, n, visible_m, visible_n)
-          call sborn_sf(p_born, visible_m, visible_n, wgt)
+          call evaluate_born_color_matrix( &
+               soft_counterevent, visible_m, visible_n, wgt)
           if (wgt .ne. 0d0) then
             call eikonal_reduced( &
               pp, m, n, i_fks, j_fks, xi_i_fks, y_ij_fks, &
@@ -945,7 +1019,7 @@ contains
     decay_mass = nlo_decay_parent_mass()
 
     ! Prime the generated Born cache before evaluating its color-linked forms.
-    call sborn(p_born, born_weight)
+    call evaluate_born_matrix(soft_counterevent, born_weight)
     amp_split(1:amp_split_size) = 0d0
     softcontr = 0d0
     partner_count = nlo_decay_partner_count(nfksprocess)
@@ -957,7 +1031,8 @@ contains
             m /= local_i .and. n /= local_i) then
           call nlo_decay_map_color_link( &
                nfksprocess, m, n, visible_m, visible_n, link_multiplier)
-          call sborn_sf(p_born, visible_m, visible_n, link_weight)
+          call evaluate_born_color_matrix( &
+               soft_counterevent, visible_m, visible_n, link_weight)
           if (link_weight /= 0d0) then
             call eikonal_reduced( &
                  local_momenta, m, n, local_i, local_j, xi_i_fks, &
@@ -978,22 +1053,20 @@ contains
   end subroutine sbornsoft_nlo_decay
 
 
-  subroutine sreal_deg(event_slot, p, xi_i_fks, collrem_xi, collrem_lxi)
+  subroutine sreal_deg(event_slot, xi_i_fks, collrem_xi, collrem_lxi)
     use extra_weights
     implicit none
     integer event_slot, iord, iap
-    double precision p(0:3, nexternal), collrem_xi, collrem_lxi
+    double precision collrem_xi, collrem_lxi
     double precision xi_i_fks
     double precision collrem_xi_tmp, collrem_lxi_tmp
 
     double precision wgt_born
 
-    double precision p_born_used(0:3, nexternal - 1)
-
-
-
-
     double precision shattmp, oo2pi, z, t, ap(2), apprime(2), xnorm
+    double precision kernel_momenta(0:3, nexternal)
+    double precision kernel_masses(nexternal)
+    integer :: kernel_initial_count
 
 ! Colour representations of i_fks, j_fks and the FKS mother
     complex(kind=kind(0d0)) wgt1(2)
@@ -1012,8 +1085,8 @@ contains
     amp_split_wgtdegrem_lxi(1:amp_split_size) = 0d0
     amp_split_wgtdegrem_muF(1:amp_split_size) = 0d0
 
-    p_born_used(:, :) = p_born(:, :)
     subtraction_shat = fks_subtraction_shat(event_slot)
+    call select_kernel_event(event_slot, kernel_momenta, kernel_masses)
 
     if (j_fks .gt. nincoming) then
 ! Do not include this contribution for final-state branchings
@@ -1022,7 +1095,7 @@ contains
       return
     end if
 
-    if (p_born_used(0, 1) .le. 0.d0) then
+    if (kernel_momenta(0, 1) .le. 0.d0) then
 ! Unphysical kinematics: set matrix elements equal to zero
       write (*, *) "No born momenta in sreal_deg"
       collrem_xi = 0.d0
@@ -1031,10 +1104,11 @@ contains
     end if
 
 ! Check that the requested event slot matches the supplied momenta.
-    if (nincoming .eq. 2) then
-      shattmp = 2d0*dot(p(0, 1), p(0, 2))
+    kernel_initial_count = merge(1, nincoming, has_nlo_decay())
+    if (kernel_initial_count .eq. 2) then
+      shattmp = 2d0*dot(kernel_momenta(0, 1), kernel_momenta(0, 2))
     else
-      shattmp = p(0, 1)**2
+      shattmp = kernel_momenta(0, 1)**2
     end if
     if (abs(shattmp/subtraction_shat - 1.d0) .gt. 1.d-5) then
       write (*, *) 'Error in sreal: inconsistent shat'
@@ -1055,7 +1129,7 @@ contains
     calculatedborn = .false.
     iord = qcd_pos
     iap = 1
-    call sborn(p_born_used, wgt_born)
+    call evaluate_born_matrix(soft_counterevent, wgt_born)
     wgt1(1) = ans_cnt(1, iord)
     wgt1(2) = ans_cnt(2, iord)
 
@@ -1099,13 +1173,13 @@ contains
 
 
 
-  subroutine bornsoftvirtual(event_slot, p, bsv_wgt, virt_wgt, born_wgt)
+  subroutine bornsoftvirtual(event_slot, bsv_wgt, virt_wgt, born_wgt)
     use extra_weights
     use mint_module
     implicit none
     real :: tBefore, tAfter
 !      include "fks.inc"
-    double precision p(0:3, nexternal), bsv_wgt, born_wgt, avv_wgt
+    double precision bsv_wgt, born_wgt, avv_wgt
     double precision wgt1
     double precision Q, Ej, wgt, contr, eikIreg
     double precision aso2pi
@@ -1178,7 +1252,7 @@ contains
       nFKSprocess = nFKSprocess_save
       call fks_inc_chooser()
     end if
-    call select_kernel_event(event_slot, p, kernel_momenta, pmass, &
+    call select_kernel_event(event_slot, kernel_momenta, pmass, &
                              kernel_count)
     call load_kernel_radiation(event_slot, radiation)
     kernel_sqrt_shat = radiation%sqrt_shat
@@ -1213,7 +1287,7 @@ contains
       stop
     end if
 
-    call sborn(p_born, wgt1)
+    call evaluate_born_matrix(soft_counterevent, wgt1)
 
 ! Born contribution:
     bsv_wgt = wgt1
@@ -1298,7 +1372,7 @@ contains
 ! setup the fks i/j info
       call fks_inc_chooser()
 ! the following call to born is to setup the goodhel(nfksprocess)
-      call sborn(p_born, wgt1)
+      call evaluate_born_matrix(soft_counterevent, wgt1)
       contr = 0d0
       partner_count = selected_partner_count(kernel_i)
       do i = 1, partner_count
@@ -1314,7 +1388,8 @@ contains
 ! wgt includes the gs/w^2
             call select_visible_color_pair(m, n, visible_m, visible_n, &
                                            link_multiplier)
-            call sborn_sf(p_born, visible_m, visible_n, wgt)
+            call evaluate_born_color_matrix( &
+                 soft_counterevent, visible_m, visible_n, wgt)
             if (wgt .ne. 0d0) then
               call eikonal_Ireg(kernel_momenta, m, n, xicut_used, pmass, &
                                  kernel_shat, qes2, abrv, &
@@ -1347,7 +1422,7 @@ contains
 ! convert to Binoth Les Houches Accord standards
     virt_wgt = 0d0
 
-    call sborn(p_born, wgt1)
+    call evaluate_born_matrix(soft_counterevent, wgt1)
 ! Use the QCD counterterm Born to approximate the virtual.
 !CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
 !     THIS IS DANGEROUS: if these are not always the same for all
@@ -1367,7 +1442,8 @@ contains
          .and. abrv(1:3) .ne. 'nov') .or. &
         abrv(1:4) .eq. 'virt')) then
       call cpu_time(tBefore)
-      call BinothLHA(p_born, born_wgt, virt_wgt)
+      call evaluate_virtual_matrix( &
+           soft_counterevent, born_wgt, virt_wgt)
       do iamp = 1, amp_split_size
         amp_split_virt(iamp) = amp_split_finite_ML(iamp)
       end do
@@ -1434,7 +1510,7 @@ contains
 ! eq.(MadFKS.C.13)
     if (abrv .ne. 'virt') then
 ! this is to update the amp_split array
-      call sborn(p_born, wgt1)
+      call evaluate_born_matrix(soft_counterevent, wgt1)
       bsv_wgt_mufoqes = 0d0
       do iamp = 1, amp_split_size
         if (dble(amp_split_cnt(iamp, 1, qcd_pos)) .eq. 0d0) cycle
@@ -1474,7 +1550,7 @@ contains
     amp_split_wgtwnstmpmur(1:amp_split_size) = 0d0
 
     if (abrv .ne. 'born' .and. abrv .ne. 'grid') then
-      call sborn(p_born, wgt1)
+      call evaluate_born_matrix(soft_counterevent, wgt1)
       if (abrv(1:2) .ne. 'vi') then
         do i = 1, kernel_initial_count
           if (pmass(i) .ne. zero) cycle
@@ -1595,7 +1671,7 @@ contains
       amp_split_poles_FKS(i, 2) = 0d0
     end do
     aso2pi = g**2/(8d0*pi**2)
-    call sborn(p_born, wgt1)
+    call evaluate_born_matrix(soft_counterevent, wgt1)
 ! QCD Born terms
     contr1 = 0d0
     contr2 = 0d0
@@ -1633,7 +1709,7 @@ contains
 ! setup the fks i/j info
       call fks_inc_chooser()
 ! the following call to born is to setup the goodhel(nfksprocess)
-      call sborn(p_born, wgt1)
+      call evaluate_born_matrix(soft_counterevent, wgt1)
 
       contr1 = 0d0
       partner_count = selected_partner_count(kernel_i)
@@ -1646,7 +1722,8 @@ contains
 ! wgt includes the gs/w^2 factor
             call select_visible_color_pair(m, n, visible_m, visible_n, &
                                            link_multiplier)
-            call sborn_sf(p_born, visible_m, visible_n, wgt)
+            call evaluate_born_color_matrix( &
+                 soft_counterevent, visible_m, visible_n, wgt)
 ! The factor -2 compensate for that missing in sborn_sf
             wgt = -2d0*link_multiplier*wgt
             if (wgt .ne. 0.d0) then

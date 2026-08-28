@@ -20,7 +20,8 @@ module test_soft_col_limits_module
   use fks_diagnostics, only: xprintout, checkres2
   use mint_module, only: ndim, iconfig, ichan, iconfigs, new_point
   use fks_random_module, only: random_unit_interval
-  use fks_singular_module, only: fill_configurations_common, setfksfactor
+  use fks_singular_module, only: fill_configurations_common, setfksfactor, &
+                                 evaluate_born_matrix
   implicit none
   private
 
@@ -112,12 +113,11 @@ module test_soft_col_limits_module
                    nincoming + 1:nexternal - 1)
     end subroutine test_limits_setcuts_bridge
 
-    subroutine test_limits_sreal_bridge(event_slot, momentum, xi_fks, y_fks, &
-                                        weight, split_weights)
-      use process_dimensions, only: nexternal, amp_split_size
+    subroutine test_limits_sreal_bridge(event_slot, xi_fks, y_fks, weight, &
+                                        split_weights)
+      use process_dimensions, only: amp_split_size
       implicit none
       integer, intent(in) :: event_slot
-      double precision, intent(in) :: momentum(0:3, nexternal)
       double precision, intent(in) :: xi_fks, y_fks
       double precision, intent(out) :: weight
       double precision, intent(out) :: split_weights(amp_split_size)
@@ -136,13 +136,6 @@ module test_soft_col_limits_module
       implicit none
     end subroutine init_fks_singular_bridge
 
-    subroutine sborn(momentum, weight)
-      use process_dimensions, only: nexternal
-      implicit none
-      double precision, intent(in) :: momentum(0:3, nexternal - 1)
-      complex(kind=kind(0d0)), intent(out) :: weight(2)
-    end subroutine sborn
-
   end interface
 
 contains
@@ -157,7 +150,7 @@ contains
     double precision :: xi_i_fks_fix_save, y_ij_fks_fix_save
     double precision :: xi_i_fks_fix, y_ij_fks_fix
     logical :: calculated_born, softtest, colltest
-    complex(kind=kind(0d0)) :: wgt1(2)
+    double precision :: wgt1
 
     call validate_process_and_born_dimensions()
     call validate_fks_metadata()
@@ -322,7 +315,7 @@ contains
             'ME tests properly for config', iconfig
           cycle born_configuration_loop
         end if
-        call sborn(p_born, wgt1)
+        call evaluate_born_matrix(soft_counterevent, wgt1)
 
         write (*, *) ''
         write (*, *) ''
@@ -378,8 +371,7 @@ contains
           call test_limits_set_controls_bridge(xi_i_fks_fix, y_ij_fks_fix, &
                                                calculated_born, softtest, colltest)
           call test_limits_sreal_bridge( &
-            soft_counterevent, event_momenta(:, :, soft_counterevent), zero, &
-            event_y(real_event), fx, amp_split)
+            soft_counterevent, zero, event_y(real_event), fx, amp_split)
           fxl(1) = fx*wgt
           wfxl(1) = event_jacobian(soft_counterevent)
           do iamp = 1, amp_split_size
@@ -388,8 +380,8 @@ contains
             wfxl_split(1, iamp) = event_jacobian(soft_counterevent)
           end do
           call test_limits_sreal_bridge( &
-            real_event, p, event_xi(real_event), event_y(real_event), &
-            fx, amp_split)
+            real_event, event_xi(real_event), event_y(real_event), fx, &
+            amp_split)
           limit(1) = fx*wgt
           wlimit(1) = wgt
           do iamp = 1, amp_split_size
@@ -422,8 +414,7 @@ contains
             call test_limits_set_controls_bridge(xi_i_fks_fix, &
               y_ij_fks_fix, calculated_born, softtest, colltest)
             call test_limits_sreal_bridge( &
-              soft_counterevent, event_momenta(:, :, soft_counterevent), zero, &
-              event_y(real_event), fx, amp_split)
+              soft_counterevent, zero, event_y(real_event), fx, amp_split)
             fxl(i) = fx*wgt
             wfxl(i) = event_jacobian(soft_counterevent)
             do iamp = 1, amp_split_size
@@ -435,8 +426,8 @@ contains
             call test_limits_set_controls_bridge(xi_i_fks_fix, &
               y_ij_fks_fix, calculated_born, softtest, colltest)
             call test_limits_sreal_bridge( &
-              real_event, p, event_xi(real_event), event_y(real_event), &
-              fx, amp_split)
+              real_event, event_xi(real_event), event_y(real_event), fx, &
+              amp_split)
             limit(i) = fx*wgt
             wlimit(i) = wgt
             do iamp = 1, amp_split_size
@@ -604,9 +595,8 @@ contains
           call test_limits_set_controls_bridge(xi_i_fks_fix, y_ij_fks_fix, &
                                                calculated_born, softtest, colltest)
           call test_limits_sreal_bridge( &
-            collinear_counterevent, &
-            event_momenta(:, :, collinear_counterevent), &
-            event_xi(collinear_counterevent), one, fx, amp_split)
+            collinear_counterevent, event_xi(collinear_counterevent), one, &
+            fx, amp_split)
           fxl(1) = fx*event_jacobian(collinear_counterevent)
           wfxl(1) = event_jacobian(collinear_counterevent)
           do iamp = 1, amp_split_size
@@ -616,8 +606,8 @@ contains
           end do
 
           call test_limits_sreal_bridge( &
-            real_event, p, event_xi(real_event), event_y(real_event), &
-            fx, amp_split)
+            real_event, event_xi(real_event), event_y(real_event), fx, &
+            amp_split)
           limit(1) = fx*wgt
           wlimit(1) = wgt
           do iamp = 1, amp_split_size
@@ -650,9 +640,8 @@ contains
             call test_limits_set_controls_bridge(xi_i_fks_fix, &
               y_ij_fks_fix, calculated_born, softtest, colltest)
             call test_limits_sreal_bridge( &
-              collinear_counterevent, &
-              event_momenta(:, :, collinear_counterevent), &
-              event_xi(collinear_counterevent), one, fx, amp_split)
+              collinear_counterevent, event_xi(collinear_counterevent), one, &
+              fx, amp_split)
             fxl(i) = fx*event_jacobian(collinear_counterevent)
             wfxl(i) = event_jacobian(collinear_counterevent)
             do iamp = 1, amp_split_size
@@ -664,8 +653,8 @@ contains
             call test_limits_set_controls_bridge(xi_i_fks_fix, &
               y_ij_fks_fix, calculated_born, softtest, colltest)
             call test_limits_sreal_bridge( &
-              real_event, p, event_xi(real_event), event_y(real_event), &
-              fx, amp_split)
+              real_event, event_xi(real_event), event_y(real_event), fx, &
+              amp_split)
             limit(i) = fx*wgt
             wlimit(i) = wgt
             do iamp = 1, amp_split_size

@@ -7,7 +7,8 @@ module check_poles_module
   use mint_module, only: iconfig, ichan, iconfigs
   use fks_random_module, only: random_unit_interval
   use FKSParams, only: IRPoleCheckThreshold, FKSParamReader
-  use fks_singular_module, only: setfksfactor
+  use fks_singular_module, only: setfksfactor, evaluate_born_matrix, &
+                                 evaluate_virtual_matrix
   use decay_chain_metadata, only: initialize_decay_chain_metadata, &
                                   has_decay_chains
   use decay_chain_kinematics, only: initialize_decay_chain_kinematics, &
@@ -24,7 +25,8 @@ module check_poles_module
   use fnlo_process_common, only: calculatedborn => calculated_born, &
                                  nfksprocess, qes2, force_polecheck, &
                                  polecheck_passed, &
-                                 ret_code_ml => ret_code_common
+                                 ret_code_ml => ret_code_common, &
+                                 soft_counterevent
   implicit none
   private
 
@@ -103,17 +105,6 @@ module check_poles_module
 
     subroutine update_as_param()
     end subroutine update_as_param
-
-    subroutine sborn(momentum, born_weight)
-      double precision, intent(in) :: momentum(0:3, *)
-      double precision, intent(out) :: born_weight
-    end subroutine sborn
-
-    subroutine binothlha(momentum, born_weight, virtual_weight)
-      double precision, intent(in) :: momentum(0:3, *)
-      double precision, intent(inout) :: born_weight
-      double precision, intent(out) :: virtual_weight
-    end subroutine binothlha
 
   end interface
 
@@ -379,8 +370,9 @@ contains
     end if
 
     call update_as_param()
-    call sborn(p_born, born_weight)
-    call binothlha(p_born, born_weight, virtual_weight)
+    call evaluate_born_matrix(soft_counterevent, born_weight)
+    call evaluate_virtual_matrix( &
+         soft_counterevent, born_weight, virtual_weight)
     if (npoints_checked == 0) then
       if (mod(ret_code_ml, 100) / 10 == 3 .or. &
           mod(ret_code_ml, 100) / 10 == 4) then

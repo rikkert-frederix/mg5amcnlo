@@ -13,8 +13,10 @@ module symmetry_fks_module
   use cuts_module, only: passcuts
   use run_printout_module, only: write_run_summary
   use ajob_file_module, only: open_bash_file, close_bash_file
-  use fks_singular_module, only: fill_configurations_common, setfksfactor
-  use fnlo_process_common, only: real_event, ybst_til_tolab
+  use fks_singular_module, only: fill_configurations_common, setfksfactor, &
+                                 evaluate_born_matrix
+  use fnlo_process_common, only: soft_counterevent, real_event, &
+                                 ybst_til_tolab
   implicit none
   private
 
@@ -46,11 +48,6 @@ module symmetry_fks_module
 
     subroutine printout()
     end subroutine printout
-
-    subroutine sborn(p, wgt)
-      double precision, intent(in) :: p(0:3, *)
-      complex(kind=kind(0d0)), intent(out) :: wgt(2)
-    end subroutine sborn
 
   end interface
 
@@ -112,7 +109,7 @@ contains
     double precision, allocatable :: p(:, :), x(:)
     double precision, allocatable :: p_born1(:, :), p_born_save(:, :)
     double precision, allocatable :: saved_amplitudes(:)
-    complex(kind=kind(0d0)) :: wgt1(2)
+    double precision :: wgt1
 
     call validate_symmetry_state(amp2, p_born, is_aorg, idup)
     if (len_trim(run_mode) < 2) then
@@ -183,8 +180,8 @@ contains
     call set_alphaS(p)
 
     calculated_born = .false.
-    call sborn(p_born, wgt1)
-    call sborn(p_born, wgt1)
+    call evaluate_born_matrix(soft_counterevent, wgt1)
+    call evaluate_born_matrix(soft_counterevent, wgt1)
     do j = 1, born_mapconfig(0)
       saved_amplitudes(born_mapconfig(j)) = amp2(born_mapconfig(j))
     end do
@@ -220,7 +217,7 @@ contains
              inverse_permutation, nexternal - 1)
         p_born = p_born1
         calculated_born = .false.
-        call sborn(p_born, wgt1)
+        call evaluate_born_matrix(soft_counterevent, wgt1)
         do j = 2, born_mapconfig(0)
           do k = 1, j - 1
             diff = abs((amp2(born_mapconfig(j)) - &

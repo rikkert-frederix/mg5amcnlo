@@ -1094,6 +1094,23 @@ class TestFKSDecayChains(unittest.TestCase):
                 'no production momentum participates', flat_kinematics)
             self.assertIn('generate_nbody_rest', kinematics)
             self.assertIn('boost_nbody_from_rest', kinematics)
+            for stage in [
+                    'sample_nlo_decay_context',
+                    'embed_nlo_decay_born_context',
+                    'embed_nlo_decay_fks_context',
+                    'materialize_nlo_decay_event']:
+                self.assertIn(stage, kinematics)
+            self.assertNotIn('recursive subroutine expand_born_node',
+                             kinematics)
+            self.assertNotIn('recursive subroutine expand_event_node',
+                             kinematics)
+            sampler = kinematics.split(
+                'recursive subroutine sample_nlo_decay_node', 1)[1]
+            sampler = sampler.split(
+                'end subroutine sample_nlo_decay_node', 1)[0]
+            self.assertNotIn('parent_momentum', sampler)
+            self.assertNotIn('visible', sampler)
+            self.assertNotIn('boost_nbody_from_rest', sampler)
             self.assertIn('factorized_block_kinematics', kinematics)
             self.assertNotIn('use decay_chain_kinematics', kinematics)
             self.assertIn('store_factorized_block_momenta', kinematics)
@@ -1113,6 +1130,19 @@ class TestFKSDecayChains(unittest.TestCase):
                 'store_factorized_base_measure', production_kinematics)
             self.assertIn(
                 'compose_factorized_base_measure', production_kinematics)
+            for stage in [
+                    'sample_decay_context', 'embed_decay_context',
+                    'materialize_decay_event']:
+                self.assertIn(stage, production_kinematics)
+            self.assertNotIn('recursive subroutine expand_node',
+                             production_kinematics)
+            production_sampler = production_kinematics.split(
+                'recursive subroutine sample_decay_node', 1)[1]
+            production_sampler = production_sampler.split(
+                'end subroutine sample_decay_node', 1)[0]
+            self.assertNotIn('parent_momentum', production_sampler)
+            self.assertNotIn('visible_momenta', production_sampler)
+            self.assertNotIn('boost_nbody_from_rest', production_sampler)
             self.assertNotIn(
                 'xjac = xjac*local_jacobian', production_kinematics)
             self.assertIn(
@@ -1134,6 +1164,11 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn(
                 'type, public :: factorized_radiation_state', block_state)
             self.assertIn('kernel_momenta', block_state)
+            self.assertIn('embedded_momenta', block_state)
+            self.assertIn(
+                'store_factorized_embedded_momenta', block_state)
+            self.assertIn(
+                'fetch_factorized_embedded_momenta', block_state)
             self.assertIn(
                 'scale_factorized_radiation_jacobians', block_state)
             self.assertIn(
@@ -1156,12 +1191,24 @@ class TestFKSDecayChains(unittest.TestCase):
                     subprocess_dir, 'fks_singular.f90')) as stream:
                 singular = stream.read().lower()
             self.assertIn('fetch_factorized_kernel_momenta', singular)
+            self.assertIn('subroutine evaluate_born_matrix', singular)
+            self.assertIn('subroutine evaluate_real_matrix', singular)
+            self.assertIn('subroutine evaluate_virtual_matrix', singular)
+            self.assertNotIn(
+                'evaluate_fks_sij(event_slot, p', singular)
+            self.assertNotIn('subroutine sreal(event_slot, pp', singular)
+            self.assertNotIn('subroutine sreal_deg(event_slot, p', singular)
+            self.assertNotIn(
+                'subroutine bornsoftvirtual(event_slot, p', singular)
             self.assertNotIn('get_nlo_decay_event_momenta', singular)
             with open(os.path.join(
                     subprocess_dir, 'fks_contributions.f90')) as stream:
                 contributions = stream.read().lower()
             self.assertIn('load_radiation_state', contributions)
             self.assertIn('real_radiation%jacobian', contributions)
+            self.assertIn('subroutine compute_real_emission()',
+                          contributions)
+            self.assertNotIn('stored_event_momenta', contributions)
             self.assertTrue(os.path.isfile(os.path.join(
                 process_dir, 'Cards', 'decay_card.dat')))
             with open(os.path.join(

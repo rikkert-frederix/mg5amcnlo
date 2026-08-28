@@ -11,6 +11,8 @@ module nlo_decay_kinematics
        minkowski_square => factorized_minkowski_square
   use factorized_phase_space, only: factorized_measure_state, &
        store_factorized_block_momenta, store_factorized_kernel_momenta, &
+       store_factorized_embedded_momenta, &
+       fetch_factorized_embedded_momenta, &
        store_factorized_base_measure, compose_factorized_base_measure
   use decay_chain_parameters, only: decay_dummy_width_ratio, &
                                     decay_physical_width
@@ -407,18 +409,25 @@ contains
     end do
     call store_factorized_block_momenta(soft_counterevent, 0, &
          nlo_decay_production_count(), production_born)
+    call store_factorized_embedded_momenta(soft_counterevent, 0, &
+         nlo_decay_production_count(), production_born)
 
     decay_index = production_random_dimension() + 1
-    call expand_born_context(context, x, decay_index, visible, pass)
+    call sample_nlo_decay_context(context, x, decay_index, pass)
+    if (.not. pass) return
+    if (decay_index /= production_random_dimension() + &
+        decay_born_random_dimension() + 1) then
+      call fail_kinematics('Born random-variable accounting is inconsistent')
+    end if
+    call embed_nlo_decay_born_context(context, pass)
     if (.not. pass) return
     if (abs(minkowski_square(parent_born) - parent_mass**2) > &
         1d-8*max(1d0, parent_mass**2)) then
       call fail_kinematics('generated corrected parent is off shell')
     end if
-    if (decay_index /= production_random_dimension() + &
-        decay_born_random_dimension() + 1) then
-      call fail_kinematics('Born random-variable accounting is inconsistent')
-    end if
+    call materialize_nlo_decay_event( &
+         context, soft_counterevent, visible, pass)
+    if (.not. pass) return
 
     call compose_factorized_base_measure( &
          xjac, xpswgt, measure_available)
@@ -429,29 +438,22 @@ contains
   end subroutine generate_nlo_decay_born_momenta
 
 
-  subroutine expand_born_context(context, x, index, visible, pass)
+  subroutine sample_nlo_decay_context(context, x, index, pass)
     integer, intent(in) :: context
     double precision, intent(in) :: x(99)
     integer, intent(inout) :: index
-    double precision, intent(out) :: visible(0:3, nexternal - 1)
     logical, intent(out) :: pass
     integer :: leg, target
 
-    call set_nlo_decay_cut_mask(context)
-    visible = 0d0
     pass = .true.
     do leg = 1, nlo_decay_production_count()
       target = nlo_decay_production_target_id(context, leg)
-      if (nlo_decay_production_target_kind(context, leg) == &
-          nlo_decay_leg_target) then
-        visible(:, target) = production_born(:, leg)
-      else
-        call expand_born_node(context, target, production_born(:, leg), x, &
-             index, visible, pass)
-        if (.not. pass) return
-      end if
+      if (nlo_decay_production_target_kind(context, leg) /= &
+          nlo_decay_node_target) cycle
+      call sample_nlo_decay_node(context, target, x, index, pass)
+      if (.not. pass) return
     end do
-  end subroutine expand_born_context
+  end subroutine sample_nlo_decay_context
 
 
   subroutine set_nlo_decay_cut_mask(context)
@@ -492,19 +494,15 @@ contains
   end subroutine set_nlo_decay_cut_mask
 
 
-  recursive subroutine expand_born_node(context, node, parent, x, index, &
-                                        visible, pass)
+  recursive subroutine sample_nlo_decay_node(context, node, x, index, pass)
     integer, intent(in) :: context, node
-    double precision, intent(in) :: parent(0:3), x(99)
+    double precision, intent(in) :: x(99)
     integer, intent(inout) :: index
-    double precision, intent(inout) :: visible(0:3, nexternal - 1)
     logical, intent(out) :: pass
     integer :: child_count, child, child_kind, identifier
-    integer :: leg, final_count, final_index, target
+    integer :: leg, final_count, target
     double precision :: child_masses(nexternal)
-    double precision :: child_momenta(0:3, nexternal)
     double precision :: rest_momenta(0:3, nexternal)
-    double precision :: block_momenta(0:3, nexternal)
     double precision :: local_jacobian, local_weight
     type(factorized_measure_state) :: decay_measure
 
@@ -512,99 +510,236 @@ contains
     if (node == nlo_decay_corrected_node()) then
       final_count = 0
       do leg = 1, nlo_decay_local_count(context)
-        if (nlo_decay_local_is_final(context, leg)) then
-          final_count = final_count + 1
-          child_masses(final_count) = born_local_masses(leg)
-        else
-          born_local(:, leg) = parent
-        end if
+        if (.not. nlo_decay_local_is_final(context, leg)) cycle
+        final_count = final_count + 1
+        child_masses(final_count) = born_local_masses(leg)
       end do
       if (final_count /= nlo_decay_node_child_count(node)) then
         call fail_kinematics('corrected-node child count is inconsistent')
       end if
-      local_jacobian = 1d0
-      local_weight = 1d0
-      call generate_nbody_rest(node_masses(node), final_count, &
-           child_masses, x, index, rest_momenta, local_jacobian, &
-           local_weight, pass)
-      if (.not. pass) return
-      decay_measure%jacobian = local_jacobian
-      decay_measure%phase_space_weight = &
-           local_weight*nlo_decay_node_nwa_weight(node)
-      call store_factorized_base_measure(node, decay_measure)
-      node_rest_storage(:, :, node) = 0d0
-      node_rest_storage(:, 1:final_count, node) = &
-           rest_momenta(:, 1:final_count)
-      node_rest_valid(node) = .true.
-      call boost_nbody_from_rest(rest_momenta, final_count, parent, &
-                                 node_masses(node), child_momenta)
-      index = index + 3*final_count - 4
-      final_index = 0
-      do leg = 1, nlo_decay_local_count(context)
-        if (.not. nlo_decay_local_is_final(context, leg)) cycle
-        final_index = final_index + 1
-        born_local(:, leg) = child_momenta(:, final_index)
-        target = nlo_decay_local_target_id(context, leg)
-        if (nlo_decay_local_target_kind(context, leg) == &
-            nlo_decay_node_target) then
-          call expand_born_node(context, target, born_local(:, leg), x, &
-               index, visible, pass)
-          if (.not. pass) return
+      child_count = final_count
+    else
+      child_count = nlo_decay_node_child_count(node)
+      do child = 1, child_count
+        identifier = nlo_decay_node_child_id(node, child)
+        child_kind = nlo_decay_node_child_kind(node, child)
+        if (child_kind == nlo_decay_node_child) then
+          child_masses(child) = node_masses(identifier)
         else
-          visible(:, target) = born_local(:, leg)
+          child_masses(child) = leaf_masses(identifier)
         end if
       end do
-      parent_born = parent
-      call store_factorized_block_momenta(soft_counterevent, node, &
-           nlo_decay_local_count(context), born_local)
-      return
     end if
 
-    child_count = nlo_decay_node_child_count(node)
-    do child = 1, child_count
-      identifier = nlo_decay_node_child_id(node, child)
-      child_kind = nlo_decay_node_child_kind(node, child)
-      if (child_kind == nlo_decay_node_child) then
-        child_masses(child) = node_masses(identifier)
-      else
-        child_masses(child) = leaf_masses(identifier)
-      end if
-    end do
     local_jacobian = 1d0
     local_weight = 1d0
     call generate_nbody_rest(node_masses(node), child_count, child_masses, &
          x, index, rest_momenta, local_jacobian, local_weight, pass)
     if (.not. pass) return
-    decay_measure%jacobian = local_jacobian
-    decay_measure%phase_space_weight = &
-         local_weight*nlo_decay_node_nwa_weight(node)
-    call store_factorized_base_measure(node, decay_measure)
     node_rest_storage(:, :, node) = 0d0
     node_rest_storage(:, 1:child_count, node) = &
          rest_momenta(:, 1:child_count)
     node_rest_valid(node) = .true.
-    call boost_nbody_from_rest(rest_momenta, child_count, parent, &
-                               node_masses(node), child_momenta)
+    decay_measure%jacobian = local_jacobian
+    decay_measure%phase_space_weight = &
+         local_weight*nlo_decay_node_nwa_weight(node)
+    call store_factorized_base_measure(node, decay_measure)
     index = index + 3*child_count - 4
+
+    if (node == nlo_decay_corrected_node()) then
+      do leg = 1, nlo_decay_local_count(context)
+        if (.not. nlo_decay_local_is_final(context, leg)) cycle
+        if (nlo_decay_local_target_kind(context, leg) /= &
+            nlo_decay_node_target) cycle
+        target = nlo_decay_local_target_id(context, leg)
+        call sample_nlo_decay_node(context, target, x, index, pass)
+        if (.not. pass) return
+      end do
+    else
+      do child = 1, child_count
+        if (nlo_decay_node_child_kind(node, child) /= &
+            nlo_decay_node_child) cycle
+        identifier = nlo_decay_node_child_id(node, child)
+        call sample_nlo_decay_node(context, identifier, x, index, pass)
+        if (.not. pass) return
+      end do
+    end if
+  end subroutine sample_nlo_decay_node
+
+
+  subroutine embed_nlo_decay_born_context(context, pass)
+    integer, intent(in) :: context
+    logical, intent(out) :: pass
+    integer :: leg, target
+
+    pass = .true.
+    do leg = 1, nlo_decay_production_count()
+      if (nlo_decay_production_target_kind(context, leg) /= &
+          nlo_decay_node_target) cycle
+      target = nlo_decay_production_target_id(context, leg)
+      call embed_nlo_decay_born_node( &
+           context, target, production_born(:, leg), pass)
+      if (.not. pass) return
+    end do
+  end subroutine embed_nlo_decay_born_context
+
+
+  recursive subroutine embed_nlo_decay_born_node(context, node, parent, pass)
+    integer, intent(in) :: context, node
+    double precision, intent(in) :: parent(0:3)
+    logical, intent(out) :: pass
+    integer :: child_count, child, identifier
+    integer :: leg, final_count, final_index, target
+    double precision :: child_momenta(0:3, nexternal)
+    double precision :: block_momenta(0:3, nexternal)
+
+    if (.not. node_rest_valid(node)) then
+      call fail_kinematics( &
+           'an NLO decay rest-frame block is unavailable for embedding')
+    end if
+    if (node == nlo_decay_corrected_node()) then
+      final_count = nlo_decay_node_child_count(node)
+      call boost_nbody_from_rest( &
+           node_rest_storage(:, :, node), final_count, parent, &
+           node_masses(node), child_momenta)
+      final_index = 0
+      do leg = 1, nlo_decay_local_count(context)
+        if (nlo_decay_local_is_final(context, leg)) then
+          final_index = final_index + 1
+          born_local(:, leg) = child_momenta(:, final_index)
+        else
+          born_local(:, leg) = parent
+        end if
+      end do
+      parent_born = parent
+      call store_factorized_embedded_momenta(soft_counterevent, node, &
+           nlo_decay_local_count(context), born_local)
+      call store_factorized_block_momenta(soft_counterevent, node, &
+           nlo_decay_local_count(context), born_local)
+      pass = .true.
+      do leg = 1, nlo_decay_local_count(context)
+        if (.not. nlo_decay_local_is_final(context, leg)) cycle
+        if (nlo_decay_local_target_kind(context, leg) /= &
+            nlo_decay_node_target) cycle
+        target = nlo_decay_local_target_id(context, leg)
+        call embed_nlo_decay_born_node( &
+             context, target, born_local(:, leg), pass)
+        if (.not. pass) return
+      end do
+      return
+    end if
+
+    child_count = nlo_decay_node_child_count(node)
+    call boost_nbody_from_rest(node_rest_storage(:, :, node), child_count, &
+                               parent, node_masses(node), child_momenta)
     block_momenta = 0d0
     block_momenta(:, 1) = parent
     block_momenta(:, 2:child_count + 1) = &
          child_momenta(:, 1:child_count)
+    call store_factorized_embedded_momenta(soft_counterevent, node, &
+                                           child_count + 1, block_momenta)
     call store_factorized_block_momenta(soft_counterevent, node, &
                                         child_count + 1, block_momenta)
+    pass = .true.
+    do child = 1, child_count
+      if (nlo_decay_node_child_kind(node, child) /= &
+          nlo_decay_node_child) cycle
+      identifier = nlo_decay_node_child_id(node, child)
+      call embed_nlo_decay_born_node( &
+           context, identifier, child_momenta(:, child), pass)
+      if (.not. pass) return
+    end do
+  end subroutine embed_nlo_decay_born_node
+
+
+  subroutine materialize_nlo_decay_event(context, event_slot, visible, pass)
+    integer, intent(in) :: context, event_slot
+    double precision, intent(out) :: visible(0:, :)
+    logical, intent(out) :: pass
+    double precision :: production_block(0:3, nexternal)
+    integer :: leg, target, production_count
+    logical :: available
+
+    call set_nlo_decay_cut_mask(context)
+    visible = 0d0
+    production_count = nlo_decay_production_count()
+    call fetch_factorized_embedded_momenta( &
+         event_slot, 0, production_count, &
+         production_block(:, 1:production_count), available)
+    if (.not. available) then
+      call fail_kinematics('the embedded NLO production block is unavailable')
+    end if
+    pass = .true.
+    do leg = 1, production_count
+      target = nlo_decay_production_target_id(context, leg)
+      if (nlo_decay_production_target_kind(context, leg) == &
+          nlo_decay_leg_target) then
+        visible(:, target) = production_block(:, leg)
+      else
+        call materialize_nlo_decay_node( &
+             context, event_slot, target, visible, pass)
+        if (.not. pass) return
+      end if
+    end do
+  end subroutine materialize_nlo_decay_event
+
+
+  recursive subroutine materialize_nlo_decay_node( &
+       context, event_slot, node, visible, pass)
+    integer, intent(in) :: context, event_slot, node
+    double precision, intent(inout) :: visible(0:, :)
+    logical, intent(out) :: pass
+    double precision :: block_momenta(0:3, nexternal)
+    integer :: child_count, child, identifier, leg, target, block_count
+    logical :: available
+
+    if (node == nlo_decay_corrected_node()) then
+      block_count = nlo_decay_local_count(context)
+      call fetch_factorized_embedded_momenta( &
+           event_slot, node, block_count, &
+           block_momenta(:, 1:block_count), available)
+      if (.not. available) then
+        call fail_kinematics( &
+             'the embedded corrected-decay block is unavailable')
+      end if
+      pass = .true.
+      do leg = 1, block_count
+        if (.not. nlo_decay_local_is_final(context, leg)) cycle
+        target = nlo_decay_local_target_id(context, leg)
+        if (nlo_decay_local_target_kind(context, leg) == &
+            nlo_decay_node_target) then
+          call materialize_nlo_decay_node( &
+               context, event_slot, target, visible, pass)
+          if (.not. pass) return
+        else
+          visible(:, target) = block_momenta(:, leg)
+        end if
+      end do
+      return
+    end if
+
+    child_count = nlo_decay_node_child_count(node)
+    block_count = child_count + 1
+    call fetch_factorized_embedded_momenta( &
+         event_slot, node, block_count, &
+         block_momenta(:, 1:block_count), available)
+    if (.not. available) then
+      call fail_kinematics('an embedded spectator-decay block is unavailable')
+    end if
+    pass = .true.
     do child = 1, child_count
       identifier = nlo_decay_node_child_id(node, child)
-      child_kind = nlo_decay_node_child_kind(node, child)
-      if (child_kind == nlo_decay_node_child) then
-        call expand_born_node(context, identifier, child_momenta(:, child), &
-             x, index, visible, pass)
+      if (nlo_decay_node_child_kind(node, child) == &
+          nlo_decay_node_child) then
+        call materialize_nlo_decay_node( &
+             context, event_slot, identifier, visible, pass)
         if (.not. pass) return
       else
         target = nlo_decay_leaf_visible(context, identifier)
-        visible(:, target) = child_momenta(:, child)
+        visible(:, target) = block_momenta(:, child + 1)
       end if
     end do
-  end subroutine expand_born_node
+  end subroutine materialize_nlo_decay_node
 
 
   subroutine generate_nlo_decay_fks_event(configuration, event_slot, x, ndim, &
@@ -700,18 +835,10 @@ contains
     call store_factorized_kernel_momenta( &
          event_slot, nlo_decay_corrected_node(), &
          nlo_decay_local_count(context), local_rest)
-    ! Keep slot zero in the Born provider layout.  The soft projection of a
-    ! real decay still has the extra emitted local leg and is not a valid
-    ! input array for the Born density matrix.
-    if (event_slot /= soft_counterevent) then
-      call store_factorized_block_momenta(event_slot, 0, &
-           nlo_decay_production_count(), production_born)
-      call store_factorized_block_momenta(event_slot, &
-           nlo_decay_corrected_node(), nlo_decay_local_count(context), &
-           local_event)
-    end if
-    call expand_event_context(context, event_slot, local_event, visible, &
-                              pass)
+    call embed_nlo_decay_fks_context( &
+         context, event_slot, local_event, pass)
+    if (.not. pass) return
+    call materialize_nlo_decay_event(context, event_slot, visible, pass)
     if (.not. pass) return
     pass = .true.
   end subroutine generate_nlo_decay_fks_event
@@ -1113,56 +1240,66 @@ contains
   end subroutine emitted_angle
 
 
-  subroutine expand_event_context(context, event_slot, local_momenta, &
-                                  visible, pass)
+  subroutine embed_nlo_decay_fks_context(context, event_slot, &
+                                         local_momenta, pass)
     integer, intent(in) :: context, event_slot
     double precision, intent(in) :: local_momenta(0:3, nexternal)
-    double precision, intent(out) :: visible(0:, :)
     integer :: leg, target
     logical, intent(out) :: pass
 
-    call set_nlo_decay_cut_mask(context)
-    visible = 0d0
+    call store_factorized_embedded_momenta(event_slot, 0, &
+         nlo_decay_production_count(), production_born)
+    if (event_slot /= soft_counterevent) then
+      call store_factorized_block_momenta(event_slot, 0, &
+           nlo_decay_production_count(), production_born)
+    end if
     pass = .true.
     do leg = 1, nlo_decay_production_count()
-      if (nlo_decay_production_target_kind(context, leg) == &
-          nlo_decay_leg_target) then
-        target = nlo_decay_production_target_id(context, leg)
-        visible(:, target) = production_born(:, leg)
-      else
-        target = nlo_decay_production_target_id(context, leg)
-        call expand_event_node(context, event_slot, target, &
-             production_born(:, leg), local_momenta, visible, pass)
-        if (.not. pass) return
-      end if
+      if (nlo_decay_production_target_kind(context, leg) /= &
+          nlo_decay_node_target) cycle
+      target = nlo_decay_production_target_id(context, leg)
+      call embed_nlo_decay_fks_node(context, event_slot, target, &
+           production_born(:, leg), local_momenta, pass)
+      if (.not. pass) return
     end do
-  end subroutine expand_event_context
+  end subroutine embed_nlo_decay_fks_context
 
 
-  recursive subroutine expand_event_node(context, event_slot, node, parent, &
-                                         local_momenta, visible, pass)
+  recursive subroutine embed_nlo_decay_fks_node( &
+       context, event_slot, node, parent, local_momenta, pass)
     integer, intent(in) :: context, event_slot, node
     double precision, intent(in) :: parent(0:3)
     double precision, intent(in) :: local_momenta(0:3, nexternal)
-    double precision, intent(inout) :: visible(0:, :)
     logical, intent(out) :: pass
-    integer :: leg, target, child, child_count, child_kind, identifier
+    integer :: leg, target, child, child_count, identifier
     double precision :: child_momenta(0:3, nexternal)
     double precision :: block_momenta(0:3, nexternal)
+    double precision :: mismatch
 
     pass = .true.
     if (node == nlo_decay_corrected_node()) then
       do leg = 1, nlo_decay_local_count(context)
-        if (.not. nlo_decay_local_is_final(context, leg)) cycle
-        target = nlo_decay_local_target_id(context, leg)
-        if (nlo_decay_local_target_kind(context, leg) == &
-            nlo_decay_node_target) then
-          call expand_event_node(context, event_slot, target, &
-               local_momenta(:, leg), local_momenta, visible, pass)
-          if (.not. pass) return
-        else
-          visible(:, target) = local_momenta(:, leg)
+        if (nlo_decay_local_is_final(context, leg)) cycle
+        mismatch = maxval(abs(local_momenta(:, leg) - parent))
+        if (mismatch > 1d-8*max(1d0, parent_mass)) then
+          call fail_kinematics( &
+               'the corrected block has an inconsistent embedded parent')
         end if
+      end do
+      call store_factorized_embedded_momenta(event_slot, node, &
+           nlo_decay_local_count(context), local_momenta)
+      if (event_slot /= soft_counterevent) then
+        call store_factorized_block_momenta(event_slot, node, &
+             nlo_decay_local_count(context), local_momenta)
+      end if
+      do leg = 1, nlo_decay_local_count(context)
+        if (.not. nlo_decay_local_is_final(context, leg)) cycle
+        if (nlo_decay_local_target_kind(context, leg) /= &
+            nlo_decay_node_target) cycle
+        target = nlo_decay_local_target_id(context, leg)
+        call embed_nlo_decay_fks_node(context, event_slot, target, &
+             local_momenta(:, leg), local_momenta, pass)
+        if (.not. pass) return
       end do
       return
     end if
@@ -1178,23 +1315,21 @@ contains
     block_momenta(:, 1) = parent
     block_momenta(:, 2:child_count + 1) = &
          child_momenta(:, 1:child_count)
+    call store_factorized_embedded_momenta(event_slot, node, &
+                                           child_count + 1, block_momenta)
     if (event_slot /= soft_counterevent) then
       call store_factorized_block_momenta(event_slot, node, &
                                           child_count + 1, block_momenta)
     end if
     do child = 1, child_count
       identifier = nlo_decay_node_child_id(node, child)
-      child_kind = nlo_decay_node_child_kind(node, child)
-      if (child_kind == nlo_decay_node_child) then
-        call expand_event_node(context, event_slot, identifier, &
-             child_momenta(:, child), local_momenta, visible, pass)
-        if (.not. pass) return
-      else
-        target = nlo_decay_leaf_visible(context, identifier)
-        visible(:, target) = child_momenta(:, child)
-      end if
+      if (nlo_decay_node_child_kind(node, child) /= &
+          nlo_decay_node_child) cycle
+      call embed_nlo_decay_fks_node(context, event_slot, identifier, &
+           child_momenta(:, child), local_momenta, pass)
+      if (.not. pass) return
     end do
-  end subroutine expand_event_node
+  end subroutine embed_nlo_decay_fks_node
 
 
   subroutine fill_production_incoming(shat, sqrtshat, momenta, pass)

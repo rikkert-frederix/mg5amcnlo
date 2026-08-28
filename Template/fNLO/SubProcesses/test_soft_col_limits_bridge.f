@@ -144,18 +144,16 @@ c-----------------------------------------------------------------------
       end
 
 
-      subroutine test_limits_sreal_bridge(event_slot,momentum,xi_fks,y_fks,
-     $     weight,split_weights)
+      subroutine test_limits_sreal_bridge(event_slot,xi_fks,y_fks,weight,
+     $     split_weights)
       use fks_singular_module, only: sreal
-      use fnlo_process_common, only: nexternal,amp_split_size,
-     $     amp_split
+      use fnlo_process_common, only: amp_split_size,amp_split
       implicit none
       integer event_slot
-      double precision momentum(0:3,nexternal)
       double precision xi_fks,y_fks,weight
       double precision split_weights(amp_split_size)
       integer iamp
-      call sreal(event_slot,momentum,xi_fks,y_fks,weight)
+      call sreal(event_slot,xi_fks,y_fks,weight)
       do iamp=1,amp_split_size
          split_weights(iamp)=amp_split(iamp)
       enddo

@@ -8,6 +8,15 @@ module factorized_phase_space
   integer, allocatable, save :: block_particle_count(:, :)
   logical, allocatable, save :: block_is_valid(:, :)
 
+  ! Embedding storage is deliberately distinct from the matrix-element
+  ! block cache above.  In particular, a soft projection can have a
+  ! real-context particle layout while the Born density matrix in slot zero
+  ! must retain its Born layout.  Event materialization consumes this cache;
+  ! matrix elements never do.
+  double precision, allocatable, save :: embedded_momenta(:, :, :, :)
+  integer, allocatable, save :: embedded_particle_count(:, :)
+  logical, allocatable, save :: embedded_is_valid(:, :)
+
   ! Matrix elements and subtraction kernels deliberately use different
   ! representations of the same block.  The former needs the block boosted
   ! into the event frame, whereas the latter is most naturally evaluated in
@@ -52,6 +61,8 @@ module factorized_phase_space
   public :: reset_factorized_phase_space
   public :: store_factorized_block_momenta
   public :: fetch_factorized_block_momenta
+  public :: store_factorized_embedded_momenta
+  public :: fetch_factorized_embedded_momenta
   public :: store_factorized_kernel_momenta
   public :: fetch_factorized_kernel_momenta
   public :: store_factorized_radiation_state
@@ -74,6 +85,9 @@ contains
     block_momenta = 0d0
     block_particle_count = 0
     block_is_valid = .false.
+    embedded_momenta = 0d0
+    embedded_particle_count = 0
+    embedded_is_valid = .false.
     kernel_momenta = 0d0
     kernel_particle_count = 0
     kernel_is_valid = .false.
@@ -121,6 +135,43 @@ contains
       momenta = block_momenta(:, 1:particle_count, block, event_slot)
     end if
   end subroutine fetch_factorized_block_momenta
+
+
+  subroutine store_factorized_embedded_momenta(event_slot, block, &
+                                                particle_count, momenta)
+    integer, intent(in) :: event_slot, block, particle_count
+    double precision, intent(in) :: momenta(0:, :)
+
+    call ensure_storage()
+    call validate_indices(event_slot, block, particle_count)
+    if (size(momenta, 1) < 4 .or. size(momenta, 2) < particle_count) then
+      call fail_factorized_phase_space( &
+           'an embedded momentum array has inconsistent bounds')
+    end if
+    embedded_momenta(:, :, block, event_slot) = 0d0
+    embedded_momenta(:, 1:particle_count, block, event_slot) = &
+         momenta(0:3, 1:particle_count)
+    embedded_particle_count(block, event_slot) = particle_count
+    embedded_is_valid(block, event_slot) = .true.
+  end subroutine store_factorized_embedded_momenta
+
+
+  subroutine fetch_factorized_embedded_momenta(event_slot, block, &
+                                                particle_count, momenta, &
+                                                available)
+    integer, intent(in) :: event_slot, block, particle_count
+    double precision, intent(out) :: momenta(0:3, particle_count)
+    logical, intent(out) :: available
+
+    call ensure_storage()
+    call validate_indices(event_slot, block, particle_count)
+    available = embedded_is_valid(block, event_slot) .and. &
+         embedded_particle_count(block, event_slot) == particle_count
+    momenta = 0d0
+    if (available) then
+      momenta = embedded_momenta(:, 1:particle_count, block, event_slot)
+    end if
+  end subroutine fetch_factorized_embedded_momenta
 
 
   subroutine store_factorized_kernel_momenta(event_slot, block, &
@@ -364,6 +415,12 @@ contains
                                   soft_counterevent:real_event))
     allocate(block_is_valid(0:nexternal, &
                             soft_counterevent:real_event))
+    allocate(embedded_momenta(0:3, nexternal, 0:nexternal, &
+                              soft_counterevent:real_event))
+    allocate(embedded_particle_count(0:nexternal, &
+                                     soft_counterevent:real_event))
+    allocate(embedded_is_valid(0:nexternal, &
+                               soft_counterevent:real_event))
     allocate(kernel_momenta(0:3, nexternal, 0:nexternal, &
                             soft_counterevent:real_event))
     allocate(kernel_particle_count(0:nexternal, &
@@ -383,6 +440,9 @@ contains
     block_momenta = 0d0
     block_particle_count = 0
     block_is_valid = .false.
+    embedded_momenta = 0d0
+    embedded_particle_count = 0
+    embedded_is_valid = .false.
     kernel_momenta = 0d0
     kernel_particle_count = 0
     kernel_is_valid = .false.

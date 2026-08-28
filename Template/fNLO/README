@@ -81,9 +81,11 @@ Factorized phase-space blocks
 
 Production and every decay node generate their phase space independently.
 Each decay is sampled in its parent rest frame, records its own Jacobian,
-phase-space weight and narrow-width normalization, and is then boosted into
-the event frame. Matrix elements receive only these boosted block-local
-momenta; subtraction kernels receive the corresponding kernel-frame block.
+phase-space weight and narrow-width normalization, and is then embedded by a
+separate boost-only pass. A third pass materializes the canonical event for
+cuts, scales and analyses. Matrix elements bypass that assembled event and
+read only their boosted block-local momenta; subtraction kernels receive the
+corresponding kernel-frame block.
 The block measures, active radiation map, production flux and incoming
 integration weight are composed only at the integrator boundary. Production
 and decay NLO terms also own separate adaptive grids for their three FKS

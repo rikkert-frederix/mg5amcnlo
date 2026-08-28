@@ -423,7 +423,7 @@ contains
 !
       if (has_decay_chains() .and. pass .and. xjac > 0d0) then
         call store_core_event_momenta(icountevts, xp, core_particle_count)
-        call expand_real_decay_momenta(nfksprocess, icountevts, x, xp, &
+        call expand_real_decay_momenta(nfksprocess, icountevts, xp, &
                                        visible_xp, pass)
         if (.not. pass) xjac = -198d0
       else

@@ -16,7 +16,8 @@ module fks_contributions_module
   use nlo_contribution_bundle, only: active_contribution_has_virtual, &
        active_virtual_grid_index, active_contribution_is_production
   use fks_singular_module, only: evaluate_fks_sij, sreal, sreal_deg, &
-                                 bornsoftvirtual, fks_subtraction_shat
+                                 bornsoftvirtual, fks_subtraction_shat, &
+                                 evaluate_born_matrix
   use fks_weights_module, only: add_wgt, real_contribution, &
                                 born_contribution, integrated_contribution, &
                                 soft_contribution, collinear_contribution, &
@@ -30,7 +31,6 @@ module fks_contributions_module
                                  event_xi_max, event_xi_norm, &
                                  event_shat, &
                                  stored_event_jacobian => event_jacobian, &
-                                 stored_event_momenta => event_momenta, &
                                  p_born, nfksprocess, i_fks, j_fks, &
                                  f_b, f_nb, f_r, f_s, f_c, f_dc, f_sc, &
                                  f_dsc, &
@@ -150,7 +150,7 @@ contains
     call load_radiation_state(soft_counterevent, soft_radiation)
     if (real_radiation%xi_hat*soft_radiation%xi_max .gt. &
         xiBSVcut_used) return
-    call sborn(p_born, wgt_c)
+    call evaluate_born_matrix(soft_counterevent, wgt_c)
     do iamp = 1, amp_split_size
       if (amp_split(iamp) .eq. 0d0) cycle
       call amp_split_pos_to_orders(iamp, orders)
@@ -190,7 +190,7 @@ contains
     call load_radiation_state(soft_counterevent, soft_radiation)
     if (real_radiation%xi_hat*soft_radiation%xi_max .gt. &
         xiBSVcut_used) return
-    call sborn(p_born, born_weight)
+    call evaluate_born_matrix(soft_counterevent, born_weight)
     do iamp = 1, amp_split_size
       if (amp_split(iamp) .eq. 0d0) cycle
       call amp_split_pos_to_orders(iamp, born_orders)
@@ -231,9 +231,8 @@ contains
     call load_radiation_state(soft_counterevent, soft_radiation)
     if (real_radiation%xi_hat*soft_radiation%xi_max .gt. &
         xiBSVcut_used) return
-    call bornsoftvirtual(soft_counterevent, &
-                         stored_event_momenta(:, :, soft_counterevent), &
-                         bsv_wgt, virt_wgt, born_wgt)
+    call bornsoftvirtual( &
+         soft_counterevent, bsv_wgt, virt_wgt, born_wgt)
     do iamp = 1, amp_split_size
       if (amp_split_wgtnstmp(iamp) .eq. 0d0 .and. &
           amp_split_wgtwnstmpmur(iamp) .eq. 0d0 .and. &
@@ -286,7 +285,7 @@ contains
     return
   end subroutine compute_nbody_noborn
 
-  subroutine compute_real_emission(p)
+  subroutine compute_real_emission()
 ! This subroutine computes the real-emission matrix elements and adds
 ! its value to the list of weights using the add_wgt subroutine
     use extra_weights
@@ -294,16 +293,15 @@ contains
     real :: tBefore, tAfter
     integer orders(nsplitorders)
     integer iamp
-    double precision s_ev, p(0:3, nexternal), wgt1, fx_ev
+    double precision s_ev, wgt1, fx_ev
     type(factorized_radiation_state) :: real_radiation
     call cpu_time(tBefore)
     if (f_r .eq. 0d0) return
     call load_radiation_state(real_event, real_radiation)
-    s_ev = evaluate_fks_sij(real_event, p, i_fks, j_fks, &
+    s_ev = evaluate_fks_sij(real_event, i_fks, j_fks, &
                             real_radiation%xi, real_radiation%y)
     if (s_ev .le. 0.d0) return
-    call sreal(real_event, p, real_radiation%xi, &
-               real_radiation%y, fx_ev)
+    call sreal(real_event, real_radiation%xi, real_radiation%y, fx_ev)
     do iamp = 1, amp_split_size
       if (amp_split(iamp) .eq. 0d0) cycle
       call amp_split_pos_to_orders(iamp, orders)
@@ -335,13 +333,11 @@ contains
     call load_radiation_state(soft_counterevent, soft_radiation)
     if (real_radiation%xi_hat*soft_radiation%xi_max .gt. &
         xiScut_used) return
-    s_s = evaluate_fks_sij(soft_counterevent, &
-            stored_event_momenta(:, :, soft_counterevent), &
-            i_fks, j_fks, zero, real_radiation%y)
+    s_s = evaluate_fks_sij(soft_counterevent, i_fks, j_fks, &
+                           zero, real_radiation%y)
     if (s_s .le. 0d0) return
-    call sreal(soft_counterevent, &
-               stored_event_momenta(:, :, soft_counterevent), &
-               0d0, real_radiation%y, fx_s)
+    call sreal( &
+         soft_counterevent, 0d0, real_radiation%y, fx_s)
 
     do iamp = 1, amp_split_size
       if (amp_split(iamp) .eq. 0d0) cycle
@@ -380,18 +376,14 @@ contains
     call load_radiation_state(collinear_counterevent, collinear_radiation)
     if (real_radiation%y .le. 1d0 - deltaS .or. &
         .not. fks_sister_is_massless()) return
-    s_c = evaluate_fks_sij(collinear_counterevent, &
-            stored_event_momenta(:, :, collinear_counterevent), &
-            i_fks, j_fks, collinear_radiation%xi, one)
+    s_c = evaluate_fks_sij(collinear_counterevent, i_fks, j_fks, &
+                           collinear_radiation%xi, one)
     if (s_c .le. 0d0) return
 ! sreal_deg should be called **BEFORE** sreal
 ! in order not to overwrtie the amp_split array
-    call sreal_deg(collinear_counterevent, &
-                   stored_event_momenta(:, :, collinear_counterevent), &
-                   collinear_radiation%xi, deg_xi_c, deg_lxi_c)
-    call sreal(collinear_counterevent, &
-               stored_event_momenta(:, :, collinear_counterevent), &
-               collinear_radiation%xi, one, fx_c)
+    call sreal_deg(collinear_counterevent, collinear_radiation%xi, &
+                   deg_xi_c, deg_lxi_c)
+    call sreal(collinear_counterevent, collinear_radiation%xi, one, fx_c)
 
     do iamp = 1, amp_split_size
       if (amp_split(iamp) .eq. 0d0 .and. &
@@ -437,18 +429,14 @@ contains
     if (real_radiation%xi_hat*collinear_radiation%xi_max &
         .ge. xiScut_used .or. real_radiation%y .le. 1d0 - deltaS &
         .or. .not. fks_sister_is_massless()) return
-    s_sc = evaluate_fks_sij(soft_collinear_counterevent, &
-             stored_event_momenta(:, :, soft_collinear_counterevent), &
-             i_fks, j_fks, zero, one)
+    s_sc = evaluate_fks_sij( &
+         soft_collinear_counterevent, i_fks, j_fks, zero, one)
     if (s_sc .le. 0d0) return
 ! sreal_deg should be called **BEFORE** sreal
 ! in order not to overwrtie the amp_split array
-    call sreal_deg(soft_collinear_counterevent, &
-      stored_event_momenta(:, :, soft_collinear_counterevent), &
-      zero, deg_xi_sc, deg_lxi_sc)
-    call sreal(soft_collinear_counterevent, &
-               stored_event_momenta(:, :, soft_collinear_counterevent), &
-               zero, one, fx_sc)
+    call sreal_deg( &
+         soft_collinear_counterevent, zero, deg_xi_sc, deg_lxi_sc)
+    call sreal(soft_collinear_counterevent, zero, one, fx_sc)
 
     do iamp = 1, amp_split_size
       if (amp_split(iamp) .eq. 0d0 .and. &
@@ -528,7 +516,7 @@ contains
 ! Compute the multi-channel enhancement factor 'enhance'.
     enhance = 1.d0
     if (p_born(0, 1) .gt. 0d0) then
-      call sborn(p_born, wgt_c)
+      call evaluate_born_matrix(soft_counterevent, wgt_c)
     elseif (p_born(0, 1) .lt. 0d0) then
       enhance = 0d0
     end if

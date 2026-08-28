@@ -508,7 +508,7 @@ contains
           pass_cuts_check = .true.
           call set_alphas(momentum)
           call include_multichannel_enhance(2)
-          call compute_real_emission(momentum)
+          call compute_real_emission()
         end if
       end do
     end if

@@ -4,6 +4,8 @@ module decay_chain_kinematics
        soft_counterevent
   use factorized_phase_space, only: factorized_measure_state, &
        store_factorized_block_momenta, store_factorized_kernel_momenta, &
+       store_factorized_embedded_momenta, &
+       fetch_factorized_embedded_momenta, &
        store_factorized_base_measure, compose_factorized_base_measure
   use factorized_block_kinematics, only: &
        generate_nbody => generate_factorized_nbody, &
@@ -173,15 +175,21 @@ contains
     end do
     call store_factorized_block_momenta(soft_counterevent, 0, core_count, &
                                         core_born_storage)
+    call store_factorized_embedded_momenta( &
+         soft_counterevent, 0, core_count, core_born_storage)
 
-    visible_momenta = 0d0
     index = decay_variable_start()
-    call expand_context(context, soft_counterevent, core_born_storage, x, &
-                        index, visible_momenta, .true., pass)
+    call sample_decay_context(context, x, index, pass)
     if (.not. pass) return
     if (index /= decay_variable_start() + decay_random_dimension()) then
       call fail_kinematics('decay random-variable accounting is inconsistent')
     end if
+    call embed_decay_context( &
+         context, soft_counterevent, core_born_storage, .true., pass)
+    if (.not. pass) return
+    call materialize_decay_event( &
+         context, soft_counterevent, visible_momenta, pass)
+    if (.not. pass) return
     call compose_factorized_base_measure( &
          xjac, xpswgt, measure_available)
     if (.not. measure_available) then
@@ -190,52 +198,40 @@ contains
   end subroutine generate_core_born_and_decays
 
 
-  subroutine expand_real_decay_momenta(configuration, event_slot, x, &
+  subroutine expand_real_decay_momenta(configuration, event_slot, &
                                        core_momenta, &
                                        visible_momenta, pass)
     integer, intent(in) :: configuration, event_slot
-    double precision, intent(in) :: x(99)
     double precision, intent(in) :: core_momenta(0:3, nexternal)
     double precision, intent(out) :: visible_momenta(0:3, nexternal)
     logical, intent(out) :: pass
-    integer :: context, index
+    integer :: context
 
     call require_enabled()
     context = context_for_fks(configuration)
-    visible_momenta = 0d0
-    index = decay_variable_start()
-    call expand_context(context, event_slot, core_momenta, x, index, &
-                        visible_momenta, .false., pass)
+    call embed_decay_context( &
+         context, event_slot, core_momenta, &
+         event_slot /= soft_counterevent, pass)
     if (.not. pass) return
-    if (index /= decay_variable_start() + decay_random_dimension()) then
-      call fail_kinematics('real decay random-variable accounting is inconsistent')
-    end if
+    call materialize_decay_event(context, event_slot, visible_momenta, pass)
   end subroutine expand_real_decay_momenta
 
 
-  subroutine expand_context(context, event_slot, core_momenta, x, index, &
-                            visible_momenta, keep_weight, pass)
-    integer, intent(in) :: context, event_slot
-    double precision, intent(in) :: core_momenta(0:, :), x(99)
+  subroutine sample_decay_context(context, x, index, pass)
+    integer, intent(in) :: context
+    double precision, intent(in) :: x(99)
     integer, intent(inout) :: index
-    double precision, intent(out) :: visible_momenta(0:, :)
-    logical, intent(in) :: keep_weight
     logical, intent(out) :: pass
 
     integer :: leg, target
-    call set_decay_cut_mask(context)
     pass = .true.
     do leg = 1, context_core_count(context)
       target = core_target_id(context, leg)
-      if (core_target_kind(context, leg) == direct_leg_target) then
-        visible_momenta(:, target) = core_momenta(:, leg)
-      else
-        call expand_node(context, event_slot, target, core_momenta(:, leg), &
-                         x, index, visible_momenta, keep_weight, pass)
-        if (.not. pass) return
-      end if
+      if (core_target_kind(context, leg) /= decay_node_target) cycle
+      call sample_decay_node(target, x, index, pass)
+      if (.not. pass) return
     end do
-  end subroutine expand_context
+  end subroutine sample_decay_context
 
 
   subroutine set_decay_cut_mask(context)
@@ -251,22 +247,15 @@ contains
   end subroutine set_decay_cut_mask
 
 
-  recursive subroutine expand_node(context, event_slot, node, &
-                                   parent_momentum, x, &
-                                   index, visible_momenta, &
-                                   keep_weight, pass)
-    integer, intent(in) :: context, event_slot, node
-    double precision, intent(in) :: parent_momentum(0:3), x(99)
+  recursive subroutine sample_decay_node(node, x, index, pass)
+    integer, intent(in) :: node
+    double precision, intent(in) :: x(99)
     integer, intent(inout) :: index
-    double precision, intent(inout) :: visible_momenta(0:, :)
-    logical, intent(in) :: keep_weight
     logical, intent(out) :: pass
 
     integer :: child_count, child, identifier, child_kind
     double precision :: child_masses(nexternal)
-    double precision :: child_momenta(0:3, nexternal)
     double precision :: rest_momenta(0:3, nexternal)
-    double precision :: block_momenta(0:3, nexternal)
     double precision :: local_jacobian, local_weight
     type(factorized_measure_state) :: decay_measure
 
@@ -283,58 +272,151 @@ contains
 
     local_jacobian = 1d0
     local_weight = 1d0
-    if (keep_weight) then
-      call generate_nbody_rest(node_masses(node), child_count, &
-           child_masses, x, index, rest_momenta, local_jacobian, &
-           local_weight, pass)
-      if (.not. pass) return
-      node_rest_storage(:, :, node) = 0d0
-      node_rest_storage(:, 1:child_count, node) = &
-           rest_momenta(:, 1:child_count)
-      node_rest_valid(node) = .true.
-    else
-      if (.not. node_rest_valid(node)) then
-        call fail_kinematics( &
-             'a decay rest-frame block is unavailable for an event')
-      end if
-      rest_momenta = node_rest_storage(:, :, node)
-    end if
-    call boost_nbody_from_rest(rest_momenta, child_count, parent_momentum, &
-                               node_masses(node), child_momenta)
+    call generate_nbody_rest(node_masses(node), child_count, &
+         child_masses, x, index, rest_momenta, local_jacobian, &
+         local_weight, pass)
+    if (.not. pass) return
+    node_rest_storage(:, :, node) = 0d0
+    node_rest_storage(:, 1:child_count, node) = &
+         rest_momenta(:, 1:child_count)
+    node_rest_valid(node) = .true.
     index = index + 3*child_count - 4
-    if (keep_weight) then
-      decay_measure%jacobian = local_jacobian
-      decay_measure%phase_space_weight = &
-           local_weight*decay_node_nwa_weight(node)
-      call store_factorized_base_measure(node, decay_measure)
+    decay_measure%jacobian = local_jacobian
+    decay_measure%phase_space_weight = &
+         local_weight*decay_node_nwa_weight(node)
+    call store_factorized_base_measure(node, decay_measure)
+
+    do child = 1, child_count
+      if (node_child_kind(node, child) /= decay_node_child) cycle
+      call sample_decay_node(node_child_id(node, child), x, index, pass)
+      if (.not. pass) return
+    end do
+  end subroutine sample_decay_node
+
+
+  subroutine embed_decay_context(context, event_slot, core_momenta, &
+                                 store_matrix_blocks, pass)
+    integer, intent(in) :: context, event_slot
+    double precision, intent(in) :: core_momenta(0:, :)
+    logical, intent(in) :: store_matrix_blocks
+    logical, intent(out) :: pass
+    integer :: leg, target
+
+    call store_factorized_embedded_momenta( &
+         event_slot, 0, context_core_count(context), core_momenta)
+    pass = .true.
+    do leg = 1, context_core_count(context)
+      if (core_target_kind(context, leg) /= decay_node_target) cycle
+      target = core_target_id(context, leg)
+      call embed_decay_node(event_slot, target, core_momenta(:, leg), &
+                            store_matrix_blocks, pass)
+      if (.not. pass) return
+    end do
+  end subroutine embed_decay_context
+
+
+  recursive subroutine embed_decay_node(event_slot, node, parent_momentum, &
+                                        store_matrix_blocks, pass)
+    integer, intent(in) :: event_slot, node
+    double precision, intent(in) :: parent_momentum(0:3)
+    logical, intent(in) :: store_matrix_blocks
+    logical, intent(out) :: pass
+    integer :: child_count, child, identifier
+    double precision :: child_momenta(0:3, nexternal)
+    double precision :: block_momenta(0:3, nexternal)
+
+    child_count = node_child_count(node)
+    if (.not. node_rest_valid(node)) then
+      call fail_kinematics( &
+           'a decay rest-frame block is unavailable for embedding')
     end if
+    call boost_nbody_from_rest( &
+         node_rest_storage(:, :, node), child_count, parent_momentum, &
+         node_masses(node), child_momenta)
 
     block_momenta = 0d0
     block_momenta(:, 1) = parent_momentum
     block_momenta(:, 2:child_count + 1) = &
          child_momenta(:, 1:child_count)
-    ! Slot zero is the Born matrix-element layout.  Its projected real
-    ! counterevent contains an extra zero-emission leg and must not replace
-    ! the Born-local block cached above.
-    if (keep_weight .or. event_slot /= soft_counterevent) then
+    call store_factorized_embedded_momenta( &
+         event_slot, node, child_count + 1, block_momenta)
+    if (store_matrix_blocks) then
       call store_factorized_block_momenta(event_slot, node, &
                                           child_count + 1, block_momenta)
     end if
 
+    pass = .true.
     do child = 1, child_count
       identifier = node_child_id(node, child)
-      child_kind = node_child_kind(node, child)
-      if (child_kind == decay_node_child) then
-        call expand_node(context, event_slot, identifier, &
-                         child_momenta(:, child), x, index, &
-                         visible_momenta, keep_weight, pass)
+      if (node_child_kind(node, child) /= decay_node_child) cycle
+      call embed_decay_node(event_slot, identifier, &
+                            child_momenta(:, child), &
+                            store_matrix_blocks, pass)
+      if (.not. pass) return
+    end do
+  end subroutine embed_decay_node
+
+
+  subroutine materialize_decay_event(context, event_slot, visible_momenta, &
+                                     pass)
+    integer, intent(in) :: context, event_slot
+    double precision, intent(out) :: visible_momenta(0:, :)
+    logical, intent(out) :: pass
+    double precision :: core_momenta(0:3, nexternal)
+    integer :: leg, target, core_count
+    logical :: available
+
+    call set_decay_cut_mask(context)
+    visible_momenta = 0d0
+    core_count = context_core_count(context)
+    call fetch_factorized_embedded_momenta( &
+         event_slot, 0, core_count, core_momenta(:, 1:core_count), available)
+    if (.not. available) then
+      call fail_kinematics('the embedded production block is unavailable')
+    end if
+    pass = .true.
+    do leg = 1, core_count
+      target = core_target_id(context, leg)
+      if (core_target_kind(context, leg) == direct_leg_target) then
+        visible_momenta(:, target) = core_momenta(:, leg)
+      else
+        call materialize_decay_node( &
+             context, event_slot, target, visible_momenta, pass)
+        if (.not. pass) return
+      end if
+    end do
+  end subroutine materialize_decay_event
+
+
+  recursive subroutine materialize_decay_node( &
+       context, event_slot, node, visible_momenta, pass)
+    integer, intent(in) :: context, event_slot, node
+    double precision, intent(inout) :: visible_momenta(0:, :)
+    logical, intent(out) :: pass
+    double precision :: block_momenta(0:3, nexternal)
+    integer :: child_count, child, identifier
+    logical :: available
+
+    child_count = node_child_count(node)
+    call fetch_factorized_embedded_momenta( &
+         event_slot, node, child_count + 1, &
+         block_momenta(:, 1:child_count + 1), available)
+    if (.not. available) then
+      call fail_kinematics('an embedded decay block is unavailable')
+    end if
+    pass = .true.
+    do child = 1, child_count
+      identifier = node_child_id(node, child)
+      if (node_child_kind(node, child) == decay_node_child) then
+        call materialize_decay_node( &
+             context, event_slot, identifier, visible_momenta, pass)
         if (.not. pass) return
       else
         visible_momenta(:, leaf_visible_leg(context, identifier)) = &
-             child_momenta(:, child)
+             block_momenta(:, child + 1)
       end if
     end do
-  end subroutine expand_node
+  end subroutine materialize_decay_node
 
 
   subroutine fill_incoming_momenta(shat, sqrtshat, context, momenta, pass)
@@ -380,6 +462,8 @@ contains
       call fail_kinematics('the production block momentum shape is invalid')
     end if
     call store_factorized_kernel_momenta( &
+         event_slot, 0, particle_count, momenta)
+    call store_factorized_embedded_momenta( &
          event_slot, 0, particle_count, momenta)
     if (event_slot /= soft_counterevent) then
       call store_factorized_block_momenta( &
