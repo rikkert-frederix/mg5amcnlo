@@ -1597,6 +1597,13 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertEqual(product_metadata.count(' FINITE '), 3)
             self.assertEqual(product_metadata.count('\nVIRTUAL_ORDER '), 3)
             self.assertTrue(os.path.isfile(os.path.join(
+                subprocess_dir, 'multiplicative_product.f90')))
+            with open(os.path.join(
+                    subprocess_dir, 'driver_mintFO.f90')) as stream:
+                driver_source = stream.read()
+            self.assertIn('call initialize_multiplicative_product()',
+                          driver_source)
+            self.assertTrue(os.path.isfile(os.path.join(
                 subprocess_dir, 'nlo_decay_info_2.dat')))
             self.assertTrue(os.path.isfile(os.path.join(
                 subprocess_dir, 'nlo_decay_info_3.dat')))

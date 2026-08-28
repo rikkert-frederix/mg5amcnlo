@@ -42,6 +42,7 @@ FILES= fnlo_process_common.o process_dimensions.o			\
 	 process_dimensions_bridge.o					\
 	 fks_metadata.o fks_metadata_bridge.o				\
 	 nlo_contribution_bundle.o					\
+	 multiplicative_product.o					\
 	 nlo_decay_metadata.o decay_chain_metadata.o			\
 	 decay_chain_parameters.o					\
 	 fnlo_scale_variations.o					\
@@ -217,6 +218,7 @@ $(FNLO_PROCESS_COMMON_USERS): fnlo_process_common.o
 fks_metadata.o: process_dimensions.o
 fks_metadata_bridge.o: fks_metadata.o
 nlo_contribution_bundle.o: process_dimensions.o
+multiplicative_product.o: process_dimensions.o
 nlo_decay_metadata.o: process_dimensions.o fks_metadata.o \
 	nlo_contribution_bundle.o
 decay_chain_metadata.o: process_dimensions.o fks_metadata.o \
@@ -300,6 +302,7 @@ fks_singular_bridge.o: fks_model_state.o fks_singular.o \
 fks_random_bridge.o: fks_random.o mint_module.o
 driver_mintFO.o: process_dimensions.o fks_metadata.o fks_channel_map.o \
 	decay_chain_metadata.o nlo_contribution_bundle.o \
+	multiplicative_product.o \
 	fnlo_scale_variations.o \
 	fks_random.o genps_fks.o \
 	weight_lines.o mint_module.o FKSParams.o MC_integer.o setscales.o \

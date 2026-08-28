@@ -1358,6 +1358,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               'fks_metadata.f90',
                               'fks_metadata_bridge.f',
                               'nlo_contribution_bundle.f90',
+                              'multiplicative_product.f90',
                               'nlo_decay_metadata.f90',
                               'decay_chain_metadata.f90',
                               'decay_chain_parameters.f90',

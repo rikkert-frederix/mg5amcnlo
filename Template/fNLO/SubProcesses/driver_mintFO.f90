@@ -29,6 +29,7 @@ module driver_mintfo_module
        nlo_contribution_count, contribution_representative_fks, &
        nlo_virtual_grid_count, bundle_component_count, &
        bundle_component_label
+  use multiplicative_product, only: initialize_multiplicative_product
   use setscales_module, only: set_alphas
   use split_orders, only: check_amp_split
   use cuts_module, only: passcuts
@@ -152,6 +153,9 @@ contains
     call init_fks_metadata_bridge()
     call validate_process_and_born_dimensions()
     call validate_fks_metadata()
+    ! Validate the lazy product-sector description at startup.  Numerical
+    ! product dispatch remains separate from the additive sigint path.
+    call initialize_multiplicative_product()
     force_polecheck = .false.
 
     write (*, *) drv_getpid()

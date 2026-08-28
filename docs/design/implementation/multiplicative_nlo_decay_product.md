@@ -183,14 +183,58 @@ potentially exponential list of sectors.
 
 This increment constructs the multi-emission coordinate projections and the
 correct reduced matrix-element topologies on the Python generation side.
-The Fortran momentum maps and numerical FKS kernels still use the legacy
-single-emission slots and are the next runtime increment.
+
+## Tensor-product runtime increment
+
+`multiplicative_product.f90` now consumes
+`multiplicative_product_info.dat` in every generated subprocess.  It validates
+the prescription and all stage, choice, split-order and mixed-radix counts at
+startup.  Sector and counterevent IDs remain 64-bit and lazy: the runtime can
+decode one tensor event without allocating the Cartesian product.  Its event
+descriptor carries the selected source and FKS configuration, the parent
+selector, corrected node, local `(i,j,ij)`, projected `(xi,y,phi)`, and local
+`R/S/C/SC` slot for every stage.
+
+The runtime has an explicit stage-local dispatch interface for radiation maps,
+correlated tree carriers and scalar FKS kernels.  It composes production before
+the independent root decays, so every decay mapper sees the recoil left by the
+production map.
+All maps operate on a private event copy and are committed atomically only if
+every stage succeeds with finite momenta and Jacobians.  The same mapped point
+is then sent to the coherent carrier and to every local kernel.  A tensor-event
+weight is exactly
+
+```text
+mapping Jacobian * coherent carrier * inclusion sign
+                 * product_stage(local FKS kernel),
+```
+
+with no sum over other sectors and no implicit perturbative expansion.  This
+is the runtime algebra needed for multiple emissions and it is tested with a
+three-real `SC*S*C` event, including projection, mapping order, the product of
+local kernels, and failure rollback.
+
+Here "coherent carrier" includes every simultaneous colour and spin
+correlation requested by the local slots.  In particular, an `S*C` point needs
+a carrier with both the soft colour insertion and the collinear spin insertion.
+It is not permissible to multiply independently colour/spin-summed scalar FKS
+weights.  The local-kernel callbacks provide only the scalar kinematic and
+plus-distribution factors; the carrier callback owns these operator insertions.
+
+The old fixed-order arrays still have room for only one extra external parton.
+The generic runtime therefore deliberately does not call those legacy maps or
+the additive `sigint_impl`: doing so for a two- or three-real carrier would
+silently alias emitted legs.  The concrete generated dispatcher must first
+export a canonical max-multiplicity leg layout and matching carrier routines.
+Until that dispatcher is present, startup validates the product metadata but
+the default numerical result remains the existing additive result.
 
 ## Remaining implementation sequence
 
-1. Consume the tensor-event description in the Fortran phase-space runtime,
-   compose several resonance-aware radiation maps, and evaluate the local
-   FKS kernels for every tensor counterevent.
+1. Export a canonical max-multiplicity external-leg layout and the requested
+   coherently multi-correlated carrier routines, then bind the tensor-runtime
+   map and kernel dispatchers to the existing resonance-aware FKS
+   implementations.
 2. Add recursive simultaneous current insertion for nested corrected nodes
    and audit identical emissions belonging to different resonance histories.
 3. Export finite stage-local virtual interference data and implement exact
