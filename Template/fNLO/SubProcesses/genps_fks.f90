@@ -9,6 +9,7 @@ module genps_fks
   use fks_diagnostics, only: xmom_compare
   use genps_born, only: born_phase_space, generate_born_phase_space, &
                         invalidate_born_phase_space
+  use factorized_phase_space, only: reset_factorized_phase_space
   use decay_chain_metadata, only: has_decay_chains, context_for_fks, &
                                   real_phase_space_dimension
   use decay_chain_kinematics, only: get_core_born_momenta, &
@@ -59,6 +60,10 @@ contains
     call validate_process_dimensions()
     call cpu_time(tBefore)
 
+    ! Block-local momenta belong to this one event/counterevent family.  Each
+    ! block is generated in its own rest frame and boosted independently;
+    ! matrix-element providers consume that cache, not the visible event.
+    call reset_factorized_phase_space()
     call generate_born_phase_space(ndim, iconfig, x, born)
 
     pass = born%valid
@@ -372,8 +377,9 @@ contains
       end if
 !
       if (has_decay_chains() .and. pass .and. xjac > 0d0) then
-        call store_core_event_momenta(icountevts, xp)
-        call expand_real_decay_momenta(nfksprocess, x, xp, visible_xp, pass)
+        call store_core_event_momenta(icountevts, xp, core_particle_count)
+        call expand_real_decay_momenta(nfksprocess, icountevts, x, xp, &
+                                       visible_xp, pass)
         if (.not. pass) xjac = -198d0
       else
         visible_xp = xp

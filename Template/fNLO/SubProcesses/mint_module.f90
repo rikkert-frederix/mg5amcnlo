@@ -48,12 +48,18 @@ module mint_module
   use FKSParams ! contains use_poly_virtual
   use mc_integer_module, only: regrid_MC_integer, empty_MC_integer, &
                                reset_MC_grid
+  use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
+       factorized_shared_dimension, factorized_radiation_block, &
+       bundle_nlo_component
   use polynomial_fit, only: init_polyfit, add_point_polyfit, &
                             do_polyfit, get_polyfit, save_polyfit, restore_polyfit
   implicit none
   private
   integer, parameter, private :: nintervals = 32    ! max number of intervals in the integration grids
-  integer, parameter, public  :: ndimmax = 60       ! max number of dimensions of the integral
+  ! The canonical phase-space vector remains bounded by 99 entries.  MINT's
+  ! vector can be larger because every factorized NLO block owns an
+  ! additional copy of the three FKS radiation variables.
+  integer, parameter, public  :: ndimmax = 3*99     ! max number of integration-grid dimensions
   ! A contribution bundle can assign one virtual grid to every
   ! contribution/split-order pair.  Size the workspace from the generated
   ! process instead of imposing the historical ten-grid limit.  Keep ten as
@@ -92,6 +98,7 @@ module mint_module
 
 ! private variables
   integer, private :: nit, nit_included, kpoint_iter, nint_used, nint_used_virt, min_it, ncalls, pass_cuts_point, ng, npg, k
+  integer, private :: born_dimensions = 0
   integer, allocatable, private :: icell(:), ncell(:)
   integer, dimension(nintegrals), private :: non_zero_point, ntotcalls
   integer, allocatable, private :: nhits(:, :, :)
@@ -172,7 +179,7 @@ contains
 
   subroutine initialize_mint_state
     implicit none
-    integer :: virtual_dimensions
+    integer :: expected_born_dimensions
 
     if (ndim .lt. 1 .or. ndim .gt. ndimmax) then
       write (*, *) 'Invalid MINT dimension:', ndim
@@ -187,13 +194,15 @@ contains
       stop 1
     end if
 
-    virtual_dimensions = max(ndim - 3, 0)
+    expected_born_dimensions = factorized_shared_dimension(ndim)
     if (mint_state_initialized) then
       if (size(icell) .eq. ndim .and. size(nhits, 3) .eq. nchans .and. &
-          size(nvirt, 2) .eq. virtual_dimensions .and. &
+          size(nvirt, 2) .eq. expected_born_dimensions .and. &
           ubound(nvirt, 3) .eq. n_ord_virt) return
       call finalize_mint_state
     end if
+
+    born_dimensions = expected_born_dimensions
 
     allocate (icell(ndim), ncell(ndim), rand(ndim))
     allocate (nhits(nintervals, ndim, nchans))
@@ -205,15 +214,15 @@ contains
     allocate (chi2(nintegrals, 0:nchans))
     allocate (ans_chan(0:nchans))
     allocate (xgrid_new(0:nintervals, ndim))
-    allocate (nvirt(nintervals_virt, virtual_dimensions, &
+    allocate (nvirt(nintervals_virt, born_dimensions, &
                     0:n_ord_virt, nchans))
-    allocate (nvirt_acc(nintervals_virt, virtual_dimensions, &
+    allocate (nvirt_acc(nintervals_virt, born_dimensions, &
                         0:n_ord_virt, nchans))
-    allocate (ave_virt(nintervals_virt, virtual_dimensions, &
+    allocate (ave_virt(nintervals_virt, born_dimensions, &
                        0:n_ord_virt, nchans))
-    allocate (ave_virt_acc(nintervals_virt, virtual_dimensions, &
+    allocate (ave_virt_acc(nintervals_virt, born_dimensions, &
                            0:n_ord_virt, nchans))
-    allocate (ave_born_acc(nintervals_virt, virtual_dimensions, &
+    allocate (ave_born_acc(nintervals_virt, born_dimensions, &
                            0:n_ord_virt, nchans))
     allocate (even_iii(ndim), even_kkk(ndim))
 
@@ -268,6 +277,7 @@ contains
     if (allocated(even_kkk)) deallocate (even_kkk)
     even_dng = 0d0
     even_current_dim = 0
+    born_dimensions = 0
     bad_iteration = .false.
     mint_state_initialized = .false.
   end subroutine finalize_mint_state
@@ -749,11 +759,26 @@ contains
   subroutine add_point_to_grids(x)
     implicit none
     integer :: kdim, k_ord_virt, ithree, isix
+    integer :: radiation_block, component, component_integral
     double precision, dimension(ndimmax) :: x
-    double precision :: virtual, born
+    double precision :: virtual, born, grid_weight
 ! accumulate the function in xacc(icell(kdim),kdim) to adjust the grid later
     do kdim = 1, ndim
-      xacc(icell(kdim), kdim, ichan) = xacc(icell(kdim), kdim, ichan) + f(1)
+      grid_weight = f(1)
+      if (has_nlo_contribution_bundle()) then
+        radiation_block = factorized_radiation_block(ndim, kdim)
+        if (radiation_block > 0) then
+          component = bundle_nlo_component(radiation_block)
+          component_integral = first_bundle_component_integral + &
+               component - 1
+          ! Each production/decay radiation triple learns only from its own
+          ! NLO numerator.  Common Born dimensions continue to use the total
+          ! absolute integrand.
+          grid_weight = abs(f(component_integral))
+        end if
+      end if
+      xacc(icell(kdim), kdim, ichan) = &
+           xacc(icell(kdim), kdim, ichan) + grid_weight
     end do
 ! Set the Born contribution (to compute the average_virtual) to zero if
 ! the virtual was not computed for this phase-space point. Compensate by
@@ -772,7 +797,8 @@ contains
         if (use_poly_virtual) then
           virtual = f(ithree)*virtual_fraction(ichan) + &
                     polyfit(k_ord_virt)*f(isix)
-          call add_point_polyfit(ichan, k_ord_virt, x(1:ndim - 3), &
+          call add_point_polyfit(ichan, k_ord_virt, &
+                                 x(1:born_dimensions), &
                                  virtual/born, born/wgt_mult)
         else
           virtual = f(ithree)*virtual_fraction(ichan) + &
@@ -837,7 +863,8 @@ contains
     end do
     do k_ord_virt = 0, n_ord_virt
       if (use_poly_virtual) then
-        call get_polyfit(ichan, k_ord_virt, x(1:ndim - 3), polyfit(k_ord_virt))
+        call get_polyfit(ichan, k_ord_virt, &
+                         x(1:born_dimensions), polyfit(k_ord_virt))
       else
         call get_ave_virt(x, k_ord_virt)
       end if
@@ -965,7 +992,7 @@ contains
     regridded(1:nchans) = .true.
     nhits_in_grids(1:nchans) = 0
     if (use_poly_virtual) then
-      call init_polyfit(ndim - 3, nchans, n_ord_virt, 1000)
+      call init_polyfit(born_dimensions, nchans, n_ord_virt, 1000)
     else
       call init_ave_virt
     end if
@@ -1004,7 +1031,8 @@ contains
       if (.not. use_poly_virtual) then
         do j = 1, nintervals_virt
           do k = 0, n_ord_virt
-            write (12, *) 'AVE', (ave_virt(j, i, k, kchan), i=1, ndim - 3)
+            write (12, *) 'AVE', &
+                 (ave_virt(j, i, k, kchan), i=1, born_dimensions)
           end do
         end do
       end if
@@ -1034,7 +1062,8 @@ contains
       if (.not. use_poly_virtual) then
         do j = 1, nintervals_virt
           do k = 0, n_ord_virt
-            read (12, *) dummy, (ave_virt(j, i, k, kchan), i=1, ndim - 3)
+            read (12, *) dummy, &
+                 (ave_virt(j, i, k, kchan), i=1, born_dimensions)
           end do
         end do
       end if
@@ -1054,7 +1083,8 @@ contains
       do kchan = 1, nchans
         backspace (12)
       end do
-      call init_polyfit(ndim - 3, nchans, n_ord_virt, maxval(points(1:nchans)))
+      call init_polyfit(born_dimensions, nchans, n_ord_virt, &
+                        maxval(points(1:nchans)))
       call restore_polyfit(12)
       call do_polyfit()
     end if
@@ -1237,11 +1267,16 @@ contains
       write (*, *) 'Too many grids to keep track off', n_ord_virt, n_ave_virt
       stop 1
     end if
-    nvirt(1:nint_used_virt, 1:ndim - 3, 0:n_ord_virt, 1:nchans) = 0
-    ave_virt(1:nint_used_virt, 1:ndim - 3, 0:n_ord_virt, 1:nchans) = 0d0
-    nvirt_acc(1:nint_used_virt, 1:ndim - 3, 0:n_ord_virt, 1:nchans) = 0
-    ave_virt_acc(1:nint_used_virt, 1:ndim - 3, 0:n_ord_virt, 1:nchans) = 0d0
-    ave_born_acc(1:nint_used_virt, 1:ndim - 3, 0:n_ord_virt, 1:nchans) = 0d0
+    nvirt(1:nint_used_virt, 1:born_dimensions, &
+          0:n_ord_virt, 1:nchans) = 0
+    ave_virt(1:nint_used_virt, 1:born_dimensions, &
+             0:n_ord_virt, 1:nchans) = 0d0
+    nvirt_acc(1:nint_used_virt, 1:born_dimensions, &
+              0:n_ord_virt, 1:nchans) = 0
+    ave_virt_acc(1:nint_used_virt, 1:born_dimensions, &
+                 0:n_ord_virt, 1:nchans) = 0d0
+    ave_born_acc(1:nint_used_virt, 1:born_dimensions, &
+                 0:n_ord_virt, 1:nchans) = 0d0
   end subroutine init_ave_virt
 
   subroutine get_ave_virt(x, k_ord_virt)
@@ -1249,12 +1284,13 @@ contains
     integer :: kdim, ncell, k_ord_virt
     double precision, dimension(ndimmax) :: x
     average_virtual(k_ord_virt, ichan) = 0d0
-    do kdim = 1, ndim - 3
+    do kdim = 1, born_dimensions
       ncell = min(int(x(kdim)*nint_used_virt) + 1, nint_used_virt)
       average_virtual(k_ord_virt, ichan) = average_virtual(k_ord_virt, ichan) &
                                            + ave_virt(ncell, kdim, k_ord_virt, ichan)
     end do
-    average_virtual(k_ord_virt, ichan) = average_virtual(k_ord_virt, ichan)/(ndim - 3)
+    average_virtual(k_ord_virt, ichan) = &
+         average_virtual(k_ord_virt, ichan)/born_dimensions
   end subroutine get_ave_virt
 
   subroutine fill_ave_virt(x, k_ord_virt, virtual, born)
@@ -1262,7 +1298,7 @@ contains
     integer :: kdim, ncell, k_ord_virt
     double precision, dimension(ndimmax) :: x
     double precision :: virtual, born
-    do kdim = 1, ndim - 3
+    do kdim = 1, born_dimensions
       ncell = min(int(x(kdim)*nint_used_virt) + 1, nint_used_virt)
       nvirt_acc(ncell, kdim, k_ord_virt, ichan) = nvirt_acc(ncell, kdim, k_ord_virt, ichan) + 1
       ave_virt_acc(ncell, kdim, k_ord_virt, ichan) = ave_virt_acc(ncell, kdim, k_ord_virt, ichan) + virtual
@@ -1275,7 +1311,7 @@ contains
     integer kchan, kdim, i, k_ord_virt
 ! need to solve for k_new = (virt+k_old*born)/born = virt/born + k_old
     do kchan = 1, nchans
-      do kdim = 1, ndim - 3
+      do kdim = 1, born_dimensions
         do i = 1, nint_used_virt
           if (ave_born_acc(i, kdim, k_ord_virt, kchan) .eq. 0d0) cycle
           if (ave_virt(i, kdim, k_ord_virt, kchan) .eq. 0d0) then ! i.e. first iteration
@@ -1294,19 +1330,25 @@ contains
       end do
     end do
 ! reset the acc values
-    nvirt(1:nint_used_virt, 1:ndim - 3, k_ord_virt, 1:nchans) = &
-      nvirt(1:nint_used_virt, 1:ndim - 3, k_ord_virt, 1:nchans) &
-      + nvirt_acc(1:nint_used_virt, 1:ndim - 3, k_ord_virt, 1:nchans)
-    nvirt_acc(1:nint_used_virt, 1:ndim - 3, k_ord_virt, 1:nchans) = 0
-    ave_born_acc(1:nint_used_virt, 1:ndim - 3, k_ord_virt, 1:nchans) = 0d0
-    ave_virt_acc(1:nint_used_virt, 1:ndim - 3, k_ord_virt, 1:nchans) = 0d0
+    nvirt(1:nint_used_virt, 1:born_dimensions, &
+          k_ord_virt, 1:nchans) = &
+      nvirt(1:nint_used_virt, 1:born_dimensions, &
+            k_ord_virt, 1:nchans) &
+      + nvirt_acc(1:nint_used_virt, 1:born_dimensions, &
+                  k_ord_virt, 1:nchans)
+    nvirt_acc(1:nint_used_virt, 1:born_dimensions, &
+              k_ord_virt, 1:nchans) = 0
+    ave_born_acc(1:nint_used_virt, 1:born_dimensions, &
+                 k_ord_virt, 1:nchans) = 0d0
+    ave_virt_acc(1:nint_used_virt, 1:born_dimensions, &
+                 k_ord_virt, 1:nchans) = 0d0
   end subroutine regrid_ave_virt
 
   subroutine double_ave_virt(k_ord_virt)
     implicit none
     integer :: kdim, i, k_ord_virt, kchan
     do kchan = 1, nchans
-      do kdim = 1, ndim - 3
+      do kdim = 1, born_dimensions
         do i = nint_used_virt, 1, -1
           ave_virt(i*2, kdim, k_ord_virt, kchan) = ave_virt(i, kdim, k_ord_virt, kchan)
           if (nvirt(i, kdim, k_ord_virt, kchan) .ne. 0) then
@@ -1379,7 +1421,8 @@ contains
     implicit none
     integer :: kchan
     xgrid(0:nintervals, 1:ndim, 1:nchans) = 0d0
-    ave_virt(1:nintervals_virt, 1:ndim - 3, 0:n_ord_virt, 1:nchans) = 0d0
+    ave_virt(1:nintervals_virt, 1:born_dimensions, &
+             0:n_ord_virt, 1:nchans) = 0d0
     ans(1:nintegrals, 1:nchans) = 0d0
     unc(1:nintegrals, 1:nchans) = 0d0
     nhits_in_grids(1:nchans) = 0

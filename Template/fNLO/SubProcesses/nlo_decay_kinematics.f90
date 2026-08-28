@@ -3,8 +3,9 @@ module nlo_decay_kinematics
                                 validate_process_dimensions
   use phase_space_kinematics, only: phase_space_lambda, rotate_invar
   use boostwdir2_module, only: boostwdir2_in_place
-  use decay_chain_kinematics, only: generate_nbody, boost_from_rest, &
-                                    minkowski_square
+  use decay_chain_kinematics, only: generate_nbody, generate_nbody_rest, &
+       boost_from_rest, boost_nbody_from_rest, minkowski_square
+  use factorized_phase_space, only: store_factorized_block_momenta
   use decay_chain_parameters, only: decay_dummy_width_ratio, &
                                     decay_physical_width
   use nlo_decay_metadata, only: initialize_nlo_decay_metadata, &
@@ -41,6 +42,8 @@ module nlo_decay_kinematics
   double precision, allocatable, save :: production_born(:, :)
   double precision, allocatable, save :: born_local(:, :)
   integer, allocatable, save :: node_random_start(:)
+  double precision, allocatable, save :: node_rest_storage(:, :, :)
+  logical, allocatable, save :: node_rest_valid(:)
   double precision, allocatable, save :: local_event_cache(:, :, :)
   double precision, allocatable, save :: local_fks_momentum_cache(:, :)
   integer, allocatable, save :: local_event_configuration(:)
@@ -93,6 +96,8 @@ contains
     allocate(production_born(0:3, nexternal))
     allocate(born_local(0:3, nexternal))
     allocate(node_random_start(nlo_decay_node_count()))
+    allocate(node_rest_storage(0:3, nexternal, nlo_decay_node_count()))
+    allocate(node_rest_valid(nlo_decay_node_count()))
     allocate(local_event_cache(0:3, nexternal, 0:real_event))
     allocate(local_fks_momentum_cache(0:3, 0:real_event))
     allocate(local_event_configuration(0:real_event))
@@ -104,6 +109,8 @@ contains
     production_born = 0d0
     born_local = 0d0
     node_random_start = 0
+    node_rest_storage = 0d0
+    node_rest_valid = .false.
     local_event_cache = 0d0
     local_fks_momentum_cache = -1d0
     local_event_configuration = 0
@@ -164,6 +171,8 @@ contains
     if (allocated(production_born)) deallocate(production_born)
     if (allocated(born_local)) deallocate(born_local)
     if (allocated(node_random_start)) deallocate(node_random_start)
+    if (allocated(node_rest_storage)) deallocate(node_rest_storage)
+    if (allocated(node_rest_valid)) deallocate(node_rest_valid)
     if (allocated(local_event_cache)) deallocate(local_event_cache)
     if (allocated(local_fks_momentum_cache)) &
          deallocate(local_fks_momentum_cache)
@@ -416,6 +425,8 @@ contains
     production_born = 0d0
     born_local = 0d0
     node_random_start = 0
+    node_rest_storage = 0d0
+    node_rest_valid = .false.
     parent_born = 0d0
     local_event_cache = 0d0
     local_fks_momentum_cache = -1d0
@@ -437,6 +448,8 @@ contains
     do leg = 1, final_count
       production_born(:, nincoming + leg) = final_momenta(:, leg)
     end do
+    call store_factorized_block_momenta(soft_counterevent, 0, &
+         nlo_decay_production_count(), production_born)
 
     decay_index = production_random_dimension() + 1
     call expand_born_context(context, x, decay_index, visible, xjac, &
@@ -533,6 +546,8 @@ contains
     integer :: leg, final_count, final_index, target
     double precision :: child_masses(nexternal)
     double precision :: child_momenta(0:3, nexternal)
+    double precision :: rest_momenta(0:3, nexternal)
+    double precision :: block_momenta(0:3, nexternal)
 
     node_random_start(node) = index
     if (node == nlo_decay_corrected_node()) then
@@ -548,9 +563,15 @@ contains
       if (final_count /= nlo_decay_node_child_count(node)) then
         call fail_kinematics('corrected-node child count is inconsistent')
       end if
-      call generate_nbody(parent, final_count, child_masses, x, index, &
-           child_momenta, xjac, xpswgt, pass)
+      call generate_nbody_rest(node_masses(node), final_count, &
+           child_masses, x, index, rest_momenta, xjac, xpswgt, pass)
       if (.not. pass) return
+      node_rest_storage(:, :, node) = 0d0
+      node_rest_storage(:, 1:final_count, node) = &
+           rest_momenta(:, 1:final_count)
+      node_rest_valid(node) = .true.
+      call boost_nbody_from_rest(rest_momenta, final_count, parent, &
+                                 node_masses(node), child_momenta)
       index = index + 3*final_count - 4
       final_index = 0
       do leg = 1, nlo_decay_local_count(context)
@@ -568,6 +589,8 @@ contains
         end if
       end do
       parent_born = parent
+      call store_factorized_block_momenta(soft_counterevent, node, &
+           nlo_decay_local_count(context), born_local)
       return
     end if
 
@@ -581,10 +604,22 @@ contains
         child_masses(child) = leaf_masses(identifier)
       end if
     end do
-    call generate_nbody(parent, child_count, child_masses, x, index, &
-         child_momenta, xjac, xpswgt, pass)
+    call generate_nbody_rest(node_masses(node), child_count, child_masses, &
+         x, index, rest_momenta, xjac, xpswgt, pass)
     if (.not. pass) return
+    node_rest_storage(:, :, node) = 0d0
+    node_rest_storage(:, 1:child_count, node) = &
+         rest_momenta(:, 1:child_count)
+    node_rest_valid(node) = .true.
+    call boost_nbody_from_rest(rest_momenta, child_count, parent, &
+                               node_masses(node), child_momenta)
     index = index + 3*child_count - 4
+    block_momenta = 0d0
+    block_momenta(:, 1) = parent
+    block_momenta(:, 2:child_count + 1) = &
+         child_momenta(:, 1:child_count)
+    call store_factorized_block_momenta(soft_counterevent, node, &
+                                        child_count + 1, block_momenta)
     do child = 1, child_count
       identifier = nlo_decay_node_child_id(node, child)
       child_kind = nlo_decay_node_child_kind(node, child)
@@ -696,7 +731,18 @@ contains
     local_fks_momentum_cache(:, event_slot) = reference_rest
     local_event_configuration(event_slot) = configuration
     local_event_valid(event_slot) = .true.
-    call expand_event_context(context, local_event, x, visible, pass)
+    ! Keep slot zero in the Born provider layout.  The soft projection of a
+    ! real decay still has the extra emitted local leg and is not a valid
+    ! input array for the Born density matrix.
+    if (event_slot /= soft_counterevent) then
+      call store_factorized_block_momenta(event_slot, 0, &
+           nlo_decay_production_count(), production_born)
+      call store_factorized_block_momenta(event_slot, &
+           nlo_decay_corrected_node(), nlo_decay_local_count(context), &
+           local_event)
+    end if
+    call expand_event_context(context, event_slot, local_event, visible, &
+                              pass)
     if (.not. pass) return
     pass = .true.
   end subroutine generate_nlo_decay_fks_event
@@ -1098,10 +1144,10 @@ contains
   end subroutine emitted_angle
 
 
-  subroutine expand_event_context(context, local_momenta, x, visible, pass)
-    integer, intent(in) :: context
+  subroutine expand_event_context(context, event_slot, local_momenta, &
+                                  visible, pass)
+    integer, intent(in) :: context, event_slot
     double precision, intent(in) :: local_momenta(0:3, nexternal)
-    double precision, intent(in) :: x(99)
     double precision, intent(out) :: visible(0:, :)
     integer :: leg, target
     logical, intent(out) :: pass
@@ -1116,25 +1162,24 @@ contains
         visible(:, target) = production_born(:, leg)
       else
         target = nlo_decay_production_target_id(context, leg)
-        call expand_event_node(context, target, production_born(:, leg), &
-             local_momenta, x, visible, pass)
+        call expand_event_node(context, event_slot, target, &
+             production_born(:, leg), local_momenta, visible, pass)
         if (.not. pass) return
       end if
     end do
   end subroutine expand_event_context
 
 
-  recursive subroutine expand_event_node(context, node, parent, &
-                                         local_momenta, x, visible, pass)
-    integer, intent(in) :: context, node
+  recursive subroutine expand_event_node(context, event_slot, node, parent, &
+                                         local_momenta, visible, pass)
+    integer, intent(in) :: context, event_slot, node
     double precision, intent(in) :: parent(0:3)
-    double precision, intent(in) :: local_momenta(0:3, nexternal), x(99)
+    double precision, intent(in) :: local_momenta(0:3, nexternal)
     double precision, intent(inout) :: visible(0:, :)
     logical, intent(out) :: pass
     integer :: leg, target, child, child_count, child_kind, identifier
-    double precision :: child_masses(nexternal)
     double precision :: child_momenta(0:3, nexternal)
-    double precision :: unused_jacobian, unused_weight
+    double precision :: block_momenta(0:3, nexternal)
 
     pass = .true.
     if (node == nlo_decay_corrected_node()) then
@@ -1143,8 +1188,8 @@ contains
         target = nlo_decay_local_target_id(context, leg)
         if (nlo_decay_local_target_kind(context, leg) == &
             nlo_decay_node_target) then
-          call expand_event_node(context, target, local_momenta(:, leg), &
-               local_momenta, x, visible, pass)
+          call expand_event_node(context, event_slot, target, &
+               local_momenta(:, leg), local_momenta, visible, pass)
           if (.not. pass) return
         else
           visible(:, target) = local_momenta(:, leg)
@@ -1154,27 +1199,26 @@ contains
     end if
 
     child_count = nlo_decay_node_child_count(node)
+    if (.not. node_rest_valid(node)) then
+      call fail_kinematics( &
+           'a spectator decay rest-frame block is unavailable')
+    end if
+    call boost_nbody_from_rest(node_rest_storage(:, :, node), child_count, &
+                               parent, node_masses(node), child_momenta)
+    block_momenta = 0d0
+    block_momenta(:, 1) = parent
+    block_momenta(:, 2:child_count + 1) = &
+         child_momenta(:, 1:child_count)
+    if (event_slot /= soft_counterevent) then
+      call store_factorized_block_momenta(event_slot, node, &
+                                          child_count + 1, block_momenta)
+    end if
     do child = 1, child_count
       identifier = nlo_decay_node_child_id(node, child)
       child_kind = nlo_decay_node_child_kind(node, child)
       if (child_kind == nlo_decay_node_child) then
-        child_masses(child) = node_masses(identifier)
-      else
-        child_masses(child) = leaf_masses(identifier)
-      end if
-    end do
-    unused_jacobian = 1d0
-    unused_weight = 1d0
-    call generate_nbody(parent, child_count, child_masses, x, &
-         node_random_start(node), child_momenta, unused_jacobian, &
-         unused_weight, pass)
-    if (.not. pass) return
-    do child = 1, child_count
-      identifier = nlo_decay_node_child_id(node, child)
-      child_kind = nlo_decay_node_child_kind(node, child)
-      if (child_kind == nlo_decay_node_child) then
-        call expand_event_node(context, identifier, child_momenta(:, child), &
-             local_momenta, x, visible, pass)
+        call expand_event_node(context, event_slot, identifier, &
+             child_momenta(:, child), local_momenta, visible, pass)
         if (.not. pass) return
       else
         target = nlo_decay_leaf_visible(context, identifier)

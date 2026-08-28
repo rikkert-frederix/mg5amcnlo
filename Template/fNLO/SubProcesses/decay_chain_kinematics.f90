@@ -1,6 +1,8 @@
 module decay_chain_kinematics
   use process_dimensions, only: nexternal, nincoming, validate_process_dimensions
-  use fnlo_process_common, only: event_from_decay => from_decay
+  use fnlo_process_common, only: event_from_decay => from_decay, &
+       soft_counterevent
+  use factorized_phase_space, only: store_factorized_block_momenta
   use phase_space_kinematics, only: phase_space_lambda
   use decay_chain_metadata, only: has_decay_chains, decay_node_count, &
        decay_leaf_count, decay_random_dimension, born_context, &
@@ -20,6 +22,8 @@ module decay_chain_kinematics
   double precision, allocatable, save :: leaf_masses(:)
   double precision, allocatable, save :: core_born_storage(:, :)
   double precision, allocatable, save :: core_event_storage(:, :, :)
+  double precision, allocatable, save :: node_rest_storage(:, :, :)
+  logical, allocatable, save :: node_rest_valid(:)
 
   public :: initialize_decay_chain_kinematics
   public :: minimum_core_final_mass, core_mass
@@ -31,7 +35,8 @@ module decay_chain_kinematics
   public :: contract_visible_momenta
   ! These Lorentz-covariant building blocks are also used by the dedicated
   ! NLO-decay phase-space path.  They do not depend on decay-chain metadata.
-  public :: generate_nbody, boost_from_rest, minkowski_square
+  public :: generate_nbody, generate_nbody_rest
+  public :: boost_from_rest, boost_nbody_from_rest, minkowski_square
   public :: set_decay_cut_mask
 
   interface
@@ -55,8 +60,12 @@ contains
     allocate(leaf_masses(decay_leaf_count()))
     allocate(core_born_storage(0:3, nexternal - 1))
     allocate(core_event_storage(0:3, nexternal, 0:3))
+    allocate(node_rest_storage(0:3, nexternal, decay_node_count()))
+    allocate(node_rest_valid(decay_node_count()))
     core_born_storage = 0d0
     core_event_storage = 0d0
+    node_rest_storage = 0d0
+    node_rest_valid = .false.
 
     do node = 1, decay_node_count()
       node_masses(node) = abs(get_mass_from_id(node_pdg(node)))
@@ -127,6 +136,8 @@ contains
     double precision :: final_momenta(0:3, nexternal)
 
     call require_enabled()
+    node_rest_storage = 0d0
+    node_rest_valid = .false.
     context = born_context()
     core_count = context_core_count(context)
     final_count = core_count - nincoming
@@ -147,10 +158,13 @@ contains
     do leg = 1, final_count
       core_born_storage(:, nincoming + leg) = final_momenta(:, leg)
     end do
+    call store_factorized_block_momenta(soft_counterevent, 0, core_count, &
+                                        core_born_storage)
 
     visible_momenta = 0d0
     index = decay_variable_start()
-    call expand_context(context, core_born_storage, x, index, &
+    call expand_context(context, soft_counterevent, core_born_storage, x, &
+                        index, &
                         visible_momenta, xjac, xpswgt, .true., pass)
     if (.not. pass) return
     if (index /= decay_variable_start() + decay_random_dimension()) then
@@ -160,9 +174,10 @@ contains
   end subroutine generate_core_born_and_decays
 
 
-  subroutine expand_real_decay_momenta(configuration, x, core_momenta, &
+  subroutine expand_real_decay_momenta(configuration, event_slot, x, &
+                                       core_momenta, &
                                        visible_momenta, pass)
-    integer, intent(in) :: configuration
+    integer, intent(in) :: configuration, event_slot
     double precision, intent(in) :: x(99)
     double precision, intent(in) :: core_momenta(0:3, nexternal)
     double precision, intent(out) :: visible_momenta(0:3, nexternal)
@@ -176,8 +191,9 @@ contains
     index = decay_variable_start()
     unused_jacobian = 1d0
     unused_weight = 1d0
-    call expand_context(context, core_momenta, x, index, visible_momenta, &
-                        unused_jacobian, unused_weight, .false., pass)
+    call expand_context(context, event_slot, core_momenta, x, index, &
+                        visible_momenta, unused_jacobian, unused_weight, &
+                        .false., pass)
     if (.not. pass) return
     if (index /= decay_variable_start() + decay_random_dimension()) then
       call fail_kinematics('real decay random-variable accounting is inconsistent')
@@ -185,9 +201,9 @@ contains
   end subroutine expand_real_decay_momenta
 
 
-  subroutine expand_context(context, core_momenta, x, index, &
+  subroutine expand_context(context, event_slot, core_momenta, x, index, &
                             visible_momenta, xjac, xpswgt, keep_weight, pass)
-    integer, intent(in) :: context
+    integer, intent(in) :: context, event_slot
     double precision, intent(in) :: core_momenta(0:, :), x(99)
     integer, intent(inout) :: index
     double precision, intent(out) :: visible_momenta(0:, :)
@@ -203,8 +219,9 @@ contains
       if (core_target_kind(context, leg) == direct_leg_target) then
         visible_momenta(:, target) = core_momenta(:, leg)
       else
-        call expand_node(context, target, core_momenta(:, leg), x, index, &
-                         visible_momenta, xjac, xpswgt, keep_weight, pass)
+        call expand_node(context, event_slot, target, core_momenta(:, leg), &
+                         x, index, visible_momenta, xjac, xpswgt, &
+                         keep_weight, pass)
         if (.not. pass) return
       end if
     end do
@@ -224,10 +241,11 @@ contains
   end subroutine set_decay_cut_mask
 
 
-  recursive subroutine expand_node(context, node, parent_momentum, x, &
+  recursive subroutine expand_node(context, event_slot, node, &
+                                   parent_momentum, x, &
                                    index, visible_momenta, xjac, xpswgt, &
                                    keep_weight, pass)
-    integer, intent(in) :: context, node
+    integer, intent(in) :: context, event_slot, node
     double precision, intent(in) :: parent_momentum(0:3), x(99)
     integer, intent(inout) :: index
     double precision, intent(inout) :: visible_momenta(0:, :)
@@ -238,6 +256,8 @@ contains
     integer :: child_count, child, identifier, child_kind
     double precision :: child_masses(nexternal)
     double precision :: child_momenta(0:3, nexternal)
+    double precision :: rest_momenta(0:3, nexternal)
+    double precision :: block_momenta(0:3, nexternal)
     double precision :: local_jacobian, local_weight
 
     child_count = node_child_count(node)
@@ -253,23 +273,49 @@ contains
 
     local_jacobian = 1d0
     local_weight = 1d0
-    call generate_nbody(parent_momentum, child_count, child_masses, x, &
-                        index, child_momenta, local_jacobian, local_weight, &
-                        pass)
-    if (.not. pass) return
+    if (keep_weight) then
+      call generate_nbody_rest(node_masses(node), child_count, &
+           child_masses, x, index, rest_momenta, local_jacobian, &
+           local_weight, pass)
+      if (.not. pass) return
+      node_rest_storage(:, :, node) = 0d0
+      node_rest_storage(:, 1:child_count, node) = &
+           rest_momenta(:, 1:child_count)
+      node_rest_valid(node) = .true.
+    else
+      if (.not. node_rest_valid(node)) then
+        call fail_kinematics( &
+             'a decay rest-frame block is unavailable for an event')
+      end if
+      rest_momenta = node_rest_storage(:, :, node)
+    end if
+    call boost_nbody_from_rest(rest_momenta, child_count, parent_momentum, &
+                               node_masses(node), child_momenta)
     index = index + 3*child_count - 4
     if (keep_weight) then
       xjac = xjac*local_jacobian
       xpswgt = xpswgt*local_weight
     end if
 
+    block_momenta = 0d0
+    block_momenta(:, 1) = parent_momentum
+    block_momenta(:, 2:child_count + 1) = &
+         child_momenta(:, 1:child_count)
+    ! Slot zero is the Born matrix-element layout.  Its projected real
+    ! counterevent contains an extra zero-emission leg and must not replace
+    ! the Born-local block cached above.
+    if (keep_weight .or. event_slot /= soft_counterevent) then
+      call store_factorized_block_momenta(event_slot, node, &
+                                          child_count + 1, block_momenta)
+    end if
+
     do child = 1, child_count
       identifier = node_child_id(node, child)
       child_kind = node_child_kind(node, child)
       if (child_kind == decay_node_child) then
-        call expand_node(context, identifier, child_momenta(:, child), x, &
-                         index, visible_momenta, xjac, xpswgt, keep_weight, &
-                         pass)
+        call expand_node(context, event_slot, identifier, &
+                         child_momenta(:, child), x, index, &
+                         visible_momenta, xjac, xpswgt, keep_weight, pass)
         if (.not. pass) return
       else
         visible_momenta(:, leaf_visible_leg(context, identifier)) = &
@@ -361,6 +407,40 @@ contains
   end subroutine generate_nbody
 
 
+  subroutine generate_nbody_rest(parent_mass, particle_count, masses, x, &
+                                 first_index, rest_momenta, xjac, xpswgt, &
+                                 pass)
+    double precision, intent(in) :: parent_mass
+    integer, intent(in) :: particle_count, first_index
+    double precision, intent(in) :: masses(:), x(99)
+    double precision, intent(out) :: rest_momenta(0:, :)
+    double precision, intent(inout) :: xjac, xpswgt
+    logical, intent(out) :: pass
+    double precision :: rest_parent(0:3)
+
+    rest_parent = 0d0
+    rest_parent(0) = parent_mass
+    call generate_nbody(rest_parent, particle_count, masses, x, &
+                        first_index, rest_momenta, xjac, xpswgt, pass)
+  end subroutine generate_nbody_rest
+
+
+  subroutine boost_nbody_from_rest(rest_momenta, particle_count, &
+                                   parent_momentum, parent_mass, momenta)
+    double precision, intent(in) :: rest_momenta(0:, :)
+    integer, intent(in) :: particle_count
+    double precision, intent(in) :: parent_momentum(0:3), parent_mass
+    double precision, intent(out) :: momenta(0:, :)
+    integer :: particle
+
+    momenta = 0d0
+    do particle = 1, particle_count
+      call boost_from_rest(rest_momenta(0:3, particle), parent_momentum, &
+                           parent_mass, momenta(0:3, particle))
+    end do
+  end subroutine boost_nbody_from_rest
+
+
   subroutine boost_from_rest(rest_momentum, parent_momentum, parent_mass, &
                              lab_momentum)
     double precision, intent(in) :: rest_momentum(0:3)
@@ -406,17 +486,23 @@ contains
   end subroutine fill_incoming_momenta
 
 
-  subroutine store_core_event_momenta(event_slot, momenta)
-    integer, intent(in) :: event_slot
+  subroutine store_core_event_momenta(event_slot, momenta, particle_count)
+    integer, intent(in) :: event_slot, particle_count
     double precision, intent(in) :: momenta(0:, :)
     integer :: count
     call require_enabled()
     if (event_slot < 0 .or. event_slot > 3) then
       call fail_kinematics('event slot is out of range')
     end if
-    count = min(size(momenta, 2), nexternal)
+    if (particle_count < 1 .or. particle_count > nexternal) then
+      call fail_kinematics('the production block size is out of range')
+    end if
+    count = min(size(momenta, 2), particle_count)
     core_event_storage(:, :, event_slot) = 0d0
     core_event_storage(:, 1:count, event_slot) = momenta(:, 1:count)
+    if (event_slot /= soft_counterevent) then
+      call store_factorized_block_momenta(event_slot, 0, count, momenta)
+    end if
   end subroutine store_core_event_momenta
 
 

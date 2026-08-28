@@ -37,10 +37,16 @@ module nlo_contribution_bundle
   public :: active_contribution_is_nlo_decay
   public :: contribution_has_virtual, active_contribution_has_virtual
   public :: nlo_virtual_grid_count, active_virtual_grid_index
+  public :: factorized_radiation_block_count
+  public :: factorized_shared_dimension
+  public :: factorized_integration_dimension
+  public :: factorized_radiation_start
+  public :: factorized_radiation_block
   public :: bundle_species_is_nlo
   public :: bundle_component_count, bundle_born_component
   public :: bundle_production_nlo_component, bundle_width_component
-  public :: bundle_decay_component, bundle_component_label
+  public :: bundle_decay_component, bundle_nlo_component
+  public :: bundle_component_label
 
 contains
 
@@ -508,6 +514,77 @@ contains
   end function active_virtual_grid_index
 
 
+  integer function factorized_radiation_block_count()
+    if (.not. initialized) call initialize_nlo_contribution_bundle()
+    if (enabled) then
+      factorized_radiation_block_count = number_of_contributions
+    else
+      factorized_radiation_block_count = 1
+    end if
+  end function factorized_radiation_block_count
+
+
+  integer function factorized_shared_dimension(integration_dimension)
+    integer, intent(in) :: integration_dimension
+    integer :: radiation_dimensions
+
+    radiation_dimensions = 3*factorized_radiation_block_count()
+    factorized_shared_dimension = integration_dimension - &
+         radiation_dimensions
+    if (factorized_shared_dimension < 0) then
+      call fail_bundle('the integration dimension has no radiative block')
+    end if
+  end function factorized_shared_dimension
+
+
+  integer function factorized_integration_dimension(canonical_dimension)
+    integer, intent(in) :: canonical_dimension
+
+    if (canonical_dimension < 3) then
+      call fail_bundle('the canonical phase space has no FKS variables')
+    end if
+    factorized_integration_dimension = canonical_dimension + &
+         3*(factorized_radiation_block_count() - 1)
+  end function factorized_integration_dimension
+
+
+  integer function factorized_radiation_start(canonical_dimension, block)
+    integer, intent(in) :: canonical_dimension, block
+    integer :: block_count
+
+    block_count = factorized_radiation_block_count()
+    if (block < 1 .or. block > block_count) then
+      call fail_bundle('the radiative phase-space block is out of range')
+    end if
+    if (canonical_dimension < 3) then
+      call fail_bundle('the canonical phase space has no FKS variables')
+    end if
+    factorized_radiation_start = canonical_dimension - 2 + 3*(block - 1)
+  end function factorized_radiation_start
+
+
+  integer function factorized_radiation_block(integration_dimension, &
+                                                dimension)
+    integer, intent(in) :: integration_dimension, dimension
+    integer :: shared_dimension, block_count
+
+    if (dimension < 1 .or. dimension > integration_dimension) then
+      call fail_bundle('an integration-grid dimension is out of range')
+    end if
+    shared_dimension = factorized_shared_dimension(integration_dimension)
+    if (dimension <= shared_dimension) then
+      factorized_radiation_block = 0
+      return
+    end if
+    factorized_radiation_block = &
+         (dimension - shared_dimension - 1)/3 + 1
+    block_count = factorized_radiation_block_count()
+    if (factorized_radiation_block > block_count) then
+      call fail_bundle('an integration grid has no phase-space block')
+    end if
+  end function factorized_radiation_block
+
+
   logical function bundle_species_is_nlo(pdg)
     integer, intent(in) :: pdg
     integer :: contribution
@@ -557,6 +634,20 @@ contains
     end if
     bundle_decay_component = contribution + 1
   end function bundle_decay_component
+
+
+  integer function bundle_nlo_component(contribution)
+    integer, intent(in) :: contribution
+
+    if (.not. initialized) call initialize_nlo_contribution_bundle()
+    call check_contribution(contribution)
+    if (.not. enabled) then
+      call fail_bundle('an NLO component requires a contribution bundle')
+    end if
+    ! Component one is the common Born term.  The NLO numerator of each
+    ! factorized production/decay block follows in contribution order.
+    bundle_nlo_component = contribution + 1
+  end function bundle_nlo_component
 
 
   integer function bundle_width_component()

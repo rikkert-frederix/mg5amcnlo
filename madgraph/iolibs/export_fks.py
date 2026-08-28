@@ -1391,6 +1391,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               'decay_chain_parameters_bridge.f90',
                               'decay_chain_kinematics.f90',
                               'nlo_decay_kinematics.f90',
+                              'factorized_phase_space.f90',
                               'decay_chain_scales.f90',
                               'phase_space_kinematics.f90',
                               'fks_diagnostics.f90',
@@ -3145,7 +3146,7 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
         declarations, code = density_exporter.contraction_lines(
             plan, variant['context'], variant['context_kind'],
             active_component=variant['active_component'],
-            override_provider=provider)
+            override_provider=provider, event_slot=3)
         nexternal, _ = reference.get_nexternal_ninitial()
         prefix = str(real_index + 1)
         replacement = {

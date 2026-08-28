@@ -46,6 +46,7 @@ FILES= fnlo_process_common.o process_dimensions.o			\
 	 decay_chain_parameters.o					\
 	 fnlo_scale_variations.o					\
 	 decay_chain_parameters_bridge.o phase_space_kinematics.o	\
+	 factorized_phase_space.o					\
 	 decay_chain_kinematics.o nlo_decay_kinematics.o		\
 	 decay_chain_scales.o						\
 	 fks_diagnostics.o fks_qcd_splitting.o fks_soft_kernels.o	\
@@ -230,12 +231,15 @@ fnlo_scale_variations.o: decay_chain_metadata.o nlo_decay_metadata.o \
 	$(LIBDIR)extra_weights.mod
 phase_space_kinematics.o: process_dimensions.o \
 	$(LIBDIR)kin_functions_module.mod
+factorized_phase_space.o: process_dimensions.o fnlo_process_common.o
 decay_chain_kinematics.o: process_dimensions.o fnlo_process_common.o \
 	decay_chain_metadata.o \
-	decay_chain_parameters.o phase_space_kinematics.o
+	decay_chain_parameters.o phase_space_kinematics.o \
+	factorized_phase_space.o
 nlo_decay_kinematics.o: process_dimensions.o nlo_decay_metadata.o \
 	decay_chain_metadata.o decay_chain_parameters.o decay_chain_kinematics.o \
-	phase_space_kinematics.o boostwdir2.o fnlo_process_common.o
+	phase_space_kinematics.o boostwdir2.o fnlo_process_common.o \
+	factorized_phase_space.o
 decay_chain_scales.o: process_dimensions.o decay_chain_metadata.o \
 	decay_chain_parameters.o decay_chain_kinematics.o \
 	nlo_decay_kinematics.o \
@@ -265,7 +269,7 @@ analysis_HwU_pp_hjj.o: boostwdir2.o
 analysis_HwU_pp_tj.o: $(LIBDIR)run_state.mod
 analysis_HwU_pp_V.o analysis_HwU_pp_taptam.o \
 	analysis_HwU_pp_ttx_v2.o: $(LIBDIR)kin_functions_module.mod
-mint_module.o : FKSParams.o MC_integer.o polfit.o
+mint_module.o : FKSParams.o MC_integer.o polfit.o nlo_contribution_bundle.o
 BinothLHA_OLP.o: process_dimensions.o FKSParams.o fks_singular.o
 BinothLHA.o: process_dimensions.o FKSParams.o splitorders_stuff.o cuts.o \
 	fks_singular.o nlo_contribution_bundle.o
@@ -329,6 +333,7 @@ genps_born.o: process_dimensions.o FKSParams.o phase_space_kinematics.o \
 genps_fks.o: genps_born.o process_dimensions.o boostwdir2.o FKSParams.o \
 	phase_space_kinematics.o fks_diagnostics.o decay_chain_metadata.o \
 	decay_chain_kinematics.o nlo_decay_metadata.o nlo_decay_kinematics.o \
+	factorized_phase_space.o \
 	$(LIBDIR)run_state.mod $(LIBDIR)timing_state.mod \
 	$(LIBDIR)kin_functions_module.mod
 symmetry_fks_v3.o: process_dimensions.o fks_metadata.o genps_fks.o \

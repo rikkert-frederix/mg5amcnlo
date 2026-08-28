@@ -579,23 +579,6 @@ class SpinDensityExporter(object):
         raise MadGraph5Error('Unknown density-matrix momentum target %s' %
                             (kind,))
 
-    def _provider_momentum_lines(self, plan, provider, context,
-                                 context_kind, variable):
-        node_visible = self._node_visible_legs(
-            plan, context, context_kind)
-        lines = ['%s=0D0' % variable]
-        for leg in sorted(provider['momentum_targets']):
-            visible = self._resolve_momentum_target(
-                plan, context, context_kind,
-                provider['momentum_targets'][leg], node_visible)
-            if not visible:
-                raise MadGraph5Error(
-                    'A density-matrix momentum target has no descendants')
-            terms = ['P(:,%d)' % item for item in visible]
-            lines.append('%s(:,%d)=%s' % (
-                variable, leg, '+'.join(terms)))
-        return lines
-
     def correlation_leg_map(self, plan, provider, context, context_kind):
         """Map flattened Born legs back to one provider's local legs."""
 
@@ -613,7 +596,8 @@ class SpinDensityExporter(object):
     def contraction_lines(self, plan, context, context_kind,
                           active_component=None, override_provider=None,
                           correlation_component=None,
-                          correlation_leg=0, result_name='SDM_RESULT'):
+                          correlation_leg=0, result_name='SDM_RESULT',
+                          event_slot=0):
         """Return declarations and code for one complete tree contraction."""
 
         self.prepare_plan(plan)
@@ -667,8 +651,10 @@ class SpinDensityExporter(object):
         for component_id in sorted(providers):
             provider = providers[component_id]
             variable = 'SDM_P_%d' % component_id
-            code.extend(self._provider_momentum_lines(
-                plan, provider, context, context_kind, variable))
+            nexternal, _ = provider['matrix_element'].get_nexternal_ninitial()
+            code.append(
+                'CALL GET_FACTORIZED_BLOCK_MOMENTA(%s,%d,%d,%s)' % (
+                    str(event_slot), component_id, nexternal, variable))
             code.append('CALL %s(%s,' % (
                 provider['fortran_name'], variable))
             if component_id == correlation_component:
@@ -713,7 +699,7 @@ class SpinDensityExporter(object):
 
     def virtual_contraction_lines(self, plan, variant,
                                   result_name='SDM_VIRTUAL_RESULT',
-                                  precision_asked='PREC_ASKED'):
+                                  precision_asked='PREC_ASKED', event_slot=0):
         """Contract one loop density with every spectator tree density."""
 
         self.prepare_plan(plan)
@@ -770,8 +756,10 @@ class SpinDensityExporter(object):
             provider = (variant if component_id == active
                         else providers[component_id])
             variable = 'SDM_P_%d' % component_id
-            code.extend(self._provider_momentum_lines(
-                plan, provider, context, context_kind, variable))
+            nexternal, _ = provider['matrix_element'].get_nexternal_ninitial()
+            code.append(
+                'CALL GET_FACTORIZED_BLOCK_MOMENTA(%d,%d,%d,%s)' % (
+                    event_slot, component_id, nexternal, variable))
             if component_id == active:
                 code.extend([
                     'CALL %s(%s,SDM_RHO_%d,%s,' % (
@@ -811,7 +799,8 @@ class SpinDensityExporter(object):
         return declarations, code
 
     def color_contraction_lines(self, plan, variant,
-                                result_name='SDM_COLOR_RESULT'):
+                                result_name='SDM_COLOR_RESULT',
+                                event_slot=0):
         """Contract one colour-linked component with ordinary spectators."""
 
         self.prepare_plan(plan)
@@ -868,8 +857,11 @@ class SpinDensityExporter(object):
             routing_provider = (variant['provider']
                                 if component_id == active else provider)
             variable = 'SDM_P_%d' % component_id
-            code.extend(self._provider_momentum_lines(
-                plan, routing_provider, context, context_kind, variable))
+            nexternal, _ = routing_provider[
+                'matrix_element'].get_nexternal_ninitial()
+            code.append(
+                'CALL GET_FACTORIZED_BLOCK_MOMENTA(%d,%d,%d,%s)' % (
+                    event_slot, component_id, nexternal, variable))
             if component_id == active:
                 code.append('CALL %s(%s,SDM_COLOR_RHO)' % (
                     variant['fortran_name'], variable))

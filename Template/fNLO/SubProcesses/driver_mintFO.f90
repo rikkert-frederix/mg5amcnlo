@@ -27,6 +27,8 @@ module driver_mintfo_module
   use fnlo_scale_variations, only: configure_fnlo_scale_variations
   use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
        nlo_contribution_count, contribution_representative_fks, &
+       contribution_for_fks, factorized_integration_dimension, &
+       factorized_radiation_start, &
        nlo_virtual_grid_count, bundle_component_count, &
        bundle_component_label
   use setscales_module, only: set_alphas
@@ -195,10 +197,13 @@ contains
     imode = restart_mode
     flat_grid = imode == 0
 
-    ndim = real_phase_space_dimension()
-    if (abs(lpp(1)) >= 1) ndim = ndim + 1
-    if (abs(lpp(2)) >= 1) ndim = ndim + 1
-    nndim = ndim
+    nndim = real_phase_space_dimension()
+    if (abs(lpp(1)) >= 1) nndim = nndim + 1
+    if (abs(lpp(2)) >= 1) nndim = nndim + 1
+    ! ``nndim`` remains the canonical phase-space layout consumed by genps:
+    ! common Born variables followed by one (xi,y,phi) triple.  MINT owns an
+    ! independent copy of that triple for every factorized NLO block.
+    ndim = factorized_integration_dimension(nndim)
 
     if (fixed_fac_scale) then
       unequal_factorization_scales = abs( &
@@ -354,7 +359,7 @@ contains
     double precision :: reweight, volume, sampled_weight
     double precision :: vegas_variables(99), mc_integer_weight
     integer :: nfks_born, nfks_picked, ifks, nfks_min, nfks_max
-    integer :: amplitude_order, picked_integer, position
+    integer :: amplitude_order, picked_integer, position, radiation_block
     integer :: nbody_contribution, nbody_contribution_max
     logical :: passcuts_nbody, passcuts_n1body, passcuts_coll
     logical :: skip_nplusone
@@ -376,7 +381,6 @@ contains
     wgt_me_real = 0d0
     skip_nplusone = .false.
 
-    call update_vegas_x_impl(xx, vegas_variables, nndim, abrv)
     call get_mc_integer(max(ini_fin_fks(ichan), 1), &
                         fks_channel_count(ini_fin_fks(ichan)), picked_integer, &
                         volume)
@@ -399,6 +403,11 @@ contains
         else
           call get_born_fks_process(nfks_picked, nfks_born)
         end if
+        radiation_block = 1
+        if (has_nlo_contribution_bundle()) &
+             radiation_block = nbody_contribution
+        call update_vegas_x_impl(xx, vegas_variables, nndim, abrv, &
+                                 radiation_block)
         call update_fks_dir_impl(nfks_born)
         if (ini_fin_fks(ichan) == 0) then
           jacobian = 1d0
@@ -457,6 +466,11 @@ contains
         wgt_me_born = 0d0
         wgt_me_real = 0d0
         jacobian = mc_integer_weight
+        radiation_block = 1
+        if (has_nlo_contribution_bundle()) &
+             radiation_block = contribution_for_fks(ifks)
+        call update_vegas_x_impl(xx, vegas_variables, nndim, abrv, &
+                                 radiation_block)
         call update_fks_dir_impl(ifks)
         call generate_momenta(nndim, iconfig, jacobian, &
                               vegas_variables, momentum)
@@ -525,26 +539,33 @@ contains
   end subroutine update_fks_dir_impl
 
 
-  subroutine update_vegas_x_impl(xx, x, nndim, abrv)
+  subroutine update_vegas_x_impl(xx, x, nndim, abrv, radiation_block)
     implicit none
     double precision, intent(in) :: xx(ndimmax)
     double precision, intent(out) :: x(99)
-    integer, intent(in) :: nndim
+    integer, intent(in) :: nndim, radiation_block
     character(len=4), intent(in) :: abrv
-    integer :: i, copied_dimensions
+    integer :: i, shared_dimensions, source_start
 
     x = 0d0
-    copied_dimensions = min(nndim, ndimmax, 99)
+    if (nndim < 3 .or. nndim > 99) then
+      call fail_driver('invalid canonical phase-space dimension')
+    end if
+    shared_dimensions = nndim - 3
+    do i = 1, shared_dimensions
+      x(i) = xx(i)
+    end do
     if (abrv == 'born' .or. abrv(1:2) == 'vi') then
-      do i = 1, min(copied_dimensions, nndim - 3)
-        x(i) = xx(i)
-      end do
-      do i = max(1, nndim - 2), min(nndim, 99)
+      do i = nndim - 2, nndim
         x(i) = random_unit_interval(iconfig)
       end do
     else
-      do i = 1, copied_dimensions
-        x(i) = xx(i)
+      source_start = factorized_radiation_start(nndim, radiation_block)
+      if (source_start + 2 > ndimmax) then
+        call fail_driver('factorized radiative variables exceed ndimmax')
+      end if
+      do i = 0, 2
+        x(nndim - 2 + i) = xx(source_start + i)
       end do
     end if
   end subroutine update_vegas_x_impl

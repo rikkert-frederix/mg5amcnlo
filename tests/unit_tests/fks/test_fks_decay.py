@@ -272,6 +272,32 @@ class TestFKSDecayChains(unittest.TestCase):
                 born_source = stream.read()
             self.assertIn('CALL SDM_PRODUCTION_BORN', born_source)
             self.assertIn('CALL SDM_DECAY_1_BORN', born_source)
+            self.assertIn(
+                'CALL GET_FACTORIZED_BLOCK_MOMENTA(0,0,4,SDM_P_0)',
+                born_source)
+            self.assertIn(
+                'CALL GET_FACTORIZED_BLOCK_MOMENTA(0,1,3,SDM_P_1)',
+                born_source)
+            self.assertNotIn('SDM_BLOCK_AVAILABLE', born_source)
+            self.assertNotIn('SDM_P_0(:,1)=P(:,1)', born_source)
+            self.assertNotIn('SDM_P_1(:,1)=P(:,3)+P(:,4)', born_source)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'factorized_phase_space.f90')) as stream:
+                factorized_source = stream.read()
+            self.assertIn(
+                'boosted factorized momenta are unavailable',
+                factorized_source)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'decay_chain_kinematics.f90')) as stream:
+                kinematics_source = stream.read()
+            self.assertIn('generate_nbody_rest', kinematics_source)
+            self.assertIn('boost_nbody_from_rest', kinematics_source)
+            self.assertIn(
+                'store_factorized_block_momenta', kinematics_source)
+            self.assertIn(
+                'event_slot /= soft_counterevent', kinematics_source)
             for filename in [
                     'spin_density_production_born.f',
                     'spin_density_decay_1_born.f']:
@@ -306,6 +332,25 @@ class TestFKSDecayChains(unittest.TestCase):
             nodes[child]['parent'], parent)
         self.assertEqual(
             plan['components'][child]['born']['open_nodes'], (child,))
+
+        with tempfile.TemporaryDirectory() as output_dir:
+            process_dir = os.path.join(output_dir, 'PROC')
+            command.exec_cmd(
+                'output fNLO %s' % process_dir,
+                printcmd=False, precmd=True)
+            subprocess_root = os.path.join(process_dir, 'SubProcesses')
+            subprocess_dir = next(
+                os.path.join(subprocess_root, name)
+                for name in os.listdir(subprocess_root)
+                if name.startswith('P') and os.path.isdir(
+                    os.path.join(subprocess_root, name)))
+            with open(os.path.join(subprocess_dir, 'born.f')) as stream:
+                born_source = stream.read()
+            for component_id in sorted(plan['components']):
+                self.assertIn(
+                    'GET_FACTORIZED_BLOCK_MOMENTA(0,%d,' % component_id,
+                    born_source)
+            self.assertNotIn('SDM_BLOCK_AVAILABLE', born_source)
 
     def test_two_decays_and_both_madloop_modes(self):
         command = self.generate(
@@ -973,6 +1018,19 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn('CALL SDM_DECAY_1_BORN', born_source)
             self.assertIn('CALL SDM_PRODUCTION_BORN', real_source)
             self.assertIn('CALL SDM_DECAY_1_REAL_1', real_source)
+            self.assertIn(
+                'CALL GET_FACTORIZED_BLOCK_MOMENTA(0,0,4,SDM_P_0)',
+                born_source)
+            self.assertIn(
+                'CALL GET_FACTORIZED_BLOCK_MOMENTA(0,1,3,SDM_P_1)',
+                born_source)
+            self.assertIn(
+                'CALL GET_FACTORIZED_BLOCK_MOMENTA(3,0,4,SDM_P_0)',
+                real_source)
+            self.assertIn(
+                'CALL GET_FACTORIZED_BLOCK_MOMENTA(3,1,4,SDM_P_1)',
+                real_source)
+            self.assertNotIn('SDM_BLOCK_AVAILABLE', real_source)
             for filename in [
                     'spin_density_production_born.f',
                     'spin_density_decay_1_born.f',
@@ -1033,6 +1091,11 @@ class TestFKSDecayChains(unittest.TestCase):
                 'corrected-parent rest frame', flat_kinematics)
             self.assertIn(
                 'no production momentum participates', flat_kinematics)
+            self.assertIn('generate_nbody_rest', kinematics)
+            self.assertIn('boost_nbody_from_rest', kinematics)
+            self.assertIn('store_factorized_block_momenta', kinematics)
+            self.assertIn(
+                'event_slot /= soft_counterevent', kinematics)
             with open(os.path.join(
                     subprocess_dir, 'genps_fks.f90')) as stream:
                 phase_space = stream.read().lower()
@@ -1261,6 +1324,55 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertEqual(
                 len(owned), contribution['last'] -
                 contribution['first'] + 1)
+
+        with tempfile.TemporaryDirectory() as output_dir:
+            process_dir = os.path.join(output_dir, 'PROC')
+            command.exec_cmd(
+                'output fNLO %s' % process_dir,
+                printcmd=False, precmd=True)
+            subprocess_root = os.path.join(process_dir, 'SubProcesses')
+            subprocess_dir = next(
+                os.path.join(subprocess_root, name)
+                for name in os.listdir(subprocess_root)
+                if name.startswith('P') and os.path.isdir(
+                    os.path.join(subprocess_root, name)))
+            with open(os.path.join(
+                    subprocess_dir, 'driver_mintFO.f90')) as stream:
+                driver_source = stream.read()
+            self.assertIn(
+                'ndim = factorized_integration_dimension(nndim)',
+                driver_source)
+            self.assertIn(
+                'radiation_block = contribution_for_fks(ifks)',
+                driver_source)
+            self.assertIn(
+                'source_start = factorized_radiation_start',
+                driver_source)
+            with open(os.path.join(
+                    subprocess_dir, 'mint_module.f90')) as stream:
+                mint_source = stream.read()
+            self.assertIn(
+                'radiation_block = factorized_radiation_block',
+                mint_source)
+            self.assertIn(
+                'component = bundle_nlo_component(radiation_block)',
+                mint_source)
+            self.assertIn(
+                'grid_weight = abs(f(component_integral))',
+                mint_source)
+            real_sources = []
+            for filename in os.listdir(subprocess_dir):
+                if filename.startswith('matrix_') and filename.endswith('.f'):
+                    with open(os.path.join(
+                            subprocess_dir, filename)) as stream:
+                        real_sources.append(stream.read())
+            self.assertTrue(real_sources)
+            self.assertTrue(all(
+                'GET_FACTORIZED_BLOCK_MOMENTA(3,' in source
+                for source in real_sources))
+            self.assertTrue(all(
+                'SDM_BLOCK_AVAILABLE' not in source
+                for source in real_sources))
 
     def test_full_nlo_bundle_supports_nested_corrected_decays(self):
         command = self.generate(
