@@ -302,6 +302,17 @@ C     EVEN THOUGH THEY ARE PUT IN COMMON BLOCK, FOR NOW THEY ARE NOT USED ANYWHE
 	  common/%(proc_prefix)sUSERCHOICE/USERHEL
 
       %(dp_born_amps_decl)s	  
+## if(SpinDensityOverride) {
+	  LOGICAL SDM_OVERRIDE_BORN,MP_SDM_OVERRIDE_BORN
+	  %(complex_dp_format)s SDM_BORN_AMP(%(color_matrix_size)s)
+	  %(complex_mp_format)s MP_SDM_BORN_AMP(%(color_matrix_size)s)
+	  common/%(proc_prefix)sSDM_BORN_OVERRIDE/
+     $ SDM_BORN_AMP,SDM_OVERRIDE_BORN
+	  common/%(proc_prefix)sMP_SDM_BORN_OVERRIDE/
+     $ MP_SDM_BORN_AMP,MP_SDM_OVERRIDE_BORN
+	  DATA SDM_OVERRIDE_BORN/.FALSE./
+	  DATA MP_SDM_OVERRIDE_BORN/.FALSE./
+## }
 	  %(complex_dp_format)s W(20,NWAVEFUNCS%(ncomb_helas_objs)s)
 	  INTEGER VALIDH
 	  common/%(proc_prefix)sWFCTS/W  

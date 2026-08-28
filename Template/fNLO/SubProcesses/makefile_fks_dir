@@ -52,6 +52,7 @@ FILES= fnlo_process_common.o process_dimensions.o			\
 	 fks_channel_map.o fks_random.o				\
 	 $(patsubst %.f,%.o,$(wildcard parton_lum_*.f)) 			\
 	 $(patsubst %.f,%.o,$(wildcard matrix_*.f)) 			\
+	 $(patsubst %.f,%.o,$(wildcard spin_density_*.f)) 		\
 	 FKSParams.o real_me_chooser.o chooser_functions.o		\
 	 chooser_functions_bridge.o					\
 	 genps_born.o genps_fks.o				\
@@ -314,6 +315,8 @@ chooser_functions.o: process_dimensions.o fks_metadata.o weight_lines.o \
 	nlo_contribution_bundle.o
 chooser_functions_bridge.o: chooser_functions.o
 virtual_contribution_chooser.o: nlo_contribution_bundle.o
+born.o $(patsubst %.f,%.o,$(wildcard b_sf_???.f)): \
+	nlo_contribution_bundle.o
 setcuts.o: process_dimensions.o fks_metadata.o decay_chain_metadata.o \
 	decay_chain_kinematics.o nlo_decay_metadata.o nlo_decay_kinematics.o \
 	fks_random.o mint_module.o \

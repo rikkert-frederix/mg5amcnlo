@@ -124,7 +124,16 @@ C
 	  common/%(proc_prefix)sMP_AMPS/AMP
 	  %(complex_dp_format)s DP_AMP(NBORNAMPS)
 	  common/%(proc_prefix)sAMPS/DP_AMP
-## }	  
+## if(SpinDensityOverride) {
+	  LOGICAL SDM_OVERRIDE_BORN,DP_SDM_OVERRIDE_BORN
+	  %(complex_mp_format)s SDM_BORN_AMP(NBORNAMPS)
+	  %(complex_dp_format)s DP_SDM_BORN_AMP(NBORNAMPS)
+	  common/%(proc_prefix)sMP_SDM_BORN_OVERRIDE/
+     $ SDM_BORN_AMP,SDM_OVERRIDE_BORN
+	  common/%(proc_prefix)sSDM_BORN_OVERRIDE/
+     $ DP_SDM_BORN_AMP,DP_SDM_OVERRIDE_BORN
+## }
+## }
 	  %(complex_mp_format)s W(20,NWAVEFUNCS)
 	  common/%(proc_prefix)sMP_W/W  
 
@@ -412,7 +421,15 @@ C   Copy back to the quantities computed in DP in the QP containers (but only th
   IF (COMPUTE_INTEGRAND_IN_QP) THEN
 
   DO J=1,NBORNAMPS
+## if(SpinDensityOverride) {
+    IF (SDM_OVERRIDE_BORN) THEN
+      CTEMP = HEL_MULT*2.0e0_16*CONJG(SDM_BORN_AMP(J))
+    ELSE
+      CTEMP = HEL_MULT*2.0e0_16*CONJG(AMP(J))
+    ENDIF
+## } else {
     CTEMP = HEL_MULT*2.0e0_16*CONJG(AMP(J))
+## }
 	DO I=1,NCTAMPS	
 	  CFTOT=CMPLX(CF_N(I,J)/REAL(ABS(CF_D(I,J)),KIND=16),0.0e0_16,KIND=16)
       IF(CF_D(I,J).LT.0) CFTOT=CFTOT*IMAG1
@@ -430,7 +447,15 @@ C   Copy back to the quantities computed in DP in the QP containers (but only th
   ELSE
 
   DO J=1,NBORNAMPS  
+## if(SpinDensityOverride) {
+    IF (DP_SDM_OVERRIDE_BORN) THEN
+      DP_CTEMP = HEL_MULT*2.0d0*DCONJG(DP_SDM_BORN_AMP(J))
+    ELSE
+      DP_CTEMP = HEL_MULT*2.0d0*DCONJG(DP_AMP(J))
+    ENDIF
+## } else {
     DP_CTEMP = HEL_MULT*2.0d0*DCONJG(DP_AMP(J)) 
+## }
     DO I=1,NCTAMPS
 	  DP_CFTOT=CMPLX(CF_N(I,J)/REAL(ABS(CF_D(I,J)),KIND=8),0.0d0,KIND=8)
       IF(CF_D(I,J).LT.0) DP_CFTOT=DP_CFTOT*DP_IMAG1

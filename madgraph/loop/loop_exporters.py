@@ -817,11 +817,14 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         # is useful when there is more than one squared split order config.
         TIRCaching = AmplitudeReduction or n_squared_split_orders>1
         MadEventOutput = False
+        SpinDensityOverride = bool(getattr(
+            self, '_fnlo_spin_density_override', False))
         return {'LoopInduced': LoopInduced,
                 'ComputeColorFlows': ComputeColorFlows,
                 'AmplitudeReduction': AmplitudeReduction,
                 'TIRCaching': TIRCaching,
-                'MadEventOutput': MadEventOutput}
+                'MadEventOutput': MadEventOutput,
+                'SpinDensityOverride': SpinDensityOverride}
 
 
     #===========================================================================
@@ -1297,12 +1300,30 @@ p= [[None,]*4]*%d"""%len(curr_proc.get('legs'))
         # sum over helicities is done before sending the numerator to CT.
         dp_squaring_lines=['DO I=1,NBORNAMPS',
             'CFTOT=DCMPLX(CF_N(AMPLNUM,I)/DBLE(ABS(CF_D(AMPLNUM,I))),0.0d0)',
-            'IF(CF_D(AMPLNUM,I).LT.0) CFTOT=CFTOT*IMAG1',
-            'RES=RES+CFTOT*BUFF*DCONJG(AMP(I,H))','ENDDO']
+            'IF(CF_D(AMPLNUM,I).LT.0) CFTOT=CFTOT*IMAG1']
         mp_squaring_lines=['DO I=1,NBORNAMPS',
 'CFTOT=CMPLX(CF_N(AMPLNUM,I)/(1.0E0_16*ABS(CF_D(AMPLNUM,I))),0.0E0_16,KIND=16)',
-            'IF(CF_D(AMPLNUM,I).LT.0) CFTOT=CFTOT*IMAG1',
-            'QPRES=QPRES+CFTOT*BUFF*CONJG(AMP(I,H))','ENDDO']
+            'IF(CF_D(AMPLNUM,I).LT.0) CFTOT=CFTOT*IMAG1']
+        if getattr(self, '_fnlo_spin_density_override', False):
+            dp_squaring_lines.extend([
+                'IF (SDM_OVERRIDE_BORN) THEN',
+                'RES=RES+CFTOT*BUFF*DCONJG(SDM_BORN_AMP(I))',
+                'ELSE',
+                'RES=RES+CFTOT*BUFF*DCONJG(AMP(I,H))',
+                'ENDIF'])
+            mp_squaring_lines.extend([
+                'IF (SDM_OVERRIDE_BORN) THEN',
+                'QPRES=QPRES+CFTOT*BUFF*CONJG(SDM_BORN_AMP(I))',
+                'ELSE',
+                'QPRES=QPRES+CFTOT*BUFF*CONJG(AMP(I,H))',
+                'ENDIF'])
+        else:
+            dp_squaring_lines.append(
+                'RES=RES+CFTOT*BUFF*DCONJG(AMP(I,H))')
+            mp_squaring_lines.append(
+                'QPRES=QPRES+CFTOT*BUFF*CONJG(AMP(I,H))')
+        dp_squaring_lines.append('ENDDO')
+        mp_squaring_lines.append('ENDDO')
         if matrix_element.get('processes')[0].get('has_born'):
             replace_dict['dp_squaring']='\n'.join(dp_squaring_lines)
             replace_dict['mp_squaring']='\n'.join(mp_squaring_lines)
@@ -1317,7 +1338,8 @@ p= [[None,]*4]*%d"""%len(curr_proc.get('legs'))
         file=file%replace_dict
         
         if writer:
-            writer.writelines(file)
+            writer.writelines(
+                file, context=self.get_context(matrix_element))
         else:
             return file
 
@@ -1560,9 +1582,22 @@ call %(proc_prefix)ssmatrix(p,ref)"""%matrix_element.rep_dict
             replace_dict['loop_induced_setup'] = ""
             replace_dict['nctamps_or_nloopamps']='nctamps'
             replace_dict['nbornamps_or_nloopamps']='nbornamps'
-            replace_dict['squaring']='\n'.join(['DO K=1,3',
-                   'ANS(K)=ANS(K)+2.0d0*DBLE(CFTOT*AMPL(K,I)*DCONJG(AMP(J,H)))',
-                                                                       'ENDDO'])
+            squaring = ['DO K=1,3']
+            if getattr(self, '_fnlo_spin_density_override', False):
+                squaring.extend([
+                    'IF (SDM_OVERRIDE_BORN) THEN',
+                    ('ANS(K)=ANS(K)+2.0d0*DBLE(CFTOT*AMPL(K,I)*'
+                     'DCONJG(SDM_BORN_AMP(J)))'),
+                    'ELSE',
+                    ('ANS(K)=ANS(K)+2.0d0*DBLE(CFTOT*AMPL(K,I)*'
+                     'DCONJG(AMP(J,H)))'),
+                    'ENDIF'])
+            else:
+                squaring.append(
+                    'ANS(K)=ANS(K)+2.0d0*DBLE(CFTOT*AMPL(K,I)*'
+                    'DCONJG(AMP(J,H)))')
+            squaring.append('ENDDO')
+            replace_dict['squaring']='\n'.join(squaring)
 
         # Write a dummy nsquaredSO.inc which is used in the default
         # loop_matrix.f code (even though it does not support split orders evals)
@@ -1654,7 +1689,8 @@ C               ENDIF""")%replace_dict
         n_loop_calls = len([call for call in loop_amp_helas_calls if not loop_calls_finder.match(call) is None])
         if writer:
             # Write the file
-            writer.writelines(file)  
+            writer.writelines(
+                file, context=self.get_context(matrix_element))
             return n_loop_calls
         else:
             # Return it to be written along with the others

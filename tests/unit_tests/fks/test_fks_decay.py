@@ -230,6 +230,83 @@ class TestFKSDecayChains(unittest.TestCase):
              for node in matrix_element.decay_metadata['nodes']],
             [(6, 0), (24, 1)])
 
+    def test_lo_spin_density_components_are_independent(self):
+        command = self.generate(
+            'u u~ > t t~ [LOonly], (t > w+ b)')
+        matrix_element = fks_helas_objects.FKSHelasMultiProcess(
+            command._fks_multi_proc,
+            loop_optimized=False)['matrix_elements'][0]
+        plan = matrix_element.spin_density_plan
+
+        self.assertEqual(sorted(plan['components']), [0, 1])
+        production = plan['components'][0]['born']
+        decay = plan['components'][1]['born']
+        self.assertEqual(production['label'], 'production_born')
+        self.assertEqual(decay['label'], 'decay_1_born')
+        self.assertEqual(production['open_nodes'], (1,))
+        self.assertEqual(decay['open_nodes'], (1,))
+        self.assertEqual(
+            [leg.get('id') for leg in production['matrix_element']
+             ['processes'][0].get('legs')],
+            [2, -2, 6, -6])
+        self.assertEqual(
+            set(leg.get('id') for leg in decay['matrix_element']
+                ['processes'][0].get('legs')),
+            set([6, 24, 5]))
+        self.assertIsNot(
+            production['matrix_element'], decay['matrix_element'])
+        self.assertEqual(plan['real_variants'], [])
+
+        with tempfile.TemporaryDirectory() as output_dir:
+            process_dir = os.path.join(output_dir, 'PROC')
+            command.exec_cmd(
+                'output fNLO %s' % process_dir,
+                printcmd=False, precmd=True)
+            subprocess_root = os.path.join(process_dir, 'SubProcesses')
+            subprocess_dir = next(
+                os.path.join(subprocess_root, name)
+                for name in os.listdir(subprocess_root)
+                if name.startswith('P') and os.path.isdir(
+                    os.path.join(subprocess_root, name)))
+            with open(os.path.join(subprocess_dir, 'born.f')) as stream:
+                born_source = stream.read()
+            self.assertIn('CALL SDM_PRODUCTION_BORN', born_source)
+            self.assertIn('CALL SDM_DECAY_1_BORN', born_source)
+            for filename in [
+                    'spin_density_production_born.f',
+                    'spin_density_decay_1_born.f']:
+                with open(os.path.join(subprocess_dir, filename)) as stream:
+                    provider_source = stream.read()
+                self.assertIn('COMPLEX*16 RHO(2,NOPEN,NOPEN)',
+                              provider_source)
+                self.assertIn('DO HP=1,NCOMB', provider_source)
+                self.assertIn('DCONJG(JAMP_HEL(J,HP))',
+                              provider_source)
+                self.assertNotIn('DBLE(VALUE)', provider_source)
+
+    def test_nested_spin_density_components_open_parent_and_child(self):
+        command = self.generate(
+            'u u~ > t t~ [LOonly], '
+            '(t > w+ b, w+ > u d~), (t~ > w- b~)')
+        matrix_element = fks_helas_objects.FKSHelasMultiProcess(
+            command._fks_multi_proc,
+            loop_optimized=False)['matrix_elements'][0]
+        plan = matrix_element.spin_density_plan
+
+        self.assertEqual(sorted(plan['components']), [0, 1, 2, 3])
+        nested_parent = next(
+            component['born']
+            for component_id, component in plan['components'].items()
+            if component_id and
+            len(component['born']['open_nodes']) == 2)
+        parent, child = nested_parent['open_nodes']
+        nodes = dict((node['id'], node)
+                     for node in plan['topology']['nodes'])
+        self.assertEqual(
+            nodes[child]['parent'], parent)
+        self.assertEqual(
+            plan['components'][child]['born']['open_nodes'], (child,))
+
     def test_two_decays_and_both_madloop_modes(self):
         command = self.generate(
             'u u~ > t t~ [QCD], '
@@ -250,12 +327,31 @@ class TestFKSDecayChains(unittest.TestCase):
             for real in matrix_element.real_processes:
                 self.assert_local_widths(
                     real.matrix_element, [1, 2, 3, 4])
-            self.assert_local_widths(
-                matrix_element.virt_matrix_element, [1, 2, 3, 4])
-            self.assertTrue(matrix_element.virt_matrix_element[
-                'born_color_basis'])
-            self.assertTrue(matrix_element.virt_matrix_element[
-                'loop_color_basis'])
+            # The loop stays a physical standalone production ME.  Decay
+            # widths and spin indices live exclusively in the independent
+            # tree providers and the generated tensor contraction.
+            self.assertEqual(
+                matrix_element.virt_matrix_element.
+                get_nexternal_ninitial(), (4, 2))
+            self.assertEqual(
+                len(matrix_element.spin_density_plan['components']), 5)
+            self.assertIs(
+                matrix_element.spin_density_plan['virtual_variants'][0]
+                ['matrix_element'], matrix_element.virt_matrix_element)
+            self.assertEqual(
+                [leg.get('id') for leg in matrix_element.
+                 virt_matrix_element['processes'][0].get('legs')],
+                [2, -2, 6, -6])
+            self.assertFalse(
+                set(id(wavefunction) for wavefunction in
+                    matrix_element.born_me.get_all_wavefunctions()) &
+                set(id(wavefunction) for wavefunction in
+                    matrix_element.virt_matrix_element.
+                    get_all_wavefunctions()))
+            self.assertTrue(
+                matrix_element.virt_matrix_element.get_born_diagrams())
+            self.assertTrue(
+                matrix_element.virt_matrix_element.get_loop_diagrams())
             for diagram in matrix_element.virt_matrix_element.get_loop_diagrams():
                 for amplitude in diagram.get_loop_amplitudes():
                     self.assertEqual(
@@ -454,7 +550,7 @@ class TestFKSDecayChains(unittest.TestCase):
                 'generate u u~ > z g [real=QCD], (g > u u~)',
                 printcmd=False, precmd=True)
 
-    def test_nlo_decay_owns_fks_and_is_glued_to_lo_production(self):
+    def test_nlo_decay_owns_fks_and_factorizes_with_lo_production(self):
         command = self.generate(
             'u u~ > t t~, '
             '(t > w+ b QED^2=2 QCD^2=0 [real=QCD])')
@@ -631,12 +727,18 @@ class TestFKSDecayChains(unittest.TestCase):
                 tuple(process.get_initial_ids())
                 for process in matrix_element.real_processes[0].
                 matrix_element.get('processes'))
-            virtual_initials = frozenset(
-                tuple(process.get_initial_ids())
-                for process in matrix_element.virt_matrix_element.
-                get('processes'))
             self.assertEqual(real_initials, born_initials)
-            self.assertEqual(virtual_initials, born_initials)
+            self.assertIsNone(matrix_element.virt_matrix_element)
+            decay_virtual = \
+                matrix_element.nlo_decay_virtual_matrix_element
+            self.assertIsNotNone(decay_virtual)
+            self.assertEqual(
+                frozenset(tuple(process.get_initial_ids())
+                          for process in decay_virtual.get('processes')),
+                frozenset([(6,)]))
+            self.assertIs(
+                matrix_element.spin_density_plan['virtual_variants'][0]
+                ['matrix_element'], decay_virtual)
 
             metadata_initial = tuple(
                 leg['pdg']
@@ -650,12 +752,7 @@ class TestFKSDecayChains(unittest.TestCase):
             frozenset([(2, -2), (4, -4), (1, -1), (3, -3)]),
             frozenset([(-2, 2), (-4, 4), (-1, 1), (-3, 3)])])
         self.assertEqual(set(groups), expected_groups)
-        self.assertEqual(
-            groups[frozenset([(21, 21)])].nlo_decay_metadata[
-                'virtual_current_count'], 3)
-        for initial_states, matrix_element in groups.items():
-            if initial_states == frozenset([(21, 21)]):
-                continue
+        for matrix_element in groups.values():
             self.assertEqual(
                 matrix_element.nlo_decay_metadata['virtual_current_count'], 1)
 
@@ -690,65 +787,40 @@ class TestFKSDecayChains(unittest.TestCase):
                 grouped_process_counts.append(len(process_lines))
             self.assertEqual(sorted(grouped_process_counts), [1, 4, 4])
 
-    def test_nlo_decay_virtual_is_composed_with_lo_production(self):
+    def test_nlo_decay_virtual_is_an_independent_density_component(self):
         command = self.generate(
             'u u~ > t t~, '
             '(t > w+ b QED^2=2 QCD^2=0 [QCD])')
         helas = fks_helas_objects.FKSHelasMultiProcess(
             command._fks_multi_proc, loop_optimized=False)
         matrix_element = helas['matrix_elements'][0]
-        virtual = matrix_element.virt_matrix_element
+        virtual = matrix_element.nlo_decay_virtual_matrix_element
+        plan = matrix_element.spin_density_plan
 
+        self.assertIsNone(matrix_element.virt_matrix_element)
         self.assertIsNotNone(virtual)
-        self.assertIsNone(matrix_element.nlo_decay_virtual_matrix_element)
         self.assertIn(virtual, helas.get_virt_matrix_elements())
         self.assertTrue(helas['has_loops'])
         self.assertTrue(matrix_element.nlo_decay_metadata['has_virtual'])
         self.assertEqual(
             matrix_element.nlo_decay_metadata['virtual_composition'],
-            'CROSSED_PRODUCTION_CURRENT')
+            'SPIN_DENSITY_MATRIX')
         self.assertEqual(
             matrix_element.nlo_decay_metadata['virtual_current_count'], 1)
         self.assertEqual(
-            [leg.get('id') for leg in
-             virtual['processes'][0].get_legs_with_decays()],
-            [2, -2, 5, 24, -6])
-        self.assertEqual(virtual.get_nexternal_ninitial(), (5, 2))
+            [leg.get('id') for leg in virtual['processes'][0].get('legs')],
+            [6, 5, 24])
+        self.assertEqual(virtual.get_nexternal_ninitial(), (3, 1))
         self.assertTrue(virtual.get_loop_diagrams())
         self.assertTrue(virtual.get_born_diagrams())
         self.assertTrue(virtual.get('born_color_basis'))
         self.assertTrue(virtual.get('loop_color_basis'))
-        self.assertEqual(
-            [entry[0] for entry in virtual.get_split_orders_mapping()[0]],
-            [(6, 2)])
-
-        external = sorted(set(
-            (wavefunction.get('number_external'),
-             wavefunction.get('leg_state'))
-            for wavefunction in fks_decay._all_wavefunctions(virtual)
-            if (not wavefunction.get('mothers') and
-                not wavefunction.get('is_loop'))))
-        self.assertEqual(external, [
-            (1, False), (2, False), (3, True),
-            (4, True), (5, True)])
-        initial_flow = set(
-            (wavefunction.get('number_external'),
-             wavefunction.get('is_part'))
-            for wavefunction in fks_decay._all_wavefunctions(virtual)
-            if (not wavefunction.get('mothers') and
-                not wavefunction.get('is_loop') and
-                not wavefunction.get('leg_state')))
-        self.assertEqual(initial_flow, set([(1, True), (2, False)]))
-        connectors = [
-            wavefunction for wavefunction in
-            fks_decay._all_wavefunctions(virtual)
-            if wavefunction.get('decay_node_id') == 1]
-        self.assertTrue(connectors)
-        for connector in connectors:
-            self.assertTrue(connector.get('mothers'))
-            self.assertEqual(
-                connector.get('width'),
-                'FNLO_DECAY_DUMMY_WIDTH_RATIO()*mdl_MT')
+        self.assertEqual(len(plan['components']), 2)
+        self.assertEqual(len(plan['virtual_variants']), 1)
+        self.assertIs(plan['virtual_variants'][0]['matrix_element'], virtual)
+        self.assertEqual(plan['virtual_variants'][0]['active_component'], 1)
+        self.assertEqual(plan['components'][0]['kind'], 'PRODUCTION')
+        self.assertEqual(plan['components'][1]['kind'], 'DECAY')
 
     def test_nlo_decay_virtual_composes_in_optimized_representation(self):
         command = self.generate(
@@ -756,14 +828,18 @@ class TestFKSDecayChains(unittest.TestCase):
             '(t > w+ b QED^2=2 QCD^2=0 [QCD])')
         helas = fks_helas_objects.FKSHelasMultiProcess(
             command._fks_multi_proc, loop_optimized=True)
-        virtual = helas['matrix_elements'][0].virt_matrix_element
+        matrix_element = helas['matrix_elements'][0]
+        virtual = matrix_element.nlo_decay_virtual_matrix_element
 
         self.assertTrue(virtual.optimized_output)
-        self.assertEqual(virtual.get_nexternal_ninitial(), (5, 2))
+        self.assertEqual(virtual.get_nexternal_ninitial(), (3, 1))
         self.assertTrue(virtual.get_loop_diagrams())
         self.assertTrue(virtual.get_born_diagrams())
         self.assertTrue(virtual.get('born_color_basis'))
         self.assertTrue(virtual.get('loop_color_basis'))
+        self.assertIs(
+            matrix_element.spin_density_plan['virtual_variants'][0]
+            ['matrix_element'], virtual)
 
     def test_nlo_decay_virtual_composes_multi_diagram_production(self):
         for optimized in [False, True]:
@@ -774,41 +850,25 @@ class TestFKSDecayChains(unittest.TestCase):
                 matrix_element = fks_helas_objects.FKSHelasMultiProcess(
                     command._fks_multi_proc,
                     loop_optimized=optimized)['matrix_elements'][0]
-                virtual = matrix_element.virt_matrix_element
+                plan = matrix_element.spin_density_plan
+                virtual = matrix_element.nlo_decay_virtual_matrix_element
 
                 self.assertEqual(
                     matrix_element.nlo_decay_metadata[
-                        'virtual_current_count'], 3)
+                        'virtual_current_count'], 1)
                 self.assertEqual(
                     [leg.get('id') for leg in
-                     virtual['processes'][0].get_legs_with_decays()],
-                    [21, 21, 5, 24, -6])
-                self.assertEqual(virtual.get_nexternal_ninitial(), (5, 2))
-                self.assertEqual(len(virtual.get_born_diagrams()), 3)
-                self.assertEqual(len(virtual.get_loop_diagrams()), 3)
-                external_states = set(
-                    (wavefunction.get('number_external'),
-                     wavefunction.get('state'),
-                     wavefunction.get('leg_state'))
-                    for wavefunction in
-                    fks_decay._all_wavefunctions(virtual)
-                    if (not wavefunction.get('mothers') and
-                        not wavefunction.get('is_loop')))
-                self.assertIn((1, 'initial', False), external_states)
-                self.assertIn((2, 'initial', False), external_states)
+                     virtual['processes'][0].get('legs')],
+                    [6, 5, 24])
+                self.assertEqual(virtual.get_nexternal_ninitial(), (3, 1))
+                self.assertEqual(len(virtual.get_born_diagrams()), 1)
+                self.assertEqual(len(virtual.get_loop_diagrams()), 1)
+                production = plan['components'][0]['born']['matrix_element']
+                self.assertEqual(production.get_number_of_amplitudes(), 3)
                 self.assertEqual(
-                    set(virtual.get('born_color_basis')),
-                    set(matrix_element.born_me.get('color_basis')))
-                self.assertEqual(
-                    set(virtual.get('loop_color_basis')),
-                    set(matrix_element.born_me.get('color_basis')))
-                for diagram in virtual.get_loop_diagrams():
-                    for amplitude in diagram.get_loop_amplitudes():
-                        self.assertTrue(any(
-                            mother.get('decay_node_id') == 1
-                            for mother in amplitude.get('mothers')))
+                    plan['virtual_variants'][0]['active_component'], 1)
 
-    def test_nlo_decay_combined_virtual_fortran_is_written(self):
+    def test_nlo_decay_density_virtual_fortran_is_written(self):
         command = self.generate(
             'g g > t t~, '
             '(t > w+ b QED^2=2 QCD^2=0 [QCD])')
@@ -844,30 +904,38 @@ class TestFKSDecayChains(unittest.TestCase):
             with open(os.path.join(virtual_dir, 'born_matrix.f')) as stream:
                 loop_born_source = stream.read()
             for source in [loop_source, loop_born_source]:
-                self.assertIn('P(0,5)', source)
-                self.assertIn(
-                    'FNLO_DECAY_DUMMY_WIDTH_RATIO()*MDL_MT', source)
+                self.assertIn('P(0,3)', source)
+                self.assertNotIn('FNLO_DECAY_DUMMY_WIDTH_RATIO', source)
             self.assertIn('CALL FFV2_0', loop_source)
-            self.assertIn(
-                'DOUBLE PRECISION FNLO_DECAY_DUMMY_WIDTH_RATIO',
-                loop_source)
-            self.assertIn('CALL VVV1P0_1', loop_source)
-            self.assertGreaterEqual(loop_source.count(
-                'FNLO_DECAY_DUMMY_WIDTH_RATIO()*MDL_MT'), 3)
-            self.assertGreaterEqual(loop_born_source.count(
-                'FNLO_DECAY_DUMMY_WIDTH_RATIO()*MDL_MT'), 3)
             self.assertTrue(os.path.isfile(os.path.join(
                 virtual_dir, 'global_specs.inc')))
+            with open(os.path.join(
+                    subprocess_dir,
+                    'spin_density_decay_1_virtual.f')) as stream:
+                density_source = stream.read()
+            self.assertIn('COMPLEX*16 RHO(3,NOPEN,NOPEN)', density_source)
+            self.assertIn('SDM_OVERRIDE_BORN=.TRUE.', density_source)
+            self.assertIn('(0D0,1D0)*BORN_AMPS', density_source)
+            self.assertEqual(
+                density_source.count('SLOOPMATRIXHEL_THRES'), 2)
+            self.assertIn('DCMPLX(', density_source)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'spin_density_production_born.f')) as stream:
+                production_source = stream.read()
+            self.assertIn('COMPLEX*16 RHO(2,NOPEN,NOPEN)',
+                          production_source)
+            self.assertIn('DCONJG(JAMP_HEL(J,HP))', production_source)
 
             with open(os.path.join(
                     subprocess_dir, 'nlo_decay_info.dat')) as stream:
                 metadata = stream.read()
             self.assertIn(
-                'VIRTUAL_COMPOSITION CROSSED_PRODUCTION_CURRENT\n',
+                'VIRTUAL_COMPOSITION SPIN_DENSITY_MATRIX\n',
                 metadata)
-            self.assertIn('VIRTUAL_CURRENT_COUNT 3\n', metadata)
+            self.assertIn('VIRTUAL_CURRENT_COUNT 1\n', metadata)
 
-    def test_nlo_decay_combined_fortran_matrix_elements_are_written(self):
+    def test_nlo_decay_factorized_fortran_matrix_elements_are_written(self):
         command = self.generate(
             'u u~ > t t~, '
             '(t > w+ b QED^2=2 QCD^2=0 [real=QCD])')
@@ -899,19 +967,31 @@ class TestFKSDecayChains(unittest.TestCase):
                 fks_info_source.replace('$', ' ').split()).replace(' ,', ',')
             self.assertIn('SUBROUTINE SBORN(P,ANS_SUMMED)', born_source)
             self.assertIn('SUBROUTINE SMATRIX1(P,ANS_SUMMED)', real_source)
-            self.assertIn('P(0,5),MDL_MT', born_source)
-            self.assertIn('P(0,6),MDL_MT', real_source)
-            self.assertEqual(
-                born_source.count(
-                    'FNLO_DECAY_DUMMY_WIDTH_RATIO()*MDL_MT'), 1)
-            self.assertEqual(
-                real_source.count(
-                    'FNLO_DECAY_DUMMY_WIDTH_RATIO()*MDL_MT'), 2)
-            self.assertIn(
-                'DOUBLE PRECISION FNLO_DECAY_DUMMY_WIDTH_RATIO',
-                born_source)
-            self.assertIn(
-                'EXTERNAL FNLO_DECAY_DUMMY_WIDTH_RATIO', real_source)
+            self.assertNotIn('FNLO_DECAY_DUMMY_WIDTH_RATIO', born_source)
+            self.assertNotIn('FNLO_DECAY_DUMMY_WIDTH_RATIO', real_source)
+            self.assertIn('CALL SDM_PRODUCTION_BORN', born_source)
+            self.assertIn('CALL SDM_DECAY_1_BORN', born_source)
+            self.assertIn('CALL SDM_PRODUCTION_BORN', real_source)
+            self.assertIn('CALL SDM_DECAY_1_REAL_1', real_source)
+            for filename in [
+                    'spin_density_production_born.f',
+                    'spin_density_decay_1_born.f',
+                    'spin_density_decay_1_real_1.f']:
+                provider_path = os.path.join(subprocess_dir, filename)
+                self.assertTrue(os.path.isfile(provider_path))
+                with open(provider_path) as stream:
+                    provider_source = stream.read()
+                self.assertIn('COMPLEX*16 RHO(2,NOPEN,NOPEN)',
+                              provider_source)
+                self.assertIn('DO HP=1,NCOMB', provider_source)
+                self.assertIn('RHO(1,A,B)=RHO(1,A,B)+VALUE',
+                              provider_source)
+                self.assertIn('DCONJG(JAMP_HEL(J,HP))',
+                              provider_source)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'decay_matrix_factorization.inc')) as stream:
+                self.assertIn('.TRUE.', stream.read().upper())
             self.assertIn('DATA FKS_I_D / 5 /', fks_info_source)
             self.assertIn('DATA FKS_J_D / 3 /', fks_info_source)
             self.assertIn(
@@ -1060,31 +1140,30 @@ class TestFKSDecayChains(unittest.TestCase):
                 matrix_element = fks_helas_objects.FKSHelasMultiProcess(
                     command._fks_multi_proc,
                     loop_optimized=False)['matrix_elements'][0]
-                virtual = matrix_element.virt_matrix_element
+                virtual = matrix_element.nlo_decay_virtual_matrix_element
                 metadata = matrix_element.nlo_decay_metadata
+                plan = matrix_element.spin_density_plan
 
                 self.assertIsNotNone(virtual)
+                self.assertIsNone(matrix_element.virt_matrix_element)
                 self.assertTrue(virtual.get_loop_diagrams())
                 self.assertTrue(virtual.get_born_diagrams())
                 self.assertEqual(
-                    virtual.get_nexternal_ninitial(),
-                    matrix_element.born_me.get_nexternal_ninitial())
-                visible_legs = sorted(
-                    matrix_element.born_me['processes'][0].
-                    get_legs_with_decays(),
-                    key=lambda leg: leg.get('number'))
-                model = matrix_element.born_me['processes'][0].get('model')
-                self.assertEqual(
-                    virtual.get_external_masses()[:-2],
-                    [model.get_particle(leg.get('id')).get('mass')
-                     for leg in visible_legs])
+                    virtual.get_nexternal_ninitial(), (3, 1))
                 self.assertEqual(
                     metadata['nodes'][metadata['corrected_node'] - 1]['pdg'],
                     corrected_pdg)
                 self.assertEqual(
                     metadata['virtual_composition'],
-                    'CROSSED_PRODUCTION_CURRENT')
-                self.assertGreater(metadata['virtual_current_count'], 0)
+                    'SPIN_DENSITY_MATRIX')
+                self.assertEqual(metadata['virtual_current_count'], 1)
+                variant = plan['virtual_variants'][0]
+                self.assertEqual(
+                    variant['active_component'], metadata['corrected_node'])
+                self.assertEqual(
+                    variant['open_nodes'],
+                    plan['components'][metadata['corrected_node']]
+                    ['born']['open_nodes'])
 
     def test_nlo_decay_symmetry_is_local_to_the_corrected_decay(self):
         command = self.generate(
@@ -1153,6 +1232,18 @@ class TestFKSDecayChains(unittest.TestCase):
              matrix_element.bundle_contributions],
             [False, False, False])
         self.assertEqual(len(matrix_element.bundle_nlo_decay_metadata), 2)
+        born_variants = matrix_element.spin_density_plan['born_variants']
+        self.assertEqual(
+            [variant['contribution_id'] for variant in born_variants],
+            [1, 2, 3])
+        self.assertIs(
+            born_variants[0]['provider'],
+            matrix_element.spin_density_plan['components'][0]['born'])
+        for variant in born_variants[1:]:
+            self.assertTrue(any(
+                variant['provider'] is provider
+                for provider in matrix_element.spin_density_plan[
+                    'auxiliary_providers']))
         self.assertEqual(
             [leg.get('id') for leg in matrix_element.born_me[
                 'processes'][0].get_legs_with_decays()],
@@ -1351,6 +1442,13 @@ class TestFKSDecayChains(unittest.TestCase):
                 os.path.isdir(os.path.join(subprocess_root, name))]
             self.assertEqual(len(subprocesses), 1)
             subprocess_dir = subprocesses[0]
+            with open(os.path.join(subprocess_dir, 'born.f')) as stream:
+                born_source = stream.read()
+            for contribution in [2, 3]:
+                self.assertRegex(
+                    born_source,
+                    r'CALL SDM_DECAY_[0-9]+_BORN_CONTRIBUTION_%d' %
+                    contribution)
             self.assertEqual(sorted(
                 name for name in os.listdir(subprocess_dir)
                 if name.startswith('VContribution') and
@@ -1363,14 +1461,35 @@ class TestFKSDecayChains(unittest.TestCase):
                     stream.read().replace('$', ' ').split())
             for contribution in [1, 2, 3]:
                 self.assertIn(
-                    'CALL FNLOC%d_SLOOPMATRIX_THRES(P, RAW_ANS' %
+                    'CALL SDM_VIRTUAL_CONTRIBUTION_%d(P, ANS' %
                     contribution,
                     chooser)
                 self.assertIn(
                     'CALL FNLOC%d_FORCE_STABILITY_CHECK' % contribution,
                     chooser)
-            self.assertIn('ANS(0:3,1) = RAW_ANS(0:3,0)', chooser)
+            self.assertNotIn('CALL FNLOC1_SLOOPMATRIX_THRES', chooser)
             self.assertNotIn('FNLOC1_GETORDPOWFROMINDEX_ML5', chooser)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'spin_density_virtual_contributions.f')) as stream:
+                contractions = stream.read()
+            for contribution in [1, 2, 3]:
+                self.assertIn(
+                    'SUBROUTINE SDM_VIRTUAL_CONTRIBUTION_%d' %
+                    contribution, contractions)
+                density_files = [
+                    name for name in os.listdir(subprocess_dir)
+                    if (name.startswith('spin_density_') and
+                        'virtual_contribution_%d.f' % contribution in name)]
+                self.assertEqual(len(density_files), 1)
+                with open(os.path.join(
+                        subprocess_dir, density_files[0])) as stream:
+                    density_source = stream.read()
+                self.assertIn(
+                    'FNLOC%d_SLOOPMATRIXHEL_THRES' % contribution,
+                    density_source)
+                self.assertIn('COMPLEX*16 RHO(3,NOPEN,NOPEN)',
+                              density_source)
             with open(os.path.join(
                     subprocess_dir, 'virtual_libraries.inc')) as stream:
                 libraries = stream.read()

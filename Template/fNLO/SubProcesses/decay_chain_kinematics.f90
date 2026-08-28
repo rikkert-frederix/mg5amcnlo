@@ -521,13 +521,19 @@ contains
   double precision function decay_nwa_weight()
     integer :: node
     double precision :: denominator_scale, physical_width
+    include 'decay_matrix_factorization.inc'
     call require_enabled()
     decay_nwa_weight = 1d0
     do node = 1, decay_node_count()
-      denominator_scale = decay_dummy_width_ratio()*node_masses(node)**2
       physical_width = decay_physical_width(node_pdg(node))
-      decay_nwa_weight = decay_nwa_weight*denominator_scale**2/ &
-           (2d0*node_masses(node)*physical_width)
+      if (factorized_decay_matrix_elements) then
+        decay_nwa_weight = decay_nwa_weight/ &
+             (2d0*node_masses(node)*physical_width)
+      else
+        denominator_scale = decay_dummy_width_ratio()*node_masses(node)**2
+        decay_nwa_weight = decay_nwa_weight*denominator_scale**2/ &
+             (2d0*node_masses(node)*physical_width)
+      end if
     end do
   end function decay_nwa_weight
 

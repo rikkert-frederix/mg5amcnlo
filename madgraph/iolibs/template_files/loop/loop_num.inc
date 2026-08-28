@@ -49,6 +49,12 @@ C
 	  common/%(proc_prefix)sCF/CF_D,CF_N
 
 	  %(dp_born_amps_decl)s
+## if(SpinDensityOverride) {
+	  LOGICAL SDM_OVERRIDE_BORN
+	  %(complex_dp_format)s SDM_BORN_AMP(%(color_matrix_size)s)
+	  common/%(proc_prefix)sSDM_BORN_OVERRIDE/
+     $ SDM_BORN_AMP,SDM_OVERRIDE_BORN
+## }
 	  %(complex_dp_format)s W(20,NWAVEFUNCS%(ncomb_helas_objs)s)
 	  common/%(proc_prefix)sWFCTS/W  
 
@@ -185,6 +191,12 @@ C
 	  common/%(proc_prefix)sCF/CF_D,CF_N
 
 	  %(mp_born_amps_decl)s	  
+## if(SpinDensityOverride) {
+	  LOGICAL SDM_OVERRIDE_BORN
+	  %(complex_mp_format)s SDM_BORN_AMP(%(color_matrix_size)s)
+	  common/%(proc_prefix)sMP_SDM_BORN_OVERRIDE/
+     $ SDM_BORN_AMP,SDM_OVERRIDE_BORN
+## }
 	  %(complex_mp_format)s W(20,NWAVEFUNCS%(ncomb_helas_objs)s)
 	  common/%(proc_prefix)sMP_WFS/W	
 

@@ -35,6 +35,7 @@ import madgraph.fks.fks_helas_objects as fks_helas_objects
 import madgraph.fks.fks_base as fks
 import madgraph.fks.fks_common as fks_common
 import madgraph.fks.fks_decay as fks_decay
+import madgraph.iolibs.export_spin_density as export_spin_density
 import madgraph.iolibs.drawing_eps as draw
 import madgraph.iolibs.gen_infohtml as gen_infohtml
 import madgraph.iolibs.files as files
@@ -128,8 +129,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
 
         The optimized exporter already provides this helper.  The default FKS
         exporter also calls it from ``generate_virt_directory`` and needs the
-        same single-process information when a combined NLO-decay virtual is
-        written.
+        same single-process information for each standalone virtual density
+        provider.
         """
 
         with open(output_path, 'w') as stream:
@@ -1005,6 +1006,15 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 os.getcwd(), matrix_element.bundle_contributions,
                 matrix_element.bundle_nlo_decay_metadata)
 
+        writers.FortranWriter('decay_matrix_factorization.inc').writelines(
+            'LOGICAL, PARAMETER :: FACTORIZED_DECAY_MATRIX_ELEMENTS = %s' %
+            ('.TRUE.' if getattr(
+                matrix_element, 'spin_density_plan', None) is not None
+             else '.FALSE.'))
+
+        if getattr(matrix_element, 'spin_density_plan', None) is not None:
+            self.write_spin_density_providers(matrix_element, fortran_model)
+
 ## write the files corresponding to the born process in the P* directory
         self.generate_born_fks_files(matrix_element,
                 fortran_model, me_number, path)
@@ -1017,11 +1027,33 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         
         nlo_decay_virtual = getattr(
             matrix_element, 'nlo_decay_virtual_matrix_element', None)
-        if contribution_bundle:
+        density_virtuals = (
+            matrix_element.spin_density_plan.get('virtual_variants', [])
+            if getattr(matrix_element, 'spin_density_plan', None) is not None
+            else [])
+        if density_virtuals and not contribution_bundle:
+            if len(density_virtuals) != 1:
+                raise fks_common.FKSProcessError(
+                    'A factorized subprocess requires exactly one virtual '
+                    'component')
+            variant = density_virtuals[0]
+            self._fnlo_virtual_prefix = variant['loop_prefix']
+            self._fnlo_spin_density_override = True
+            try:
+                calls += self.generate_virt_directory(
+                    variant['matrix_element'], fortran_model,
+                    os.path.join(path, borndir))
+            finally:
+                self._fnlo_virtual_prefix = ''
+                self._fnlo_spin_density_override = False
+            self.write_spin_density_virtual(
+                matrix_element, variant, fortran_model)
+        elif contribution_bundle:
             archives = []
             for virtual in matrix_element.bundle_virtual_matrix_elements:
                 contribution = virtual.fnlo_contribution_id
                 self._fnlo_virtual_prefix = 'FNLOC%d_' % contribution
+                self._fnlo_spin_density_override = True
                 self._fnlo_virtual_directory_name = \
                     'VContribution%d' % contribution
                 self._fnlo_virtual_archive = \
@@ -1032,13 +1064,13 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                         os.path.join(path, borndir))
                 finally:
                     self._fnlo_virtual_prefix = ''
+                    self._fnlo_spin_density_override = False
                     self._fnlo_virtual_directory_name = None
                     self._fnlo_virtual_archive = None
                 archives.append('libMadLoop_%d.a' % contribution)
             if archives:
-                self.write_virtual_contribution_chooser(
-                    writers.FortranWriter('virtual_contribution_chooser.f'),
-                    matrix_element.bundle_contributions)
+                self.write_spin_density_virtual_bundle(
+                    matrix_element, fortran_model)
                 with open('virtual_libraries.inc', 'w') as stream:
                     stream.write('FNLO_VIRTUAL_LIBRARIES = %s\n' %
                                  ' '.join(archives))
@@ -1456,7 +1488,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         #copy the makefile 
         os.system("ln -s ../makefile_fks_dir ./makefile")
         if self.opt.get('fks_template') == 'fNLO':
-            if (matrix_element.virt_matrix_element or
+            if (matrix_element.virt_matrix_element or density_virtuals or
                     (contribution_bundle and
                      matrix_element.bundle_virtual_matrix_elements)):
                 ln('../BinothLHA.f90', '.')
@@ -1493,7 +1525,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
 
         return calls, amp_split_orders
 
-    def write_virtual_contribution_chooser(self, writer, contributions):
+    def write_virtual_contribution_chooser(
+            self, writer, contributions, density_matrix=False):
         """Dispatch the legacy unprefixed MadLoop ABI to one bundle member."""
 
         virtual_ids = set(
@@ -1508,7 +1541,18 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         for contribution in contributions:
             identifier = contribution['id']
             if identifier in virtual_ids:
-                if contribution['optimized_virtual']:
+                if density_matrix:
+                    matrix_cases.append(
+                        '      CASE (%d)\n'
+                        '        CALL SDM_VIRTUAL_CONTRIBUTION_%d(P, ANS, '
+                        'PREC_ASKED, PREC_FOUND, RET_CODE)' %
+                        (identifier, identifier))
+                    helicity_cases.append(
+                        '      CASE (%d)\n'
+                        '        CALL SDM_VIRTUAL_CONTRIBUTION_%d(P, ANS, '
+                        'PREC_ASKED, PREC_FOUND, RET_CODE)' %
+                        (identifier, identifier))
+                elif contribution['optimized_virtual']:
                     matrix_cases.append(
                         '      CASE (%d)\n'
                         '        CALL FNLOC%d_SLOOPMATRIX_THRES(P, ANS, '
@@ -2875,17 +2919,504 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             plot.draw()
 
 
+    def write_spin_density_providers(self, matrix_element, fortran_model):
+        """Emit every production/decay tree ME in its own source file."""
+
+        plan = matrix_element.spin_density_plan
+        density_exporter = export_spin_density.SpinDensityExporter(
+            self, fortran_model)
+        density_exporter.prepare_plan(plan)
+        providers = [component['born'] for _, component in sorted(
+            plan['components'].items())]
+        providers.extend(variant['provider']
+                         for variant in plan.get('real_variants', []))
+        providers.extend(plan.get('auxiliary_providers', []))
+        providers.extend(
+            variant['tree_provider']
+            for variant in plan.get('virtual_variants', [])
+            if variant.get('tree_provider') is not None)
+        written = set()
+        for provider in providers:
+            if provider['filename'] in written:
+                continue
+            written.add(provider['filename'])
+            density_exporter.write_provider(
+                writers.FortranWriter(provider['filename']), plan, provider)
+        for variant in plan.get('color_variants', []):
+            if variant['filename'] in written:
+                continue
+            written.add(variant['filename'])
+            density_exporter.write_color_provider(
+                writers.FortranWriter(variant['filename']), plan, variant)
+
+
+    @staticmethod
+    def _spin_density_order_function(matrix_element, function_name):
+        """Return the one-order lookup required by reduced fNLO wrappers."""
+
+        squared_orders, _ = matrix_element.get_split_orders_mapping()
+        if len(squared_orders) != 1:
+            raise fks_common.FKSProcessError(
+                'A density-matrix component requires one squared order')
+        raw_order = squared_orders[0]
+        # Tree mappings expose the squared order directly.  Loop mappings
+        # additionally pair it with the contributing loop-amplitude orders.
+        # The reduced wrapper only needs the former in both cases.
+        if (raw_order and isinstance(raw_order[0], tuple)):
+            order = tuple(raw_order[0])
+        else:
+            order = tuple(raw_order)
+        return '\n'.join([
+            'INTEGER FUNCTION %s(IORDER,INDX)' % function_name,
+            'IMPLICIT NONE',
+            'INTEGER NSPLITORDERS',
+            'PARAMETER (NSPLITORDERS=%d)' % len(order),
+            'INTEGER IORDER,INDX,VALUES(NSPLITORDERS)',
+            'DATA VALUES /%s/' % ','.join(map(str, order)),
+            'IF (INDX.NE.1.OR.IORDER.LT.1.OR.',
+            '     $ IORDER.GT.NSPLITORDERS) THEN',
+            "  WRITE(*,*) 'Invalid density-matrix split-order index'",
+            '  STOP 1',
+            'ENDIF',
+            '%s=VALUES(IORDER)' % function_name,
+            'END'])
+
+
+    def write_spin_density_born(self, writer, fksborn, fortran_model,
+                                start_dict):
+        """Write ``born.f`` as an explicit density-matrix contraction."""
+
+        matrix_element = fksborn.born_me
+        plan = fksborn.spin_density_plan
+        density_exporter = export_spin_density.SpinDensityExporter(
+            self, fortran_model)
+        density_exporter.prepare_plan(plan)
+        born_variants = plan.get('born_variants') or [{
+            'contribution_id': 1,
+            'active_component': plan.get('born_active_component', 0),
+            'context': plan['born_context'],
+            'context_kind': plan['born_context_kind']}]
+
+        ngraphs = matrix_element.get_number_of_amplitudes()
+        ncolor = max(1, len(matrix_element.get('color_basis')))
+        replacement = {
+            'info_lines': self.get_mg5_info_lines(),
+            'process_lines': self.get_process_info_lines(matrix_element),
+            'nAmpSplitOrders': 1,
+            'ngraphs': ngraphs,
+            'ncolor': ncolor,
+            'skip_amp_cnt': start_dict['skip_amp_cnt']}
+        wrapper = open(os.path.join(
+            _file_path, 'iolibs', 'template_files',
+            'bornmatrix_qcd_fks.inc')).read() % replacement
+
+        core = [
+            'SUBROUTINE SBORN_SPLITORDERS(P,ANS)',
+        ]
+        if getattr(fksborn, 'contribution_bundle', False):
+            core.append(
+                'USE NLO_CONTRIBUTION_BUNDLE, ONLY: '
+                'ACTIVE_NLO_CONTRIBUTION')
+        core.extend([
+            'IMPLICIT NONE',
+            "INCLUDE 'nexternal.inc'",
+            'INTEGER NGRAPHS,NCOLOR',
+            'PARAMETER (NGRAPHS=%d,NCOLOR=%d)' % (ngraphs, ncolor),
+            'REAL*8 P(0:3,NEXTERNAL-1)',
+            'COMPLEX*16 ANS(2,0:1)',
+            'INTEGER NFKSprocess,GLU_IJ,I,J',
+            'COMMON /C_NFKSPROCESS/NFKSPROCESS',
+            'COMPLEX*16 SDM_RESULT(2)',
+            'DOUBLE PRECISION AMP2(NGRAPHS),JAMP2(0:NCOLOR,0:1)',
+            'COMMON /TO_AMPS_BORN/ AMP2,JAMP2'])
+        core.extend(start_dict['ij_lines'].splitlines())
+        core.append('GLU_IJ=IJ_VALUES(NFKSPROCESS)')
+        if getattr(fksborn, 'contribution_bundle', False):
+            core.extend([
+                'SELECT CASE (ACTIVE_NLO_CONTRIBUTION())'] + [
+                'CASE (%d)' % variant['contribution_id'] + '\n' +
+                '  CALL SDM_BORN_CONTRIBUTION_%d(P,GLU_IJ,' %
+                variant['contribution_id'] + '\n' +
+                '     $ SDM_RESULT)'
+                for variant in born_variants] + [
+                'CASE DEFAULT',
+                "  WRITE(*,*) 'Invalid density-matrix Born contribution'",
+                '  STOP 1',
+                'END SELECT'])
+        else:
+            core.extend([
+                'CALL SDM_BORN_CONTRIBUTION_%d(P,GLU_IJ,' %
+                born_variants[0]['contribution_id'],
+                '     $ SDM_RESULT)'])
+        core.extend([
+            'ANS=(0D0,0D0)',
+            'ANS(1,1)=SDM_RESULT(1)',
+            'ANS(2,1)=SDM_RESULT(2)',
+            'ANS(1,0)=ANS(1,1)',
+            'ANS(2,0)=ANS(2,1)',
+            'AMP2=0D0',
+            'IF (NGRAPHS.GT.0) AMP2(1)=DBLE(ANS(1,1))',
+            'JAMP2=0D0',
+            'JAMP2(0,0)=NCOLOR',
+            'IF (NCOLOR.GT.0) JAMP2(1,1)=DBLE(ANS(1,1))',
+            'END',
+            '',
+            self._spin_density_order_function(
+                matrix_element, 'GETORDPOWFROMINDEX_B')])
+
+        for variant in born_variants:
+            contribution = variant['contribution_id']
+            correlation_component = variant['active_component']
+            correlation_provider = variant.get(
+                'provider', plan['components'][
+                    correlation_component]['born'])
+            declarations, code = density_exporter.contraction_lines(
+                plan, variant['context'], variant['context_kind'],
+                active_component=correlation_component,
+                override_provider=variant.get('provider'),
+                correlation_component=correlation_component,
+                correlation_leg='SDM_LOCAL_CORR')
+            correlation_map = density_exporter.correlation_leg_map(
+                plan, correlation_provider, variant['context'],
+                variant['context_kind'])
+            core.extend([
+                '',
+                'SUBROUTINE SDM_BORN_CONTRIBUTION_%d(P,GLU_IJ,' %
+                contribution,
+                '     $ SDM_RESULT)',
+                'IMPLICIT NONE',
+                "INCLUDE 'nexternal.inc'",
+                'REAL*8 P(0:3,NEXTERNAL-1)',
+                'INTEGER GLU_IJ,SDM_LOCAL_CORR',
+                'INTEGER SDM_CORR_MAP(%d)' % len(correlation_map),
+                'DATA SDM_CORR_MAP /%s/' % ','.join(
+                    map(str, correlation_map))])
+            core.extend(declarations)
+            core.extend([
+                'SDM_LOCAL_CORR=GLU_IJ',
+                'IF (SDM_LOCAL_CORR.GT.0) '
+                'SDM_LOCAL_CORR=SDM_CORR_MAP(SDM_LOCAL_CORR)'])
+            core.extend(code)
+            core.append('END')
+        writer.writelines(wrapper + '\n\n' + '\n'.join(core))
+        return 0, ncolor, 1, 1
+
+
+    def write_spin_density_born_hel(self, writer, fksborn):
+        """Write the exact-sum helicity ABI without a glued HELAS fallback."""
+
+        wrapper = open(os.path.join(
+            _file_path, 'iolibs', 'template_files',
+            'born_hel_qcd_fks.inc')).read()
+        core = """
+      SUBROUTINE SBORN_HEL_SPLITORDERS(P,ANS)
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INCLUDE 'born_nhel.inc'
+      REAL*8 P(0:3,NEXTERNAL-1),ANS(0:1),TOTAL
+      DOUBLE PRECISION WGT_HEL(1,MAX_BHEL)
+      COMMON /C_BORN_HEL_SPLIT/ WGT_HEL
+      CALL SBORN(P,TOTAL)
+      ANS=0D0
+      ANS(1)=TOTAL
+      ANS(0)=TOTAL
+      WGT_HEL=0D0
+C     Decay-chain outputs force the exact helicity sum.  Keep the legacy
+C     per-helicity ABI deterministic by assigning that sum to one bin.
+      WGT_HEL(1,1)=TOTAL
+      END
+"""
+        writer.writelines(wrapper + core)
+
+
+    def write_spin_density_real(self, writer, fksborn, real_index,
+                                fortran_model):
+        """Write one real-emission wrapper over a component density ME."""
+
+        plan = fksborn.spin_density_plan
+        if real_index >= len(plan.get('real_variants', [])):
+            raise fks_common.FKSProcessError(
+                'Missing spin-density real variant %d' % (real_index + 1))
+        variant = plan['real_variants'][real_index]
+        reference = fksborn.real_processes[real_index].matrix_element
+        provider = variant['provider']
+        density_exporter = export_spin_density.SpinDensityExporter(
+            self, fortran_model)
+        declarations, code = density_exporter.contraction_lines(
+            plan, variant['context'], variant['context_kind'],
+            active_component=variant['active_component'],
+            override_provider=provider)
+        nexternal, _ = reference.get_nexternal_ninitial()
+        prefix = str(real_index + 1)
+        replacement = {
+            'info_lines': self.get_mg5_info_lines(),
+            'process_lines': self.get_process_info_lines(reference),
+            'nexternal': nexternal,
+            'proc_prefix': prefix}
+        wrapper = open(os.path.join(
+            _file_path, 'iolibs', 'template_files',
+            'realmatrix_qcd_fks.inc')).read() % replacement
+        core = [
+            'SUBROUTINE SMATRIX%s_SPLITORDERS(P,ANS)' % prefix,
+            'IMPLICIT NONE',
+            'INTEGER NEXTERNAL',
+            'PARAMETER (NEXTERNAL=%d)' % nexternal,
+            'REAL*8 P(0:3,NEXTERNAL),ANS(0:1)']
+        core.extend(declarations)
+        core.extend(code)
+        core.extend([
+            'ANS=0D0',
+            'ANS(1)=DBLE(SDM_RESULT(1))',
+            'ANS(0)=ANS(1)',
+            'END',
+            '',
+            self._spin_density_order_function(
+                reference, 'GETORDPOWFROMINDEX%s' % prefix)])
+        writer.writelines(wrapper + '\n\n' + '\n'.join(core))
+        return (0, max(1, len(reference.get('color_basis'))), 1, 1)
+
+
+    def write_spin_density_virtual(self, fksborn, variant, fortran_model):
+        """Write the component loop density and the legacy MadLoop ABI."""
+
+        plan = fksborn.spin_density_plan
+        density_exporter = export_spin_density.SpinDensityExporter(
+            self, fortran_model)
+        density_exporter.prepare_plan(plan)
+        density_exporter.write_virtual_provider(
+            writers.FortranWriter(variant['filename']), plan, variant)
+        declarations, code = density_exporter.virtual_contraction_lines(
+            plan, variant)
+        loop_matrix_element = variant['matrix_element']
+        prefix = variant['loop_prefix'].upper()
+        collier_uv = ('CALL %sCOLLIER_COMPUTE_UV_POLES(ONOFF)' % prefix
+                      if loop_matrix_element.optimized_output else
+                      'CONTINUE')
+        collier_ir = ('CALL %sCOLLIER_COMPUTE_IR_POLES(ONOFF)' % prefix
+                      if loop_matrix_element.optimized_output else
+                      'CONTINUE')
+        source = [
+            'SUBROUTINE SLOOPMATRIX_THRES(P,ANS,PREC_ASKED,',
+            '     $ PREC_FOUND,RET_CODE)',
+            'IMPLICIT NONE',
+            "INCLUDE 'nexternal.inc'",
+            'REAL*8 P(0:3,NEXTERNAL-1),ANS(0:3,0:1)',
+            'REAL*8 PREC_ASKED,PREC_FOUND(0:1),BORN_VALUE',
+            'INTEGER RET_CODE']
+        source.extend(declarations)
+        source.extend(code)
+        source.extend([
+            'ANS=0D0',
+            'CALL SBORN(P,BORN_VALUE)',
+            'ANS(0,1)=BORN_VALUE',
+            'ANS(1,1)=DBLE(SDM_VIRTUAL_RESULT(1))',
+            'ANS(2,1)=DBLE(SDM_VIRTUAL_RESULT(2))',
+            'ANS(3,1)=DBLE(SDM_VIRTUAL_RESULT(3))',
+            'ANS(0:3,0)=ANS(0:3,1)',
+            'PREC_FOUND=SDM_PRECISION',
+            'RET_CODE=SDM_RET_CODE',
+            'END',
+            '',
+            'SUBROUTINE SLOOPMATRIXHEL_THRES(P,HEL,ANS,PREC_ASKED,',
+            '     $ PREC_FOUND,RET_CODE)',
+            'IMPLICIT NONE',
+            "INCLUDE 'nexternal.inc'",
+            'REAL*8 P(0:3,NEXTERNAL-1),ANS(0:3,0:1)',
+            'REAL*8 PREC_ASKED,PREC_FOUND(0:1)',
+            'INTEGER HEL(NEXTERNAL-1),RET_CODE',
+            'CALL SLOOPMATRIX_THRES(P,ANS,PREC_ASKED,PREC_FOUND,',
+            '     $ RET_CODE)',
+            'END',
+            '',
+            'SUBROUTINE FORCE_STABILITY_CHECK(ONOFF)',
+            'IMPLICIT NONE',
+            'LOGICAL ONOFF',
+            'CALL %sFORCE_STABILITY_CHECK(ONOFF)' % prefix,
+            'END',
+            '',
+            'SUBROUTINE COLLIER_COMPUTE_UV_POLES(ONOFF)',
+            'IMPLICIT NONE',
+            'LOGICAL ONOFF',
+            collier_uv,
+            'END',
+            '',
+            'SUBROUTINE COLLIER_COMPUTE_IR_POLES(ONOFF)',
+            'IMPLICIT NONE',
+            'LOGICAL ONOFF',
+            collier_ir,
+            'END',
+            '',
+            self._spin_density_order_function(
+                loop_matrix_element, 'GETORDPOWFROMINDEX_ML5')])
+        writers.FortranWriter(
+            'spin_density_virtual_wrapper.f').writelines('\n'.join(source))
+
+
+    def _spin_density_virtual_contribution_lines(
+            self, fksborn, variant, fortran_model, subroutine_name):
+        """Return one fully contracted virtual contribution routine."""
+
+        plan = fksborn.spin_density_plan
+        density_exporter = export_spin_density.SpinDensityExporter(
+            self, fortran_model)
+        declarations, code = density_exporter.virtual_contraction_lines(
+            plan, variant)
+        source = [
+            'SUBROUTINE %s(P,ANS,PREC_ASKED,' % subroutine_name,
+            '     $ PREC_FOUND,RET_CODE)',
+            'IMPLICIT NONE',
+            "INCLUDE 'nexternal.inc'",
+            'REAL*8 P(0:3,NEXTERNAL-1),ANS(0:3,0:1)',
+            'REAL*8 PREC_ASKED,PREC_FOUND(0:1),BORN_VALUE',
+            'INTEGER RET_CODE']
+        source.extend(declarations)
+        source.extend(code)
+        source.extend([
+            'ANS=0D0',
+            'CALL SBORN(P,BORN_VALUE)',
+            'ANS(0,1)=BORN_VALUE',
+            'ANS(1,1)=DBLE(SDM_VIRTUAL_RESULT(1))',
+            'ANS(2,1)=DBLE(SDM_VIRTUAL_RESULT(2))',
+            'ANS(3,1)=DBLE(SDM_VIRTUAL_RESULT(3))',
+            'ANS(0:3,0)=ANS(0:3,1)',
+            'PREC_FOUND=SDM_PRECISION',
+            'RET_CODE=SDM_RET_CODE',
+            'END'])
+        return source
+
+
+    def write_spin_density_virtual_bundle(self, fksborn, fortran_model):
+        """Write all independent loop densities and their bundle chooser."""
+
+        plan = fksborn.spin_density_plan
+        density_exporter = export_spin_density.SpinDensityExporter(
+            self, fortran_model)
+        density_exporter.prepare_plan(plan)
+        source = []
+        for variant in plan.get('virtual_variants', []):
+            density_exporter.write_virtual_provider(
+                writers.FortranWriter(variant['filename']), plan, variant)
+            source.extend(self._spin_density_virtual_contribution_lines(
+                fksborn, variant, fortran_model,
+                'SDM_VIRTUAL_CONTRIBUTION_%d' %
+                variant['contribution_id']))
+            source.append('')
+        writers.FortranWriter(
+            'spin_density_virtual_contributions.f').writelines(
+                '\n'.join(source))
+        self.write_virtual_contribution_chooser(
+            writers.FortranWriter('virtual_contribution_chooser.f'),
+            fksborn.bundle_contributions, density_matrix=True)
+
+
+    def write_spin_density_color(self, writer, fksborn, ilink,
+                                 fortran_model):
+        """Write one factorized colour-linked Born contraction."""
+
+        plan = fksborn.spin_density_plan
+        variants = [
+            variant for variant in plan.get('color_variants', [])
+            if variant['generated_index'] == ilink + 1]
+        if not variants:
+            raise fks_common.FKSProcessError(
+                'Missing density-matrix colour link %d' % (ilink + 1))
+        density_exporter = export_spin_density.SpinDensityExporter(
+            self, fortran_model)
+        density_exporter.prepare_plan(plan)
+        matrix_element = fksborn.born_me
+        spectators = '; '.join(
+            'C%d:%d %d' % (
+                variant.get('contribution_id', 1),
+                variant['local_pair'][0], variant['local_pair'][1])
+            for variant in variants)
+        replacement = {
+            'info_lines': self.get_mg5_info_lines(),
+            'process_lines': self.get_process_info_lines(matrix_element) +
+            '\nC component spectators: %s' % spectators,
+            'ilink': ilink + 1}
+        wrapper = open(os.path.join(
+            _file_path, 'iolibs', 'template_files',
+            'b_sf_xxx_qcd_fks.inc')).read() % replacement
+        core = [
+            'SUBROUTINE SB_SF_%3.3d_SPLITORDERS(P,ANS)' % (ilink + 1),
+        ]
+        if getattr(fksborn, 'contribution_bundle', False):
+            core.append(
+                'USE NLO_CONTRIBUTION_BUNDLE, ONLY: '
+                'ACTIVE_NLO_CONTRIBUTION')
+        core.extend([
+            'IMPLICIT NONE',
+            "INCLUDE 'nexternal.inc'",
+            'REAL*8 P(0:3,NEXTERNAL-1),ANS(0:1)',
+            'COMPLEX*16 SDM_COLOR_RESULT'])
+        if getattr(fksborn, 'contribution_bundle', False):
+            by_contribution = dict(
+                (variant['contribution_id'], variant)
+                for variant in variants)
+            core.append('SELECT CASE (ACTIVE_NLO_CONTRIBUTION())')
+            for contribution in fksborn.bundle_contributions:
+                identifier = contribution['id']
+                core.append('CASE (%d)' % identifier)
+                if identifier in by_contribution:
+                    core.extend([
+                        '  CALL SDM_COLOR_CONTRIBUTION_%d_%d(P,' % (
+                            identifier, ilink + 1),
+                        '     $ SDM_COLOR_RESULT)'])
+                else:
+                    core.append('  SDM_COLOR_RESULT=(0D0,0D0)')
+            core.extend([
+                'CASE DEFAULT',
+                "  WRITE(*,*) 'Invalid density-matrix color contribution'",
+                '  STOP 1',
+                'END SELECT'])
+        else:
+            identifier = variants[0].get('contribution_id', 1)
+            core.extend([
+                'CALL SDM_COLOR_CONTRIBUTION_%d_%d(P,' % (
+                    identifier, ilink + 1),
+                '     $ SDM_COLOR_RESULT)'])
+        core.extend([
+            'ANS=0D0',
+            'ANS(1)=DBLE(SDM_COLOR_RESULT)',
+            'ANS(0)=ANS(1)',
+            'END'])
+
+        for variant in variants:
+            identifier = variant.get('contribution_id', 1)
+            declarations, code = density_exporter.color_contraction_lines(
+                plan, variant)
+            core.extend([
+                '',
+                'SUBROUTINE SDM_COLOR_CONTRIBUTION_%d_%d(P,' % (
+                    identifier, ilink + 1),
+                '     $ SDM_COLOR_RESULT)',
+                'IMPLICIT NONE',
+                "INCLUDE 'nexternal.inc'",
+                'REAL*8 P(0:3,NEXTERNAL-1)'])
+            core.extend(declarations)
+            core.extend(code)
+            core.append('END')
+        writer.writelines(wrapper + '\n\n' + '\n'.join(core))
+        return 0, max(1, len(variants[0]['link']['orig_basis']))
+
+
     def write_real_matrix_elements(self, matrix_element, fortran_model):
         """writes the matrix_i.f files which contain the real matrix elements""" 
         
         sqsorders_list = []
         for n, fksreal in enumerate(matrix_element.real_processes):
             filename = 'matrix_%d.f' % (n + 1)
-            ncalls, ncolors, nsplitorders, nsqsplitorders = \
-                                    self.write_split_me_fks(\
-                                        writers.FortranWriter(filename),
-                                        fksreal.matrix_element, 
-                                        fortran_model, 'real', "%d" % (n+1))
+            if getattr(matrix_element, 'spin_density_plan', None) is not None:
+                ncalls, ncolors, nsplitorders, nsqsplitorders = \
+                    self.write_spin_density_real(
+                        writers.FortranWriter(filename), matrix_element,
+                        n, fortran_model)
+            else:
+                ncalls, ncolors, nsplitorders, nsqsplitorders = \
+                                        self.write_split_me_fks(\
+                                            writers.FortranWriter(filename),
+                                            fksreal.matrix_element,
+                                            fortran_model, 'real', "%d" % (n+1))
             sqsorders_list.append(nsqsplitorders)
         return sqsorders_list
 
@@ -3191,10 +3722,16 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         else:
             born_dict['skip_amp_cnt'] = ''
 
-        calls_born, ncolor_born, norders, nsqorders = \
-            self.write_split_me_fks(writers.FortranWriter(filename),
-                                    born_me, fortran_model, 'born', '',
-                                    start_dict = born_dict)
+        if getattr(matrix_element, 'spin_density_plan', None) is not None:
+            calls_born, ncolor_born, norders, nsqorders = \
+                self.write_spin_density_born(
+                    writers.FortranWriter(filename), matrix_element,
+                    fortran_model, born_dict)
+        else:
+            calls_born, ncolor_born, norders, nsqorders = \
+                self.write_split_me_fks(
+                    writers.FortranWriter(filename), born_me,
+                    fortran_model, 'born', '', start_dict=born_dict)
 
         filename = 'born_maxamps.inc'
         maxamps = len(matrix_element.get('diagrams'))
@@ -3209,10 +3746,14 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         # the second call is for the born_hel file. use the same writer
         # function
         filename = 'born_hel.f'
-        calls_born, ncolor_born, norders, nsqorders = \
-            self.write_split_me_fks(writers.FortranWriter(filename),
-                                    born_me, fortran_model, 'bhel', '',
-                                    start_dict = born_dict)
+        if getattr(matrix_element, 'spin_density_plan', None) is not None:
+            self.write_spin_density_born_hel(
+                writers.FortranWriter(filename), matrix_element)
+        else:
+            calls_born, ncolor_born, norders, nsqorders = \
+                self.write_split_me_fks(
+                    writers.FortranWriter(filename), born_me,
+                    fortran_model, 'bhel', '', start_dict=born_dict)
 
         sqsorders_list.append(nsqorders)
     
@@ -3220,9 +3761,14 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         for j in range(len(matrix_element.color_links)):
             filename = 'b_sf_%3.3d.f' % (j + 1)
             self.color_link_files.append(filename)
-            self.write_b_sf_fks(writers.FortranWriter(filename),
-                         matrix_element, j,
-                         fortran_model)
+            if getattr(matrix_element, 'spin_density_plan', None) is not None:
+                self.write_spin_density_color(
+                    writers.FortranWriter(filename), matrix_element, j,
+                    fortran_model)
+            else:
+                self.write_b_sf_fks(writers.FortranWriter(filename),
+                             matrix_element, j,
+                             fortran_model)
 
         #write the sborn_sf.f and the b_sf_files
         filename = 'sborn_sf.f'

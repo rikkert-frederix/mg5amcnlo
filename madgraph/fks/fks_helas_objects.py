@@ -566,12 +566,36 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
             production.bundle_virtual_matrix_elements = []
             production.bundle_fks_info_list = []
             production.bundle_contributions = []
+            members = [production] + decay_members
+            member_plans = []
+            for member in members:
+                if member.spin_density_plan is None:
+                    raise fks_common.FKSProcessError(
+                        'A bundled NLO contribution has no density-matrix '
+                        'component plan')
+                snapshot = copy.copy(member.spin_density_plan)
+                for name in ['born_variants', 'real_variants',
+                             'virtual_variants', 'color_variants']:
+                    snapshot[name] = list(
+                        member.spin_density_plan.get(name, []))
+                member_plans.append(snapshot)
+            bundle_plan = production.spin_density_plan
+            if bundle_plan is None:
+                raise fks_common.FKSProcessError(
+                    'A full NLO decay-chain bundle requires density-matrix '
+                    'component plans')
+            bundle_plan['born_variants'] = []
+            bundle_plan['real_variants'] = []
+            bundle_plan['virtual_variants'] = []
+            bundle_plan['color_variants'] = []
+            bundle_plan['auxiliary_providers'] = []
 
             real_offset = 0
             configuration_offset = 0
-            members = [production] + decay_members
             member_metadata = [production.decay_metadata]
-            for contribution_id, member in enumerate(members, 1):
+            color_members = []
+            for contribution_id, (member, member_plan) in enumerate(
+                    zip(members, member_plans), 1):
                 if contribution_id == 1:
                     info_list = member.get_fks_info_list()
                     metadata = member.decay_metadata
@@ -581,15 +605,50 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
                         raise fks_common.FKSProcessError(
                             'A bundled decay correction has no NLO-decay '
                             'metadata')
-                    visible_map = \
-                        fks_decay.align_nlo_decay_born_to_decay_chain(
-                            production.decay_metadata, metadata)
-                    fks_decay.canonicalize_virtual_external_order(
-                        member.virt_matrix_element, visible_map)
+                    fks_decay.align_nlo_decay_born_to_decay_chain(
+                        production.decay_metadata, metadata)
                     member.born_me = production.born_me
                     info_list = member.get_fks_info_list()
                     production.bundle_nlo_decay_metadata.append(metadata)
                     member_metadata.append(metadata)
+
+                born_variants = member_plan.get('born_variants', [])
+                if len(born_variants) != 1:
+                    raise fks_common.FKSProcessError(
+                        'Each bundled contribution requires one Born '
+                        'density context')
+                born_variant = copy.copy(born_variants[0])
+                born_variant['contribution_id'] = contribution_id
+                active_component = born_variant['active_component']
+                if contribution_id == 1:
+                    active_provider = bundle_plan['components'][
+                        active_component]['born']
+                else:
+                    active_provider = copy.copy(
+                        member_plan['components'][active_component]['born'])
+                    active_provider['label'] = \
+                        'decay_%d_born_contribution_%d' % (
+                            active_component, contribution_id)
+                    for generated_name in [
+                            'fortran_name', 'filename', 'open_dimensions',
+                            'open_size']:
+                        active_provider.pop(generated_name, None)
+                    bundle_plan['auxiliary_providers'].append(
+                        active_provider)
+                born_variant['provider'] = active_provider
+                bundle_plan['born_variants'].append(born_variant)
+                member_reals = member_plan.get('real_variants', [])
+                if len(member_reals) != len(member.real_processes):
+                    raise fks_common.FKSProcessError(
+                        'A bundled contribution has inconsistent real '
+                        'density providers')
+                for real_variant in member_reals:
+                    real_variant = copy.copy(real_variant)
+                    real_variant['contribution_id'] = contribution_id
+                    bundle_plan['real_variants'].append(real_variant)
+                color_members.append((
+                    contribution_id, member_plan, metadata,
+                    active_provider))
 
                 for info in info_list:
                     bundled_info = copy.deepcopy(info)
@@ -605,12 +664,20 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
                 first_configuration = configuration_offset + 1
                 last_configuration = configuration_offset + \
                     configuration_count
-                virtual = member.virt_matrix_element
+                virtual_variants = member_plan.get('virtual_variants', [])
+                if len(virtual_variants) > 1:
+                    raise fks_common.FKSProcessError(
+                        'A bundled contribution has several virtual '
+                        'density providers')
+                virtual = (virtual_variants[0]['matrix_element']
+                           if virtual_variants else None)
                 virtual_orders = []
                 if virtual is not None:
                     squared_orders, _ = virtual.get_split_orders_mapping()
-                    virtual_orders = [tuple(order[0])
-                                      for order in squared_orders]
+                    virtual_orders = [
+                        tuple(order[0]) if (order and
+                              isinstance(order[0], tuple)) else tuple(order)
+                        for order in squared_orders]
                 production.bundle_contributions.append({
                     'id': contribution_id,
                     'kind': ('PRODUCTION' if contribution_id == 1
@@ -632,6 +699,19 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
                     virtual.fnlo_contribution_id = contribution_id
                     production.bundle_virtual_matrix_elements.append(
                         virtual)
+                    virtual_variant = copy.copy(virtual_variants[0])
+                    virtual_variant['contribution_id'] = contribution_id
+                    virtual_variant['loop_prefix'] = \
+                        'FNLOC%d_' % contribution_id
+                    virtual_variant['tree_provider'] = active_provider
+                    virtual_variant['label'] = '%s_contribution_%d' % (
+                        virtual_variant.get(
+                            'label', ('production_virtual'
+                                      if contribution_id == 1 else
+                                      'decay_%d_virtual' %
+                                      metadata['corrected_node'])),
+                        contribution_id)
+                    bundle_plan['virtual_variants'].append(virtual_variant)
                 if contribution_id != 1:
                     production.real_processes.extend(member.real_processes)
                 real_offset += len(member.real_processes)
@@ -639,6 +719,41 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
 
             fks_decay.set_bundle_color_links(
                 production, member_metadata)
+            merged_color_variants = {}
+            for (contribution_id, member_plan, metadata,
+                 active_provider) in color_members:
+                if contribution_id == 1:
+                    first_key, second_key = 'core_first', 'core_second'
+                else:
+                    first_key, second_key = 'local_first', 'local_second'
+                records = metadata['color_links']
+                for color_variant in member_plan.get(
+                        'color_variants', []):
+                    generated_indices = set(
+                        record['generated_index'] for record in records
+                        if (record[first_key], record[second_key]) in
+                        color_variant.get(
+                            'local_pairs', [color_variant['local_pair']]))
+                    if not generated_indices:
+                        raise fks_common.FKSProcessError(
+                            'A bundled component colour link has no global '
+                            'runtime index')
+                    for generated_index in generated_indices:
+                        key = (contribution_id, generated_index)
+                        if key in merged_color_variants:
+                            continue
+                        merged = copy.copy(color_variant)
+                        merged['contribution_id'] = contribution_id
+                        merged['generated_index'] = generated_index
+                        merged['provider'] = active_provider
+                        merged['label'] = '%s_contribution_%d_link_%d' % (
+                            merged['provider']['label'], contribution_id,
+                            generated_index)
+                        merged_color_variants[key] = merged
+            bundle_plan['color_variants'] = [
+                merged_color_variants[key]
+                for key in sorted(merged_color_variants)]
+            bundle_plan['contribution_bundle'] = True
             production.contribution_bundle = True
             production.virt_matrix_element = None
             production.nlo_decay_virtual_matrix_element = None
@@ -944,6 +1059,10 @@ class FKSHelasProcess(object):
         self.decay_metadata = None
         self.nlo_decay_metadata = None
         self.nlo_decay_virtual_matrix_element = None
+        # fNLO decay chains are evaluated through independent production and
+        # decay spin-density matrix elements.  The ordinary combined HELAS
+        # objects are retained as kinematic/topology references only.
+        self.spin_density_plan = None
         self._decay_color_links_set = False
         defer_real_color = opts.pop('defer_real_color', False)
 
@@ -1120,6 +1239,10 @@ class FKSHelasProcess(object):
         for virtual in getattr(
                 self, 'bundle_virtual_matrix_elements', []):
             lorentz_list.extend(virtual.get_used_lorentz())
+        if self.spin_density_plan is not None:
+            for density_me in fks_decay.iter_spin_density_matrix_elements(
+                    self.spin_density_plan):
+                lorentz_list.extend(density_me.get_used_lorentz())
         for sud_me in self.sudakov_matrix_elements:
             lorentz_list.extend(sud_me['matrix_element'].get_used_lorentz())
 
@@ -1140,6 +1263,10 @@ class FKSHelasProcess(object):
         for virtual in getattr(
                 self, 'bundle_virtual_matrix_elements', []):
             coupl_list.extend(virtual.get_used_couplings())
+        if self.spin_density_plan is not None:
+            for density_me in fks_decay.iter_spin_density_matrix_elements(
+                    self.spin_density_plan):
+                coupl_list.extend(density_me.get_used_couplings())
         for sud_me in self.sudakov_matrix_elements:
             coupl_list.extend(sud_me['matrix_element'].get_used_couplings())
         return coupl_list    

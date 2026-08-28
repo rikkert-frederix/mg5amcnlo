@@ -67,6 +67,12 @@ C
 ## if(not LoopInduced) {
 	  %(complex_format)s AMP(NBORNAMPS)
 	  common/%(proc_prefix)s%(mp_prefix)sAMPS/AMP
+## if(SpinDensityOverride) {
+	  LOGICAL SDM_OVERRIDE_BORN
+	  %(complex_format)s SDM_BORN_AMP(NBORNAMPS)
+	  common/%(proc_prefix)s%(mp_prefix)sSDM_BORN_OVERRIDE/
+     $ SDM_BORN_AMP,SDM_OVERRIDE_BORN
+## }
 ## }
       
 	  DO I=1,NAMPSO
@@ -76,7 +82,15 @@ C
       DO I=1,NBORNAMPS
 	    CFTOT=CMPLX(CF_N(COLOR_ID,I)/(ONE*ABS(CF_D(COLOR_ID,I))),ZERO,KIND=%(kind)d)
 	    IF(CF_D(COLOR_ID,I).LT.0) CFTOT=CFTOT*IMAG1
+## if(SpinDensityOverride) {
+	    IF (SDM_OVERRIDE_BORN) THEN
+	      CONST(%(proc_prefix)sML5SOINDEX_FOR_BORN_AMP(I))=CONST(%(proc_prefix)sML5SOINDEX_FOR_BORN_AMP(I))+CFTOT*CONJG(SDM_BORN_AMP(I))
+	    ELSE
+	      CONST(%(proc_prefix)sML5SOINDEX_FOR_BORN_AMP(I))=CONST(%(proc_prefix)sML5SOINDEX_FOR_BORN_AMP(I))+CFTOT*CONJG(AMP(I))
+	    ENDIF
+## } else {
 	    CONST(%(proc_prefix)sML5SOINDEX_FOR_BORN_AMP(I))=CONST(%(proc_prefix)sML5SOINDEX_FOR_BORN_AMP(I))+CFTOT*CONJG(AMP(I))
+## }
 	  ENDDO
 	  
       DO I=1,NAMPSO
@@ -158,4 +172,3 @@ C       It is only used for the NINJA interface
 ## }
 
 C Now the routines to update the wavefunctions
-

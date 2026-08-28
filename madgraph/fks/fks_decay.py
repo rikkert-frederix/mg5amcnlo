@@ -9,9 +9,9 @@
 """Decay-chain support applied after construction of an undecayed FKS core.
 
 The subtraction problem deliberately remains defined on the production
-process.  This module expands the ordinary LO decay combinatorics and attaches
-one concrete assignment coherently to every HELAS object belonging to an FKS
-process.
+process.  Concrete assignments provide flattened topology metadata, while
+independent production and direct-decay matrix elements supply the numerical
+spin-density tensors contracted by the fNLO exporter.
 """
 
 from __future__ import absolute_import
@@ -26,6 +26,7 @@ import madgraph.core.color_amp as color_amp
 import madgraph.core.diagram_generation as diagram_generation
 import madgraph.core.helas_objects as helas_objects
 import madgraph.fks.fks_common as fks_common
+import madgraph.loop.loop_diagram_generation as loop_diagram_generation
 import madgraph.loop.loop_helas_objects as loop_helas_objects
 import madgraph.various.misc as misc
 from madgraph import InvalidCmd
@@ -1120,6 +1121,399 @@ def _copy_process_tree(process):
     return result
 
 
+def _copy_tree_matrix_element(matrix_element):
+    """Regenerate an independent tree HELAS matrix element.
+
+    Decay insertion mutates HELAS diagrams and process objects in place.  A
+    density-matrix provider must instead retain the undecayed component, so
+    rebuild it from an isolated base amplitude before any insertion occurs.
+    The UFO model is deliberately shared.
+    """
+
+    amplitude = matrix_element.get('base_amplitude')
+    if amplitude is None:
+        amplitude = matrix_element.get_base_amplitude()
+    amplitude = copy.copy(amplitude)
+    model = amplitude.get('process').get('model')
+    memo = {id(model): model}
+    amplitude.set('process', _copy_process_tree(amplitude.get('process')))
+    amplitude.set('diagrams', amplitude.get('diagrams').__class__(
+        copy.deepcopy(list(amplitude.get('diagrams')), memo)))
+    return helas_objects.HelasMatrixElement(amplitude, gen_color=True)
+
+
+def _direct_decay_matrix_element(process, description):
+    """Return the independent matrix element for one direct decay node."""
+
+    direct = _copy_process(process)
+    # A provider is a physical standalone 1->n amplitude, not an insertable
+    # HELAS current.  The latter deliberately ends in a fake two-point vertex
+    # (interaction zero), which has no standalone colour representation.
+    direct.set('is_decay_chain', False)
+    amplitude = diagram_generation.Amplitude(direct)
+    if not amplitude.get('diagrams'):
+        raise fks_common.FKSProcessError(
+            '%s produced no direct diagrams' % description)
+    return helas_objects.HelasMatrixElement(amplitude, gen_color=True)
+
+
+def _spin_density_provider(matrix_element, open_legs, open_nodes,
+                           momentum_targets, label):
+    """Describe one swappable production/decay density-matrix provider."""
+
+    external = sorted(
+        matrix_element.get('processes')[0].get('legs'),
+        key=lambda leg: leg.get('number'))
+    external_numbers = [leg.get('number') for leg in external]
+    if set(momentum_targets) != set(external_numbers):
+        raise fks_common.FKSProcessError(
+            'Spin-density provider %s has an incomplete momentum map' % label)
+    if len(open_legs) != len(open_nodes):
+        raise fks_common.FKSProcessError(
+            'Spin-density provider %s has inconsistent open indices' % label)
+    if any(leg not in external_numbers for leg in open_legs):
+        raise fks_common.FKSProcessError(
+            'Spin-density provider %s opens a non-external leg' % label)
+    return {
+        'label': label,
+        'matrix_element': matrix_element,
+        'open_legs': tuple(open_legs),
+        'open_nodes': tuple(open_nodes),
+        'momentum_targets': dict(momentum_targets)}
+
+
+def _spin_density_color_link(matrix_element, first, second):
+    """Build one colour insertion on an independent component ME."""
+
+    base_amplitude = matrix_element.get('base_amplitude')
+    process = base_amplitude.get('process')
+    model = process.get('model')
+    legs = fks_common.to_fks_legs(process.get('legs'), model)
+    by_number = dict((leg.get('number'), leg) for leg in legs)
+    try:
+        first_leg = by_number[first]
+        second_leg = by_number[second]
+    except KeyError:
+        raise fks_common.FKSProcessError(
+            'A component colour link refers to a missing local leg')
+    description = fks_common.legs_to_color_link_string(
+        first_leg, second_leg, pert='QCD')
+    basis = matrix_element.get('color_basis')
+    links = fks_common.insert_color_links(
+        basis, basis.create_color_dict_list(base_amplitude), [{
+            'legs': [first_leg, second_leg],
+            'string': description['string'],
+            'replacements': description['replacements']}])
+    if len(links) != 1:
+        raise fks_common.FKSProcessError(
+            'Could not construct a component colour-linked matrix element')
+    return links[0]
+
+
+def _set_spin_density_color_variants(plan, records, active_component,
+                                     first_key, second_key, context,
+                                     context_kind):
+    """Attach one swappable linked-density provider per global link."""
+
+    provider = plan['components'][active_component]['born']
+    variants = {}
+    for record in records:
+        generated_index = record['generated_index']
+        local_pair = (record[first_key], record[second_key])
+        previous = variants.get(generated_index)
+        if previous is not None:
+            # A coloured parent and its unique visible carrier can represent
+            # the same colour charge after the decay is flattened.  The
+            # runtime deliberately assigns those local records one global
+            # link; retain the first equivalent component insertion.
+            if local_pair not in previous['local_pairs']:
+                previous['local_pairs'].append(local_pair)
+            continue
+        variants[generated_index] = {
+            'contribution_id': 1,
+            'generated_index': generated_index,
+            'active_component': active_component,
+            'context': context,
+            'context_kind': context_kind,
+            'provider': provider,
+            'local_pair': local_pair,
+            'local_pairs': [local_pair],
+            'link': _spin_density_color_link(
+                provider['matrix_element'], *local_pair),
+            'label': '%s_color_%d' % (
+                provider['label'], generated_index)}
+    if variants and set(variants) != set(range(1, max(variants) + 1)):
+        raise fks_common.FKSProcessError(
+            'Component colour-link indices are not contiguous')
+    plan['color_variants'] = [variants[index]
+                              for index in sorted(variants)]
+
+
+def _append_spin_density_decay_components(process, node_id, metadata,
+                                           components):
+    """Build one direct provider per node in a concrete decay tree."""
+
+    node = metadata['nodes'][node_id - 1]
+    direct_me = _direct_decay_matrix_element(
+        process, 'Decay node %d' % node_id)
+    direct_process = direct_me.get('processes')[0]
+    legs = sorted(direct_process.get('legs'),
+                  key=lambda leg: leg.get('number'))
+    initial = [leg for leg in legs if not leg.get('state')]
+    final = [leg for leg in legs if leg.get('state')]
+    if len(initial) != 1 or len(final) != len(node['children']):
+        raise fks_common.FKSProcessError(
+            'Decay node %d has an inconsistent direct external state' %
+            node_id)
+
+    open_legs = [initial[0].get('number')]
+    open_nodes = [node_id]
+    targets = {initial[0].get('number'): ('NODE', node_id)}
+    nested_processes = list(process.get('decay_chains'))
+    for leg, child in zip(final, node['children']):
+        kind, identifier = child
+        targets[leg.get('number')] = (kind, identifier)
+        if kind == 'NODE':
+            open_legs.append(leg.get('number'))
+            open_nodes.append(identifier)
+            match = None
+            for index, nested in enumerate(nested_processes):
+                if nested.get_initial_ids()[0] == leg.get('id'):
+                    match = nested_processes.pop(index)
+                    break
+            if match is None:
+                raise fks_common.FKSProcessError(
+                    'Decay node %d is missing nested child %d' %
+                    (node_id, identifier))
+            _append_spin_density_decay_components(
+                match, identifier, metadata, components)
+
+    if nested_processes:
+        raise fks_common.FKSProcessError(
+            'Decay node %d has unmatched nested processes' % node_id)
+    components[node_id] = {
+        'id': node_id,
+        'kind': 'DECAY',
+        'born': _spin_density_provider(
+            direct_me, open_legs, open_nodes, targets,
+            'decay_%d_born' % node_id)}
+
+
+def _spin_density_components(production_matrix_element, assignment,
+                             metadata):
+    """Construct the independent LO component matrix elements."""
+
+    process = production_matrix_element.get('processes')[0]
+    roots = {}
+    for attachment in assignment['attachments']:
+        leg = _resolve_selector(process, attachment['selector'])
+        roots[leg.get('number')] = attachment['root_node_id']
+
+    targets = {}
+    open_legs = []
+    open_nodes = []
+    for leg in sorted(process.get('legs'),
+                      key=lambda item: item.get('number')):
+        node_id = roots.get(leg.get('number'))
+        if node_id is None:
+            targets[leg.get('number')] = (
+                'PRODUCTION_LEG', leg.get('number'))
+        else:
+            targets[leg.get('number')] = ('NODE', node_id)
+            open_legs.append(leg.get('number'))
+            open_nodes.append(node_id)
+
+    components = {0: {
+        'id': 0,
+        'kind': 'PRODUCTION',
+        'born': _spin_density_provider(
+            production_matrix_element, open_legs, open_nodes, targets,
+            'production_born')}}
+    for attachment in assignment['attachments']:
+        _append_spin_density_decay_components(
+            attachment['decay_me'].get('processes')[0],
+            attachment['root_node_id'], metadata, components)
+    return components
+
+
+def _lo_spin_density_plan(fks_process, assignment, metadata,
+                          production_born, production_reals,
+                          production_virtual):
+    """Create the factorized plan for NLO production with LO decays."""
+
+    components = _spin_density_components(
+        production_born, assignment, metadata)
+    real_variants = []
+    real_contexts = [
+        context for context in metadata['contexts']
+        if context['kind'] == 'REAL']
+    for index, (matrix_element, context) in enumerate(
+            zip(production_reals, real_contexts), 1):
+        open_legs = []
+        open_nodes = []
+        targets = {}
+        for leg in sorted(matrix_element.get('processes')[0].get('legs'),
+                          key=lambda item: item.get('number')):
+            kind, target = context['core_map'][leg.get('number')]
+            if kind == 'NODE':
+                open_legs.append(leg.get('number'))
+                open_nodes.append(target)
+                targets[leg.get('number')] = ('NODE', target)
+            else:
+                targets[leg.get('number')] = (
+                    'PRODUCTION_LEG', leg.get('number'))
+        real_variants.append({
+            'active_component': 0,
+            'context': context,
+            'context_kind': 'DECAY_CHAIN',
+            'provider': _spin_density_provider(
+                matrix_element, open_legs, open_nodes, targets,
+                'production_real_%d' % index)})
+
+    virtual_variant = None
+    if production_virtual is not None:
+        born_provider = components[0]['born']
+        virtual_variant = {
+            'active_component': 0,
+            'context': metadata['contexts'][0],
+            'context_kind': 'DECAY_CHAIN',
+            'matrix_element': production_virtual,
+            'open_legs': born_provider['open_legs'],
+            'open_nodes': born_provider['open_nodes'],
+            'momentum_targets': born_provider['momentum_targets']}
+
+    return {
+        'format': 1,
+        'topology': metadata,
+        'components': components,
+        'born_context': metadata['contexts'][0],
+        'born_context_kind': 'DECAY_CHAIN',
+        'born_variants': [{
+            'contribution_id': 1,
+            'active_component': 0,
+            'context': metadata['contexts'][0],
+            'context_kind': 'DECAY_CHAIN'}],
+        'real_variants': real_variants,
+        'color_variants': [],
+        'virtual_variants': ([] if virtual_variant is None
+                             else [virtual_variant])}
+
+
+def _local_spin_density_provider(matrix_element, context, label):
+    """Describe a corrected-decay ME in its decay-local coordinates."""
+
+    matrix_element = _copy_tree_matrix_element(matrix_element)
+    legs = sorted(matrix_element.get('processes')[0].get('legs'),
+                  key=lambda item: item.get('number'))
+    local_map = context['local_map']
+    if set(local_map) != set(leg.get('number') for leg in legs):
+        raise fks_common.FKSProcessError(
+            'A corrected-decay density provider has inconsistent local legs')
+    open_legs = []
+    open_nodes = []
+    momentum_targets = {}
+    for leg in legs:
+        number = leg.get('number')
+        kind, target = local_map[number]
+        momentum_targets[number] = ('LOCAL_LEG', number)
+        if kind == 'NODE':
+            open_legs.append(number)
+            open_nodes.append(target)
+    return _spin_density_provider(
+        matrix_element, open_legs, open_nodes, momentum_targets, label)
+
+
+def _nlo_decay_spin_density_plan(composition, metadata, decay_born,
+                                  decay_reals, decay_virtual):
+    """Build a tensor plan with the corrected decay as the NLO component."""
+
+    production = helas_objects.HelasMatrixElement(
+        composition['root_amplitude'], gen_color=True)
+    components = _spin_density_components(
+        production, composition['full_assignment'], metadata)
+    corrected = metadata['corrected_node']
+    born_contexts = [
+        context for context in metadata['contexts']
+        if context['kind'] == 'BORN']
+    real_contexts = [
+        context for context in metadata['contexts']
+        if context['kind'] == 'REAL']
+    if len(born_contexts) != 1 or len(real_contexts) != len(decay_reals):
+        raise fks_common.FKSProcessError(
+            'The corrected-decay density contexts are incomplete')
+    born_context = born_contexts[0]
+    components[corrected]['born'] = _local_spin_density_provider(
+        decay_born, born_context, 'decay_%d_born' % corrected)
+
+    real_variants = []
+    for index, (matrix_element, context) in enumerate(
+            zip(decay_reals, real_contexts), 1):
+        real_variants.append({
+            'active_component': corrected,
+            'context': context,
+            'context_kind': 'NLO_DECAY',
+            'provider': _local_spin_density_provider(
+                matrix_element, context,
+                'decay_%d_real_%d' % (corrected, index))})
+
+    virtual_variants = []
+    if decay_virtual is not None:
+        born_provider = components[corrected]['born']
+        virtual_variants.append({
+            'active_component': corrected,
+            'context': born_context,
+            'context_kind': 'NLO_DECAY',
+            'matrix_element': decay_virtual,
+            'open_legs': born_provider['open_legs'],
+            'open_nodes': born_provider['open_nodes'],
+            'momentum_targets': born_provider['momentum_targets'],
+            'label': 'decay_%d_virtual' % corrected})
+
+    return {
+        'format': 1,
+        'source': 'NLO_DECAY',
+        'topology': metadata,
+        'components': components,
+        'born_active_component': corrected,
+        'born_context': born_context,
+        'born_context_kind': 'NLO_DECAY',
+        'born_variants': [{
+            'contribution_id': 1,
+            'active_component': corrected,
+            'context': born_context,
+            'context_kind': 'NLO_DECAY'}],
+        'real_variants': real_variants,
+        'color_variants': [],
+        'virtual_variants': virtual_variants}
+
+
+def iter_spin_density_matrix_elements(plan):
+    """Yield every distinct matrix element retained by a density plan."""
+
+    seen = set()
+    providers = [
+        component['born'] for component in plan['components'].values()]
+    providers.extend(variant['provider']
+                     for variant in plan.get('real_variants', []))
+    providers.extend(plan.get('auxiliary_providers', []))
+    providers.extend(
+        variant['tree_provider']
+        for variant in plan.get('virtual_variants', [])
+        if variant.get('tree_provider') is not None)
+    for provider in providers:
+        matrix_element = provider['matrix_element']
+        if id(matrix_element) in seen:
+            continue
+        seen.add(id(matrix_element))
+        yield matrix_element
+    for variant in plan.get('virtual_variants', []):
+        matrix_element = variant['matrix_element']
+        if id(matrix_element) in seen:
+            continue
+        seen.add(id(matrix_element))
+        yield matrix_element
+
+
 def _remove_decay_at_path(process, path):
     """Copy ``process`` and remove the nested decay selected by ``path``."""
 
@@ -1245,9 +1639,9 @@ def generate_nlo_decay_composition_inputs(full_process_definition,
         lo_definition.get('decay_chains'))
     for full_assignment in assignments:
         # A corrected occurrence is temporarily distinguishable from its
-        # otherwise identical production siblings.  HELAS consequently drops
-        # the production symmetry divisor when the corrected current is glued
-        # back below.  Record the normalization of the complete LO assignment
+        # otherwise identical production siblings.  The flattened topology
+        # object consequently drops the production symmetry divisor.  Record
+        # the normalization of the complete LO assignment
         # so every labeled NLO term retains the original 1/S factor; the
         # explicit occurrence sum then supplies precisely the required
         # \sum_i delta D_i and no extra multiplicity.
@@ -2016,25 +2410,33 @@ def _production_amplitude_as_parent_current(production_amplitude, selector,
 
 
 def _copy_loop_matrix_element(matrix_element):
-    """Copy a loop ME while retaining shared model and particle objects."""
+    """Regenerate an independent standalone MadLoop matrix element.
 
-    result = copy.copy(matrix_element)
-    model = matrix_element.get('processes')[0].get('model')
-    memo = {id(model): model}
-    for wavefunction in _all_wavefunctions(matrix_element):
-        for name in ['particle', 'antiparticle']:
-            particle = wavefunction.get(name)
-            memo[id(particle)] = particle
-    result.set('diagrams', matrix_element.get('diagrams').__class__(
-        copy.deepcopy(list(matrix_element.get('diagrams')), memo)))
+    A loop HELAS object contains references from its loop diagrams to its Born
+    wavefunctions.  Copying either list is therefore insufficient: inserting
+    a decay in the ordinary Born object can still renumber the supposedly
+    standalone virtual provider.  Regeneration also preserves a user loop
+    filter through the source ``LoopAmplitude``.
+    """
+
+    process = _copy_process(matrix_element.get('processes')[0])
+    process.set('legs', fks_common.to_legs(copy.copy(process.get('legs'))))
+    source_amplitude = matrix_element.get('base_amplitude')
+    loop_filter = getattr(source_amplitude, 'loop_filter', None)
+    amplitude = loop_diagram_generation.LoopAmplitude(
+        process, loop_filter=loop_filter)
+    result = loop_helas_objects.LoopHelasMatrixElement(
+        amplitude, optimized_output=matrix_element.optimized_output,
+        gen_color=True)
+
+    # Matrix elements with identical HELAS calls can already represent
+    # several concrete flavour subprocesses.  Keep that dispatch list while
+    # retaining the newly generated diagrams and colour objects.
     result.set('processes', matrix_element.get('processes').__class__([
-        _copy_process_tree(process)
+        _copy_process(process)
         for process in matrix_element.get('processes')]))
-    result.set('base_amplitude', None)
-    result['loop_groups'] = []
-    for attribute in ['squared_orders', 'amps_orders']:
-        if hasattr(result, attribute):
-            delattr(result, attribute)
+    result.set('has_mirror_process',
+               matrix_element.get('has_mirror_process'))
     return result
 
 
@@ -2865,9 +3267,10 @@ def _build_nlo_decay_color_links(combined_born, decay_born,
 def compose_nlo_decay_helas_process(fks_process, composition):
     """Compose a decay-owned FKS family with one LO production amplitude.
 
-    Born and real contributions insert decay currents into production.  The
-    virtual uses the inverse construction: a crossed production current is
-    inserted into the decay loop and then exported as the standard virtual.
+    Flattened Born and real objects are retained solely for event topology and
+    FKS bookkeeping.  Every numerical Born, real, colour-linked and virtual
+    term is instead described by independent entries in ``spin_density_plan``;
+    no production amplitude is inserted into the standalone decay virtual.
     """
 
     production_amplitude = composition['production_amplitude']
@@ -2882,6 +3285,7 @@ def compose_nlo_decay_helas_process(fks_process, composition):
     decay_born_me = fks_process.born_me
     decay_real_mes = [
         real.matrix_element for real in fks_process.real_processes]
+    decay_virtual_me = fks_process.virt_matrix_element
 
     # Capture the decay-owned links before replacing the Born ME.  Their leg
     # numbers belong to the standalone decay FKS skeleton.
@@ -2996,39 +3400,34 @@ def compose_nlo_decay_helas_process(fks_process, composition):
         born_component_context, born_component_metadata)
     prototype_metadata['color_links'] = color_records
 
-    combined_virtual = None
-    if fks_process.virt_matrix_element:
-        decay_virtual = fks_process.virt_matrix_element
-        if corrected_process.get('decay_chains'):
-            decay_virtual = _copy_loop_matrix_element(decay_virtual)
-            decay_virtual = _attach_corrected_downstream_decays(
-                decay_virtual, corrected_process)
-        combined_virtual, current_count = compose_nlo_decay_virtual(
-            production_amplitude, selector,
-            decay_virtual, combined_born,
-            born_component_context, born_local_context)
+    if decay_virtual_me is not None:
         prototype_metadata['virtual_composition'] = \
-            'CROSSED_PRODUCTION_CURRENT'
-        prototype_metadata['virtual_current_count'] = current_count
+            'SPIN_DENSITY_MATRIX'
+        prototype_metadata['virtual_current_count'] = 1
 
     _annotate_widths(combined_born, born_local_context, prototype_metadata)
     for real, context in zip(
             combined_reals, prototype_metadata['contexts'][1:]):
         _annotate_widths(
             real.matrix_element, context, prototype_metadata)
-    if combined_virtual is not None:
-        _annotate_widths(
-            combined_virtual, born_local_context, prototype_metadata)
-
     for context in prototype_metadata['contexts']:
         context.pop('_local_leaf_ids', None)
+
+    spin_density_plan = _nlo_decay_spin_density_plan(
+        composition, prototype_metadata, decay_born_me,
+        decay_real_mes, decay_virtual_me)
+    _set_spin_density_color_variants(
+        spin_density_plan, prototype_metadata['color_links'],
+        corrected_node, 'local_first', 'local_second', born_local_context,
+        'NLO_DECAY')
 
     fks_process.born_me = combined_born
     fks_process.real_processes = combined_reals
     fks_process.color_links = color_links
     fks_process.nlo_decay_metadata = prototype_metadata
-    fks_process.nlo_decay_virtual_matrix_element = None
-    fks_process.virt_matrix_element = combined_virtual
+    fks_process.nlo_decay_virtual_matrix_element = decay_virtual_me
+    fks_process.virt_matrix_element = None
+    fks_process.spin_density_plan = spin_density_plan
     decay_trees = tuple((
         attachment['selector'],
         _process_grouping_signature(
@@ -3265,10 +3664,28 @@ def _append_loonly_fake_context(metadata, model):
 
 
 def apply_decay_assignment(fks_process, assignment):
-    """Attach an assignment to Born, real, counterterm, and loop HELAS MEs."""
+    """Attach an assignment and retain independent density-matrix MEs.
+
+    The combined HELAS objects built below remain the authoritative source of
+    flattened event topology and FKS metadata.  Numerical fNLO evaluation is
+    described separately by ``spin_density_plan`` and therefore never needs
+    to splice a decay current into a production amplitude.
+    """
 
     model = fks_process.born_me.get('processes')[0].get('model')
     metadata = _build_decay_metadata(assignment, model)
+
+    production_born = _copy_tree_matrix_element(fks_process.born_me)
+    production_reals = [
+        _copy_tree_matrix_element(real.matrix_element)
+        for real in fks_process.real_processes]
+    production_virtual = None
+    if fks_process.virt_matrix_element:
+        # Born and loop HELAS diagrams share internal objects in the ordinary
+        # FKS construction.  Rebuild the numerical virtual provider before
+        # the flattened Born topology below is modified by decay insertion.
+        production_virtual = _copy_loop_matrix_element(
+            fks_process.virt_matrix_element)
 
     born_context = _make_context(
         fks_process.born_me, assignment, metadata, 1, 'BORN', 1)
@@ -3294,13 +3711,19 @@ def apply_decay_assignment(fks_process, assignment):
         metadata['contexts'].append(context)
 
     if fks_process.virt_matrix_element:
-        virtual_context = _make_context(
-            fks_process.virt_matrix_element, assignment, metadata, 0,
-            'VIRTUAL', 1)
-        if (virtual_context['core_map'] != born_context['core_map'] or
-                virtual_context['leaf_map'] != born_context['leaf_map']):
+        virtual_legs = [
+            (leg.get('number'), leg.get('id'), leg.get('state'))
+            for leg in sorted(
+                production_virtual.get('processes')[0].get('legs'),
+                key=lambda item: item.get('number'))]
+        born_legs = [
+            (leg.get('number'), leg.get('id'), leg.get('state'))
+            for leg in sorted(
+                production_born.get('processes')[0].get('legs'),
+                key=lambda item: item.get('number'))]
+        if virtual_legs != born_legs:
             raise fks_common.FKSProcessError(
-                'Born and virtual decay mappings are inconsistent')
+                'Born and virtual production components are inconsistent')
 
     configuration = 0
     for real_index, real in enumerate(fks_process.real_processes, 1):
@@ -3316,6 +3739,12 @@ def apply_decay_assignment(fks_process, assignment):
     fks_process.decay_grouping_signature = _decay_grouping_signature(
         assignment, metadata, model)
     fks_process.decay_metadata = metadata
+    fks_process.spin_density_plan = _lo_spin_density_plan(
+        fks_process, assignment, metadata, production_born,
+        production_reals, production_virtual)
+    # Expose the same independent provider through the conventional field so
+    # grouping and all downstream exporter queries see the standalone object.
+    fks_process.virt_matrix_element = production_virtual
 
 
 def _real_to_born_leg_map(real_legs, born_legs, info):
@@ -3434,6 +3863,12 @@ def set_required_color_links(fks_process):
         basis.create_color_dict_list(base_amplitude),
         links)
     metadata['color_links'] = records
+    if getattr(fks_process, 'spin_density_plan', None) is not None:
+        _set_spin_density_color_variants(
+            fks_process.spin_density_plan, records, 0,
+            'core_first', 'core_second',
+            fks_process.spin_density_plan['born_context'],
+            fks_process.spin_density_plan['born_context_kind'])
     for context in metadata['contexts']:
         context.pop('_core_legs', None)
 

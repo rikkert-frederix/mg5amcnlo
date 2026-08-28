@@ -1265,14 +1265,23 @@ contains
   double precision function nlo_decay_nwa_weight()
     integer :: node
     double precision :: denominator_scale
+    include 'decay_matrix_factorization.inc'
     nlo_decay_nwa_weight = 1d0
     do node = 1, nlo_decay_node_count()
-      denominator_scale = decay_dummy_width_ratio()*node_masses(node)**2
-      nlo_decay_nwa_weight = nlo_decay_nwa_weight*denominator_scale**2/ &
-           (2d0*node_masses(node)* &
-            decay_physical_width(&
-                 nlo_decay_node_pdg(node), &
-                 node == nlo_decay_corrected_node()))
+      if (factorized_decay_matrix_elements) then
+        nlo_decay_nwa_weight = nlo_decay_nwa_weight/ &
+             (2d0*node_masses(node)* &
+              decay_physical_width(&
+                   nlo_decay_node_pdg(node), &
+                   node == nlo_decay_corrected_node()))
+      else
+        denominator_scale = decay_dummy_width_ratio()*node_masses(node)**2
+        nlo_decay_nwa_weight = nlo_decay_nwa_weight*denominator_scale**2/ &
+             (2d0*node_masses(node)* &
+              decay_physical_width(&
+                   nlo_decay_node_pdg(node), &
+                   node == nlo_decay_corrected_node()))
+      end if
     end do
   end function nlo_decay_nwa_weight
 

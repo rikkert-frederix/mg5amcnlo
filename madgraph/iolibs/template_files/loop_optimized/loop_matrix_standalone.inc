@@ -361,6 +361,17 @@ C     This can be accessed with the SET_FORBID_HEL_DOUBLECHECK subroutine of Mad
 ## if(not LoopInduced) {
 	  %(complex_dp_format)s AMP(NBORNAMPS)
 	  common/%(proc_prefix)sAMPS/AMP
+## if(SpinDensityOverride) {
+	  LOGICAL SDM_OVERRIDE_BORN,MP_SDM_OVERRIDE_BORN
+	  %(complex_dp_format)s SDM_BORN_AMP(NBORNAMPS)
+	  %(complex_mp_format)s MP_SDM_BORN_AMP(NBORNAMPS)
+	  common/%(proc_prefix)sSDM_BORN_OVERRIDE/
+     $ SDM_BORN_AMP,SDM_OVERRIDE_BORN
+	  common/%(proc_prefix)sMP_SDM_BORN_OVERRIDE/
+     $ MP_SDM_BORN_AMP,MP_SDM_OVERRIDE_BORN
+	  DATA SDM_OVERRIDE_BORN/.FALSE./
+	  DATA MP_SDM_OVERRIDE_BORN/.FALSE./
+## }
 ## }
 	  %(complex_dp_format)s W(20,NWAVEFUNCS)
 	  common/%(proc_prefix)sW/W  
@@ -1073,7 +1084,15 @@ c FeynRules, there are none of these type of counterterms.
 
 ## if(not AmplitudeReduction) {
   DO J=1,NBORNAMPS
+## if(SpinDensityOverride) {
+    IF (SDM_OVERRIDE_BORN) THEN
+      CTEMP = 2.0d0*HEL_MULT*DCONJG(SDM_BORN_AMP(J))
+    ELSE
+      CTEMP = 2.0d0*HEL_MULT*DCONJG(AMP(J))
+    ENDIF
+## } else {
     CTEMP = 2.0d0*HEL_MULT*DCONJG(AMP(J))
+## }
     DO I=1,NCTAMPS	
 	  CFTOT=DCMPLX(CF_N(I,J)/DBLE(ABS(CF_D(I,J))),0.0d0)
       IF(CF_D(I,J).LT.0) CFTOT=CFTOT*IMAG1
