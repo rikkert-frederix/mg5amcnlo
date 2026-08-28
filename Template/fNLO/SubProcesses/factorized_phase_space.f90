@@ -7,6 +7,8 @@ module factorized_phase_space
   double precision, allocatable, save :: block_momenta(:, :, :, :)
   integer, allocatable, save :: block_particle_count(:, :)
   logical, allocatable, save :: block_is_valid(:, :)
+  integer(kind=8), allocatable, save :: block_momentum_revision(:, :)
+  integer(kind=8), save :: next_block_momentum_revision = 0_8
 
   ! Embedding storage is deliberately distinct from the matrix-element
   ! block cache above.  In particular, a soft projection can have a
@@ -61,6 +63,7 @@ module factorized_phase_space
   public :: reset_factorized_phase_space
   public :: store_factorized_block_momenta
   public :: fetch_factorized_block_momenta
+  public :: factorized_block_momentum_revision
   public :: store_factorized_embedded_momenta
   public :: fetch_factorized_embedded_momenta
   public :: store_factorized_kernel_momenta
@@ -85,6 +88,7 @@ contains
     block_momenta = 0d0
     block_particle_count = 0
     block_is_valid = .false.
+    block_momentum_revision = 0_8
     embedded_momenta = 0d0
     embedded_particle_count = 0
     embedded_is_valid = .false.
@@ -116,6 +120,15 @@ contains
          momenta(0:3, 1:particle_count)
     block_particle_count(block, event_slot) = particle_count
     block_is_valid(block, event_slot) = .true.
+    next_block_momentum_revision = next_block_momentum_revision + 1_8
+    if (next_block_momentum_revision <= 0_8) then
+      ! A wrap is fantastically unlikely, but resetting all identities is
+      ! safer than allowing a stale density-matrix cache entry to match.
+      next_block_momentum_revision = 1_8
+      block_momentum_revision = 0_8
+    end if
+    block_momentum_revision(block, event_slot) = &
+         next_block_momentum_revision
   end subroutine store_factorized_block_momenta
 
 
@@ -135,6 +148,21 @@ contains
       momenta = block_momenta(:, 1:particle_count, block, event_slot)
     end if
   end subroutine fetch_factorized_block_momenta
+
+
+  integer(kind=8) function factorized_block_momentum_revision( &
+       event_slot, block)
+    integer, intent(in) :: event_slot, block
+
+    call ensure_storage()
+    call validate_event_and_block(event_slot, block)
+    if (block_is_valid(block, event_slot)) then
+      factorized_block_momentum_revision = &
+           block_momentum_revision(block, event_slot)
+    else
+      factorized_block_momentum_revision = 0_8
+    end if
+  end function factorized_block_momentum_revision
 
 
   subroutine store_factorized_embedded_momenta(event_slot, block, &
@@ -415,6 +443,8 @@ contains
                                   soft_counterevent:real_event))
     allocate(block_is_valid(0:nexternal, &
                             soft_counterevent:real_event))
+    allocate(block_momentum_revision(0:nexternal, &
+                                     soft_counterevent:real_event))
     allocate(embedded_momenta(0:3, nexternal, 0:nexternal, &
                               soft_counterevent:real_event))
     allocate(embedded_particle_count(0:nexternal, &
@@ -440,6 +470,7 @@ contains
     block_momenta = 0d0
     block_particle_count = 0
     block_is_valid = .false.
+    block_momentum_revision = 0_8
     embedded_momenta = 0d0
     embedded_particle_count = 0
     embedded_is_valid = .false.

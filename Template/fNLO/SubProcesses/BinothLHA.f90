@@ -34,12 +34,34 @@ module binoth_lha_madloop_backend
 
   end interface
 
-  public :: binoth_lha_eval
+  public :: binoth_lha_eval, binoth_lha_eval_factorized
 
 contains
 
+  subroutine binoth_lha_eval_factorized(contribution, event_slot, &
+       born_wgt, virt_wgt, pmass, amp_split_finite_ml, &
+       amp_split_poles_fks)
+    integer, intent(in) :: contribution, event_slot
+    double precision, intent(inout) :: born_wgt
+    double precision, intent(out) :: virt_wgt
+    double precision, intent(in) :: pmass(nexternal)
+    double precision, intent(inout) :: &
+         amp_split_finite_ml(amp_split_size)
+    double precision, intent(inout) :: &
+         amp_split_poles_fks(amp_split_size,2)
+    double precision :: diagnostic_momenta(0:3, nexternal-1)
+
+    ! Factorized loop providers never consume this array.  It remains local
+    ! to the legacy pole-check and diagnostic code in the shared backend.
+    diagnostic_momenta = 0d0
+    call binoth_lha_eval(diagnostic_momenta, born_wgt, virt_wgt, pmass, &
+         amp_split_finite_ml, amp_split_poles_fks, contribution, &
+         event_slot)
+  end subroutine binoth_lha_eval_factorized
+
   subroutine binoth_lha_eval(p, born_wgt, virt_wgt, pmass, &
-       amp_split_finite_ml, amp_split_poles_fks)
+       amp_split_finite_ml, amp_split_poles_fks, &
+       factorized_contribution, factorized_event_slot)
     implicit none
     double precision, intent(in) :: p(0:3, nexternal-1)
     double precision, intent(inout) :: born_wgt
@@ -49,6 +71,8 @@ contains
          amp_split_finite_ml(amp_split_size)
     double precision, intent(inout) :: &
          amp_split_poles_fks(amp_split_size,2)
+    integer, intent(in), optional :: factorized_contribution
+    integer, intent(in), optional :: factorized_event_slot
 
     double precision, parameter :: pi = 3.1415926535897932385d0
     integer, parameter :: nbadmax = 5
@@ -58,14 +82,28 @@ contains
     double precision :: hel_fact, born_hel_from_virt
     double precision :: avg_pole_res(2), pole_diff(2)
     integer :: ret_code, i, j, ioerr, ioerr_counter, dt(8)
-    integer :: contribution
+    integer :: contribution, event_slot
     integer :: iamp
     integer :: order_name_width
     integer :: amp_orders(nsplitorders), split_amp_orders(nsplitorders)
-    logical :: cpol
+    logical :: cpol, factorized_matrix
     integer, external :: getordpowfromindex_ml5
+    integer, external :: sdm_getordpowfromindex_ml5
     ioerr_counter = 0
-    contribution = active_nlo_contribution()
+    factorized_matrix = present(factorized_contribution) .or. &
+         present(factorized_event_slot)
+    if (present(factorized_contribution) .neqv. &
+        present(factorized_event_slot)) then
+      write (*,*) 'Incomplete factorized virtual-matrix identity'
+      stop 1
+    end if
+    if (factorized_matrix) then
+      contribution = factorized_contribution
+      event_slot = factorized_event_slot
+    else
+      contribution = active_nlo_contribution()
+      event_slot = 0
+    end if
     if (.not. allocated(firsttime)) then
       allocate(firsttime(nlo_contribution_count()))
       allocate(firsttime_run(nlo_contribution_count()))
@@ -102,13 +140,27 @@ contains
         allocate(goodhel(max_bhel))
         allocate(hel(0:max_bhel))
       end if
-      call FORCE_STABILITY_CHECK(.true.)
-      if (.not. force_polecheck) then
-        call COLLIER_COMPUTE_UV_POLES(.false.)
-        call COLLIER_COMPUTE_IR_POLES(.false.)
+      if (factorized_matrix) then
+        call SDM_FORCE_STABILITY_CHECK(contribution, .true.)
       else
-        call COLLIER_COMPUTE_UV_POLES(.true.)
-        call COLLIER_COMPUTE_IR_POLES(.true.)
+        call FORCE_STABILITY_CHECK(.true.)
+      end if
+      if (.not. force_polecheck) then
+        if (factorized_matrix) then
+          call SDM_COLLIER_COMPUTE_UV_POLES(contribution, .false.)
+          call SDM_COLLIER_COMPUTE_IR_POLES(contribution, .false.)
+        else
+          call COLLIER_COMPUTE_UV_POLES(.false.)
+          call COLLIER_COMPUTE_IR_POLES(.false.)
+        end if
+      else
+        if (factorized_matrix) then
+          call SDM_COLLIER_COMPUTE_UV_POLES(contribution, .true.)
+          call SDM_COLLIER_COMPUTE_IR_POLES(contribution, .true.)
+        else
+          call COLLIER_COMPUTE_UV_POLES(.true.)
+          call COLLIER_COMPUTE_IR_POLES(.true.)
+        end if
       end if
       firsttime_run(contribution) = .false.
     end if
@@ -118,14 +170,23 @@ contains
       write (*,*) 'alpha_s value used for the virtuals' // &
            ' is (for the first PS point): ', alpha_s
       tolerance = IRPoleCheckThreshold/10d0
-      call sloopmatrix_thres(p, virt_wgts, tolerance, accuracies, &
-           ret_code)
+      if (factorized_matrix) then
+        call sdm_sloopmatrix_thres(contribution, event_slot, virt_wgts, &
+             tolerance, accuracies, ret_code)
+      else
+        call sloopmatrix_thres(p, virt_wgts, tolerance, accuracies, &
+             ret_code)
+      end if
 
       virt_wgt = virt_wgts(1,1)
       single_pole = virt_wgts(2,1)
       double_pole = virt_wgts(3,1)
       do j = 1, nsplitorders
-        amp_orders(j) = getordpowfromindex_ml5(j,1)
+        if (factorized_matrix) then
+          amp_orders(j) = sdm_getordpowfromindex_ml5(contribution,j,1)
+        else
+          amp_orders(j) = getordpowfromindex_ml5(j,1)
+        end if
       end do
       amp_split_finite_ml(orders_to_amp_split_pos(amp_orders)) = &
            virt_wgts(1,1)
@@ -136,14 +197,27 @@ contains
       prec_found(orders_to_amp_split_pos(amp_orders)) = accuracies(1)
     else
       tolerance = PrecisionVirtualAtRunTime
-      if (mc_hel == 0) then
-        call sloopmatrix_thres(p, virt_wgts, tolerance, accuracies, &
-             ret_code)
+      ! A factorized density provider owns an open-spin matrix rather than a
+      ! helicity probability for the assembled process.  It must therefore
+      ! be evaluated with its exact helicity sum; in particular, never feed
+      ! the compatibility momentum array to PickHelicityMC.
+      if (mc_hel == 0 .or. factorized_matrix) then
+        if (factorized_matrix) then
+          call sdm_sloopmatrix_thres(contribution, event_slot, virt_wgts, &
+               tolerance, accuracies, ret_code)
+        else
+          call sloopmatrix_thres(p, virt_wgts, tolerance, accuracies, &
+               ret_code)
+        end if
         virt_wgt = virt_wgts(1,1)
         single_pole = virt_wgts(2,1)
         double_pole = virt_wgts(3,1)
         do j = 1, nsplitorders
-          amp_orders(j) = getordpowfromindex_ml5(j,1)
+          if (factorized_matrix) then
+            amp_orders(j) = sdm_getordpowfromindex_ml5(contribution,j,1)
+          else
+            amp_orders(j) = getordpowfromindex_ml5(j,1)
+          end if
         end do
         amp_split_finite_ml(orders_to_amp_split_pos(amp_orders)) = &
              virt_wgts(1,1)
@@ -154,15 +228,24 @@ contains
         prec_found(orders_to_amp_split_pos(amp_orders)) = accuracies(1)
       else if (mc_hel == 1) then
         call PickHelicityMC(p, goodhel, hel, ihel, volh)
-        call sloopmatrixhel_thres(p, hel(ihel), virt_wgts_hel, &
-             tolerance, accuracies, ret_code)
+        if (factorized_matrix) then
+          call sdm_sloopmatrixhel_thres(contribution, event_slot, &
+               hel(ihel), virt_wgts_hel, tolerance, accuracies, ret_code)
+        else
+          call sloopmatrixhel_thres(p, hel(ihel), virt_wgts_hel, &
+               tolerance, accuracies, ret_code)
+        end if
         hel_fact = dble(goodhel(ihel))/volh/4d0
         born_hel_from_virt = virt_wgts_hel(0,1)
         virt_wgt = virt_wgts_hel(1,1)*hel_fact
         single_pole = virt_wgts_hel(2,1)*hel_fact
         double_pole = virt_wgts_hel(3,1)*hel_fact
         do j = 1, nsplitorders
-          amp_orders(j) = getordpowfromindex_ml5(j,1)
+          if (factorized_matrix) then
+            amp_orders(j) = sdm_getordpowfromindex_ml5(contribution,j,1)
+          else
+            amp_orders(j) = getordpowfromindex_ml5(j,1)
+          end if
         end do
         amp_split_finite_ml(orders_to_amp_split_pos(amp_orders)) = &
              virt_wgts_hel(1,1)*hel_fact

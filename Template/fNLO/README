@@ -86,6 +86,11 @@ separate boost-only pass. A third pass materializes the canonical event for
 cuts, scales and analyses. Matrix elements bypass that assembled event and
 read only their boosted block-local momenta; subtraction kernels receive the
 corresponding kernel-frame block.
+Each matrix-element block returns a complex LO spin-density matrix plus, when
+it owns the current NLO term, one separate real or virtual insertion matrix.
+LO spectator matrices are cached against the boosted block-momentum revision.
+The contraction accepts either all LO matrices or exactly one insertion, so
+it cannot form production-times-decay or decay-times-decay corrections.
 The block measures, active radiation map, production flux and incoming
 integration weight are composed only at the integrator boundary. Production
 and decay NLO terms also own separate adaptive grids for their three FKS

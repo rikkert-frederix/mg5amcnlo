@@ -28,6 +28,7 @@ module fks_singular_module
   use nlo_decay_kinematics, only: get_nlo_decay_born_kernel, &
        get_nlo_decay_mass_buffer, nlo_decay_parent_mass
   use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
+       active_nlo_contribution, &
        active_contribution_fks_first, active_contribution_fks_last, &
        active_contribution_has_virtual, active_virtual_grid_index
   use fks_qcd_splitting, only: AP_reduced, AP_reduced_prime, &
@@ -350,9 +351,12 @@ contains
     else
       legacy_momenta = p_born
     end if
-    ! The density-matrix implementation ignores this compatibility array
-    ! and obtains every boosted component from factorized_phase_space.
-    call sborn(legacy_momenta, weight)
+    if (uses_factorized_kernel_state()) then
+      call sborn_factorized( &
+           active_nlo_contribution(), event_slot, weight)
+    else
+      call sborn(legacy_momenta, weight)
+    end if
   end subroutine evaluate_born_matrix
 
 
@@ -370,7 +374,12 @@ contains
     else
       legacy_momenta = p_born
     end if
-    call sborn_sf(legacy_momenta, first, second, weight)
+    if (uses_factorized_kernel_state()) then
+      call sborn_sf_factorized(active_nlo_contribution(), event_slot, &
+                               first, second, weight)
+    else
+      call sborn_sf(legacy_momenta, first, second, weight)
+    end if
   end subroutine evaluate_born_color_matrix
 
 
@@ -388,7 +397,11 @@ contains
     else
       legacy_momenta = stored_event_momenta(:, :, event_slot)
     end if
-    call smatrix_real(legacy_momenta, weight)
+    if (uses_factorized_kernel_state()) then
+      call smatrix_real_factorized(nfksprocess, event_slot, weight)
+    else
+      call smatrix_real(legacy_momenta, weight)
+    end if
   end subroutine evaluate_real_matrix
 
 
@@ -407,7 +420,13 @@ contains
     else
       legacy_momenta = p_born
     end if
-    call BinothLHA(legacy_momenta, born_weight, virtual_weight)
+    if (uses_factorized_kernel_state()) then
+      call BinothLHA_factorized( &
+           active_nlo_contribution(), event_slot, born_weight, &
+           virtual_weight)
+    else
+      call BinothLHA(legacy_momenta, born_weight, virtual_weight)
+    end if
   end subroutine evaluate_virtual_matrix
 
 

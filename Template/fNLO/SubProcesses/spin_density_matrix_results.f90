@@ -1,0 +1,241 @@
+module spin_density_matrix_results
+  use process_dimensions, only: nexternal
+  use fnlo_process_common, only: soft_counterevent, real_event
+  use factorized_phase_space, only: &
+       factorized_block_momentum_revision
+  implicit none
+  private
+
+  integer, parameter, public :: spin_density_no_insertion = 0
+  integer, parameter, public :: spin_density_born_insertion = 1
+  integer, parameter, public :: spin_density_real_insertion = 2
+  integer, parameter, public :: spin_density_virtual_insertion = 3
+  integer, parameter, public :: spin_density_color_insertion = 4
+
+  ! One physical production or decay block.  LO is the reusable spectator
+  ! density.  INSERTION is the sole block-local object that may replace it in
+  ! a fixed-order contraction (a local underlying Born, real, virtual,
+  ! spin-correlated, or colour-correlated density).  The contraction routine
+  ! below never reads INSERTION from more than one block.
+  type, public :: spin_density_block_result
+    integer :: block = -1
+    integer :: event_slot = -1
+    integer :: open_size = 0
+    integer :: insertion_kind = spin_density_no_insertion
+    integer :: insertion_order = 0
+    logical :: has_lo = .false.
+    logical :: has_insertion = .false.
+    complex(kind=8), allocatable :: lo(:, :, :)
+    complex(kind=8), allocatable :: insertion(:, :, :)
+  end type spin_density_block_result
+
+  type :: spin_density_cache_entry
+    integer(kind=8) :: momentum_revision = 0_8
+    integer :: open_size = 0
+    logical :: valid = .false.
+    complex(kind=8), allocatable :: value(:, :, :)
+  end type spin_density_cache_entry
+
+  type(spin_density_cache_entry), allocatable, save :: lo_cache(:, :)
+
+  public :: initialize_spin_density_block
+  public :: load_cached_lo_density, record_lo_density
+  public :: set_spin_density_insertion
+  public :: strict_spin_density_product
+
+contains
+
+  subroutine initialize_spin_density_block(result, event_slot, block, &
+                                             open_size)
+    type(spin_density_block_result), intent(out) :: result
+    integer, intent(in) :: event_slot, block, open_size
+
+    call validate_identity(event_slot, block, open_size)
+    result%block = block
+    result%event_slot = event_slot
+    result%open_size = open_size
+  end subroutine initialize_spin_density_block
+
+
+  subroutine load_cached_lo_density(result, available)
+    type(spin_density_block_result), intent(inout) :: result
+    logical, intent(out) :: available
+    integer(kind=8) :: revision
+
+    call ensure_cache()
+    call validate_result_identity(result)
+    revision = factorized_block_momentum_revision( &
+         result%event_slot, result%block)
+    available = revision > 0_8 .and. &
+         lo_cache(result%block, result%event_slot)%valid .and. &
+         lo_cache(result%block, result%event_slot)%momentum_revision == &
+         revision .and. &
+         lo_cache(result%block, result%event_slot)%open_size == &
+         result%open_size
+    if (.not. available) return
+    allocate(result%lo(1, result%open_size, result%open_size))
+    result%lo = lo_cache(result%block, result%event_slot)%value
+    result%has_lo = .true.
+  end subroutine load_cached_lo_density
+
+
+  subroutine record_lo_density(result, density)
+    type(spin_density_block_result), intent(inout) :: result
+    complex(kind=8), intent(in) :: density(:, :, :)
+    integer(kind=8) :: revision
+
+    call ensure_cache()
+    call validate_result_identity(result)
+    if (size(density, 1) /= 1 .or. &
+        size(density, 2) /= result%open_size .or. &
+        size(density, 3) /= result%open_size) then
+      call fail_spin_density_results('an LO density has the wrong shape')
+    end if
+    revision = factorized_block_momentum_revision( &
+         result%event_slot, result%block)
+    if (revision <= 0_8) then
+      call fail_spin_density_results( &
+           'cannot cache an LO density without boosted block momenta')
+    end if
+    if (allocated(result%lo)) deallocate(result%lo)
+    allocate(result%lo(1, result%open_size, result%open_size))
+    result%lo = density
+    result%has_lo = .true.
+
+    associate(entry => lo_cache(result%block, result%event_slot))
+      if (allocated(entry%value)) deallocate(entry%value)
+      allocate(entry%value(1, result%open_size, result%open_size))
+      entry%value = density
+      entry%momentum_revision = revision
+      entry%open_size = result%open_size
+      entry%valid = .true.
+    end associate
+  end subroutine record_lo_density
+
+
+  subroutine set_spin_density_insertion(result, kind, order, density)
+    type(spin_density_block_result), intent(inout) :: result
+    integer, intent(in) :: kind, order
+    complex(kind=8), intent(in) :: density(:, :, :)
+
+    call validate_result_identity(result)
+    if (result%has_insertion) then
+      call fail_spin_density_results( &
+           'a block result received more than one insertion')
+    end if
+    if (kind <= spin_density_no_insertion .or. &
+        kind > spin_density_color_insertion) then
+      call fail_spin_density_results('an insertion kind is invalid')
+    end if
+    if (order < 0 .or. order > 1) then
+      call fail_spin_density_results( &
+           'only LO or one-NLO-order insertions are supported')
+    end if
+    if (size(density, 1) < 1 .or. &
+        size(density, 2) /= result%open_size .or. &
+        size(density, 3) /= result%open_size) then
+      call fail_spin_density_results( &
+           'an insertion density has the wrong shape')
+    end if
+    allocate(result%insertion(size(density, 1), result%open_size, &
+                              result%open_size))
+    result%insertion = density
+    result%insertion_kind = kind
+    result%insertion_order = order
+    result%has_insertion = .true.
+  end subroutine set_spin_density_insertion
+
+
+  complex(kind=8) function strict_spin_density_product( &
+       results, active_position, insertion_rank, left_indices, &
+       right_indices)
+    type(spin_density_block_result), intent(in) :: results(:)
+    integer, intent(in) :: active_position, insertion_rank
+    integer, intent(in) :: left_indices(:), right_indices(:)
+    integer :: position
+
+    if (size(left_indices) /= size(results) .or. &
+        size(right_indices) /= size(results)) then
+      call fail_spin_density_results( &
+           'a contraction index vector has the wrong size')
+    end if
+    if (active_position < 0 .or. active_position > size(results)) then
+      call fail_spin_density_results( &
+           'a contraction active position is out of range')
+    end if
+    if (active_position == 0 .and. insertion_rank /= 0) then
+      call fail_spin_density_results( &
+           'an all-LO contraction requested an insertion rank')
+    end if
+
+    strict_spin_density_product = (1d0, 0d0)
+    do position = 1, size(results)
+      if (position == active_position) then
+        if (.not. results(position)%has_insertion) then
+          call fail_spin_density_results( &
+               'the active block has no density insertion')
+        end if
+        if (results(position)%insertion_order > 1) then
+          call fail_spin_density_results( &
+               'a higher-order density insertion was requested')
+        end if
+        if (insertion_rank < 1 .or. insertion_rank > &
+            size(results(position)%insertion, 1)) then
+          call fail_spin_density_results( &
+               'an insertion rank is out of range')
+        end if
+        strict_spin_density_product = strict_spin_density_product* &
+             results(position)%insertion( &
+             insertion_rank, left_indices(position), &
+             right_indices(position))
+      else
+        if (.not. results(position)%has_lo) then
+          call fail_spin_density_results( &
+               'a spectator block has no cached LO density')
+        end if
+        strict_spin_density_product = strict_spin_density_product* &
+             results(position)%lo(1, left_indices(position), &
+                                  right_indices(position))
+      end if
+    end do
+  end function strict_spin_density_product
+
+
+  subroutine ensure_cache()
+    if (allocated(lo_cache)) return
+    allocate(lo_cache(0:nexternal, soft_counterevent:real_event))
+  end subroutine ensure_cache
+
+
+  subroutine validate_result_identity(result)
+    type(spin_density_block_result), intent(in) :: result
+
+    call validate_identity(result%event_slot, result%block, &
+                           result%open_size)
+  end subroutine validate_result_identity
+
+
+  subroutine validate_identity(event_slot, block, open_size)
+    integer, intent(in) :: event_slot, block, open_size
+
+    if (event_slot < soft_counterevent .or. event_slot > real_event) then
+      call fail_spin_density_results('an event slot is out of range')
+    end if
+    if (block < 0 .or. block > nexternal) then
+      call fail_spin_density_results('a block index is out of range')
+    end if
+    if (open_size < 1) then
+      call fail_spin_density_results('an open-spin size is invalid')
+    end if
+  end subroutine validate_identity
+
+
+  subroutine fail_spin_density_results(message)
+    character(len=*), intent(in) :: message
+
+    write (*, '(a)') 'ERROR in spin_density_matrix_results: '// &
+         trim(message)
+    stop 1
+  end subroutine fail_spin_density_results
+
+end module spin_density_matrix_results

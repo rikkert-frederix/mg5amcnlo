@@ -270,14 +270,20 @@ class TestFKSDecayChains(unittest.TestCase):
                     os.path.join(subprocess_root, name)))
             with open(os.path.join(subprocess_dir, 'born.f')) as stream:
                 born_source = stream.read()
+            flat_born = ' '.join(
+                born_source.replace('$', ' ').split()).replace(' ,', ',')
             self.assertIn('CALL SDM_PRODUCTION_BORN', born_source)
             self.assertIn('CALL SDM_DECAY_1_BORN', born_source)
             self.assertIn(
-                'CALL GET_FACTORIZED_BLOCK_MOMENTA(0,0,4,SDM_P_0)',
-                born_source)
+                'GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,0,4,',
+                flat_born)
             self.assertIn(
-                'CALL GET_FACTORIZED_BLOCK_MOMENTA(0,1,3,SDM_P_1)',
-                born_source)
+                'GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,1,3,',
+                flat_born)
+            self.assertIn('SUBROUTINE SBORN_FACTORIZED(', flat_born)
+            self.assertIn('STRICT_SPIN_DENSITY_PRODUCT(', flat_born)
+            self.assertIn('LOAD_CACHED_LO_DENSITY(', flat_born)
+            self.assertIn('SET_SPIN_DENSITY_INSERTION(', flat_born)
             self.assertNotIn('SDM_BLOCK_AVAILABLE', born_source)
             self.assertNotIn('SDM_P_0(:,1)=P(:,1)', born_source)
             self.assertNotIn('SDM_P_1(:,1)=P(:,3)+P(:,4)', born_source)
@@ -288,6 +294,20 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn(
                 'boosted factorized momenta are unavailable',
                 factorized_source)
+            self.assertIn(
+                'factorized_block_momentum_revision', factorized_source)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'spin_density_matrix_results.f90')) as stream:
+                result_source = stream.read().lower()
+            self.assertIn(
+                'type, public :: spin_density_block_result', result_source)
+            self.assertIn(
+                'function strict_spin_density_product', result_source)
+            self.assertIn('insertion_order > 1', result_source)
+            self.assertIn('momentum_revision', result_source)
+            self.assertIn('the active block has no density insertion',
+                          result_source)
             with open(os.path.join(
                     subprocess_dir,
                     'decay_chain_kinematics.f90')) as stream:
@@ -346,10 +366,12 @@ class TestFKSDecayChains(unittest.TestCase):
                     os.path.join(subprocess_root, name)))
             with open(os.path.join(subprocess_dir, 'born.f')) as stream:
                 born_source = stream.read()
+            flat_born = ' '.join(
+                born_source.replace('$', ' ').split()).replace(' ,', ',')
             for component_id in sorted(plan['components']):
                 self.assertIn(
-                    'GET_FACTORIZED_BLOCK_MOMENTA(0,%d,' % component_id,
-                    born_source)
+                    'GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,%d,' %
+                    component_id, flat_born)
             self.assertNotIn('SDM_BLOCK_AVAILABLE', born_source)
 
     def test_two_decays_and_both_madloop_modes(self):
@@ -1006,6 +1028,10 @@ class TestFKSDecayChains(unittest.TestCase):
                 born_source = stream.read()
             with open(real_path) as stream:
                 real_source = stream.read()
+            flat_born = ' '.join(
+                born_source.replace('$', ' ').split()).replace(' ,', ',')
+            flat_real = ' '.join(
+                real_source.replace('$', ' ').split()).replace(' ,', ',')
             with open(fks_info_path) as stream:
                 fks_info_source = stream.read()
             flat_fks_info = ' '.join(
@@ -1019,17 +1045,22 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn('CALL SDM_PRODUCTION_BORN', real_source)
             self.assertIn('CALL SDM_DECAY_1_REAL_1', real_source)
             self.assertIn(
-                'CALL GET_FACTORIZED_BLOCK_MOMENTA(0,0,4,SDM_P_0)',
-                born_source)
+                'GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,0,4,',
+                flat_born)
             self.assertIn(
-                'CALL GET_FACTORIZED_BLOCK_MOMENTA(0,1,3,SDM_P_1)',
-                born_source)
+                'GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,1,3,',
+                flat_born)
             self.assertIn(
-                'CALL GET_FACTORIZED_BLOCK_MOMENTA(3,0,4,SDM_P_0)',
-                real_source)
+                'GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,0,4,',
+                flat_real)
             self.assertIn(
-                'CALL GET_FACTORIZED_BLOCK_MOMENTA(3,1,4,SDM_P_1)',
-                real_source)
+                'GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,1,4,',
+                flat_real)
+            self.assertIn('SUBROUTINE SBORN_FACTORIZED(', flat_born)
+            self.assertIn('SUBROUTINE SMATRIX1_FACTORIZED(', flat_real)
+            self.assertIn('STRICT_SPIN_DENSITY_PRODUCT(', flat_real)
+            self.assertIn(
+                'SPIN_DENSITY_REAL_INSERTION,1', flat_real)
             self.assertNotIn('SDM_BLOCK_AVAILABLE', real_source)
             for filename in [
                     'spin_density_production_born.f',
@@ -1194,6 +1225,10 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn('subroutine evaluate_born_matrix', singular)
             self.assertIn('subroutine evaluate_real_matrix', singular)
             self.assertIn('subroutine evaluate_virtual_matrix', singular)
+            self.assertIn('call sborn_factorized(', singular)
+            self.assertIn('call sborn_sf_factorized(', singular)
+            self.assertIn('call smatrix_real_factorized(', singular)
+            self.assertIn('call binothlha_factorized(', singular)
             self.assertNotIn(
                 'evaluate_fks_sij(event_slot, p', singular)
             self.assertNotIn('subroutine sreal(event_slot, pp', singular)
@@ -1476,7 +1511,13 @@ class TestFKSDecayChains(unittest.TestCase):
                         real_sources.append(stream.read())
             self.assertTrue(real_sources)
             self.assertTrue(all(
-                'GET_FACTORIZED_BLOCK_MOMENTA(3,' in source
+                'GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,' in source
+                for source in real_sources))
+            self.assertTrue(all(
+                'SET_SPIN_DENSITY_INSERTION' in source and
+                'STRICT_SPIN_DENSITY_PRODUCT' in source and
+                'SPIN_DENSITY_REAL_INSERTION,1' in
+                ' '.join(source.replace('$', ' ').split()).replace(' ,', ',')
                 for source in real_sources))
             self.assertTrue(all(
                 'SDM_BLOCK_AVAILABLE' not in source
@@ -1681,7 +1722,11 @@ class TestFKSDecayChains(unittest.TestCase):
                     stream.read().replace('$', ' ').split())
             for contribution in [1, 2, 3]:
                 self.assertIn(
-                    'CALL SDM_VIRTUAL_CONTRIBUTION_%d(P, ANS' %
+                    'CALL SDM_VIRTUAL_CONTRIBUTION_%d(0, ANS' %
+                    contribution,
+                    chooser)
+                self.assertIn(
+                    'CALL SDM_VIRTUAL_CONTRIBUTION_%d(EVENT_SLOT, ANS' %
                     contribution,
                     chooser)
                 self.assertIn(
@@ -1724,6 +1769,20 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn('COUNT 3\n', metadata)
             self.assertIn('VIRTUAL_GRIDS 3\n', metadata)
             self.assertEqual(metadata.count('\nVIRTUAL_GRID '), 3)
+            self.assertIn('VIRTUAL_GRID 1 1 6 4\n', metadata)
+            self.assertIn('VIRTUAL_GRID 2 2 6 4\n', metadata)
+            self.assertIn('VIRTUAL_GRID 3 3 6 4\n', metadata)
+            with open(os.path.join(
+                    subprocess_dir, 'BinothLHA.f90')) as stream:
+                virtual_backend = stream.read().lower()
+            self.assertIn('subroutine binoth_lha_eval_factorized',
+                          virtual_backend)
+            self.assertIn('mc_hel == 0 .or. factorized_matrix',
+                          virtual_backend)
+            with open(os.path.join(
+                    subprocess_dir, 'makefile')) as stream:
+                makefile = stream.read()
+            self.assertIn('FNLO_CUTTOOLS_LIBRARY', makefile)
             self.assertTrue(os.path.isfile(os.path.join(
                 subprocess_dir, 'nlo_decay_info_2.dat')))
             self.assertTrue(os.path.isfile(os.path.join(

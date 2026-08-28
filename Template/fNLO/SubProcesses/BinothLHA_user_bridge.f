@@ -9,3 +9,12 @@
      &     amp_split_finite)
       return
       end
+
+      subroutine BinothLHA_factorized(contribution,event_slot,
+     $     born_wgt,virt_wgt)
+      implicit none
+      integer contribution,event_slot
+      double precision born_wgt,virt_wgt
+      write(*,*) 'Factorized density matrices require MadLoop virtuals'
+      stop 1
+      end

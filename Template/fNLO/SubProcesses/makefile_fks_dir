@@ -22,8 +22,10 @@ endif
 
 FNLO_MADLOOP_LIBRARIES = $(if $(strip $(FNLO_VIRTUAL_LIBRARIES)),\
 	$(FNLO_VIRTUAL_LIBRARIES),$(libmadloop))
+FNLO_CUTTOOLS_LIBRARY = $(if $(strip $(FNLO_VIRTUAL_LIBRARIES)),\
+	-lcts,$(libcuttools))
 NLOLIBS=-L$(LIBDIR) $(FNLO_MADLOOP_LIBRARIES) \
-	$(libcuttools) $(libOLP)
+	$(FNLO_CUTTOOLS_LIBRARY) $(libOLP)
 
 # Uncomment the line below to compile with MadLoop without setting the environnement 
 # variables 'by hand'
@@ -47,6 +49,7 @@ FILES= fnlo_process_common.o process_dimensions.o			\
 	 fnlo_scale_variations.o					\
 	 decay_chain_parameters_bridge.o phase_space_kinematics.o	\
 	 factorized_phase_space.o factorized_block_kinematics.o	\
+	 spin_density_matrix_results.o					\
 	 decay_chain_kinematics.o nlo_decay_kinematics.o		\
 	 decay_chain_scales.o						\
 	 fks_diagnostics.o fks_qcd_splitting.o fks_soft_kernels.o	\
@@ -232,6 +235,8 @@ fnlo_scale_variations.o: decay_chain_metadata.o nlo_decay_metadata.o \
 phase_space_kinematics.o: process_dimensions.o \
 	$(LIBDIR)kin_functions_module.mod
 factorized_phase_space.o: process_dimensions.o fnlo_process_common.o
+spin_density_matrix_results.o: process_dimensions.o fnlo_process_common.o \
+	factorized_phase_space.o
 factorized_block_kinematics.o: process_dimensions.o phase_space_kinematics.o
 decay_chain_kinematics.o: process_dimensions.o fnlo_process_common.o \
 	decay_chain_metadata.o \
@@ -322,8 +327,10 @@ chooser_functions.o: process_dimensions.o fks_metadata.o weight_lines.o \
 	nlo_contribution_bundle.o
 chooser_functions_bridge.o: chooser_functions.o
 virtual_contribution_chooser.o: nlo_contribution_bundle.o
-born.o $(patsubst %.f,%.o,$(wildcard b_sf_???.f)): \
-	nlo_contribution_bundle.o
+born.o $(patsubst %.f,%.o,$(wildcard b_sf_???.f)) \
+$(patsubst %.f,%.o,$(wildcard matrix_*.f)) \
+$(patsubst %.f,%.o,$(wildcard spin_density_*.f)): \
+	nlo_contribution_bundle.o spin_density_matrix_results.o
 setcuts.o: process_dimensions.o fks_metadata.o decay_chain_metadata.o \
 	decay_chain_kinematics.o nlo_decay_metadata.o nlo_decay_kinematics.o \
 	fks_random.o mint_module.o \

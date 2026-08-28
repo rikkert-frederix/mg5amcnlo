@@ -1014,6 +1014,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
 
         if getattr(matrix_element, 'spin_density_plan', None) is not None:
             self.write_spin_density_providers(matrix_element, fortran_model)
+        else:
+            self.write_spin_density_virtual_compatibility()
 
 ## write the files corresponding to the born process in the P* directory
         self.generate_born_fks_files(matrix_element,
@@ -1393,6 +1395,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               'decay_chain_kinematics.f90',
                               'nlo_decay_kinematics.f90',
                               'factorized_phase_space.f90',
+                              'spin_density_matrix_results.f90',
                               'decay_chain_scales.f90',
                               'phase_space_kinematics.f90',
                               'fks_diagnostics.f90',
@@ -1546,12 +1549,12 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 if density_matrix:
                     matrix_cases.append(
                         '      CASE (%d)\n'
-                        '        CALL SDM_VIRTUAL_CONTRIBUTION_%d(P, ANS, '
+                        '        CALL SDM_VIRTUAL_CONTRIBUTION_%d(0, ANS, '
                         'PREC_ASKED, PREC_FOUND, RET_CODE)' %
                         (identifier, identifier))
                     helicity_cases.append(
                         '      CASE (%d)\n'
-                        '        CALL SDM_VIRTUAL_CONTRIBUTION_%d(P, ANS, '
+                        '        CALL SDM_VIRTUAL_CONTRIBUTION_%d(0, ANS, '
                         'PREC_ASKED, PREC_FOUND, RET_CODE)' %
                         (identifier, identifier))
                 elif contribution['optimized_virtual']:
@@ -1744,6 +1747,100 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
        '\n'.join(stability_cases),
        '\n'.join(collier_uv_cases), '\n'.join(collier_ir_cases),
        '\n'.join(order_cases))
+        if density_matrix:
+            direct_matrix_cases = []
+            for contribution in contributions:
+                identifier = contribution['id']
+                if identifier in virtual_ids:
+                    direct_matrix_cases.append(
+                        '      CASE (%d)\n'
+                        '        CALL SDM_VIRTUAL_CONTRIBUTION_%d('
+                        'EVENT_SLOT, ANS, PREC_ASKED, PREC_FOUND, '
+                        'RET_CODE)' % (identifier, identifier))
+                else:
+                    direct_matrix_cases.append(
+                        '      CASE (%d)\n'
+                        '        ANS = 0D0\n'
+                        '        PREC_FOUND = 0D0\n'
+                        '        RET_CODE = 0' % identifier)
+            direct_order_cases = [case.replace(
+                'GETORDPOWFROMINDEX_ML5',
+                'SDM_GETORDPOWFROMINDEX_ML5') for case in order_cases]
+            text += """
+
+      SUBROUTINE SDM_SLOOPMATRIX_THRES(CONTRIBUTION,EVENT_SLOT,
+     $ ANS,PREC_ASKED,PREC_FOUND,RET_CODE)
+      IMPLICIT NONE
+      INTEGER CONTRIBUTION,EVENT_SLOT,RET_CODE
+      DOUBLE PRECISION ANS(0:3,0:1),PREC_ASKED,PREC_FOUND(0:1)
+      SELECT CASE (CONTRIBUTION)
+%s
+      CASE DEFAULT
+        WRITE (*,*) 'Invalid explicit virtual contribution'
+        STOP 1
+      END SELECT
+      END
+
+      SUBROUTINE SDM_SLOOPMATRIXHEL_THRES(CONTRIBUTION,EVENT_SLOT,
+     $ HEL,ANS,PREC_ASKED,PREC_FOUND,RET_CODE)
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INTEGER CONTRIBUTION,EVENT_SLOT,HEL(NEXTERNAL-1),RET_CODE
+      DOUBLE PRECISION ANS(0:3,0:1),PREC_ASKED,PREC_FOUND(0:1)
+      CALL SDM_SLOOPMATRIX_THRES(CONTRIBUTION,EVENT_SLOT,ANS,
+     $ PREC_ASKED,PREC_FOUND,RET_CODE)
+      END
+
+      SUBROUTINE SDM_FORCE_STABILITY_CHECK(CONTRIBUTION,ONOFF)
+      IMPLICIT NONE
+      INTEGER CONTRIBUTION
+      LOGICAL ONOFF
+      SELECT CASE (CONTRIBUTION)
+%s
+      CASE DEFAULT
+        WRITE (*,*) 'Invalid explicit stability contribution'
+        STOP 1
+      END SELECT
+      END
+
+      SUBROUTINE SDM_COLLIER_COMPUTE_UV_POLES(CONTRIBUTION,ONOFF)
+      IMPLICIT NONE
+      INTEGER CONTRIBUTION
+      LOGICAL ONOFF
+      SELECT CASE (CONTRIBUTION)
+%s
+      CASE DEFAULT
+        WRITE (*,*) 'Invalid explicit Collier UV contribution'
+        STOP 1
+      END SELECT
+      END
+
+      SUBROUTINE SDM_COLLIER_COMPUTE_IR_POLES(CONTRIBUTION,ONOFF)
+      IMPLICIT NONE
+      INTEGER CONTRIBUTION
+      LOGICAL ONOFF
+      SELECT CASE (CONTRIBUTION)
+%s
+      CASE DEFAULT
+        WRITE (*,*) 'Invalid explicit Collier IR contribution'
+        STOP 1
+      END SELECT
+      END
+
+      INTEGER FUNCTION SDM_GETORDPOWFROMINDEX_ML5(CONTRIBUTION,
+     $ IORDER,IAMP)
+      IMPLICIT NONE
+      INTEGER CONTRIBUTION,IORDER,IAMP
+      SELECT CASE (CONTRIBUTION)
+%s
+      CASE DEFAULT
+        WRITE (*,*) 'Invalid explicit virtual order contribution'
+        STOP 1
+      END SELECT
+      END
+""" % ('\n'.join(direct_matrix_cases),
+       '\n'.join(stability_cases), '\n'.join(collier_uv_cases),
+       '\n'.join(collier_ir_cases), '\n'.join(direct_order_cases))
         writer.writelines(text)
 
     #===========================================================================
@@ -2892,6 +2989,42 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                 end
                 """ % luminosity_argument
 
+        if getattr(matrix_element, 'spin_density_plan', None) is not None:
+            text += \
+                """
+
+                subroutine smatrix_real_factorized(configuration,
+     $               event_slot,wgt)
+                implicit none
+                integer configuration,event_slot
+                double precision wgt
+                """
+            if matrix_element.real_processes:
+                for configuration, info in enumerate(
+                        matrix_element.get_fks_info_list(), 1):
+                    text += \
+                        """if (configuration.eq.%(configuration)d) then
+                        call smatrix%(n_me)d_factorized(event_slot,wgt)
+                        else""" % {
+                            'configuration': configuration,
+                            'n_me': info['n_me']}
+                text += \
+                    """
+                    write(*,*) 'ERROR: invalid explicit real matrix',
+     $                   configuration
+                    stop
+                    endif
+                    return
+                    end
+                    """
+            else:
+                text += \
+                    """
+                    wgt=0d0
+                    return
+                    end
+                    """
+
         # Write the file
         writer_me.writelines(text)
         writer_lum.writelines(text1)
@@ -2950,6 +3083,91 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             written.add(variant['filename'])
             density_exporter.write_color_provider(
                 writers.FortranWriter(variant['filename']), plan, variant)
+
+
+    @staticmethod
+    def write_spin_density_virtual_compatibility():
+        """Provide unreachable explicit-virtual symbols for legacy outputs."""
+
+        source = """
+      SUBROUTINE SBORN_FACTORIZED(CONTRIBUTION,EVENT_SLOT,WGT)
+      IMPLICIT NONE
+      INTEGER CONTRIBUTION,EVENT_SLOT
+      DOUBLE PRECISION WGT
+      WRITE(*,*) 'Explicit density Born called for a legacy process'
+      STOP 1
+      END
+
+      SUBROUTINE SBORN_SF_FACTORIZED(CONTRIBUTION,EVENT_SLOT,
+     $ M,N,WGT)
+      IMPLICIT NONE
+      INTEGER CONTRIBUTION,EVENT_SLOT,M,N
+      DOUBLE PRECISION WGT
+      WRITE(*,*) 'Explicit density color Born called for a legacy process'
+      STOP 1
+      END
+
+      SUBROUTINE SMATRIX_REAL_FACTORIZED(CONFIGURATION,EVENT_SLOT,WGT)
+      IMPLICIT NONE
+      INTEGER CONFIGURATION,EVENT_SLOT
+      DOUBLE PRECISION WGT
+      WRITE(*,*) 'Explicit density real called for a legacy process'
+      STOP 1
+      END
+
+      SUBROUTINE SDM_SLOOPMATRIX_THRES(CONTRIBUTION,EVENT_SLOT,
+     $ ANS,PREC_ASKED,PREC_FOUND,RET_CODE)
+      IMPLICIT NONE
+      INTEGER CONTRIBUTION,EVENT_SLOT,RET_CODE
+      DOUBLE PRECISION ANS(0:3,0:1),PREC_ASKED,PREC_FOUND(0:1)
+      WRITE(*,*) 'Explicit density virtual called for a legacy process'
+      STOP 1
+      END
+
+      SUBROUTINE SDM_SLOOPMATRIXHEL_THRES(CONTRIBUTION,EVENT_SLOT,
+     $ HEL,ANS,PREC_ASKED,PREC_FOUND,RET_CODE)
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INTEGER CONTRIBUTION,EVENT_SLOT,HEL(NEXTERNAL-1),RET_CODE
+      DOUBLE PRECISION ANS(0:3,0:1),PREC_ASKED,PREC_FOUND(0:1)
+      WRITE(*,*) 'Explicit density virtual called for a legacy process'
+      STOP 1
+      END
+
+      SUBROUTINE SDM_FORCE_STABILITY_CHECK(CONTRIBUTION,ONOFF)
+      IMPLICIT NONE
+      INTEGER CONTRIBUTION
+      LOGICAL ONOFF
+      WRITE(*,*) 'Explicit density virtual called for a legacy process'
+      STOP 1
+      END
+
+      SUBROUTINE SDM_COLLIER_COMPUTE_UV_POLES(CONTRIBUTION,ONOFF)
+      IMPLICIT NONE
+      INTEGER CONTRIBUTION
+      LOGICAL ONOFF
+      WRITE(*,*) 'Explicit density virtual called for a legacy process'
+      STOP 1
+      END
+
+      SUBROUTINE SDM_COLLIER_COMPUTE_IR_POLES(CONTRIBUTION,ONOFF)
+      IMPLICIT NONE
+      INTEGER CONTRIBUTION
+      LOGICAL ONOFF
+      WRITE(*,*) 'Explicit density virtual called for a legacy process'
+      STOP 1
+      END
+
+      INTEGER FUNCTION SDM_GETORDPOWFROMINDEX_ML5(CONTRIBUTION,
+     $ IORDER,IAMP)
+      IMPLICIT NONE
+      INTEGER CONTRIBUTION,IORDER,IAMP
+      WRITE(*,*) 'Explicit density virtual called for a legacy process'
+      STOP 1
+      END
+"""
+        writers.FortranWriter(
+            'spin_density_virtual_compatibility.f').writelines(source)
 
 
     @staticmethod
@@ -3012,9 +3230,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             _file_path, 'iolibs', 'template_files',
             'bornmatrix_qcd_fks.inc')).read() % replacement
 
-        core = [
-            'SUBROUTINE SBORN_SPLITORDERS(P,ANS)',
-        ]
+        core = ['SUBROUTINE SBORN_SPLITORDERS(P,ANS)']
         if getattr(fksborn, 'contribution_bundle', False):
             core.append(
                 'USE NLO_CONTRIBUTION_BUNDLE, ONLY: '
@@ -3022,22 +3238,48 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         core.extend([
             'IMPLICIT NONE',
             "INCLUDE 'nexternal.inc'",
-            'INTEGER NGRAPHS,NCOLOR',
-            'PARAMETER (NGRAPHS=%d,NCOLOR=%d)' % (ngraphs, ncolor),
             'REAL*8 P(0:3,NEXTERNAL-1)',
             'COMPLEX*16 ANS(2,0:1)',
-            'INTEGER NFKSprocess,GLU_IJ,I,J',
-            'COMMON /C_NFKSPROCESS/NFKSPROCESS',
+            'INTEGER NFKSprocess,GLU_IJ,CONTRIBUTION',
+            'COMMON /C_NFKSPROCESS/NFKSPROCESS'])
+        core.extend(start_dict['ij_lines'].splitlines())
+        core.extend([
+            'GLU_IJ=IJ_VALUES(NFKSPROCESS)',
+            ('CONTRIBUTION=ACTIVE_NLO_CONTRIBUTION()'
+             if getattr(fksborn, 'contribution_bundle', False)
+             else 'CONTRIBUTION=1'),
+            'CALL SDM_BORN_SPLITORDERS_EXPLICIT(CONTRIBUTION,0,',
+            '     $ GLU_IJ,ANS)',
+            'END',
+            '',
+            'SUBROUTINE SBORN_FACTORIZED(CONTRIBUTION,EVENT_SLOT,',
+            '     $ ANS_SUMMED)',
+            'IMPLICIT NONE',
+            'INTEGER CONTRIBUTION,EVENT_SLOT,NFKSprocess,GLU_IJ',
+            'DOUBLE PRECISION ANS_SUMMED',
+            'COMPLEX*16 ANS(2,0:1)',
+            'COMMON /C_NFKSPROCESS/NFKSPROCESS'])
+        core.extend(start_dict['ij_lines'].splitlines())
+        core.extend([
+            'GLU_IJ=IJ_VALUES(NFKSPROCESS)',
+            'CALL SDM_BORN_SPLITORDERS_EXPLICIT(CONTRIBUTION,',
+            '     $ EVENT_SLOT,GLU_IJ,ANS)',
+            'CALL SBORN_FINALIZE_SPLITORDERS(ANS,ANS_SUMMED)',
+            'END',
+            '',
+            'SUBROUTINE SDM_BORN_SPLITORDERS_EXPLICIT(CONTRIBUTION,',
+            '     $ EVENT_SLOT,GLU_IJ,ANS)',
+            'IMPLICIT NONE',
+            'INTEGER NGRAPHS,NCOLOR',
+            'PARAMETER (NGRAPHS=%d,NCOLOR=%d)' % (ngraphs, ncolor),
+            'COMPLEX*16 ANS(2,0:1)',
+            'INTEGER CONTRIBUTION,EVENT_SLOT,GLU_IJ',
             'COMPLEX*16 SDM_RESULT(2)',
             'DOUBLE PRECISION AMP2(NGRAPHS),JAMP2(0:NCOLOR,0:1)',
-            'COMMON /TO_AMPS_BORN/ AMP2,JAMP2'])
-        core.extend(start_dict['ij_lines'].splitlines())
-        core.append('GLU_IJ=IJ_VALUES(NFKSPROCESS)')
-        if getattr(fksborn, 'contribution_bundle', False):
-            core.extend([
-                'SELECT CASE (ACTIVE_NLO_CONTRIBUTION())'] + [
+            'COMMON /TO_AMPS_BORN/ AMP2,JAMP2',
+            'SELECT CASE (CONTRIBUTION)'] + [
                 'CASE (%d)' % variant['contribution_id'] + '\n' +
-                '  CALL SDM_BORN_CONTRIBUTION_%d(P,GLU_IJ,' %
+                '  CALL SDM_BORN_CONTRIBUTION_%d(EVENT_SLOT,GLU_IJ,' %
                 variant['contribution_id'] + '\n' +
                 '     $ SDM_RESULT)'
                 for variant in born_variants] + [
@@ -3045,11 +3287,6 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                 "  WRITE(*,*) 'Invalid density-matrix Born contribution'",
                 '  STOP 1',
                 'END SELECT'])
-        else:
-            core.extend([
-                'CALL SDM_BORN_CONTRIBUTION_%d(P,GLU_IJ,' %
-                born_variants[0]['contribution_id'],
-                '     $ SDM_RESULT)'])
         core.extend([
             'ANS=(0D0,0D0)',
             'ANS(1,1)=SDM_RESULT(1)',
@@ -3077,19 +3314,19 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                 active_component=correlation_component,
                 override_provider=variant.get('provider'),
                 correlation_component=correlation_component,
-                correlation_leg='SDM_LOCAL_CORR')
+                correlation_leg='SDM_LOCAL_CORR',
+                event_slot='EVENT_SLOT')
             correlation_map = density_exporter.correlation_leg_map(
                 plan, correlation_provider, variant['context'],
                 variant['context_kind'])
             core.extend([
                 '',
-                'SUBROUTINE SDM_BORN_CONTRIBUTION_%d(P,GLU_IJ,' %
+                'SUBROUTINE SDM_BORN_CONTRIBUTION_%d(EVENT_SLOT,' %
                 contribution,
-                '     $ SDM_RESULT)',
+                '     $ GLU_IJ,SDM_RESULT)',
+                'USE SPIN_DENSITY_MATRIX_RESULTS',
                 'IMPLICIT NONE',
-                "INCLUDE 'nexternal.inc'",
-                'REAL*8 P(0:3,NEXTERNAL-1)',
-                'INTEGER GLU_IJ,SDM_LOCAL_CORR',
+                'INTEGER EVENT_SLOT,GLU_IJ,SDM_LOCAL_CORR',
                 'INTEGER SDM_CORR_MAP(%d)' % len(correlation_map),
                 'DATA SDM_CORR_MAP /%s/' % ','.join(
                     map(str, correlation_map))])
@@ -3110,6 +3347,12 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         wrapper = open(os.path.join(
             _file_path, 'iolibs', 'template_files',
             'born_hel_qcd_fks.inc')).read()
+        helicity_template = open(os.path.join(
+            _file_path, 'iolibs', 'template_files',
+            'born_hel_splitorders_fks.inc')).read()
+        helicity_sampler = ('subroutine PickHelicityMC' +
+            helicity_template.split('subroutine PickHelicityMC', 1)[1]) % {
+                'nSqAmpSplitOrders': 1}
         core = """
       SUBROUTINE SBORN_HEL_SPLITORDERS(P,ANS)
       IMPLICIT NONE
@@ -3128,7 +3371,7 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
       WGT_HEL(1,1)=TOTAL
       END
 """
-        writer.writelines(wrapper + core)
+        writer.writelines(wrapper + core + '\n' + helicity_sampler)
 
 
     def write_spin_density_real(self, writer, fksborn, real_index,
@@ -3147,7 +3390,7 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
         declarations, code = density_exporter.contraction_lines(
             plan, variant['context'], variant['context_kind'],
             active_component=variant['active_component'],
-            override_provider=provider, event_slot=3)
+            override_provider=provider, event_slot='EVENT_SLOT')
         nexternal, _ = reference.get_nexternal_ninitial()
         prefix = str(real_index + 1)
         replacement = {
@@ -3163,7 +3406,28 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
             'IMPLICIT NONE',
             'INTEGER NEXTERNAL',
             'PARAMETER (NEXTERNAL=%d)' % nexternal,
-            'REAL*8 P(0:3,NEXTERNAL),ANS(0:1)']
+            'REAL*8 P(0:3,NEXTERNAL),ANS(0:1)',
+            'CALL SMATRIX%s_FACTORIZED_SPLITORDERS(3,ANS)' % prefix,
+            'END',
+            '',
+            'SUBROUTINE SMATRIX%s_FACTORIZED(EVENT_SLOT,' % prefix,
+            '     $ ANS_SUMMED)',
+            'IMPLICIT NONE',
+            'INTEGER EVENT_SLOT',
+            'DOUBLE PRECISION ANS_SUMMED,ANS(0:1)',
+            'CALL SMATRIX%s_FACTORIZED_SPLITORDERS(EVENT_SLOT,ANS)' %
+            prefix,
+            'CALL SMATRIX%s_FINALIZE_SPLITORDERS(ANS,ANS_SUMMED)' %
+            prefix,
+            'END',
+            '',
+            'SUBROUTINE SMATRIX%s_FACTORIZED_SPLITORDERS(EVENT_SLOT,' %
+            prefix,
+            '     $ ANS)',
+            'USE SPIN_DENSITY_MATRIX_RESULTS',
+            'IMPLICIT NONE',
+            'INTEGER EVENT_SLOT',
+            'REAL*8 ANS(0:1)']
         core.extend(declarations)
         core.extend(code)
         core.extend([
@@ -3187,8 +3451,6 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
         density_exporter.prepare_plan(plan)
         density_exporter.write_virtual_provider(
             writers.FortranWriter(variant['filename']), plan, variant)
-        declarations, code = density_exporter.virtual_contraction_lines(
-            plan, variant)
         loop_matrix_element = variant['matrix_element']
         prefix = variant['loop_prefix'].upper()
         collier_uv = ('CALL %sCOLLIER_COMPUTE_UV_POLES(ONOFF)' % prefix
@@ -3197,26 +3459,20 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
         collier_ir = ('CALL %sCOLLIER_COMPUTE_IR_POLES(ONOFF)' % prefix
                       if loop_matrix_element.optimized_output else
                       'CONTINUE')
-        source = [
+        source = self._spin_density_virtual_contribution_lines(
+            fksborn, variant, fortran_model,
+            'SDM_VIRTUAL_CONTRIBUTION_1')
+        source.extend([
+            '',
             'SUBROUTINE SLOOPMATRIX_THRES(P,ANS,PREC_ASKED,',
             '     $ PREC_FOUND,RET_CODE)',
             'IMPLICIT NONE',
             "INCLUDE 'nexternal.inc'",
             'REAL*8 P(0:3,NEXTERNAL-1),ANS(0:3,0:1)',
-            'REAL*8 PREC_ASKED,PREC_FOUND(0:1),BORN_VALUE',
-            'INTEGER RET_CODE']
-        source.extend(declarations)
-        source.extend(code)
-        source.extend([
-            'ANS=0D0',
-            'CALL SBORN(P,BORN_VALUE)',
-            'ANS(0,1)=BORN_VALUE',
-            'ANS(1,1)=DBLE(SDM_VIRTUAL_RESULT(1))',
-            'ANS(2,1)=DBLE(SDM_VIRTUAL_RESULT(2))',
-            'ANS(3,1)=DBLE(SDM_VIRTUAL_RESULT(3))',
-            'ANS(0:3,0)=ANS(0:3,1)',
-            'PREC_FOUND=SDM_PRECISION',
-            'RET_CODE=SDM_RET_CODE',
+            'REAL*8 PREC_ASKED,PREC_FOUND(0:1)',
+            'INTEGER RET_CODE',
+            'CALL SDM_VIRTUAL_CONTRIBUTION_1(0,ANS,PREC_ASKED,',
+            '     $ PREC_FOUND,RET_CODE)',
             'END',
             '',
             'SUBROUTINE SLOOPMATRIXHEL_THRES(P,HEL,ANS,PREC_ASKED,',
@@ -3228,6 +3484,29 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
             'INTEGER HEL(NEXTERNAL-1),RET_CODE',
             'CALL SLOOPMATRIX_THRES(P,ANS,PREC_ASKED,PREC_FOUND,',
             '     $ RET_CODE)',
+            'END',
+            '',
+            'SUBROUTINE SDM_SLOOPMATRIX_THRES(CONTRIBUTION,',
+            '     $ EVENT_SLOT,ANS,PREC_ASKED,PREC_FOUND,RET_CODE)',
+            'IMPLICIT NONE',
+            'INTEGER CONTRIBUTION,EVENT_SLOT,RET_CODE',
+            'REAL*8 ANS(0:3,0:1),PREC_ASKED,PREC_FOUND(0:1)',
+            'IF (CONTRIBUTION.NE.1) THEN',
+            "  WRITE(*,*) 'Invalid explicit virtual contribution'",
+            '  STOP 1',
+            'ENDIF',
+            'CALL SDM_VIRTUAL_CONTRIBUTION_1(EVENT_SLOT,ANS,',
+            '     $ PREC_ASKED,PREC_FOUND,RET_CODE)',
+            'END',
+            '',
+            'SUBROUTINE SDM_SLOOPMATRIXHEL_THRES(CONTRIBUTION,',
+            '     $ EVENT_SLOT,HEL,ANS,PREC_ASKED,PREC_FOUND,RET_CODE)',
+            'IMPLICIT NONE',
+            "INCLUDE 'nexternal.inc'",
+            'INTEGER CONTRIBUTION,EVENT_SLOT,HEL(NEXTERNAL-1),RET_CODE',
+            'REAL*8 ANS(0:3,0:1),PREC_ASKED,PREC_FOUND(0:1)',
+            'CALL SDM_SLOOPMATRIX_THRES(CONTRIBUTION,EVENT_SLOT,ANS,',
+            '     $ PREC_ASKED,PREC_FOUND,RET_CODE)',
             'END',
             '',
             'SUBROUTINE FORCE_STABILITY_CHECK(ONOFF)',
@@ -3248,8 +3527,43 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
             collier_ir,
             'END',
             '',
+            'SUBROUTINE SDM_FORCE_STABILITY_CHECK(CONTRIBUTION,ONOFF)',
+            'IMPLICIT NONE',
+            'INTEGER CONTRIBUTION',
+            'LOGICAL ONOFF',
+            'IF (CONTRIBUTION.NE.1) STOP 1',
+            'CALL %sFORCE_STABILITY_CHECK(ONOFF)' % prefix,
+            'END',
+            '',
+            'SUBROUTINE SDM_COLLIER_COMPUTE_UV_POLES(CONTRIBUTION,',
+            '     $ ONOFF)',
+            'IMPLICIT NONE',
+            'INTEGER CONTRIBUTION',
+            'LOGICAL ONOFF',
+            'IF (CONTRIBUTION.NE.1) STOP 1',
+            collier_uv,
+            'END',
+            '',
+            'SUBROUTINE SDM_COLLIER_COMPUTE_IR_POLES(CONTRIBUTION,',
+            '     $ ONOFF)',
+            'IMPLICIT NONE',
+            'INTEGER CONTRIBUTION',
+            'LOGICAL ONOFF',
+            'IF (CONTRIBUTION.NE.1) STOP 1',
+            collier_ir,
+            'END',
+            '',
             self._spin_density_order_function(
-                loop_matrix_element, 'GETORDPOWFROMINDEX_ML5')])
+                loop_matrix_element, 'GETORDPOWFROMINDEX_ML5'),
+            '',
+            'INTEGER FUNCTION SDM_GETORDPOWFROMINDEX_ML5(',
+            '     $ CONTRIBUTION,IORDER,INDX)',
+            'IMPLICIT NONE',
+            'INTEGER CONTRIBUTION,IORDER,INDX,GETORDPOWFROMINDEX_ML5',
+            'IF (CONTRIBUTION.NE.1) STOP 1',
+            'SDM_GETORDPOWFROMINDEX_ML5=',
+            '     $ GETORDPOWFROMINDEX_ML5(IORDER,INDX)',
+            'END'])
         writers.FortranWriter(
             'spin_density_virtual_wrapper.f').writelines('\n'.join(source))
 
@@ -3262,20 +3576,22 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
         density_exporter = export_spin_density.SpinDensityExporter(
             self, fortran_model)
         declarations, code = density_exporter.virtual_contraction_lines(
-            plan, variant)
+            plan, variant, event_slot='EVENT_SLOT')
+        contribution = variant.get('contribution_id', 1)
         source = [
-            'SUBROUTINE %s(P,ANS,PREC_ASKED,' % subroutine_name,
+            'SUBROUTINE %s(EVENT_SLOT,ANS,PREC_ASKED,' % subroutine_name,
             '     $ PREC_FOUND,RET_CODE)',
+            'USE SPIN_DENSITY_MATRIX_RESULTS',
             'IMPLICIT NONE',
-            "INCLUDE 'nexternal.inc'",
-            'REAL*8 P(0:3,NEXTERNAL-1),ANS(0:3,0:1)',
+            'REAL*8 ANS(0:3,0:1)',
             'REAL*8 PREC_ASKED,PREC_FOUND(0:1),BORN_VALUE',
-            'INTEGER RET_CODE']
+            'INTEGER EVENT_SLOT,RET_CODE']
         source.extend(declarations)
         source.extend(code)
         source.extend([
             'ANS=0D0',
-            'CALL SBORN(P,BORN_VALUE)',
+            'CALL SBORN_FACTORIZED(%d,EVENT_SLOT,BORN_VALUE)' %
+            contribution,
             'ANS(0,1)=BORN_VALUE',
             'ANS(1,1)=DBLE(SDM_VIRTUAL_RESULT(1))',
             'ANS(2,1)=DBLE(SDM_VIRTUAL_RESULT(2))',
@@ -3350,18 +3666,46 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
             'IMPLICIT NONE',
             "INCLUDE 'nexternal.inc'",
             'REAL*8 P(0:3,NEXTERNAL-1),ANS(0:1)',
+            'INTEGER CONTRIBUTION'])
+        core.append(
+            ('CONTRIBUTION=ACTIVE_NLO_CONTRIBUTION()'
+             if getattr(fksborn, 'contribution_bundle', False)
+             else 'CONTRIBUTION=1'))
+        core.extend([
+            'CALL SB_SF_%3.3d_FACTORIZED_SPLITORDERS(' % (ilink + 1),
+            '     $ CONTRIBUTION,0,ANS)',
+            'END',
+            '',
+            'SUBROUTINE SB_SF_%3.3d_FACTORIZED(CONTRIBUTION,' %
+            (ilink + 1),
+            '     $ EVENT_SLOT,ANS_SUMMED)',
+            'IMPLICIT NONE',
+            'INTEGER CONTRIBUTION,EVENT_SLOT',
+            'DOUBLE PRECISION ANS_SUMMED,ANS(0:1)',
+            'CALL SB_SF_%3.3d_FACTORIZED_SPLITORDERS(' % (ilink + 1),
+            '     $ CONTRIBUTION,EVENT_SLOT,ANS)',
+            'CALL SB_SF_%3.3d_FINALIZE_SPLITORDERS(ANS,' % (ilink + 1),
+            '     $ ANS_SUMMED)',
+            'END',
+            '',
+            'SUBROUTINE SB_SF_%3.3d_FACTORIZED_SPLITORDERS(' %
+            (ilink + 1),
+            '     $ CONTRIBUTION,EVENT_SLOT,ANS)',
+            'IMPLICIT NONE',
+            'INTEGER CONTRIBUTION,EVENT_SLOT',
+            'REAL*8 ANS(0:1)',
             'COMPLEX*16 SDM_COLOR_RESULT'])
+        by_contribution = dict(
+            (variant.get('contribution_id', 1), variant)
+            for variant in variants)
         if getattr(fksborn, 'contribution_bundle', False):
-            by_contribution = dict(
-                (variant['contribution_id'], variant)
-                for variant in variants)
-            core.append('SELECT CASE (ACTIVE_NLO_CONTRIBUTION())')
+            core.append('SELECT CASE (CONTRIBUTION)')
             for contribution in fksborn.bundle_contributions:
                 identifier = contribution['id']
                 core.append('CASE (%d)' % identifier)
                 if identifier in by_contribution:
                     core.extend([
-                        '  CALL SDM_COLOR_CONTRIBUTION_%d_%d(P,' % (
+                        '  CALL SDM_COLOR_CONTRIBUTION_%d_%d(EVENT_SLOT,' % (
                             identifier, ilink + 1),
                         '     $ SDM_COLOR_RESULT)'])
                 else:
@@ -3374,7 +3718,7 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
         else:
             identifier = variants[0].get('contribution_id', 1)
             core.extend([
-                'CALL SDM_COLOR_CONTRIBUTION_%d_%d(P,' % (
+                'CALL SDM_COLOR_CONTRIBUTION_%d_%d(EVENT_SLOT,' % (
                     identifier, ilink + 1),
                 '     $ SDM_COLOR_RESULT)'])
         core.extend([
@@ -3386,15 +3730,15 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
         for variant in variants:
             identifier = variant.get('contribution_id', 1)
             declarations, code = density_exporter.color_contraction_lines(
-                plan, variant)
+                plan, variant, event_slot='EVENT_SLOT')
             core.extend([
                 '',
-                'SUBROUTINE SDM_COLOR_CONTRIBUTION_%d_%d(P,' % (
+                'SUBROUTINE SDM_COLOR_CONTRIBUTION_%d_%d(EVENT_SLOT,' % (
                     identifier, ilink + 1),
                 '     $ SDM_COLOR_RESULT)',
+                'USE SPIN_DENSITY_MATRIX_RESULTS',
                 'IMPLICIT NONE',
-                "INCLUDE 'nexternal.inc'",
-                'REAL*8 P(0:3,NEXTERNAL-1)'])
+                'INTEGER EVENT_SLOT'])
             core.extend(declarations)
             core.extend(code)
             core.append('END')
@@ -4415,6 +4759,50 @@ Parameters              %(params)s\n\
         file = open(os.path.join(
             _file_path, 'iolibs', 'template_files', template)).read()
         file = file % replace_dict
+        if (self.opt.get('fks_template') == 'fNLO' and
+                getattr(me, 'spin_density_plan', None) is not None):
+            direct_iflines = ''
+            for i, c_link in enumerate(color_links):
+                ilink = i + 1
+                iff = 'if' if i == 0 else 'elseif'
+                m, n = c_link['link']
+                if m != n:
+                    condition = ('(m.eq.%d .and. n.eq.%d).or.'
+                                 '(m.eq.%d .and. n.eq.%d)' %
+                                 (m, n, n, m))
+                else:
+                    condition = '(m.eq.%d .and. n.eq.%d)' % (m, n)
+                direct_iflines += (
+                    '%s (%s) then\n'
+                    'call sb_sf_%3.3d_factorized(contribution,'
+                    'event_slot,wgt_col)\n' %
+                    (iff, condition, ilink))
+            if direct_iflines:
+                direct_iflines += 'endif\n'
+            else:
+                direct_iflines = (
+                    "write(*,*) 'Error in explicit sborn_sf, no color "
+                    "links'\nstop\n")
+            direct = """
+
+      SUBROUTINE SBORN_SF_FACTORIZED(CONTRIBUTION,EVENT_SLOT,
+     $     M,N,WGT)
+      IMPLICIT NONE
+      INCLUDE 'COUPL.INC'
+      INCLUDE 'ORDERS.INC'
+      INTEGER CONTRIBUTION,EVENT_SLOT,M,N
+      DOUBLE PRECISION WGT,WGT_COL
+      DOUBLE PRECISION AMP_SPLIT_SOFT(AMP_SPLIT_SIZE)
+      COMMON /TO_AMP_SPLIT_SOFT/AMP_SPLIT_SOFT
+
+%s
+      WGT=WGT_COL*G**2
+      AMP_SPLIT_SOFT(1:AMP_SPLIT_SIZE)=
+     $     DBLE(AMP_SPLIT_CNT(1:AMP_SPLIT_SIZE,1,QCD_POS))*G**2
+      RETURN
+      END
+""" % direct_iflines
+            file += direct
         writer.writelines(file)
 
     

@@ -24,6 +24,34 @@
       end
 
 
+      subroutine BinothLHA_factorized(contribution,event_slot,
+     $     born_wgt,virt_wgt)
+      use binoth_lha_madloop_backend, only:
+     $     binoth_lha_eval_factorized
+      use fnlo_process_common, only: nexternal,amp_split_size,
+     $     amp_split_finite_ml,amp_split_poles_fks
+      implicit none
+      include 'coupl.inc'
+      include '../../Source/MODEL/input.inc'
+      integer contribution,event_slot
+      double precision born_wgt,virt_wgt
+      double precision pmass(nexternal),zero
+      parameter (zero=0d0)
+      double precision amp_split_finite_local(amp_split_size)
+      double precision amp_split_poles_local(amp_split_size,2)
+      include 'pmass.inc'
+
+      amp_split_finite_local=amp_split_finite_ml
+      amp_split_poles_local=amp_split_poles_fks
+      call binoth_lha_eval_factorized(contribution,event_slot,
+     &     born_wgt,virt_wgt,pmass,amp_split_finite_local,
+     &     amp_split_poles_local)
+      amp_split_finite_ml=amp_split_finite_local
+      amp_split_poles_fks=amp_split_poles_local
+      return
+      end
+
+
       subroutine binoth_lha_update_couplings(mu_r_value,alpha_s)
       use fnlo_process_common, only: qes2,updateloop
       implicit none

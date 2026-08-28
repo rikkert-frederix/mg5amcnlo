@@ -593,16 +593,10 @@ class SpinDensityExporter(object):
                 result[visible[0] - 1] = local_leg
         return result
 
-    def contraction_lines(self, plan, context, context_kind,
-                          active_component=None, override_provider=None,
-                          correlation_component=None,
-                          correlation_leg=0, result_name='SDM_RESULT',
-                          event_slot=0):
-        """Return declarations and code for one complete tree contraction."""
+    def _contraction_layout(self, plan):
+        """Return the common resonance-state layout for a contraction."""
 
-        self.prepare_plan(plan)
         topology = plan['topology']
-        node_count = len(topology['nodes'])
         dimensions = dict(
             (node['id'], len(self._node_helicities(plan, node['id'])))
             for node in topology['nodes'])
@@ -614,185 +608,278 @@ class SpinDensityExporter(object):
                 states[node_id].append(
                     remainder % dimensions[node_id] + 1)
                 remainder //= dimensions[node_id]
+        return dimensions, state_count, states
 
-        providers = {}
-        for component_id, component in plan['components'].items():
-            providers[component_id] = component['born']
-        if override_provider is not None:
-            providers[active_component] = override_provider
-            self._prepare_provider(plan, override_provider)
+    @staticmethod
+    def _state_index(provider, state_name):
+        terms = []
+        stride = 1
+        for node_id, dimension in zip(
+                provider['open_nodes'], provider['open_dimensions']):
+            terms.append('(SDM_NODE_STATE(%d,%s)-1)*%d' %
+                         (node_id, state_name, stride))
+            stride *= dimension
+        return '1' + ''.join('+%s' % term for term in terms)
+
+    @staticmethod
+    def _block_position_map(providers):
+        return dict((component_id, position)
+                    for position, component_id in
+                    enumerate(sorted(providers), 1))
+
+    def _lo_block_lines(self, component_id, position, provider,
+                        event_slot, rho_name=None, corr_leg='0'):
+        """Load one LO block from cache, evaluating its provider on a miss."""
+
+        nexternal, _ = provider['matrix_element'].get_nexternal_ninitial()
+        momentum = 'SDM_P_%d' % component_id
+        rho = rho_name or 'SDM_LO_RHO_%d' % component_id
+        return [
+            'CALL INITIALIZE_SPIN_DENSITY_BLOCK(SDM_BLOCKS(%d),' % position,
+            '     $ %s,%d,%d)' % (
+                str(event_slot), component_id, provider['open_size']),
+            'CALL LOAD_CACHED_LO_DENSITY(SDM_BLOCKS(%d),' % position,
+            '     $ SDM_LO_AVAILABLE_%d)' % component_id,
+            'IF (.NOT.SDM_LO_AVAILABLE_%d) THEN' % component_id,
+            '  CALL GET_FACTORIZED_BLOCK_MOMENTA(%s,%d,%d,%s)' % (
+                str(event_slot), component_id, nexternal, momentum),
+            '  CALL %s(%s,%s,%s)' % (
+                provider['fortran_name'], momentum, corr_leg, rho),
+            '  CALL RECORD_LO_DENSITY(SDM_BLOCKS(%d),' % position,
+            '     $ %s(1:1,:,:))' % rho,
+            'ENDIF']
+
+    def contraction_lines(self, plan, context, context_kind,
+                          active_component=None, override_provider=None,
+                          correlation_component=None,
+                          correlation_leg=0, result_name='SDM_RESULT',
+                          event_slot=0):
+        """Return a tree contraction with at most one explicit insertion."""
+
+        self.prepare_plan(plan)
+        dimensions, state_count, states = self._contraction_layout(plan)
+        node_count = len(plan['topology']['nodes'])
+        baseline = dict(
+            (component_id, component['born'])
+            for component_id, component in plan['components'].items())
+        positions = self._block_position_map(baseline)
+        component_count = len(baseline)
+        active_provider = (override_provider or
+                           baseline.get(active_component))
+        if active_provider is not None:
+            self._prepare_provider(plan, active_provider)
+        uses_ordinary_insertion = (
+            override_provider is not None and
+            override_provider is not baseline.get(active_component))
+        active_position = (positions[active_component]
+                           if active_component is not None else 0)
 
         declarations = [
-            'INTEGER SDM_STATE,SDM_STATE2,SDM_INDEX,SDM_INDEX2',
-            'INTEGER SDM_CORR_COMPONENT,SDM_CORR_LEG',
+            'INTEGER SDM_STATE,SDM_STATE2,SDM_CORR_LEG',
+            'INTEGER SDM_LEFT(%d),SDM_RIGHT(%d)' % (
+                component_count, component_count),
             'INTEGER SDM_NODE_STATE(%d,%d)' % (
                 max(1, node_count), max(1, state_count)),
+            'TYPE(SPIN_DENSITY_BLOCK_RESULT) SDM_BLOCKS(%d)' %
+            component_count,
             'COMPLEX*16 %s(2)' % result_name]
         for node_id in sorted(states):
             declarations.append(
                 'DATA (SDM_NODE_STATE(%d,SDM_STATE),SDM_STATE=1,%d) '
                 '/%s/' % (node_id, state_count,
                           ','.join(map(str, states[node_id]))))
-        for component_id in sorted(providers):
-            provider = providers[component_id]
+        for component_id, provider in sorted(baseline.items()):
             nexternal, _ = provider['matrix_element'].get_nexternal_ninitial()
             declarations.extend([
                 'REAL*8 SDM_P_%d(0:3,%d)' % (component_id, nexternal),
-                'COMPLEX*16 SDM_RHO_%d(2,%d,%d)' % (
+                'COMPLEX*16 SDM_LO_RHO_%d(2,%d,%d)' % (
                     component_id, provider['open_size'],
-                    provider['open_size'])])
+                    provider['open_size']),
+                'LOGICAL SDM_LO_AVAILABLE_%d' % component_id])
+        if active_provider is not None:
+            nexternal, _ = active_provider[
+                'matrix_element'].get_nexternal_ninitial()
+            declarations.extend([
+                'REAL*8 SDM_INSERTION_P(0:3,%d)' % nexternal,
+                'COMPLEX*16 SDM_INSERTION_RHO(2,%d,%d)' % (
+                    active_provider['open_size'],
+                    active_provider['open_size'])])
 
         code = [
             '%s=(0D0,0D0)' % result_name,
-            'SDM_CORR_COMPONENT=%d' % (
-                -1 if correlation_component is None
-                else correlation_component),
             'SDM_CORR_LEG=%s' % str(correlation_leg)]
-        for component_id in sorted(providers):
-            provider = providers[component_id]
-            variable = 'SDM_P_%d' % component_id
-            nexternal, _ = provider['matrix_element'].get_nexternal_ninitial()
-            code.append(
-                'CALL GET_FACTORIZED_BLOCK_MOMENTA(%s,%d,%d,%s)' % (
-                    str(event_slot), component_id, nexternal, variable))
-            code.append('CALL %s(%s,' % (
-                provider['fortran_name'], variable))
-            if component_id == correlation_component:
-                code[-1] += 'SDM_CORR_LEG,SDM_RHO_%d)' % component_id
+        for component_id, provider in sorted(baseline.items()):
+            position = positions[component_id]
+            if component_id == active_component and (
+                    uses_ordinary_insertion or
+                    correlation_component == active_component):
+                code.extend([
+                    'CALL INITIALIZE_SPIN_DENSITY_BLOCK(SDM_BLOCKS(%d),' %
+                    position,
+                    '     $ %s,%d,%d)' % (
+                        str(event_slot), component_id,
+                        provider['open_size'])])
+                if uses_ordinary_insertion:
+                    continue
+                # A baseline active provider can supply its ordinary cached
+                # density and its spin-correlated insertion in one call.
+                code.extend([
+                    'CALL LOAD_CACHED_LO_DENSITY(SDM_BLOCKS(%d),' % position,
+                    '     $ SDM_LO_AVAILABLE_%d)' % component_id])
+                continue
+            code.extend(self._lo_block_lines(
+                component_id, position, provider, event_slot))
+
+        if active_provider is not None and (
+                uses_ordinary_insertion or
+                correlation_component == active_component):
+            nexternal, _ = active_provider[
+                'matrix_element'].get_nexternal_ninitial()
+            code.extend([
+                'CALL GET_FACTORIZED_BLOCK_MOMENTA(%s,%d,%d,' % (
+                    str(event_slot), active_component, nexternal),
+                '     $ SDM_INSERTION_P)',
+                'CALL %s(SDM_INSERTION_P,' %
+                active_provider['fortran_name'],
+                '     $ SDM_CORR_LEG,SDM_INSERTION_RHO)'])
+            if not uses_ordinary_insertion:
+                code.extend([
+                    'IF (.NOT.SDM_LO_AVAILABLE_%d) THEN' % active_component,
+                    '  CALL RECORD_LO_DENSITY(SDM_BLOCKS(%d),' %
+                    active_position,
+                    '     $ SDM_INSERTION_RHO(1:1,:,:))',
+                    'ENDIF'])
+            if uses_ordinary_insertion and correlation_component is None:
+                insertion_kind = 'SPIN_DENSITY_REAL_INSERTION'
+                insertion_order = 1
             else:
-                code[-1] += '0,SDM_RHO_%d)' % component_id
+                insertion_kind = 'SPIN_DENSITY_BORN_INSERTION'
+                insertion_order = 0
+            code.extend([
+                'CALL SET_SPIN_DENSITY_INSERTION(SDM_BLOCKS(%d),' %
+                active_position,
+                '     $ %s,%d,' % (insertion_kind, insertion_order),
+                '     $ SDM_INSERTION_RHO)'])
 
         code.extend([
             'DO SDM_STATE=1,%d' % state_count,
             '  DO SDM_STATE2=1,%d' % state_count])
-
-        ordinary_factors = []
-        correlated_factors = []
-        for component_id in sorted(providers):
-            provider = providers[component_id]
-            index_terms = []
-            stride = 1
-            for node_id, dimension in zip(
-                    provider['open_nodes'], provider['open_dimensions']):
-                index_terms.append(
-                    '(SDM_NODE_STATE(%d,SDM_STATE)-1)*%d' %
-                    (node_id, stride))
-                stride *= dimension
-            index = '1' + ''.join('+%s' % term for term in index_terms)
-            index2 = index.replace('SDM_STATE)', 'SDM_STATE2)')
-            ordinary_factors.append(
-                'SDM_RHO_%d(1,%s,%s)' %
-                (component_id, index, index2))
-            correlated_factors.append(
-                'SDM_RHO_%d(%d,%s,%s)' % (
-                    component_id,
-                    2 if component_id == correlation_component else 1,
-                    index, index2))
+        for component_id, provider in sorted(baseline.items()):
+            position = positions[component_id]
+            code.extend([
+                '    SDM_LEFT(%d)=%s' % (
+                    position, self._state_index(provider, 'SDM_STATE')),
+                '    SDM_RIGHT(%d)=%s' % (
+                    position, self._state_index(
+                        provider, 'SDM_STATE2'))])
+        ordinary_position = active_position if uses_ordinary_insertion else 0
+        ordinary_rank = 1 if ordinary_position else 0
         code.extend([
-            '    %s(1)=%s(1)+%s' % (
-                result_name, result_name, '*'.join(ordinary_factors)),
-            '    %s(2)=%s(2)+%s' % (
-                result_name, result_name, '*'.join(correlated_factors)),
-            '  ENDDO',
-            'ENDDO'])
+            '    %s(1)=%s(1)+' % (result_name, result_name),
+            '     $ STRICT_SPIN_DENSITY_PRODUCT(SDM_BLOCKS,%d,%d,' % (
+                ordinary_position, ordinary_rank),
+            '     $ SDM_LEFT,SDM_RIGHT)'])
+        if correlation_component is not None:
+            code.extend([
+                '    %s(2)=%s(2)+' % (result_name, result_name),
+                '     $ STRICT_SPIN_DENSITY_PRODUCT(SDM_BLOCKS,%d,2,' %
+                active_position,
+                '     $ SDM_LEFT,SDM_RIGHT)'])
+        else:
+            code.append('    %s(2)=%s(1)' % (result_name, result_name))
+        code.extend(['  ENDDO', 'ENDDO'])
         return declarations, code
 
     def virtual_contraction_lines(self, plan, variant,
                                   result_name='SDM_VIRTUAL_RESULT',
                                   precision_asked='PREC_ASKED', event_slot=0):
-        """Contract one loop density with every spectator tree density."""
+        """Contract one loop insertion with cached LO spectators."""
 
         self.prepare_plan(plan)
-        topology = plan['topology']
-        context = variant['context']
-        context_kind = variant['context_kind']
+        _, state_count, states = self._contraction_layout(plan)
+        node_count = len(plan['topology']['nodes'])
         active = variant['active_component']
-        node_count = len(topology['nodes'])
-        dimensions = dict(
-            (node['id'], len(self._node_helicities(plan, node['id'])))
-            for node in topology['nodes'])
-        state_count = _product(dimensions.values())
-        states = dict((node_id, []) for node_id in dimensions)
-        for state in range(state_count):
-            remainder = state
-            for node_id in sorted(dimensions):
-                states[node_id].append(
-                    remainder % dimensions[node_id] + 1)
-                remainder //= dimensions[node_id]
+        providers = dict(
+            (component_id, component['born'])
+            for component_id, component in plan['components'].items())
+        positions = self._block_position_map(providers)
+        component_count = len(providers)
+        active_position = positions[active]
+        nexternal, _ = variant['matrix_element'].get_nexternal_ninitial()
 
         declarations = [
             'INTEGER SDM_STATE,SDM_STATE2,SDM_K,SDM_RET_CODE',
+            'INTEGER SDM_LEFT(%d),SDM_RIGHT(%d)' % (
+                component_count, component_count),
             'INTEGER SDM_NODE_STATE(%d,%d)' % (
                 max(1, node_count), max(1, state_count)),
+            'TYPE(SPIN_DENSITY_BLOCK_RESULT) SDM_BLOCKS(%d)' %
+            component_count,
             'DOUBLE PRECISION SDM_PRECISION',
-            'COMPLEX*16 %s(3)' % result_name]
+            'COMPLEX*16 %s(3)' % result_name,
+            'REAL*8 SDM_INSERTION_P(0:3,%d)' % nexternal,
+            'COMPLEX*16 SDM_INSERTION_RHO(3,%d,%d)' % (
+                variant['open_size'], variant['open_size'])]
         for node_id in sorted(states):
             declarations.append(
                 'DATA (SDM_NODE_STATE(%d,SDM_STATE),SDM_STATE=1,%d) '
                 '/%s/' % (node_id, state_count,
                           ','.join(map(str, states[node_id]))))
-
-        providers = dict(
-            (component_id, component['born'])
-            for component_id, component in plan['components'].items())
-        for component_id in sorted(providers):
-            provider = (variant if component_id == active
-                        else providers[component_id])
-            matrix_element = provider['matrix_element']
-            nexternal, _ = matrix_element.get_nexternal_ninitial()
-            declarations.append(
-                'REAL*8 SDM_P_%d(0:3,%d)' % (component_id, nexternal))
-            rank = 3 if component_id == active else 2
-            declarations.append(
-                'COMPLEX*16 SDM_RHO_%d(%d,%d,%d)' % (
-                    component_id, rank, provider['open_size'],
-                    provider['open_size']))
+        for component_id, provider in sorted(providers.items()):
+            local_nexternal, _ = provider[
+                'matrix_element'].get_nexternal_ninitial()
+            declarations.extend([
+                'REAL*8 SDM_P_%d(0:3,%d)' % (
+                    component_id, local_nexternal),
+                'COMPLEX*16 SDM_LO_RHO_%d(2,%d,%d)' % (
+                    component_id, provider['open_size'],
+                    provider['open_size']),
+                'LOGICAL SDM_LO_AVAILABLE_%d' % component_id])
 
         code = [
             '%s=(0D0,0D0)' % result_name,
             'SDM_PRECISION=0D0',
             'SDM_RET_CODE=0']
-        for component_id in sorted(providers):
-            provider = (variant if component_id == active
-                        else providers[component_id])
-            variable = 'SDM_P_%d' % component_id
-            nexternal, _ = provider['matrix_element'].get_nexternal_ninitial()
-            code.append(
-                'CALL GET_FACTORIZED_BLOCK_MOMENTA(%d,%d,%d,%s)' % (
-                    event_slot, component_id, nexternal, variable))
+        for component_id, provider in sorted(providers.items()):
+            position = positions[component_id]
             if component_id == active:
                 code.extend([
-                    'CALL %s(%s,SDM_RHO_%d,%s,' % (
-                        variant['fortran_name'], variable, component_id,
-                        precision_asked),
-                    '     $ SDM_PRECISION,SDM_RET_CODE)'])
+                    'CALL INITIALIZE_SPIN_DENSITY_BLOCK(SDM_BLOCKS(%d),' %
+                    position,
+                    '     $ %s,%d,%d)' % (
+                        str(event_slot), component_id,
+                        provider['open_size'])])
             else:
-                code.append('CALL %s(%s,0,SDM_RHO_%d)' % (
-                    provider['fortran_name'], variable, component_id))
-
+                code.extend(self._lo_block_lines(
+                    component_id, position, provider, event_slot))
         code.extend([
+            'CALL GET_FACTORIZED_BLOCK_MOMENTA(%s,%d,%d,' % (
+                str(event_slot), active, nexternal),
+            '     $ SDM_INSERTION_P)',
+            'CALL %s(SDM_INSERTION_P,SDM_INSERTION_RHO,%s,' % (
+                variant['fortran_name'], precision_asked),
+            '     $ SDM_PRECISION,SDM_RET_CODE)',
+            'CALL SET_SPIN_DENSITY_INSERTION(SDM_BLOCKS(%d),' %
+            active_position,
+            '     $ SPIN_DENSITY_VIRTUAL_INSERTION,1,',
+            '     $ SDM_INSERTION_RHO)',
             'DO SDM_STATE=1,%d' % state_count,
-            '  DO SDM_STATE2=1,%d' % state_count,
-            '    DO SDM_K=1,3'])
-        factors = []
-        for component_id in sorted(providers):
-            provider = (variant if component_id == active
-                        else providers[component_id])
-            terms = []
-            stride = 1
-            for node_id, dimension in zip(
-                    provider['open_nodes'], provider['open_dimensions']):
-                terms.append('(SDM_NODE_STATE(%d,SDM_STATE)-1)*%d' %
-                             (node_id, stride))
-                stride *= dimension
-            index = '1' + ''.join('+%s' % term for term in terms)
-            index2 = index.replace('SDM_STATE)', 'SDM_STATE2)')
-            rho_index = 'SDM_K' if component_id == active else '1'
-            factors.append('SDM_RHO_%d(%s,%s,%s)' % (
-                component_id, rho_index, index, index2))
+            '  DO SDM_STATE2=1,%d' % state_count])
+        for component_id, provider in sorted(providers.items()):
+            position = positions[component_id]
+            code.extend([
+                '    SDM_LEFT(%d)=%s' % (
+                    position, self._state_index(provider, 'SDM_STATE')),
+                '    SDM_RIGHT(%d)=%s' % (
+                    position, self._state_index(
+                        provider, 'SDM_STATE2'))])
         code.extend([
-            '      %s(SDM_K)=%s(SDM_K)+%s' % (
-                result_name, result_name, '*'.join(factors)),
+            '    DO SDM_K=1,3',
+            '      %s(SDM_K)=%s(SDM_K)+' % (
+                result_name, result_name),
+            '     $ STRICT_SPIN_DENSITY_PRODUCT(SDM_BLOCKS,%d,SDM_K,' %
+            active_position,
+            '     $ SDM_LEFT,SDM_RIGHT)',
             '    ENDDO',
             '  ENDDO',
             'ENDDO'])
@@ -801,97 +888,91 @@ class SpinDensityExporter(object):
     def color_contraction_lines(self, plan, variant,
                                 result_name='SDM_COLOR_RESULT',
                                 event_slot=0):
-        """Contract one colour-linked component with ordinary spectators."""
+        """Contract one colour insertion with cached LO spectators."""
 
         self.prepare_plan(plan)
-        topology = plan['topology']
-        context = variant['context']
-        context_kind = variant['context_kind']
+        _, state_count, states = self._contraction_layout(plan)
+        node_count = len(plan['topology']['nodes'])
         active = variant['active_component']
-        node_count = len(topology['nodes'])
-        dimensions = dict(
-            (node['id'], len(self._node_helicities(plan, node['id'])))
-            for node in topology['nodes'])
-        state_count = _product(dimensions.values())
-        states = dict((node_id, []) for node_id in dimensions)
-        for state in range(state_count):
-            remainder = state
-            for node_id in sorted(dimensions):
-                states[node_id].append(
-                    remainder % dimensions[node_id] + 1)
-                remainder //= dimensions[node_id]
+        providers = dict(
+            (component_id, component['born'])
+            for component_id, component in plan['components'].items())
+        positions = self._block_position_map(providers)
+        component_count = len(providers)
+        active_position = positions[active]
+        active_provider = variant['provider']
+        nexternal, _ = active_provider[
+            'matrix_element'].get_nexternal_ninitial()
 
         declarations = [
             'INTEGER SDM_STATE,SDM_STATE2',
+            'INTEGER SDM_LEFT(%d),SDM_RIGHT(%d)' % (
+                component_count, component_count),
             'INTEGER SDM_NODE_STATE(%d,%d)' % (
                 max(1, node_count), max(1, state_count)),
-            'COMPLEX*16 %s' % result_name]
+            'TYPE(SPIN_DENSITY_BLOCK_RESULT) SDM_BLOCKS(%d)' %
+            component_count,
+            'COMPLEX*16 %s' % result_name,
+            'REAL*8 SDM_INSERTION_P(0:3,%d)' % nexternal,
+            'COMPLEX*16 SDM_COLOR_RHO(%d,%d)' % (
+                active_provider['open_size'], active_provider['open_size']),
+            'COMPLEX*16 SDM_COLOR_INSERTION(1,%d,%d)' % (
+                active_provider['open_size'], active_provider['open_size'])]
         for node_id in sorted(states):
             declarations.append(
                 'DATA (SDM_NODE_STATE(%d,SDM_STATE),SDM_STATE=1,%d) '
                 '/%s/' % (node_id, state_count,
                           ','.join(map(str, states[node_id]))))
-
-        providers = dict(
-            (component_id, component['born'])
-            for component_id, component in plan['components'].items())
-        for component_id in sorted(providers):
-            provider = providers[component_id]
-            matrix_element = provider['matrix_element']
-            nexternal, _ = matrix_element.get_nexternal_ninitial()
-            declarations.append(
-                'REAL*8 SDM_P_%d(0:3,%d)' % (component_id, nexternal))
-            if component_id == active:
-                declarations.append(
-                    'COMPLEX*16 SDM_COLOR_RHO(%d,%d)' % (
-                        provider['open_size'], provider['open_size']))
-            else:
-                declarations.append(
-                    'COMPLEX*16 SDM_RHO_%d(2,%d,%d)' % (
-                        component_id, provider['open_size'],
-                        provider['open_size']))
+        for component_id, provider in sorted(providers.items()):
+            local_nexternal, _ = provider[
+                'matrix_element'].get_nexternal_ninitial()
+            declarations.extend([
+                'REAL*8 SDM_P_%d(0:3,%d)' % (
+                    component_id, local_nexternal),
+                'COMPLEX*16 SDM_LO_RHO_%d(2,%d,%d)' % (
+                    component_id, provider['open_size'],
+                    provider['open_size']),
+                'LOGICAL SDM_LO_AVAILABLE_%d' % component_id])
 
         code = ['%s=(0D0,0D0)' % result_name]
-        for component_id in sorted(providers):
-            provider = providers[component_id]
-            routing_provider = (variant['provider']
-                                if component_id == active else provider)
-            variable = 'SDM_P_%d' % component_id
-            nexternal, _ = routing_provider[
-                'matrix_element'].get_nexternal_ninitial()
-            code.append(
-                'CALL GET_FACTORIZED_BLOCK_MOMENTA(%d,%d,%d,%s)' % (
-                    event_slot, component_id, nexternal, variable))
+        for component_id, provider in sorted(providers.items()):
+            position = positions[component_id]
             if component_id == active:
-                code.append('CALL %s(%s,SDM_COLOR_RHO)' % (
-                    variant['fortran_name'], variable))
+                code.extend([
+                    'CALL INITIALIZE_SPIN_DENSITY_BLOCK(SDM_BLOCKS(%d),' %
+                    position,
+                    '     $ %s,%d,%d)' % (
+                        str(event_slot), component_id,
+                        provider['open_size'])])
             else:
-                code.append('CALL %s(%s,0,SDM_RHO_%d)' % (
-                    provider['fortran_name'], variable, component_id))
-
+                code.extend(self._lo_block_lines(
+                    component_id, position, provider, event_slot))
         code.extend([
+            'CALL GET_FACTORIZED_BLOCK_MOMENTA(%s,%d,%d,' % (
+                str(event_slot), active, nexternal),
+            '     $ SDM_INSERTION_P)',
+            'CALL %s(SDM_INSERTION_P,SDM_COLOR_RHO)' %
+            variant['fortran_name'],
+            'SDM_COLOR_INSERTION(1,:,:)=SDM_COLOR_RHO',
+            'CALL SET_SPIN_DENSITY_INSERTION(SDM_BLOCKS(%d),' %
+            active_position,
+            '     $ SPIN_DENSITY_COLOR_INSERTION,0,',
+            '     $ SDM_COLOR_INSERTION)',
             'DO SDM_STATE=1,%d' % state_count,
             '  DO SDM_STATE2=1,%d' % state_count])
-        factors = []
-        for component_id in sorted(providers):
-            provider = providers[component_id]
-            terms = []
-            stride = 1
-            for node_id, dimension in zip(
-                    provider['open_nodes'], provider['open_dimensions']):
-                terms.append('(SDM_NODE_STATE(%d,SDM_STATE)-1)*%d' %
-                             (node_id, stride))
-                stride *= dimension
-            index = '1' + ''.join('+%s' % term for term in terms)
-            index2 = index.replace('SDM_STATE)', 'SDM_STATE2)')
-            if component_id == active:
-                factors.append('SDM_COLOR_RHO(%s,%s)' % (index, index2))
-            else:
-                factors.append('SDM_RHO_%d(1,%s,%s)' % (
-                    component_id, index, index2))
+        for component_id, provider in sorted(providers.items()):
+            position = positions[component_id]
+            code.extend([
+                '    SDM_LEFT(%d)=%s' % (
+                    position, self._state_index(provider, 'SDM_STATE')),
+                '    SDM_RIGHT(%d)=%s' % (
+                    position, self._state_index(
+                        provider, 'SDM_STATE2'))])
         code.extend([
-            '    %s=%s+%s' % (
-                result_name, result_name, '*'.join(factors)),
+            '    %s=%s+' % (result_name, result_name),
+            '     $ STRICT_SPIN_DENSITY_PRODUCT(SDM_BLOCKS,%d,1,' %
+            active_position,
+            '     $ SDM_LEFT,SDM_RIGHT)',
             '  ENDDO',
             'ENDDO'])
         return declarations, code

@@ -14,6 +14,15 @@
       return
       end
 
+      subroutine BinothLHA_factorized(contribution,event_slot,
+     $     born_wgt,virt_wgt)
+      implicit none
+      integer contribution,event_slot
+      double precision born_wgt,virt_wgt
+      write(*,*) 'Factorized density matrices require MadLoop virtuals'
+      stop 1
+      end
+
 
       subroutine binoth_lha_update_couplings(mu_r_value,alpha_s)
       use fnlo_process_common, only: qes2

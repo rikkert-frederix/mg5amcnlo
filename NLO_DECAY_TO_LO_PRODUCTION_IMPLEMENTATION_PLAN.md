@@ -202,6 +202,45 @@ requires finite non-zero NLO output, passing soft and collinear limits, and no
 NLO-decay runtime errors.  The fNLO limit-test driver also consumes and
 validates the legacy `ME/ME` selector used by the production test harness.
 
+### Milestone 9: structural fixed-order block contraction
+
+Production and every decay are now exported as independent spin-density
+blocks.  A block result contains its complex LO density matrix and, when that
+block owns the current real, virtual, or correlated-Born contribution, one
+separate insertion matrix.  Complex off-diagonal tree entries are retained;
+the implementation never replaces a density matrix by a spin-summed scalar.
+
+The fixed-order expansion is enforced by the contraction interface itself.
+For blocks \(b=1,\ldots,n\), it can construct only
+
+\[
+  C\!\left(\rho_1^{(0)},\ldots,\rho_n^{(0)}\right)
+  \quad\hbox{or}\quad
+  C\!\left(\rho_1^{(0)},\ldots,\delta\rho_b,
+           \ldots,\rho_n^{(0)}\right).
+\]
+
+The active insertion is a single block position and its perturbative order is
+required to be at most one.  There is no API which can contract two insertion
+matrices, so production--decay and decay--decay products beyond the expanded
+\(O(\alpha_s)\) result cannot enter accidentally.  LO spectator matrices are
+cached by block, event slot, and momentum revision.
+
+Each phase-space block is generated independently and then boosted into the
+frame fixed by its parent.  That boost increments the block's momentum
+revision before its matrix element is evaluated.  The direct factorized Born,
+real, linked-Born, and virtual entry points receive only the boosted local
+momenta for their own block; they neither consume nor require an assembled
+canonical event.  The flattened event is assembled afterward for cuts,
+scales, histograms, and event output.  Each factorized block retains its own
+three-variable radiation grid.
+
+Virtual split orders are local to the block which owns the loop, but the
+exporter adds the LO coupling orders of every spectator block when selecting
+the full-chain result slot.  This lets production and any decay independently
+provide the one-loop insertion while all contributions consistently populate
+the same global fixed-order expansion.
+
 The implementation is split as follows:
 
 - `madgraph/interface/amcatnlo_interface.py`: syntax routing, validation and
@@ -211,11 +250,17 @@ The implementation is split as follows:
 - `madgraph/fks/fks_helas_objects.py`: decay-owned FKS/HELAS ownership;
 - `madgraph/iolibs/export_fks.py`: combined tree and virtual fNLO Fortran
   files and order-labelled decay-width runtime cards;
+- `madgraph/iolibs/export_spin_density.py`: independent block matrix-element
+  entry points and strict spin-density contractions;
 - `Template/fNLO/SubProcesses/nlo_decay_metadata.f90`: validation and lookup
   of target-aware NLO-decay runtime metadata;
 - `Template/fNLO/SubProcesses/nlo_decay_kinematics.f90`: factorised Born
   generation, parent-rest-frame local FKS kinematics, and cached local event
   state for subtraction kernels;
+- `Template/fNLO/SubProcesses/factorized_phase_space.f90`: block-local
+  momenta, boosts, radiative variables, and momentum revisions;
+- `Template/fNLO/SubProcesses/spin_density_matrix_results.f90`: cached LO
+  block results and the one-insertion fixed-order contract;
 - `Template/fNLO/SubProcesses/fks_singular.f90`: decay-local S functions and
   soft eikonals, including target-aware internal-parent colour links;
 - `Template/fNLO/SubProcesses/test_soft_col_limits.f90`: production-safe
