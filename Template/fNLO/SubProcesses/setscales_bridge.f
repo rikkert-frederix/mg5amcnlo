@@ -9,14 +9,18 @@
       end
 
 
-      subroutine update_model_loop_parameters_bridge()
+      subroutine set_model_loop_ren_scale_bridge(mur,g_value)
       use fnlo_process_common, only: updateloop
       implicit none
+      double precision mur,g_value
+      include 'coupl.inc'
 
 c     UPDATE_AS_PARAM deliberately leaves the loop-only UV/R2 parameters
 c     untouched unless TO_UPDATELOOP is enabled.  Multiplicative density
-c     providers call MadLoop directly (without passing through BinothLHA),
-c     so activate those parameters explicitly after switching block scale.
+c     providers call MadLoop directly, so switch the scale, coupling and all
+c     loop parameters atomically instead of first doing a tree-only update.
+      mu_r=mur
+      g=g_value
       updateloop=.true.
       call update_as_param()
       updateloop=.false.

@@ -94,7 +94,7 @@ module driver_mintfo_module
   use multiplicative_point_workspace, only: &
        multiplicative_point_workspace_type, &
        acquire_multiplicative_point_workspace, &
-       prepare_multiplicative_family_batch
+       prepare_multiplicative_family_batch, stage_multiplicative_family
   use multiplicative_lambda_validation, only: &
        multiplicative_lambda_accumulator, &
        accumulate_multiplicative_exact_family, &
@@ -1047,47 +1047,10 @@ contains
       call accumulate_multiplicative_exact_family( &
            lambda_validation, tuple_weight)
 
-      workspace%family_count = workspace%family_count + 1
-      family_index = workspace%family_count
-      if (family_index > workspace%family_capacity) then
-        call fail_driver('the accepted event-family batch overflowed')
-      end if
-      workspace%family_momenta(:, :, family_index) = &
-           evaluation%momenta
-      workspace%family_y_to_lab(family_index) = evaluation%y_to_lab
-      workspace%family_bjorken_x(:, family_index) = &
-           evaluation%bjorken_x
-      workspace%family_mu2_f(family_index) = &
-           central_production_mu2_f
-      workspace%family_pdgs(:, family_index) = evaluation%pdgs
-      workspace%family_origin_blocks(:, family_index) = &
-           evaluation%origin_blocks
-      workspace%family_luminosity_configuration(family_index) = &
-           luminosity_configuration
-      workspace%family_production_event_slot(family_index) = &
-           tuple%event_slots(0)
-      workspace%family_luminosity_owner(family_index) = family_index
-      ! Decay-radiation families commonly share the exact same incoming
-      ! momentum, factorization scale and luminosity configuration.  Record
-      ! the first accepted owner now; every PDF member can then reuse that
-      ! owner's luminosity without another provider call.  Exact floating
-      ! equality is intentional: approximate points are distinct families.
-      do previous_family = family_index - 1, 1, -1
-        if (workspace%family_production_event_slot(previous_family) /= &
-            workspace%family_production_event_slot(family_index)) cycle
-        if (workspace%family_luminosity_configuration(previous_family) /= &
-            luminosity_configuration) cycle
-        if (workspace%family_mu2_f(previous_family) /= &
-            workspace%family_mu2_f(family_index)) cycle
-        if (any(workspace%family_bjorken_x(:, previous_family) /= &
-            workspace%family_bjorken_x(:, family_index))) cycle
-        workspace%family_luminosity_owner(family_index) = &
-             workspace%family_luminosity_owner(previous_family)
-        exit
-      end do
-      workspace%family_pdf_partonic_factor(family_index) = &
-           dble(evaluation%partonic_weight)* &
-           production_channel_partition*reweight
+      call stage_multiplicative_family( &
+           workspace, evaluation, central_production_mu2_f, &
+           luminosity_configuration, dble(evaluation%partonic_weight)* &
+           production_channel_partition*reweight, family_index)
 
       ! The complete multiplicative family was contracted once above.  Its
       ! strict additive projection needs only the degree-zero coefficient

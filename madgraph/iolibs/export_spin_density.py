@@ -1418,7 +1418,7 @@ class SpinDensityExporter(object):
                     for position, component_id in
                     enumerate(sorted(providers), 1))
 
-    def _leaf_contraction_declarations(self, plan):
+    def _tree_contraction_declarations(self, plan):
         """Declare the reusable workspace for one local tree contraction."""
 
         dimensions = dict(
@@ -1438,15 +1438,15 @@ class SpinDensityExporter(object):
                         node_id, dimension, dimension))
         return declarations
 
-    def _leaf_contraction_lines(self, plan, providers, positions,
-                                insertion_ranks, result_name):
-        """Contract selected block densities from decay leaves to roots.
+    def _tree_contraction_lines(self, plan, providers, matrix_lines,
+                                result_name):
+        """Contract local block tensors from decay leaves to production.
 
-        ``insertion_ranks`` maps a physical component to a Fortran rank
-        expression.  Missing/zero entries select the cached LO matrix.  The
-        emitted network preserves every complex bra/ket correlation while
-        eliminating descendant indices as soon as their local decay factor
-        has been visited.
+        ``matrix_lines(component_id)`` emits the assignment to
+        ``SDM_PRODUCT`` for one block and the active local bra/ket indices.
+        Keeping the traversal independent of matrix storage ensures additive
+        cached blocks and multiplicative effective blocks use exactly the
+        same generated tensor network.
         """
 
         topology_nodes = dict(
@@ -1484,18 +1484,6 @@ class SpinDensityExporter(object):
             for _ in node_ids:
                 target.extend(['ENDDO', 'ENDDO'])
 
-        def selected_matrix(component_id):
-            position = positions[component_id]
-            rank = str(insertion_ranks.get(component_id, 0))
-            if rank == '0':
-                return [
-                    'SDM_PRODUCT=SDM_BLOCKS(%d)%%LO(1,' % position,
-                    '     $ SDM_LOCAL_LEFT,SDM_LOCAL_RIGHT)']
-            return [
-                'SDM_PRODUCT=SDM_BLOCKS(%d)%%INSERTION(%s,' % (
-                    position, rank),
-                '     $ SDM_LOCAL_LEFT,SDM_LOCAL_RIGHT)']
-
         lines = ['CALL RECORD_DENSITY_CONTRACTION()']
         # A decay block is a local tensor containing its parent and direct
         # unstable children.  Its descendants have already become messages.
@@ -1517,7 +1505,7 @@ class SpinDensityExporter(object):
                 flattened_state_index(provider, 'left'),
                 'SDM_LOCAL_RIGHT=%s' %
                 flattened_state_index(provider, 'right')]
-            body.extend(selected_matrix(node_id))
+            body.extend(matrix_lines(node_id))
             for child in child_nodes:
                 body.extend([
                     'SDM_PRODUCT=SDM_PRODUCT*SDM_MESSAGE_%d(%s,%s)' % (
@@ -1547,7 +1535,7 @@ class SpinDensityExporter(object):
                 flattened_state_index(production, 'left'),
                 'SDM_LOCAL_RIGHT=%s' %
                 flattened_state_index(production, 'right')]
-            body.extend(selected_matrix(0))
+            body.extend(matrix_lines(0))
             for root in root_nodes:
                 body.extend([
                     'SDM_PRODUCT=SDM_PRODUCT*SDM_MESSAGE_%d(%s,%s)' % (
@@ -1559,9 +1547,32 @@ class SpinDensityExporter(object):
             lines.extend([
                 'SDM_LOCAL_LEFT=1',
                 'SDM_LOCAL_RIGHT=1'])
-            lines.extend(selected_matrix(0))
+            lines.extend(matrix_lines(0))
             lines.append('%s=%s+SDM_PRODUCT' % (result_name, result_name))
         return lines
+
+    def _leaf_contraction_lines(self, plan, providers, positions,
+                                insertion_ranks, result_name):
+        """Contract selected cached LO or insertion block densities.
+
+        ``insertion_ranks`` maps a physical component to a Fortran rank
+        expression.  Missing/zero entries select the cached LO matrix.
+        """
+
+        def selected_matrix(component_id):
+            position = positions[component_id]
+            rank = str(insertion_ranks.get(component_id, 0))
+            if rank == '0':
+                return [
+                    'SDM_PRODUCT=SDM_BLOCKS(%d)%%LO(1,' % position,
+                    '     $ SDM_LOCAL_LEFT,SDM_LOCAL_RIGHT)']
+            return [
+                'SDM_PRODUCT=SDM_BLOCKS(%d)%%INSERTION(%s,' % (
+                    position, rank),
+                '     $ SDM_LOCAL_LEFT,SDM_LOCAL_RIGHT)']
+
+        return self._tree_contraction_lines(
+            plan, providers, selected_matrix, result_name)
 
     def _lo_block_lines(self, component_id, position, provider,
                         event_slot, rho_name=None, corr_leg='0'):
@@ -1624,7 +1635,7 @@ class SpinDensityExporter(object):
             'TYPE(SPIN_DENSITY_BLOCK_RESULT) SDM_BLOCKS(%d)' %
             component_count,
             'COMPLEX*16 %s(2)' % result_name]
-        declarations.extend(self._leaf_contraction_declarations(plan))
+        declarations.extend(self._tree_contraction_declarations(plan))
         for component_id, provider in sorted(baseline.items()):
             nexternal, _ = provider['matrix_element'].get_nexternal_ninitial()
             declarations.extend([
@@ -1758,7 +1769,7 @@ class SpinDensityExporter(object):
                 production_open_size, production_open_size),
             'COMPLEX*16 SDM_INSERTION_RHO(1,%d,%d)' % (
                 production_open_size, production_open_size)]
-        declarations.extend(self._leaf_contraction_declarations(plan))
+        declarations.extend(self._tree_contraction_declarations(plan))
         for component_id, provider in sorted(providers.items()):
             local_nexternal, _ = provider[
                 'matrix_element'].get_nexternal_ninitial()
@@ -1842,7 +1853,7 @@ class SpinDensityExporter(object):
             'REAL*8 SDM_INSERTION_P(0:3,%d)' % nexternal,
             'COMPLEX*16 SDM_INSERTION_RHO(3,%d,%d)' % (
                 variant['open_size'], variant['open_size'])]
-        declarations.extend(self._leaf_contraction_declarations(plan))
+        declarations.extend(self._tree_contraction_declarations(plan))
         for component_id, provider in sorted(providers.items()):
             local_nexternal, _ = provider[
                 'matrix_element'].get_nexternal_ninitial()
@@ -1925,7 +1936,7 @@ class SpinDensityExporter(object):
                 active_provider['open_size'], active_provider['open_size']),
             'COMPLEX*16 SDM_COLOR_INSERTION(1,%d,%d)' % (
                 active_provider['open_size'], active_provider['open_size'])]
-        declarations.extend(self._leaf_contraction_declarations(plan))
+        declarations.extend(self._tree_contraction_declarations(plan))
         for component_id, provider in sorted(providers.items()):
             local_nexternal, _ = provider[
                 'matrix_element'].get_nexternal_ninitial()
@@ -2081,13 +2092,11 @@ class SpinDensityExporter(object):
         """
 
         self.prepare_plan(plan)
-        dimensions = dict(
-            (node['id'], len(self._node_helicities(plan, node['id'])))
-            for node in plan['topology']['nodes'])
-        node_count = len(plan['topology']['nodes'])
         providers = dict(
             (component_id, component['born'])
             for component_id, component in plan['components'].items())
+        topology_nodes = dict(
+            (node['id'], node) for node in plan['topology']['nodes'])
         positions = self._block_position_map(providers)
         component_count = len(providers)
         maximum_open_size = max(
@@ -2421,30 +2430,21 @@ class SpinDensityExporter(object):
                 component_count, maximum_open_size,
                 maximum_basis_primitives),
             'INTEGER MAXPRIMITIVES,PRIMITIVE_COUNTS(NBLOCKS)',
-            'INTEGER SDM_PRIMITIVE,SDM_LOCAL_LEFT,SDM_LOCAL_RIGHT',
+            'INTEGER SDM_PRIMITIVE',
             'COMPLEX*16 COEFFICIENTS(MAXPRIMITIVES,NBLOCKS)',
-            'COMPLEX*16 RESULT,SDM_PRODUCT',
+            'COMPLEX*16 RESULT',
             'COMPLEX*16 SDM_EFFECTIVE(MAXOPEN,MAXOPEN,NBLOCKS)',
             'COMPLEX*16 SDM_BASIS_RHO(MAXOPEN,MAXOPEN,MAXBASIS,NBLOCKS)',
             'COMMON /SDM_MULTIPLICATIVE_BASIS_STORAGE/ SDM_BASIS_RHO',
             'SAVE /SDM_MULTIPLICATIVE_BASIS_STORAGE/'])
-        if node_count:
-            lines.append('INTEGER %s' % ','.join(
-                item for node_id in sorted(dimensions)
-                for item in ('SDML%d' % node_id, 'SDMR%d' % node_id)))
-            for node_id in sorted(dimensions):
-                dimension = dimensions[node_id]
-                lines.append(
-                    'COMPLEX*16 SDM_MESSAGE_%d(%d,%d)' % (
-                        node_id, dimension, dimension))
+        lines.extend(self._tree_contraction_declarations(plan))
         lines.extend([
             'IF (MAXPRIMITIVES.LT.1.OR.MAXPRIMITIVES.GT.MAXBASIS) THEN',
             "WRITE(*,*) 'Invalid effective-density primitive capacity'",
             'STOP 1',
             'ENDIF',
             'RESULT=(0D0,0D0)',
-            'SDM_EFFECTIVE=(0D0,0D0)',
-            'CALL RECORD_DENSITY_CONTRACTION()'])
+            'SDM_EFFECTIVE=(0D0,0D0)'])
         for component_id, provider in sorted(providers.items()):
             position = positions[component_id]
             open_size = provider['open_size']
@@ -2465,99 +2465,13 @@ class SpinDensityExporter(object):
                     open_size, open_size, position),
                 'ENDDO'])
 
-        topology_nodes = dict(
-            (node['id'], node) for node in plan['topology']['nodes'])
-
-        def state_variable(node_id, side):
-            return 'SDM%s%d' % ('L' if side == 'left' else 'R', node_id)
-
-        def flattened_state_index(provider, side):
-            terms = []
-            stride = 1
-            for node_id, dimension in zip(
-                    provider['open_nodes'], provider['open_dimensions']):
-                terms.append('(%s-1)*%d' % (
-                    state_variable(node_id, side), stride))
-                stride *= dimension
-            return '1' + ''.join('+%s' % term for term in terms)
-
-        def append_state_loops(target, node_ids, body):
-            for node_id in node_ids:
-                target.extend([
-                    'DO %s=1,%d' % (
-                        state_variable(node_id, 'left'),
-                        dimensions[node_id]),
-                    'DO %s=1,%d' % (
-                        state_variable(node_id, 'right'),
-                        dimensions[node_id])])
-            target.extend(body)
-            for _ in node_ids:
-                target.extend(['ENDDO', 'ENDDO'])
-
-        # Each decay factor contains its parent resonance and only its direct
-        # unstable children.  Eliminate those children from the leaves upward
-        # and retain a two-index message for the parent.  This is algebraically
-        # identical to the former global helicity Cartesian product but scales
-        # with local decay vertices rather than with every resonance at once.
-        for node_id in sorted(topology_nodes, reverse=True):
-            provider = providers[node_id]
-            open_nodes = list(provider['open_nodes'])
-            child_nodes = [
-                identifier for kind, identifier in
-                topology_nodes[node_id]['children'] if kind == 'NODE']
-            if (not open_nodes or open_nodes[0] != node_id or
-                    set(open_nodes[1:]) != set(child_nodes)):
-                raise MadGraph5Error(
-                    'A decay density block is not a local tree factor')
-            position = positions[node_id]
-            body = [
-                'SDM_LOCAL_LEFT=%s' %
-                flattened_state_index(provider, 'left'),
-                'SDM_LOCAL_RIGHT=%s' %
-                flattened_state_index(provider, 'right'),
+        def effective_matrix(component_id):
+            return [
                 'SDM_PRODUCT=SDM_EFFECTIVE(SDM_LOCAL_LEFT,',
-                '     $ SDM_LOCAL_RIGHT,%d)' % position]
-            for child in child_nodes:
-                body.extend([
-                    'SDM_PRODUCT=SDM_PRODUCT*SDM_MESSAGE_%d(%s,%s)' % (
-                        child, state_variable(child, 'left'),
-                        state_variable(child, 'right'))])
-            body.extend([
-                'SDM_MESSAGE_%d(%s,%s)=' % (
-                    node_id, state_variable(node_id, 'left'),
-                    state_variable(node_id, 'right')),
-                '     $ SDM_MESSAGE_%d(%s,%s)+SDM_PRODUCT' % (
-                    node_id, state_variable(node_id, 'left'),
-                    state_variable(node_id, 'right'))])
-            lines.append('SDM_MESSAGE_%d=(0D0,0D0)' % node_id)
-            append_state_loops(lines, open_nodes, body)
+                '     $ SDM_LOCAL_RIGHT,%d)' % positions[component_id]]
 
-        production = providers[0]
-        root_nodes = [
-            node_id for node_id in production['open_nodes']]
-        expected_roots = [
-            node_id for node_id, node in sorted(topology_nodes.items())
-            if node['parent'] == 0]
-        if set(root_nodes) != set(expected_roots):
-            raise MadGraph5Error(
-                'The production density does not expose every decay root')
-        if root_nodes:
-            body = [
-                'SDM_LOCAL_LEFT=%s' %
-                flattened_state_index(production, 'left'),
-                'SDM_LOCAL_RIGHT=%s' %
-                flattened_state_index(production, 'right'),
-                'SDM_PRODUCT=SDM_EFFECTIVE(SDM_LOCAL_LEFT,',
-                '     $ SDM_LOCAL_RIGHT,%d)' % positions[0]]
-            for root in root_nodes:
-                body.extend([
-                    'SDM_PRODUCT=SDM_PRODUCT*SDM_MESSAGE_%d(%s,%s)' % (
-                        root, state_variable(root, 'left'),
-                        state_variable(root, 'right'))])
-            body.append('RESULT=RESULT+SDM_PRODUCT')
-            append_state_loops(lines, root_nodes, body)
-        else:
-            lines.append('RESULT=SDM_EFFECTIVE(1,1,%d)' % positions[0])
+        lines.extend(self._tree_contraction_lines(
+            plan, providers, effective_matrix, 'RESULT'))
         lines.append('END')
 
         contribution_positions = {}

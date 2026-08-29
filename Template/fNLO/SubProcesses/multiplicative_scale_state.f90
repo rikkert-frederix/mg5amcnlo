@@ -37,16 +37,14 @@ module multiplicative_scale_state
   public :: build_multiplicative_scale_tables
 
   interface
-    subroutine set_model_ren_scale_bridge(mur, g_value)
+    subroutine set_model_loop_ren_scale_bridge(mur, g_value)
       double precision, intent(in) :: mur, g_value
-    end subroutine set_model_ren_scale_bridge
+    end subroutine set_model_loop_ren_scale_bridge
 
     subroutine set_model_qes_scale_bridge(qes_squared)
       double precision, intent(in) :: qes_squared
     end subroutine set_model_qes_scale_bridge
 
-    subroutine update_model_loop_parameters_bridge()
-    end subroutine update_model_loop_parameters_bridge
   end interface
 
 contains
@@ -166,9 +164,8 @@ contains
     muf22_current = reference_scale_squared(block)
     qes2_current = reference_scale_squared(block)
     call set_model_qes_scale_bridge(reference_scale_squared(block))
-    call set_model_ren_scale_bridge( &
+    call set_model_loop_ren_scale_bridge( &
          reference_scale, reference_coupling(block))
-    call update_model_loop_parameters_bridge()
     active_coupling_context = target_coupling_context
   end subroutine activate_multiplicative_block_reference
 
