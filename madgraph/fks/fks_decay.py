@@ -1423,6 +1423,88 @@ def _local_spin_density_provider(matrix_element, context, label):
         matrix_element, open_legs, open_nodes, momentum_targets, label)
 
 
+def _analytic_top_decay_virtual_spec(plan, variant):
+    """Describe a loop_sm two-body top decay supported analytically.
+
+    The dedicated CDR kernel is deliberately selected conservatively.  Its
+    normalization and helicity phases are those of the loop_sm ``tbW``
+    vertex, so an arbitrary model or a different direct decay must continue
+    to use the generated MadLoop provider.  The returned local leg positions
+    are one based, matching generated Fortran momentum arrays.
+    """
+
+    if variant.get('context_kind') != 'NLO_DECAY':
+        return None
+    active = variant.get('active_component')
+    if not isinstance(active, int) or active <= 0:
+        return None
+    try:
+        node = plan['topology']['nodes'][active - 1]
+        provider = (variant.get('tree_provider') or
+                    plan['components'][active]['born'])
+    except (KeyError, IndexError, TypeError):
+        return None
+    parent_pdg = int(node.get('pdg', 0))
+    if abs(parent_pdg) != 6:
+        return None
+
+    matrix_element = provider['matrix_element']
+    process = matrix_element.get('processes')[0]
+    model = process.get('model')
+    model_name = str(model.get('name')).split('/')[-1].lower()
+    if model_name not in ('loop_sm', 'loop_sm-no_b_mass'):
+        return None
+    legs = sorted(process.get('legs'), key=lambda leg: leg.get('number'))
+    initial = [leg for leg in legs if not leg.get('state')]
+    final = [leg for leg in legs if leg.get('state')]
+    if len(initial) != 1 or len(final) != 2:
+        return None
+    expected_bottom = 5 if parent_pdg > 0 else -5
+    expected_w = 24 if parent_pdg > 0 else -24
+    if initial[0].get('id') != parent_pdg:
+        return None
+    bottom = [leg for leg in final if leg.get('id') == expected_bottom]
+    vector = [leg for leg in final if leg.get('id') == expected_w]
+    if len(bottom) != 1 or len(vector) != 1:
+        return None
+
+    top_particle = model.get_particle(parent_pdg)
+    bottom_particle = model.get_particle(expected_bottom)
+    vector_particle = model.get_particle(expected_w)
+    if any(particle is None for particle in (
+            top_particle, bottom_particle, vector_particle)):
+        return None
+    top_mass = top_particle.get('mass').upper()
+    bottom_mass = bottom_particle.get('mass').upper()
+    vector_mass = vector_particle.get('mass').upper()
+    if (top_mass not in ('MT', 'MDL_MT') or
+            vector_mass not in ('MW', 'MDL_MW') or
+            bottom_mass not in ('MB', 'MDL_MB', 'ZERO')):
+        return None
+    if len(matrix_element.get('diagrams')) != 1:
+        return None
+
+    open_nodes = tuple(provider['open_nodes'])
+    if open_nodes == (active,):
+        open_mode = 'TOP'
+    elif (len(open_nodes) == 2 and open_nodes[0] == active and
+          plan['topology']['nodes'][open_nodes[1] - 1]['pdg'] ==
+          expected_w):
+        open_mode = 'TOP_W'
+    else:
+        return None
+
+    positions = dict((leg.get('number'), index + 1)
+                     for index, leg in enumerate(legs))
+    return {
+        'mode': open_mode,
+        'parent_pdg': parent_pdg,
+        'parent_position': positions[initial[0].get('number')],
+        'bottom_position': positions[bottom[0].get('number')],
+        'vector_position': positions[vector[0].get('number')],
+        'massless_bottom': bottom_mass == 'ZERO'}
+
+
 def _nlo_decay_spin_density_plan(composition, metadata, decay_born,
                                   decay_reals, decay_virtual):
     """Build a tensor plan with the corrected decay as the NLO component."""
@@ -1469,7 +1551,7 @@ def _nlo_decay_spin_density_plan(composition, metadata, decay_born,
             'momentum_targets': born_provider['momentum_targets'],
             'label': 'decay_%d_virtual' % corrected})
 
-    return {
+    plan = {
         'format': 1,
         'source': 'NLO_DECAY',
         'topology': metadata,
@@ -1485,6 +1567,11 @@ def _nlo_decay_spin_density_plan(composition, metadata, decay_born,
         'real_variants': real_variants,
         'color_variants': [],
         'virtual_variants': virtual_variants}
+    for variant in virtual_variants:
+        specification = _analytic_top_decay_virtual_spec(plan, variant)
+        if specification is not None:
+            variant['analytic_top_decay'] = specification
+    return plan
 
 
 def iter_spin_density_matrix_elements(plan):
@@ -3331,6 +3418,7 @@ def compose_nlo_decay_helas_process(fks_process, composition):
         'fks_maps': [],
         'color_links': [],
         'has_virtual': bool(fks_process.virt_matrix_element),
+        'fast_virtual': False,
         'virtual_composition': 'NONE',
         'virtual_current_count': 0,
         'production_born_qcd_order': _born_qcd_squared_order(
@@ -3416,6 +3504,9 @@ def compose_nlo_decay_helas_process(fks_process, composition):
     spin_density_plan = _nlo_decay_spin_density_plan(
         composition, prototype_metadata, decay_born_me,
         decay_real_mes, decay_virtual_me)
+    prototype_metadata['fast_virtual'] = any(
+        variant.get('analytic_top_decay')
+        for variant in spin_density_plan.get('virtual_variants', []))
     _set_spin_density_color_variants(
         spin_density_plan, prototype_metadata['color_links'],
         corrected_node, 'local_first', 'local_second', born_local_context,
@@ -3460,6 +3551,7 @@ def nlo_decay_info_text(metadata):
         'PARENT %d %d' % (
             metadata['parent_pdg'], metadata['parent_occurrence']),
         'HAS_VIRTUAL %d' % int(metadata['has_virtual']),
+        'FAST_VIRTUAL %d' % int(metadata.get('fast_virtual', False)),
         'VIRTUAL_COMPOSITION %s' % metadata['virtual_composition'],
         'VIRTUAL_CURRENT_COUNT %d' % metadata['virtual_current_count'],
         'QCD_ORDERS %d %d' % (
@@ -3552,7 +3644,7 @@ def contribution_bundle_info_text(contributions):
         len(contribution.get('virtual_orders', []))
         for contribution in contributions)
     lines = [
-        'FORMAT 3',
+        'FORMAT 4',
         'COUNT %d' % len(contributions),
         'VIRTUAL_GRIDS %d' % virtual_grid_count]
     expected_first = 1
@@ -3566,14 +3658,23 @@ def contribution_bundle_info_text(contributions):
             raise fks_common.FKSProcessError(
                 'The NLO contribution bundle has inconsistent FKS ranges')
         virtual_orders = contribution.get('virtual_orders', [])
-        if bool(virtual_orders) != bool(contribution['has_virtual']):
+        fast_virtual = bool(contribution.get('fast_virtual', False))
+        if fast_virtual and not contribution['has_virtual']:
+            raise fks_common.FKSProcessError(
+                'A bundled fast virtual is not marked as a virtual')
+        if fast_virtual and virtual_orders:
+            raise fks_common.FKSProcessError(
+                'A bundled fast virtual must not own approximation grids')
+        if (not fast_virtual and
+                bool(virtual_orders) != bool(contribution['has_virtual'])):
             raise fks_common.FKSProcessError(
                 'A bundled virtual has inconsistent split-order metadata')
-        lines.append('CONTRIBUTION %d %s %d %d %d %d %d %d %d' % (
+        lines.append('CONTRIBUTION %d %s %d %d %d %d %d %d %d %d' % (
             contribution['id'], contribution['kind'],
             contribution['first'], contribution['last'],
             contribution['representative'],
             int(contribution['has_virtual']),
+            int(fast_virtual),
             contribution['parent_pdg'],
             contribution['parent_occurrence'],
             contribution['corrected_node']))
@@ -3939,7 +4040,8 @@ def decay_card_text(widths, renormalization_scales,
                     decay_scale_factors=(1.0,),
                     lo_width_variations=None,
                     nlo_width_variations=None,
-                    nlo_combination_mode='ADDITIVE'):
+                    nlo_combination_mode='ADDITIVE',
+                    multiplicative_virtual_fraction=1.0):
     """Return a deterministic runtime card for on-shell decay parameters."""
 
     absolute_widths = dict(
@@ -3987,6 +4089,17 @@ def decay_card_text(widths, renormalization_scales,
             not absolute_nlo_width_pdgs):
         raise ValueError(
             'Multiplicative NLO combination requires explicit NLO widths')
+    multiplicative_virtual_fraction = float(
+        multiplicative_virtual_fraction)
+    if (not math.isfinite(multiplicative_virtual_fraction) or
+            multiplicative_virtual_fraction <= 0.0 or
+            multiplicative_virtual_fraction > 1.0):
+        raise ValueError(
+            'Multiplicative virtual fraction must be in (0, 1]')
+    if (multiplicative_virtual_fraction < 1.0 and
+            nlo_combination_mode != 'MULTIPLICATIVE'):
+        raise ValueError(
+            'Stochastic virtual sampling requires multiplicative mode')
     decay_scale_variation_mode = decay_scale_variation_mode.upper()
     if decay_scale_variation_mode not in (
             'NONE', 'CORRELATED', 'INDEPENDENT'):
@@ -4075,7 +4188,9 @@ def decay_card_text(widths, renormalization_scales,
                        (4 if absolute_nlo_width_pdgs else 3)),
         'DUMMY_WIDTH_RATIO %.16e' % dummy_width_ratio,
         'PRODUCTION_REN_SCALE_MOMENTA %s' % production_scale_momenta,
-        'NLO_COMBINATION_MODE %s' % nlo_combination_mode]
+        'NLO_COMBINATION_MODE %s' % nlo_combination_mode,
+        'MULTIPLICATIVE_VIRTUAL_FRACTION %.16e' %
+        multiplicative_virtual_fraction]
     if variation_requested:
         lines.extend([
             ('# Scale variations evaluate the selected %s combination.' %
@@ -4120,7 +4235,8 @@ def write_decay_card(path, widths, renormalization_scales,
                      decay_scale_factors=(1.0,),
                      lo_width_variations=None,
                      nlo_width_variations=None,
-                     nlo_combination_mode='ADDITIVE'):
+                     nlo_combination_mode='ADDITIVE',
+                     multiplicative_virtual_fraction=1.0):
     """Write ``decay_card.dat`` containing runtime decay parameters."""
 
     filename = os.path.join(path, 'decay_card.dat')
@@ -4130,4 +4246,4 @@ def write_decay_card(path, widths, renormalization_scales,
             production_scale_momenta, nlo_width_pdgs, nlo_widths,
             decay_scale_variation_mode, decay_scale_factors,
             lo_width_variations, nlo_width_variations,
-            nlo_combination_mode))
+            nlo_combination_mode, multiplicative_virtual_fraction))

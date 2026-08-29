@@ -5,12 +5,14 @@ module multiplicative_nbody_density
   use fks_singular_module, only: fks_subtraction_shat, &
        record_nbody_integrated_density_operator
   use nlo_contribution_bundle, only: contribution_for_fks, &
-       contribution_has_virtual, contribution_is_nlo_decay, &
+       contribution_has_virtual, contribution_has_fast_virtual, &
+       contribution_is_nlo_decay, &
        contribution_corrected_node, contribution_representative_fks
   use fnlo_process_common, only: nfksprocess, soft_counterevent, real_event, &
        xibsvcut_used
   use spin_density_matrix_results, only: spin_density_no_insertion, &
-       spin_density_virtual_insertion
+       spin_density_virtual_insertion, &
+       spin_density_fast_virtual_insertion
   use multiplicative_density_terms, only: block_distribution_term, &
        density_scale_coefficient_count
   use density_operator_recorder, only: &
@@ -113,7 +115,10 @@ contains
       ! the generated loop provider are pole diagnostics and are never
       ! selected by a multiplicative primitive.
       call record_density_operator_primitive( &
-           spin_density_virtual_insertion, contribution, 1, 0, &
+           merge(spin_density_fast_virtual_insertion, &
+                 spin_density_virtual_insertion, &
+                 contribution_has_fast_virtual(contribution)), &
+           contribution, 1, 0, &
            coefficients, .true.)
     end if
     if (recorded_density_operator_nonzero_count() < 1) then

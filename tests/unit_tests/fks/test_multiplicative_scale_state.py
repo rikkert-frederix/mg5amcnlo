@@ -117,6 +117,19 @@ module fnlo_process_common
   integer, parameter :: real_event = 3
 end module fnlo_process_common
 
+module multiplicative_generated_metadata
+  implicit none
+  integer, parameter :: multiplicative_block_count = 3
+  integer, parameter :: multiplicative_physical_blocks(3) = (/0, 1, 2/)
+  integer, parameter :: multiplicative_block_pdgs(3) = (/0, 6, 24/)
+  integer, parameter :: multiplicative_born_qcd_powers(3) = (/4, 2, 0/)
+contains
+  integer function multiplicative_component_position(block)
+    integer, intent(in) :: block
+    multiplicative_component_position = block + 1
+  end function multiplicative_component_position
+end module multiplicative_generated_metadata
+
 module bridge_state
   implicit none
   double precision :: bridge_mur = 0d0

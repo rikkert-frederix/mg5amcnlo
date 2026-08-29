@@ -16,6 +16,25 @@ NNLO calculation.
   NLO_COMBINATION_MODE ADDITIVE
   # or: NLO_COMBINATION_MODE MULTIPLICATIVE
 
+MULTIPLICATIVE_VIRTUAL_FRACTION controls unbiased stochastic sampling of the
+complete virtual residual. Its default is 1.0 (evaluate every virtual). A
+value p in (0,1) uses one Bernoulli mask shared by every production/decay tuple
+and every scale/PDF weight at an integration point, evaluating
+W_no-virtual + I/p (W_full - W_no-virtual). This option is valid only in
+MULTIPLICATIVE mode; all real and integrated subtraction pieces remain
+deterministic.
+
+For loop_sm and loop_sm-no_b_mass, virtual corrections to an on-shell
+t -> b W+ or t~ -> b~ W- block use the bundled analytic CDR spin-density
+matrix. This applies both when the W is external to the block and when its
+decay leaves its spin index open. Each generated provider first compares all
+complex finite, single-pole, and double-pole density entries against MadLoop
+at two distinct boosted block-local phase-space points and stops on a
+discrepancy. It then uses the analytic result at every subsequent point.
+These fast decay virtuals are never sampled or replaced by an approximation;
+production virtuals retain the configured virtual treatment. Unsupported
+models and decay topologies continue to use MadLoop normally.
+
 FORMAT 5 adds explicit decay-scale variations:
 
   DECAY_SCALE_VARIATION_MODE CORRELATED

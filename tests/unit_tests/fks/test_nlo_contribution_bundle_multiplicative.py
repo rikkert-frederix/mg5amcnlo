@@ -54,12 +54,12 @@ program test_multiplicative_bundle
 
   open(newunit=unit_number, file='nlo_contribution_info.dat', &
        status='replace', action='write')
-  write(unit_number, '(a)') 'FORMAT 3'
+  write(unit_number, '(a)') 'FORMAT 4'
   write(unit_number, '(a)') 'COUNT 3'
   write(unit_number, '(a)') 'VIRTUAL_GRIDS 0'
-  write(unit_number, '(a)') 'CONTRIBUTION 1 PRODUCTION 1 2 1 0 0 0 0'
-  write(unit_number, '(a)') 'CONTRIBUTION 2 NLO_DECAY 3 4 3 0 6 1 1'
-  write(unit_number, '(a)') 'CONTRIBUTION 3 NLO_DECAY 5 6 5 0 24 1 2'
+  write(unit_number, '(a)') 'CONTRIBUTION 1 PRODUCTION 1 2 1 0 0 0 0 0'
+  write(unit_number, '(a)') 'CONTRIBUTION 2 NLO_DECAY 3 4 3 1 1 6 1 1'
+  write(unit_number, '(a)') 'CONTRIBUTION 3 NLO_DECAY 5 6 5 0 0 24 1 2'
   write(unit_number, '(a)') 'END'
   close(unit_number)
 
@@ -81,8 +81,13 @@ program test_multiplicative_bundle
   if (multiplicative_mc_integer_dimension(1,0) /= 1) stop 17
   if (multiplicative_mc_integer_dimension(1,2) /= 3) stop 18
   if (multiplicative_mc_integer_dimension(3,0) /= 7) stop 19
+  if (contribution_has_fast_virtual(1)) stop 20
+  if (.not. contribution_has_fast_virtual(2)) stop 21
+  if (.not. contribution_has_virtual(2)) stop 22
+  if (nlo_virtual_grid_count(1) /= 0) stop 23
   nfksprocess = 4
   if (active_nlo_contribution() /= 2) stop 16
+  if (.not. active_contribution_has_fast_virtual()) stop 24
 end program test_multiplicative_bundle
 '''
         with tempfile.TemporaryDirectory() as directory:

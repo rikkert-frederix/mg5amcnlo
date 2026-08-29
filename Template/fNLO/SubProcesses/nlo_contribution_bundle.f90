@@ -20,6 +20,7 @@ module nlo_contribution_bundle
   integer, allocatable, save :: contribution_occurrence_values(:)
   integer, allocatable, save :: contribution_node_values(:)
   logical, allocatable, save :: contribution_virtual_values(:)
+  logical, allocatable, save :: contribution_fast_virtual_values(:)
   integer, allocatable, save :: configuration_owner_values(:)
   integer, allocatable, save :: virtual_grid_values(:, :)
 
@@ -37,6 +38,8 @@ module nlo_contribution_bundle
   public :: active_contribution_is_production
   public :: active_contribution_is_nlo_decay
   public :: contribution_has_virtual, active_contribution_has_virtual
+  public :: contribution_has_fast_virtual
+  public :: active_contribution_has_fast_virtual
   public :: nlo_virtual_grid_count, active_virtual_grid_index
   public :: factorized_radiation_block_count
   public :: factorized_shared_dimension
@@ -58,6 +61,7 @@ contains
     logical :: exists, end_seen
     integer :: unit_number, ios, metadata_format, contribution_count
     integer :: contribution, first, last, representative, has_virtual
+    integer :: has_fast_virtual
     integer :: parent, occurrence, corrected_node
     integer :: configuration, expected_first, virtual_grid_count
     integer :: virtual_grid, amp_position
@@ -97,8 +101,9 @@ contains
       end select
       if (ios /= 0) call fail_bundle('malformed contribution header')
     end do
-    if (metadata_format /= 2 .and. metadata_format /= 3) then
-      call fail_bundle('FORMAT 2 or FORMAT 3 is required')
+    if (metadata_format /= 2 .and. metadata_format /= 3 .and. &
+        metadata_format /= 4) then
+      call fail_bundle('FORMAT 2, FORMAT 3 or FORMAT 4 is required')
     end if
     if (contribution_count < 2 .or. contribution_count > fks_configs) then
       call fail_bundle('invalid contribution count')
@@ -118,6 +123,7 @@ contains
     allocate(contribution_occurrence_values(number_of_contributions))
     allocate(contribution_node_values(number_of_contributions))
     allocate(contribution_virtual_values(number_of_contributions))
+    allocate(contribution_fast_virtual_values(number_of_contributions))
     allocate(configuration_owner_values(fks_configs))
     allocate(virtual_grid_values(&
          amp_split_size, number_of_contributions))
@@ -130,6 +136,7 @@ contains
     contribution_occurrence_values = 0
     contribution_node_values = 0
     contribution_virtual_values = .false.
+    contribution_fast_virtual_values = .false.
     configuration_owner_values = 0
     virtual_grid_values = 0
 
@@ -149,7 +156,12 @@ contains
       case ('CONTRIBUTION')
         occurrence = 0
         corrected_node = 0
-        if (metadata_format == 3) then
+        has_fast_virtual = 0
+        if (metadata_format == 4) then
+          read(line, *, iostat=ios) keyword, contribution, kind, first, &
+               last, representative, has_virtual, has_fast_virtual, &
+               parent, occurrence, corrected_node
+        else if (metadata_format == 3) then
           read(line, *, iostat=ios) keyword, contribution, kind, first, &
                last, representative, has_virtual, parent, occurrence, &
                corrected_node
@@ -158,6 +170,10 @@ contains
                last, representative, has_virtual, parent
         end if
         if (ios /= 0) call fail_bundle('malformed CONTRIBUTION record')
+        if ((has_virtual /= 0 .and. has_virtual /= 1) .or. &
+            (has_fast_virtual /= 0 .and. has_fast_virtual /= 1)) then
+          call fail_bundle('invalid virtual flag in CONTRIBUTION record')
+        end if
         call check_contribution(contribution)
         if (contribution_kind_values(contribution) /= 0) then
           call fail_bundle('duplicate CONTRIBUTION record')
@@ -181,6 +197,8 @@ contains
         contribution_last_values(contribution) = last
         contribution_representative_values(contribution) = representative
         contribution_virtual_values(contribution) = has_virtual /= 0
+        contribution_fast_virtual_values(contribution) = &
+             has_fast_virtual /= 0
         contribution_parent_values(contribution) = parent
         contribution_occurrence_values(contribution) = occurrence
         contribution_node_values(contribution) = corrected_node
@@ -245,7 +263,7 @@ contains
           contribution_parent_values(contribution) == 0) then
         call fail_bundle('an NLO-decay member has no corrected parent')
       end if
-      if (metadata_format == 3 .and. &
+      if (metadata_format >= 3 .and. &
           contribution_kind_values(contribution) == &
           nlo_decay_contribution .and. &
           (contribution_occurrence_values(contribution) < 1 .or. &
@@ -263,8 +281,16 @@ contains
            contribution_node_values(contribution) /= 0)) then
         call fail_bundle('the production member has decay identifiers')
       end if
-      if (contribution_virtual_values(contribution) .neqv. &
-          any(virtual_grid_values(:, contribution) > 0)) then
+      if (contribution_fast_virtual_values(contribution) .and. &
+          (.not. contribution_virtual_values(contribution) .or. &
+           contribution_kind_values(contribution) /= &
+           nlo_decay_contribution .or. &
+           any(virtual_grid_values(:, contribution) > 0))) then
+        call fail_bundle('a fast virtual has inconsistent metadata')
+      end if
+      if (.not. contribution_fast_virtual_values(contribution) .and. &
+          (contribution_virtual_values(contribution) .neqv. &
+           any(virtual_grid_values(:, contribution) > 0))) then
         call fail_bundle('a contribution has inconsistent virtual grids')
       end if
       expected_first = contribution_last_values(contribution) + 1
@@ -519,6 +545,25 @@ contains
     active_contribution_has_virtual = contribution_has_virtual(&
          active_nlo_contribution())
   end function active_contribution_has_virtual
+
+
+  logical function contribution_has_fast_virtual(contribution)
+    integer, intent(in) :: contribution
+    if (.not. initialized) call initialize_nlo_contribution_bundle()
+    if (.not. enabled) then
+      contribution_has_fast_virtual = .false.
+      return
+    end if
+    call check_contribution(contribution)
+    contribution_has_fast_virtual = &
+         contribution_fast_virtual_values(contribution)
+  end function contribution_has_fast_virtual
+
+
+  logical function active_contribution_has_fast_virtual()
+    active_contribution_has_fast_virtual = contribution_has_fast_virtual(&
+         active_nlo_contribution())
+  end function active_contribution_has_fast_virtual
 
 
   integer function nlo_virtual_grid_count(local_grid_count)

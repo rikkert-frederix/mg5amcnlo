@@ -36,16 +36,35 @@ contains
 
   subroutine initialize_multiplicative_lambda_accumulator( &
        accumulator, block_count)
-    type(multiplicative_lambda_accumulator), intent(out) :: accumulator
+    type(multiplicative_lambda_accumulator), intent(inout) :: accumulator
     integer, intent(in) :: block_count
 
     if (block_count < 1) then
       call fail_lambda_validation('the block count is not positive')
     end if
     accumulator%block_count = block_count
-    allocate(accumulator%order_coefficients(0:block_count))
-    allocate(accumulator%single_coefficients(block_count))
-    allocate(accumulator%pair_coefficients(block_count, block_count))
+    accumulator%exact_weight = 0d0
+    accumulator%absolute_weight = 0d0
+    if (allocated(accumulator%order_coefficients)) then
+      if (lbound(accumulator%order_coefficients, 1) /= 0 .or. &
+          ubound(accumulator%order_coefficients, 1) /= block_count) &
+           deallocate(accumulator%order_coefficients)
+    end if
+    if (.not. allocated(accumulator%order_coefficients)) &
+         allocate(accumulator%order_coefficients(0:block_count))
+    if (allocated(accumulator%single_coefficients)) then
+      if (size(accumulator%single_coefficients) /= block_count) &
+           deallocate(accumulator%single_coefficients)
+    end if
+    if (.not. allocated(accumulator%single_coefficients)) &
+         allocate(accumulator%single_coefficients(block_count))
+    if (allocated(accumulator%pair_coefficients)) then
+      if (size(accumulator%pair_coefficients, 1) /= block_count .or. &
+          size(accumulator%pair_coefficients, 2) /= block_count) &
+           deallocate(accumulator%pair_coefficients)
+    end if
+    if (.not. allocated(accumulator%pair_coefficients)) &
+         allocate(accumulator%pair_coefficients(block_count, block_count))
     accumulator%order_coefficients = 0d0
     accumulator%single_coefficients = 0d0
     accumulator%pair_coefficients = 0d0

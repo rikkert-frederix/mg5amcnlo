@@ -29,6 +29,7 @@ module fks_singular_module
   use decay_chain_scales, only: corrected_born_qcd_squared_order
   use nlo_decay_metadata, only: has_nlo_decay, &
        nlo_decay_born_context, nlo_decay_context_for_fks, &
+       nlo_decay_has_fast_virtual, &
        nlo_decay_local_count, nlo_decay_local_pdg, &
        nlo_decay_local_is_final, nlo_decay_fks_i, nlo_decay_fks_j, &
        nlo_decay_partner_count, nlo_decay_partner_local, &
@@ -38,7 +39,8 @@ module fks_singular_module
   use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
        active_nlo_contribution, &
        active_contribution_fks_first, active_contribution_fks_last, &
-       active_contribution_has_virtual, active_virtual_grid_index
+       active_contribution_has_virtual, &
+       active_contribution_has_fast_virtual, active_virtual_grid_index
   use fks_qcd_splitting, only: AP_reduced, AP_reduced_prime, &
                                 Qterms_reduced_timelike, &
                                 Qterms_reduced_spacelike
@@ -1542,6 +1544,7 @@ contains
     logical firsttime
     data firsttime/.true./
     logical need_color_links_used
+    logical fast_virtual, evaluate_virtual
     data need_color_links_used/.false./
     double precision oneo8pi2
     parameter(oneo8pi2=1d0/(8d0*pi**2))
@@ -1775,10 +1778,17 @@ contains
       end if
     end do
 
-    if (active_contribution_has_virtual() .and. &
-        ((random_unit_interval(iconfig) .le. virtual_fraction(ichan) &
-         .and. abrv(1:3) .ne. 'nov') .or. &
-        abrv(1:4) .eq. 'virt')) then
+    fast_virtual = active_contribution_has_fast_virtual() .or. &
+         nlo_decay_has_fast_virtual()
+    if (fast_virtual) then
+      evaluate_virtual = abrv(1:3) .ne. 'nov'
+    else
+      evaluate_virtual = &
+           random_unit_interval(iconfig) .le. virtual_fraction(ichan) .and. &
+           abrv(1:3) .ne. 'nov'
+    end if
+    evaluate_virtual = evaluate_virtual .or. abrv(1:4) .eq. 'virt'
+    if (active_contribution_has_virtual() .and. evaluate_virtual) then
       call cpu_time(tBefore)
       call evaluate_virtual_matrix( &
            soft_counterevent, born_wgt, virt_wgt)
@@ -1787,35 +1797,41 @@ contains
       end do
       virtual_over_born = virt_wgt/born_wgt
       virt_wgt = 0d0
-      do iamp = 1, amp_split_size
-        if (amp_split_virt(iamp) .eq. 0d0) cycle
-        virtual_grid = active_virtual_grid_index(iamp, amp_split_size)
-        if (virtual_grid == 0) then
-          write (*,*) 'ERROR: a virtual split order has no bundle grid'
-          stop 1
-        end if
-        if (use_poly_virtual) then
-          amp_split_virt(iamp) = amp_split_virt(iamp) - &
-            polyfit(virtual_grid)*amp_split_born_for_virt(iamp)
-        else
-          amp_split_virt(iamp) = amp_split_virt(iamp) - &
-            average_virtual(virtual_grid, ichan)* &
-            amp_split_born_for_virt(iamp)
-        end if
-        virt_wgt = virt_wgt + amp_split_virt(iamp)
-      end do
-      if (abrv .ne. 'virt') then
-        virt_wgt = virt_wgt/virtual_fraction(ichan)
+      if (fast_virtual) then
         do iamp = 1, amp_split_size
-          amp_split_virt(iamp) = &
-            amp_split_virt(iamp)/virtual_fraction(ichan)
+          virt_wgt = virt_wgt + amp_split_virt(iamp)
         end do
+      else
+        do iamp = 1, amp_split_size
+          if (amp_split_virt(iamp) .eq. 0d0) cycle
+          virtual_grid = active_virtual_grid_index(iamp, amp_split_size)
+          if (virtual_grid == 0) then
+            write (*,*) 'ERROR: a virtual split order has no bundle grid'
+            stop 1
+          end if
+          if (use_poly_virtual) then
+            amp_split_virt(iamp) = amp_split_virt(iamp) - &
+              polyfit(virtual_grid)*amp_split_born_for_virt(iamp)
+          else
+            amp_split_virt(iamp) = amp_split_virt(iamp) - &
+              average_virtual(virtual_grid, ichan)* &
+              amp_split_born_for_virt(iamp)
+          end if
+          virt_wgt = virt_wgt + amp_split_virt(iamp)
+        end do
+        if (abrv .ne. 'virt') then
+          virt_wgt = virt_wgt/virtual_fraction(ichan)
+          do iamp = 1, amp_split_size
+            amp_split_virt(iamp) = &
+              amp_split_virt(iamp)/virtual_fraction(ichan)
+          end do
+        end if
       end if
       call cpu_time(tAfter)
       tOLP = tOLP + (tAfter - tBefore)
     end if
     if (abrv(1:4) .ne. 'virt' .and. &
-        active_contribution_has_virtual()) then
+        active_contribution_has_virtual() .and. .not. fast_virtual) then
       if (use_poly_virtual) then
         avv_wgt = 0d0
         do iamp = 1, amp_split_size

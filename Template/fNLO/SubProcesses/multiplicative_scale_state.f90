@@ -13,6 +13,10 @@ module multiplicative_scale_state
   use multiplicative_kinematics, only: &
        factorized_production_scale_sums, factorized_visible_scale_sums
   use fnlo_process_common, only: soft_counterevent, real_event
+  use multiplicative_generated_metadata, only: &
+       multiplicative_block_count, multiplicative_physical_blocks, &
+       multiplicative_block_pdgs, multiplicative_born_qcd_powers, &
+       multiplicative_component_position
   implicit none
   private
 
@@ -20,31 +24,19 @@ module multiplicative_scale_state
   double precision, allocatable, save :: reference_scale_squared(:)
   double precision, allocatable, save :: reference_coupling(:)
   logical, allocatable, save :: reference_is_valid(:)
+  integer(kind=8), save :: reference_generation = 0_8
+  integer(kind=8), save :: active_coupling_context = 0_8
 
   public :: initialize_multiplicative_scale_references
   public :: activate_multiplicative_block_reference
   public :: multiplicative_reference_scale_squared
   public :: multiplicative_reference_coupling
+  public :: multiplicative_active_coupling_context
   public :: multiplicative_block_scale_logarithm
   public :: multiplicative_block_coupling_rescaling
   public :: build_multiplicative_scale_tables
 
   interface
-    integer function sdm_multiplicative_block_count()
-    end function sdm_multiplicative_block_count
-
-    integer function sdm_multiplicative_physical_block(position)
-      integer, intent(in) :: position
-    end function sdm_multiplicative_physical_block
-
-    integer function sdm_multiplicative_block_pdg(block)
-      integer, intent(in) :: block
-    end function sdm_multiplicative_block_pdg
-
-    integer function sdm_multiplicative_born_qcd_power(block)
-      integer, intent(in) :: block
-    end function sdm_multiplicative_born_qcd_power
-
     subroutine set_model_ren_scale_bridge(mur, g_value)
       double precision, intent(in) :: mur, g_value
     end subroutine set_model_ren_scale_bridge
@@ -71,14 +63,20 @@ contains
     reference_scale_squared = 0d0
     reference_coupling = 0d0
     reference_is_valid = .false.
+    reference_generation = reference_generation + 1_8
+    if (reference_generation <= 0_8) then
+      call fail_multiplicative_scale_state( &
+           'the coupling-reference generation counter overflowed')
+    end if
+    active_coupling_context = 0_8
 
-    block_count = sdm_multiplicative_block_count()
+    block_count = multiplicative_block_count
     if (block_count < 1) then
       call fail_multiplicative_scale_state( &
            'the generated density graph has no blocks')
     end if
     do position = 1, block_count
-      block = sdm_multiplicative_physical_block(position)
+      block = multiplicative_physical_blocks(position)
       call validate_block(block)
       if (reference_is_valid(block)) then
         call fail_multiplicative_scale_state( &
@@ -92,7 +90,7 @@ contains
         end if
         reference_scale = max(2d0, radiation%sqrt_shat)
       else
-        pdg = sdm_multiplicative_block_pdg(block)
+        pdg = multiplicative_block_pdgs(position)
         if (pdg == 0) then
           call fail_multiplicative_scale_state( &
                'a decay block has no generated parent PDG')
@@ -159,7 +157,14 @@ contains
     call set_model_qes_scale_bridge(reference_scale_squared(block))
     call set_model_ren_scale_bridge( &
          reference_scale, reference_coupling(block))
+    active_coupling_context = reference_generation* &
+         int(nexternal + 2, kind=8) + int(block + 1, kind=8)
   end subroutine activate_multiplicative_block_reference
+
+
+  integer(kind=8) function multiplicative_active_coupling_context()
+    multiplicative_active_coupling_context = active_coupling_context
+  end function multiplicative_active_coupling_context
 
 
   double precision function multiplicative_reference_scale_squared(block)
@@ -210,7 +215,8 @@ contains
       call fail_multiplicative_scale_state( &
            'a physical renormalization scale is not positive')
     end if
-    qcd_power = sdm_multiplicative_born_qcd_power(block) + 2*nlo_order
+    qcd_power = multiplicative_born_qcd_powers( &
+         multiplicative_component_position(block)) + 2*nlo_order
     if (qcd_power < 0) then
       call fail_multiplicative_scale_state( &
            'a block has a negative QCD coupling power')
@@ -275,9 +281,9 @@ contains
     logarithmic_mu2_f = 0d0
     coupling_rescaling = 1d0
 
-    block_count = sdm_multiplicative_block_count()
+    block_count = multiplicative_block_count
     do position = 1, block_count
-      block = sdm_multiplicative_physical_block(position)
+      block = multiplicative_physical_blocks(position)
       if (block == 0) then
         mu_r = sqrt(production_mu2_r)
         mu_f = sqrt(production_mu2_f)
@@ -286,7 +292,7 @@ contains
         if (present(decay_factor_indices)) then
           factor_index = decay_factor_indices(block)
         end if
-        pdg = sdm_multiplicative_block_pdg(block)
+        pdg = multiplicative_block_pdgs(position)
         mu_r = decay_renormalization_scale(pdg, factor_index)
         ! Decay blocks carry no incoming-PDF scale.  Using their own
         ! renormalization scale for the formally present mu_F slot makes the

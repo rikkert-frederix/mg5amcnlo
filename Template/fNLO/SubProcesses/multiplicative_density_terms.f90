@@ -60,6 +60,22 @@ module multiplicative_density_terms
     integer, allocatable :: event_slots(:)
   end type multiplicative_density_tuple
 
+  ! Immutable mixed-radix traversal metadata for one set of block
+  ! distributions.  Physical block identifiers are topological: production
+  ! is block zero and every decay parent precedes its children.  Storing the
+  ! blocks from deepest to shallowest in FASTEST_DISTRIBUTIONS consequently
+  ! keeps ancestor momenta fixed while descendants are varied.  Within one
+  ! block, terms with an identical event slot and luminosity configuration
+  ! are contiguous so that returning to an already visited boost is avoided.
+  type, public :: density_tuple_schedule
+    integer :: distribution_count = 0
+    integer :: tuple_count = 0
+    integer :: maximum_term_count = 0
+    logical :: initialized = .false.
+    integer, allocatable :: fastest_distributions(:)
+    integer, allocatable :: ordered_terms(:, :)
+  end type density_tuple_schedule
+
   public :: initialize_block_distribution
   public :: initialize_block_distribution_term
   public :: set_density_primitive
@@ -67,6 +83,9 @@ module multiplicative_density_terms
   public :: finalize_block_distribution
   public :: density_cartesian_tuple_count
   public :: decode_density_cartesian_tuple
+  public :: initialize_density_tuple_schedule
+  public :: prepare_scheduled_density_tuple
+  public :: decode_scheduled_density_tuple
   public :: evaluate_density_primitive_coefficient
 
 contains
@@ -246,27 +265,132 @@ contains
   end function density_cartesian_tuple_count
 
 
-  subroutine decode_density_cartesian_tuple( &
-       distributions, tuple_index, tuple)
+  subroutine initialize_density_tuple_schedule(distributions, schedule)
     type(block_nlo_distribution), intent(in) :: distributions(:)
-    integer, intent(in) :: tuple_index
-    type(multiplicative_density_tuple), intent(out) :: tuple
-    integer :: distribution, term, remainder, tuple_count
+    type(density_tuple_schedule), intent(inout) :: schedule
+    integer :: distribution, candidate, position
+    integer :: selected, selected_term
+    integer :: maximum_term_count
 
-    tuple_count = density_cartesian_tuple_count(distributions)
-    if (tuple_index < 1 .or. tuple_index > tuple_count) then
+    call validate_distributions(distributions)
+    maximum_term_count = 0
+    do distribution = 1, size(distributions)
+      maximum_term_count = max(maximum_term_count, &
+           distributions(distribution)%term_count)
+    end do
+    if (allocated(schedule%fastest_distributions)) then
+      if (size(schedule%fastest_distributions) /= size(distributions)) &
+           deallocate(schedule%fastest_distributions)
+    end if
+    if (.not. allocated(schedule%fastest_distributions)) &
+         allocate(schedule%fastest_distributions(size(distributions)))
+    if (allocated(schedule%ordered_terms)) then
+      if (size(schedule%ordered_terms, 1) /= maximum_term_count .or. &
+          size(schedule%ordered_terms, 2) /= size(distributions)) &
+           deallocate(schedule%ordered_terms)
+    end if
+    if (.not. allocated(schedule%ordered_terms)) &
+         allocate(schedule%ordered_terms( &
+         maximum_term_count, size(distributions)))
+    schedule%distribution_count = size(distributions)
+    schedule%tuple_count = density_cartesian_tuple_count(distributions)
+    schedule%maximum_term_count = maximum_term_count
+    schedule%fastest_distributions = 0
+    schedule%ordered_terms = 0
+    schedule%initialized = .false.
+
+    ! Select physical blocks in descending topological order.  This is the
+    ! fast-to-slow radix order; block zero (production) is therefore slowest.
+    do position = 1, size(distributions)
+      selected = 0
+      do candidate = 1, size(distributions)
+        if (any(schedule%fastest_distributions(1:position - 1) == &
+                candidate)) cycle
+        if (selected == 0 .or. distributions(candidate)%block > &
+            distributions(selected)%block) selected = candidate
+      end do
+      if (selected == 0) then
+        call fail_density_terms('cannot order the density distributions')
+      end if
+      schedule%fastest_distributions(position) = selected
+    end do
+
+    ! Stable selection sort by the exact kinematic-family key.  The original
+    ! term index is the final tie breaker, keeping diagnostics deterministic.
+    do distribution = 1, size(distributions)
+      do position = 1, distributions(distribution)%term_count
+        selected_term = 0
+        do candidate = 1, distributions(distribution)%term_count
+          if (any(schedule%ordered_terms(1:position - 1, distribution) == &
+                  candidate)) cycle
+          if (selected_term == 0 .or. term_precedes( &
+              distributions(distribution)%terms(candidate), candidate, &
+              distributions(distribution)%terms(selected_term), &
+              selected_term)) selected_term = candidate
+        end do
+        if (selected_term == 0) then
+          call fail_density_terms('cannot order a block distribution')
+        end if
+        schedule%ordered_terms(position, distribution) = selected_term
+      end do
+    end do
+    schedule%initialized = .true.
+  end subroutine initialize_density_tuple_schedule
+
+
+  subroutine prepare_scheduled_density_tuple(schedule, tuple)
+    type(density_tuple_schedule), intent(in) :: schedule
+    type(multiplicative_density_tuple), intent(inout) :: tuple
+
+    call validate_schedule(schedule)
+    if (allocated(tuple%term_indices)) then
+      if (size(tuple%term_indices) /= schedule%distribution_count) &
+           deallocate(tuple%term_indices)
+    end if
+    if (.not. allocated(tuple%term_indices)) &
+         allocate(tuple%term_indices(schedule%distribution_count))
+    if (allocated(tuple%event_slots)) then
+      if (lbound(tuple%event_slots, 1) /= 0 .or. &
+          ubound(tuple%event_slots, 1) /= nexternal) &
+           deallocate(tuple%event_slots)
+    end if
+    if (.not. allocated(tuple%event_slots)) &
+         allocate(tuple%event_slots(0:nexternal))
+    tuple%distribution_count = schedule%distribution_count
+  end subroutine prepare_scheduled_density_tuple
+
+
+  subroutine decode_scheduled_density_tuple( &
+       distributions, schedule, tuple_index, tuple)
+    type(block_nlo_distribution), intent(in) :: distributions(:)
+    type(density_tuple_schedule), intent(in) :: schedule
+    integer, intent(in) :: tuple_index
+    type(multiplicative_density_tuple), intent(inout) :: tuple
+    integer :: radix, distribution, ordered_term, term, remainder
+
+    call validate_distributions(distributions)
+    call validate_schedule(schedule)
+    if (schedule%distribution_count /= size(distributions) .or. &
+        schedule%tuple_count /= density_cartesian_tuple_count( &
+        distributions)) then
+      call fail_density_terms( &
+           'a tuple schedule does not match its distributions')
+    end if
+    if (tuple_index < 1 .or. tuple_index > schedule%tuple_count) then
       call fail_density_terms('a density tuple index is out of range')
     end if
-    allocate(tuple%term_indices(size(distributions)))
-    allocate(tuple%event_slots(0:nexternal))
+    call prepare_scheduled_density_tuple(schedule, tuple)
     tuple%event_slots = soft_counterevent
-    tuple%distribution_count = size(distributions)
+    tuple%term_indices = 0
     tuple%sign = 1
     tuple%nlo_order = 0
     remainder = tuple_index - 1
-    do distribution = 1, size(distributions)
-      term = mod(remainder, distributions(distribution)%term_count) + 1
+    do radix = 1, schedule%distribution_count
+      distribution = schedule%fastest_distributions(radix)
+      ordered_term = mod(remainder, &
+           distributions(distribution)%term_count) + 1
       remainder = remainder/distributions(distribution)%term_count
+      term = schedule%ordered_terms(ordered_term, distribution)
       tuple%term_indices(distribution) = term
       tuple%event_slots(distributions(distribution)%block) = &
            distributions(distribution)%terms(term)%event_slot
@@ -274,7 +398,56 @@ contains
       tuple%nlo_order = tuple%nlo_order + &
            distributions(distribution)%terms(term)%nlo_order
     end do
+  end subroutine decode_scheduled_density_tuple
+
+
+  subroutine decode_density_cartesian_tuple( &
+       distributions, tuple_index, tuple)
+    type(block_nlo_distribution), intent(in) :: distributions(:)
+    integer, intent(in) :: tuple_index
+    type(multiplicative_density_tuple), intent(out) :: tuple
+    type(density_tuple_schedule) :: schedule
+
+    call initialize_density_tuple_schedule(distributions, schedule)
+    call decode_scheduled_density_tuple( &
+         distributions, schedule, tuple_index, tuple)
   end subroutine decode_density_cartesian_tuple
+
+
+  logical function term_precedes(left, left_index, right, right_index)
+    type(block_distribution_term), intent(in) :: left, right
+    integer, intent(in) :: left_index, right_index
+
+    if (left%event_slot /= right%event_slot) then
+      term_precedes = left%event_slot < right%event_slot
+    else if (left%luminosity_configuration /= &
+             right%luminosity_configuration) then
+      term_precedes = left%luminosity_configuration < &
+           right%luminosity_configuration
+    else
+      term_precedes = left_index < right_index
+    end if
+  end function term_precedes
+
+
+  subroutine validate_schedule(schedule)
+    type(density_tuple_schedule), intent(in) :: schedule
+
+    if (.not. schedule%initialized .or. &
+        schedule%distribution_count < 1 .or. schedule%tuple_count < 1 .or. &
+        .not. allocated(schedule%fastest_distributions) .or. &
+        .not. allocated(schedule%ordered_terms)) then
+      call fail_density_terms('an uninitialized tuple schedule was used')
+    end if
+    if (size(schedule%fastest_distributions) /= &
+        schedule%distribution_count .or. &
+        size(schedule%ordered_terms, 2) /= &
+        schedule%distribution_count .or. &
+        size(schedule%ordered_terms, 1) /= &
+        schedule%maximum_term_count) then
+      call fail_density_terms('a tuple schedule has the wrong shape')
+    end if
+  end subroutine validate_schedule
 
 
   complex(kind=8) function evaluate_density_primitive_coefficient( &

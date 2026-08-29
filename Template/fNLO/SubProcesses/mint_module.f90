@@ -48,10 +48,10 @@ module mint_module
   use FKSParams ! contains use_poly_virtual
   use mc_integer_module, only: regrid_MC_integer, empty_MC_integer, &
                                reset_MC_grid
-  use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
-       factorized_shared_dimension, factorized_radiation_block, &
-       bundle_nlo_component
-  use decay_chain_parameters, only: uses_multiplicative_nlo_combination
+  use nlo_contribution_bundle, only: factorized_shared_dimension
+  use factorized_mint_policy, only: factorized_mint_grid_weight, &
+       factorized_mint_uses_uniform_channels, &
+       factorized_mint_shows_multiplicative_validation
   use polynomial_fit, only: init_polyfit, add_point_polyfit, &
                             do_polyfit, get_polyfit, save_polyfit, restore_polyfit
   implicit none
@@ -87,6 +87,8 @@ module mint_module
   integer, parameter, private :: nintervals_virt = 8! max number of intervals in the grids for the approx virtual
   integer, parameter, private :: min_inter = 4      ! minimal number of intervals
   integer, parameter, private :: min_it0 = 4        ! minimal number of iterations in the mint step 0 phase
+  integer, parameter, private :: mint_grid_format_version = 2
+  character(len=*), parameter, private :: mint_grid_magic = 'MINT_GRID'
 ! Maximum points to try per iteration when too few non-zero points are found.
   integer, parameter, private :: max_points = 100000
   integer, parameter, public  :: maxchannels = fnlo_maxchannels
@@ -207,10 +209,8 @@ contains
 
 
   logical function show_multiplicative_validation_titles()
-    show_multiplicative_validation_titles = .false.
-    if (.not. has_nlo_contribution_bundle()) return
     show_multiplicative_validation_titles = &
-         uses_multiplicative_nlo_combination()
+         factorized_mint_shows_multiplicative_validation()
   end function show_multiplicative_validation_titles
 
   subroutine initialize_mint_state
@@ -802,36 +802,13 @@ contains
   subroutine add_point_to_grids(x)
     implicit none
     integer :: kdim, k_ord_virt, ithree, isix
-    integer :: radiation_block, component, component_integral
     double precision, dimension(ndimmax) :: x
     double precision :: virtual, born, grid_weight
 ! accumulate the function in xacc(icell(kdim),kdim) to adjust the grid later
     do kdim = 1, ndim
-      grid_weight = f(1)
-      if (uses_multiplicative_nlo_combination()) then
-        ! Shared production/decay Born variables define the common support
-        ! of every Cartesian term.  Train them on the positive all-LO
-        ! projection instead of rare higher-order products; each block's
-        ! NLO structure is handled by its dedicated radiation triple below.
-        grid_weight = abs(f(multiplicative_lo_integral))
-      end if
-      if (has_nlo_contribution_bundle()) then
-        radiation_block = factorized_radiation_block(ndim, kdim)
-        if (radiation_block > 0) then
-          component = bundle_nlo_component(radiation_block)
-          component_integral = first_bundle_component_integral + &
-               component - 1
-          ! Each production/decay radiation triple learns only from its own
-          ! positive, locally subtracted NLO training proxy.  The driver
-          ! evaluates distinct mapped atoms separately, then pairs the
-          ! signed R/S and C/SC measured weights with all other blocks fixed
-          ! at LO.  Born-like, real-soft, and collinear-soft-collinear groups
-          ! are made positive separately, preserving local FKS cancellation
-          ! without hiding one finite group behind another.  Common Born
-          ! dimensions continue to use the total absolute integrand.
-          grid_weight = f(component_integral)
-        end if
-      end if
+      call factorized_mint_grid_weight( &
+           ndim, kdim, f, multiplicative_lo_integral, &
+           first_bundle_component_integral, grid_weight)
       xacc(icell(kdim), kdim, ichan) = &
            xacc(icell(kdim), kdim, ichan) + grid_weight
     end do
@@ -1077,8 +1054,12 @@ contains
   subroutine write_grids_to_file
 ! Write the MINT integration grids to file
     implicit none
-    integer :: i, j, k, kchan
-    open (unit=12, file='mint_grids', status='unknown')
+    integer :: i, j, k, kchan, poly_virtual_flag
+    poly_virtual_flag = merge(1, 0, use_poly_virtual)
+    open (unit=12, file='mint_grids', status='replace', action='write')
+    write (12, *) mint_grid_magic, mint_grid_format_version
+    write (12, *) 'META', ndim, nchans, nintegrals, nintervals, &
+         nintervals_virt, born_dimensions, n_ord_virt, poly_virtual_flag
     do kchan = 1, nchans
       do j = 0, nintervals
         write (12, *) 'AVE', (xgrid(j, i, kchan), i=1, ndim)
@@ -1103,22 +1084,68 @@ contains
   subroutine read_grids_from_file
 ! Read the MINT integration grids from file
     implicit none
-    integer :: i, j, k, kchan, idum
+    integer :: i, j, k, kchan, idum, ios, version
+    integer :: stored_ndim, stored_nchans, stored_nintegrals
+    integer :: stored_intervals, stored_virtual_intervals
+    integer :: stored_born_dimensions, stored_virtual_orders
+    integer :: stored_poly_virtual
     integer, dimension(maxchannels) :: points
     character(len=3) :: dummy
+    character(len=16) :: record_name
+    double precision, allocatable :: stored_average(:)
     if (.not. mint_state_initialized) call initialize_mint_state
-    open (unit=12, file='mint_grids', status='old')
+    open (unit=12, file='mint_grids', status='old', action='read')
+    read (12, *, iostat=ios) record_name, version
+    if (ios /= 0 .or. trim(record_name) /= mint_grid_magic) then
+      write (*, *) 'Unsupported legacy MINT grid file; regenerate the grid'
+      stop 1
+    end if
+    if (version /= mint_grid_format_version) then
+      write (*, *) 'Unsupported MINT grid format version:', version
+      stop 1
+    end if
+    read (12, *, iostat=ios) record_name, stored_ndim, stored_nchans, &
+         stored_nintegrals, stored_intervals, stored_virtual_intervals, &
+         stored_born_dimensions, stored_virtual_orders, &
+         stored_poly_virtual
+    if (ios /= 0 .or. trim(record_name) /= 'META') then
+      write (*, *) 'Malformed MINT grid metadata record'
+      stop 1
+    end if
+    if (stored_ndim /= ndim .or. stored_nchans /= nchans .or. &
+        stored_nintegrals /= nintegrals .or. &
+        stored_intervals /= nintervals .or. &
+        stored_virtual_intervals /= nintervals_virt .or. &
+        stored_born_dimensions /= born_dimensions) then
+      write (*, *) 'MINT grid metadata is incompatible with this process'
+      stop 1
+    end if
+    if (stored_virtual_orders < 0 .or. &
+        stored_virtual_orders > n_ave_virt) then
+      write (*, *) 'Invalid virtual-order count in MINT grid:', &
+           stored_virtual_orders
+      stop 1
+    end if
+    if (stored_poly_virtual /= merge(1, 0, use_poly_virtual)) then
+      write (*, *) 'MINT grid virtual-approximation policy is incompatible'
+      stop 1
+    end if
     ans(1, 0) = 0d0
     unc(1, 0) = 0d0
+    ave_virt = 0d0
+    average_virtual = 0d0
+    if (.not. use_poly_virtual) allocate(stored_average(born_dimensions))
     do kchan = 1, nchans
       do j = 0, nintervals
         read (12, *) dummy, (xgrid(j, i, kchan), i=1, ndim)
       end do
       if (.not. use_poly_virtual) then
         do j = 1, nintervals_virt
-          do k = 0, n_ord_virt
-            read (12, *) dummy, &
-                 (ave_virt(j, i, k, kchan), i=1, born_dimensions)
+          do k = 0, stored_virtual_orders
+            read (12, *) dummy, stored_average
+            if (k <= n_ord_virt) &
+                 ave_virt(j, 1:born_dimensions, k, kchan) = &
+                 stored_average
           end do
         end do
       end if
@@ -1130,18 +1157,26 @@ contains
       unc(1, 0) = unc(1, 0) + unc(1, kchan)**2
     end do
     unc(1, 0) = sqrt(unc(1, 0))
+    if (allocated(stored_average)) deallocate(stored_average)
     ! polyfit stuff:
     if (use_poly_virtual) then
-      do kchan = 1, nchans
-        read (12, *) dummy, points(kchan)
-      end do
-      do kchan = 1, nchans
-        backspace (12)
-      end do
-      call init_polyfit(born_dimensions, nchans, n_ord_virt, &
-                        maxval(points(1:nchans)))
-      call restore_polyfit(12)
-      call do_polyfit()
+      if (stored_virtual_orders == n_ord_virt) then
+        do kchan = 1, nchans
+          read (12, *) dummy, points(kchan)
+        end do
+        do kchan = 1, nchans
+          backspace (12)
+        end do
+        call init_polyfit(born_dimensions, nchans, n_ord_virt, &
+                          maxval(points(1:nchans)))
+        call restore_polyfit(12)
+        call do_polyfit()
+      else
+        ! A cheap no-loop grid still contains a valid phase-space map.  Its
+        ! polynomial payload has fewer coefficient columns, so retain the
+        ! map and start only the virtual residual model from an empty state.
+        call init_polyfit(born_dimensions, nchans, n_ord_virt, 1000)
+      end if
     end if
     close (12)
 ! check for zero cross-section: if restoring grids corresponding to
@@ -1443,7 +1478,7 @@ contains
       iconfig = iconfigs(ichan)
       vol_chan = 1d0
     elseif (nchans .gt. 1) then
-      if (uses_multiplicative_nlo_combination()) then
+      if (factorized_mint_uses_uniform_channels()) then
         ! The absolute multiplicative integrand can be dominated by rare
         ! loop--real products.  Probabilities learned from that integral
         ! consequently starve otherwise important production maps and make

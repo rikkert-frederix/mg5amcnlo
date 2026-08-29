@@ -34,6 +34,7 @@ module nlo_decay_metadata
   integer, save :: born_context_id = 0
   integer, save :: production_born_qcd_order_value = -1
   integer, save :: decay_born_qcd_order_value = -1
+  logical, save :: fast_virtual_value = .false.
 
   integer, allocatable, save :: production_pdg_values(:)
   logical, allocatable, save :: production_final_values(:)
@@ -76,6 +77,7 @@ module nlo_decay_metadata
   integer, allocatable, save :: leaf_visible_values(:, :)
 
   public :: initialize_nlo_decay_metadata, has_nlo_decay
+  public :: nlo_decay_has_fast_virtual
   public :: nlo_decay_metadata_revision
   public :: corrected_parent_pdg, corrected_parent_occurrence
   public :: nlo_decay_production_born_qcd_order
@@ -167,6 +169,7 @@ contains
     born_context_id = 0
     production_born_qcd_order_value = -1
     decay_born_qcd_order_value = -1
+    fast_virtual_value = .false.
   end subroutine clear_nlo_decay_metadata
 
   subroutine initialize_nlo_decay_metadata()
@@ -176,6 +179,7 @@ contains
     integer :: visible_count, local_i, local_j, local_ij, target
     integer :: target_position, node, leaf, parent, qcd_order, carrier
     integer :: child, child_count, visible, target_contribution
+    integer :: fast_virtual
     character(len=64) :: metadata_filename
     character(len=512) :: line
     character(len=32) :: keyword, kind, state, name
@@ -214,6 +218,7 @@ contains
 
     production_records = 0
     number_of_color_link_records = 0
+    fast_virtual = 0
     do
       read(unit_number, '(a)', iostat=ios) line
       if (ios < 0) exit
@@ -235,6 +240,12 @@ contains
         read(line, *, iostat=ios) keyword, &
              production_born_qcd_order_value, &
              decay_born_qcd_order_value
+      case ('FAST_VIRTUAL')
+        read(line, *, iostat=ios) keyword, fast_virtual
+        if (fast_virtual /= 0 .and. fast_virtual /= 1) then
+          call fail_metadata('FAST_VIRTUAL must be zero or one')
+        end if
+        fast_virtual_value = fast_virtual /= 0
       case ('TOPOLOGY')
         read(line, *, iostat=ios) keyword, number_of_nodes, &
              number_of_leaves, corrected_node_value
@@ -385,6 +396,7 @@ contains
       if (ios /= 0) call fail_metadata('malformed metadata keyword')
       select case (trim(keyword))
       case ('FORMAT', 'STATUS', 'CORRECTION', 'PARENT', 'HAS_VIRTUAL', &
+            'FAST_VIRTUAL', &
             'VIRTUAL_COMPOSITION', 'VIRTUAL_CURRENT_COUNT', &
             'QCD_ORDERS', 'FORCED_SPECIES', 'TOPOLOGY', 'COUNTS')
         continue
@@ -1058,6 +1070,12 @@ contains
     call initialize_nlo_decay_metadata()
     has_nlo_decay = enabled
   end function has_nlo_decay
+
+
+  logical function nlo_decay_has_fast_virtual()
+    call initialize_nlo_decay_metadata()
+    nlo_decay_has_fast_virtual = enabled .and. fast_virtual_value
+  end function nlo_decay_has_fast_virtual
 
 
   integer function nlo_decay_metadata_revision()

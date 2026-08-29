@@ -14,6 +14,7 @@ module multiplicative_kinematics
   private
 
   public :: realize_factorized_event_tuple
+  public :: realize_factorized_event_transition
   public :: materialize_factorized_event_tuple
   public :: factorized_production_scale_sums
   public :: factorized_visible_scale_sums
@@ -23,12 +24,38 @@ contains
   subroutine realize_factorized_event_tuple(event_slots, pass)
     integer, intent(in) :: event_slots(0:)
     logical, intent(out) :: pass
+    integer :: previous_slots(0:nexternal)
+
+    previous_slots = event_slots(0:nexternal)
+    call realize_factorized_event_impl( &
+         event_slots, previous_slots, .false., pass)
+  end subroutine realize_factorized_event_tuple
+
+
+  subroutine realize_factorized_event_transition( &
+       event_slots, previous_slots, previous_available, pass)
+    integer, intent(in) :: event_slots(0:), previous_slots(0:)
+    logical, intent(in) :: previous_available
+    logical, intent(out) :: pass
+
+    call validate_slot_tuple(previous_slots)
+    call realize_factorized_event_impl( &
+         event_slots, previous_slots, previous_available, pass)
+  end subroutine realize_factorized_event_transition
+
+
+  subroutine realize_factorized_event_impl( &
+       event_slots, previous_slots, previous_available, pass)
+    integer, intent(in) :: event_slots(0:), previous_slots(0:)
+    logical, intent(in) :: previous_available
+    logical, intent(out) :: pass
     double precision :: root_momenta(0:3, nexternal)
     integer :: root_count, leg
     integer :: pdgs(nexternal), target_kinds(nexternal)
     integer :: target_ids(nexternal)
     logical :: particle_is_final(nexternal), available
     logical :: active(0:nexternal), realized(0:nexternal)
+    logical :: production_changed
 
     call validate_process_dimensions()
     call validate_slot_tuple(event_slots)
@@ -39,12 +66,20 @@ contains
       call fail_multiplicative_kinematics( &
            'the selected production-local configuration is unavailable')
     end if
-    call fetch_factorized_local_momenta( &
-         event_slots(0), 0, root_count, root_momenta(:, 1:root_count), &
-         available)
+    production_changed = .not. previous_available .or. &
+         event_slots(0) /= previous_slots(0)
+    if (production_changed) then
+      call fetch_factorized_local_momenta( &
+           event_slots(0), 0, root_count, root_momenta(:, 1:root_count), &
+           available)
+    else
+      call fetch_factorized_block_momenta( &
+           event_slots(0), 0, root_count, root_momenta(:, 1:root_count), &
+           available)
+    end if
     if (.not. available) then
       call fail_multiplicative_kinematics( &
-           'the selected production-local momenta are unavailable')
+           'the selected production momenta are unavailable')
     end if
     call fetch_factorized_local_layout( &
          event_slots(0), 0, root_count, pdgs(1:root_count), &
@@ -55,10 +90,12 @@ contains
            'the selected production-local layout is unavailable')
     end if
 
-    call store_factorized_block_momenta( &
-         event_slots(0), 0, root_count, root_momenta)
-    call store_factorized_embedded_momenta( &
-         event_slots(0), 0, root_count, root_momenta)
+    if (production_changed) then
+      call store_factorized_block_momenta( &
+           event_slots(0), 0, root_count, root_momenta)
+      call store_factorized_embedded_momenta( &
+           event_slots(0), 0, root_count, root_momenta)
+    end if
     active(0) = .true.
     realized(0) = .true.
     pass = .true.
@@ -67,18 +104,22 @@ contains
       if (target_kinds(leg) == factorized_block_target) then
         call realize_decay_block( &
              event_slots, target_ids(leg), root_momenta(:, leg), &
+             previous_slots, previous_available, production_changed, &
              active, realized, pass)
         if (.not. pass) return
       end if
     end do
     active(0) = .false.
-  end subroutine realize_factorized_event_tuple
+  end subroutine realize_factorized_event_impl
 
 
   recursive subroutine realize_decay_block( &
-       event_slots, block, parent_momentum, active, realized, pass)
+       event_slots, block, parent_momentum, previous_slots, &
+       previous_available, ancestor_changed, active, realized, pass)
     integer, intent(in) :: event_slots(0:), block
     double precision, intent(in) :: parent_momentum(0:3)
+    integer, intent(in) :: previous_slots(0:)
+    logical, intent(in) :: previous_available, ancestor_changed
     logical, intent(inout) :: active(0:), realized(0:)
     logical, intent(out) :: pass
     double precision :: local_momenta(0:3, nexternal)
@@ -86,7 +127,7 @@ contains
     integer :: count, leg, incoming_leg, incoming_count, event_slot
     integer :: pdgs(nexternal), target_kinds(nexternal)
     integer :: target_ids(nexternal)
-    logical :: particle_is_final(nexternal), available
+    logical :: particle_is_final(nexternal), available, block_changed
     double precision :: parent_rest(0:3), parent_mass, tolerance
 
     if (block < 1 .or. block > nexternal) then
@@ -103,16 +144,12 @@ contains
     end if
     active(block) = .true.
     event_slot = event_slots(block)
+    block_changed = .not. previous_available .or. ancestor_changed .or. &
+         event_slot /= previous_slots(block)
     count = factorized_local_count(event_slot, block)
     if (count < 2) then
       call fail_multiplicative_kinematics( &
            'a selected decay-local configuration is unavailable')
-    end if
-    call fetch_factorized_local_momenta( &
-         event_slot, block, count, local_momenta(:, 1:count), available)
-    if (.not. available) then
-      call fail_multiplicative_kinematics( &
-           'the selected decay-local momenta are unavailable')
     end if
     call fetch_factorized_local_layout( &
          event_slot, block, count, pdgs(1:count), &
@@ -134,38 +171,54 @@ contains
       call fail_multiplicative_kinematics( &
            'a decay-local block does not have exactly one parent')
     end if
-    parent_rest = local_momenta(:, incoming_leg)
-    parent_mass = parent_rest(0)
-    tolerance = 1d-10*max(1d0, abs(parent_mass))
-    if (parent_mass <= 0d0 .or. &
-        maxval(abs(parent_rest(1:3))) > tolerance .or. &
-        abs(minkowski_square(parent_rest) - parent_mass**2) > &
-        tolerance*max(1d0, parent_mass)) then
-      call fail_multiplicative_kinematics( &
-           'a decay-local parent is not a physical rest-frame momentum')
-    end if
-    if (abs(minkowski_square(parent_momentum) - parent_mass**2) > &
-        1d-8*max(1d0, parent_mass**2)) then
-      call fail_multiplicative_kinematics( &
-           'a selected parent and child block have different masses')
-    end if
-
-    boosted_momenta = 0d0
-    do leg = 1, count
-      if (particle_is_final(leg)) then
-        call boost_from_rest( &
-             local_momenta(:, leg), parent_momentum, parent_mass, &
-             boosted_momenta(:, leg))
-      else
-        boosted_momenta(:, leg) = parent_momentum
+    if (block_changed) then
+      call fetch_factorized_local_momenta( &
+           event_slot, block, count, local_momenta(:, 1:count), available)
+      if (.not. available) then
+        call fail_multiplicative_kinematics( &
+             'the selected decay-local momenta are unavailable')
       end if
-    end do
-    call validate_decay_conservation( &
-         count, particle_is_final, boosted_momenta, parent_momentum)
-    call store_factorized_block_momenta( &
-         event_slot, block, count, boosted_momenta)
-    call store_factorized_embedded_momenta( &
-         event_slot, block, count, boosted_momenta)
+      parent_rest = local_momenta(:, incoming_leg)
+      parent_mass = parent_rest(0)
+      tolerance = 1d-10*max(1d0, abs(parent_mass))
+      if (parent_mass <= 0d0 .or. &
+          maxval(abs(parent_rest(1:3))) > tolerance .or. &
+          abs(minkowski_square(parent_rest) - parent_mass**2) > &
+          tolerance*max(1d0, parent_mass)) then
+        call fail_multiplicative_kinematics( &
+             'a decay-local parent is not a physical rest-frame momentum')
+      end if
+      if (abs(minkowski_square(parent_momentum) - parent_mass**2) > &
+          1d-8*max(1d0, parent_mass**2)) then
+        call fail_multiplicative_kinematics( &
+             'a selected parent and child block have different masses')
+      end if
+
+      boosted_momenta = 0d0
+      do leg = 1, count
+        if (particle_is_final(leg)) then
+          call boost_from_rest( &
+               local_momenta(:, leg), parent_momentum, parent_mass, &
+               boosted_momenta(:, leg))
+        else
+          boosted_momenta(:, leg) = parent_momentum
+        end if
+      end do
+      call validate_decay_conservation( &
+           count, particle_is_final, boosted_momenta, parent_momentum)
+      call store_factorized_block_momenta( &
+           event_slot, block, count, boosted_momenta)
+      call store_factorized_embedded_momenta( &
+           event_slot, block, count, boosted_momenta)
+    else
+      call fetch_factorized_block_momenta( &
+           event_slot, block, count, boosted_momenta(:, 1:count), &
+           available)
+      if (.not. available) then
+        call fail_multiplicative_kinematics( &
+             'an unchanged decay block has no boosted momenta')
+      end if
+    end if
     realized(block) = .true.
 
     pass = .true.
@@ -174,6 +227,7 @@ contains
       if (target_kinds(leg) == factorized_block_target) then
         call realize_decay_block( &
              event_slots, target_ids(leg), boosted_momenta(:, leg), &
+             previous_slots, previous_available, block_changed, &
              active, realized, pass)
         if (.not. pass) return
       end if

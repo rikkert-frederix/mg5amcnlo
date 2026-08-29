@@ -23,15 +23,31 @@ module multiplicative_phase_space
 contains
 
   subroutine initialize_multiplicative_phase_space_assembly(assembly)
-    type(multiplicative_phase_space_assembly), intent(out) :: assembly
+    type(multiplicative_phase_space_assembly), intent(inout) :: assembly
     integer :: block, contribution_count
 
     call validate_process_dimensions()
     contribution_count = nlo_contribution_count()
-    allocate(assembly%baseline(0:nexternal))
-    allocate(assembly%contribution(contribution_count))
-    allocate(assembly%contribution_valid(contribution_count))
-    allocate(assembly%contribution_block(contribution_count))
+    if (allocated(assembly%baseline)) then
+      if (lbound(assembly%baseline, 1) /= 0 .or. &
+          ubound(assembly%baseline, 1) /= nexternal) &
+           deallocate(assembly%baseline)
+    end if
+    if (.not. allocated(assembly%baseline)) &
+         allocate(assembly%baseline(0:nexternal))
+    if (allocated(assembly%contribution)) then
+      if (size(assembly%contribution) /= contribution_count) then
+        deallocate(assembly%contribution)
+        deallocate(assembly%contribution_valid)
+        deallocate(assembly%contribution_block)
+      end if
+    end if
+    if (.not. allocated(assembly%contribution)) then
+      allocate(assembly%contribution(contribution_count))
+      allocate(assembly%contribution_valid(contribution_count))
+      allocate(assembly%contribution_block(contribution_count))
+    end if
+    assembly%initialized = .false.
     assembly%contribution_valid = .false.
     assembly%contribution_block = -1
     do block = 0, nexternal

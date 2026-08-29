@@ -41,13 +41,24 @@ contains
     factorized_block_momentum_revision = revisions(block,event_slot)
   end function factorized_block_momentum_revision
 end module factorized_phase_space
+
+module multiplicative_scale_state
+  implicit none
+  integer(kind=8) :: active_context = 1_8
+contains
+  integer(kind=8) function multiplicative_active_coupling_context()
+    multiplicative_active_coupling_context = active_context
+  end function multiplicative_active_coupling_context
+end module multiplicative_scale_state
 '''
         program = r'''
 program test_insertion_cache
   use factorized_phase_space, only: revisions
+  use multiplicative_scale_state, only: active_context
   use spin_density_matrix_results
   implicit none
   type(spin_density_block_result) :: stored, loaded
+  type(spin_density_cache_statistics) :: statistics
   complex(kind=8) :: density(2,2,2)
   logical :: available
   double precision :: precision_found
@@ -82,6 +93,14 @@ program test_insertion_cache
       loaded%insertion_kind /= spin_density_real_insertion) stop 14
   if (precision_found /= 2d-7 .or. return_code /= 3) stop 15
 
+  active_context = 2_8
+  call initialize_spin_density_block(loaded, 0, 1, 2)
+  call load_cached_spin_density_insertion( &
+       loaded, spin_density_real_insertion, 7, 0, 1d-5, available, &
+       precision_found, return_code)
+  if (available) stop 21
+  active_context = 1_8
+
   call initialize_spin_density_block(loaded, 0, 1, 2)
   call load_cached_spin_density_insertion( &
        loaded, spin_density_real_insertion, 8, 0, 1d-5, available, &
@@ -105,6 +124,10 @@ program test_insertion_cache
        loaded, spin_density_real_insertion, 7, 0, 1d-5, available, &
        precision_found, return_code)
   if (available) stop 18
+  call fetch_spin_density_cache_statistics(statistics)
+  if (statistics%insertion_hits /= 1_8 .or. &
+      statistics%insertion_misses /= 5_8) stop 19
+  if (statistics%insertion_provider_evaluations /= 2_8) stop 20
 end program test_insertion_cache
 '''
         with tempfile.TemporaryDirectory() as directory:

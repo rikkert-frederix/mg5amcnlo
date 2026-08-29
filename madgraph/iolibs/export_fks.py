@@ -1058,6 +1058,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 self._fnlo_spin_density_override = False
             self.write_spin_density_virtual(
                 matrix_element, variant, fortran_model)
+            with open('virtual_libraries.inc', 'w') as stream:
+                stream.write('FNLO_DENSITY_VIRTUAL = 1\n')
         elif contribution_bundle:
             archives = []
             for virtual in matrix_element.bundle_virtual_matrix_elements:
@@ -1397,6 +1399,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               'nlo_decay_metadata.f90',
                               'decay_chain_metadata.f90',
                               'decay_chain_parameters.f90',
+                              'multiplicative_process_plan.f90',
                               'fnlo_scale_variations.f90',
                               'decay_chain_parameters_bridge.f90',
                               'factorized_block_kinematics.f90',
@@ -1408,6 +1411,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               'multiplicative_kinematics.f90',
                               'multiplicative_scale_state.f90',
                               'multiplicative_production_channels.f90',
+                              'top_decay_virtual_cdr.f90',
                               'spin_density_matrix_results.f90',
                               'multiplicative_density_terms.f90',
                               'multiplicative_lambda_validation.f90',
@@ -1417,6 +1421,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               'multiplicative_block_distribution.f90',
                               'multiplicative_density_contraction.f90',
                               'multiplicative_runtime.f90',
+                              'multiplicative_tuple_executor.f90',
+                              'multiplicative_reweighter.f90',
+                              'multiplicative_point_workspace.f90',
+                              'factorized_mint_policy.f90',
                               'decay_chain_scales.f90',
                               'phase_space_kinematics.f90',
                               'fks_diagnostics.f90',
@@ -3017,8 +3025,12 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         # luminosity even when sampled from a qg real sector.  Export an
         # explicit dispatcher so the density term, rather than mutable
         # NFKSProcess state, chooses its luminosity provider.
-        if (self.opt.get('fks_template') == 'fNLO' and
-                getattr(matrix_element, 'spin_density_plan', None) is not None):
+        # The free-form fNLO driver is shared by ordinary and factorized
+        # subprocesses, so its object file always contains references to the
+        # explicit luminosity dispatcher.  Emit the dispatcher for every
+        # fNLO subprocess, even when the multiplicative path is inactive;
+        # otherwise standalone decay-width processes fail at link time.
+        if self.opt.get('fks_template') == 'fNLO':
             text1 += \
                 """
 
@@ -3155,10 +3167,16 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             density_exporter.write_color_provider(
                 writers.FortranWriter(variant['filename']), plan, variant)
         if getattr(matrix_element, 'contribution_bundle', False):
+            density_exporter.write_multiplicative_metadata(
+                writers.FortranWriter(
+                    'multiplicative_generated_metadata.f90'), plan)
             density_exporter.write_multiplicative_dispatcher(
                 writers.FortranWriter(
                     'spin_density_multiplicative_contraction.f'), plan,
                 matrix_element.get_fks_info_list())
+        else:
+            self.write_multiplicative_dispatch_compatibility()
+            self.write_multiplicative_metadata_compatibility()
 
 
     @staticmethod
@@ -3241,7 +3259,47 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
       WRITE(*,*) 'Explicit density virtual called for a legacy process'
       STOP 1
       END
+"""
+        writers.FortranWriter(
+            'spin_density_virtual_compatibility.f').writelines(source)
+        ProcessExporterFortranFKS.write_multiplicative_dispatch_compatibility()
+        ProcessExporterFortranFKS.write_multiplicative_metadata_compatibility()
 
+
+    @staticmethod
+    def write_multiplicative_metadata_compatibility():
+        """Provide the empty process plan required outside full bundles."""
+
+        metadata_source = """
+module multiplicative_generated_metadata
+  implicit none
+  private
+  integer, parameter, public :: multiplicative_metadata_version = 1
+  integer, parameter, public :: multiplicative_block_count = 0
+  integer, parameter, public :: multiplicative_contribution_count = 0
+  integer, parameter, public :: multiplicative_physical_blocks(1) = (/0/)
+  integer, parameter, public :: multiplicative_block_pdgs(1) = (/0/)
+  integer, parameter, public :: multiplicative_born_qcd_powers(1) = (/0/)
+  integer, parameter, public :: multiplicative_contribution_positions(1) = (/0/)
+  public :: multiplicative_component_position
+contains
+  integer function multiplicative_component_position(block)
+    integer, intent(in) :: block
+    write (*,*) 'Multiplicative block requested for a legacy process'
+    stop 1
+  end function multiplicative_component_position
+end module multiplicative_generated_metadata
+"""
+        writers.FortranWriter(
+            'multiplicative_generated_metadata.f90').writelines(
+                metadata_source, formatting=False)
+
+
+    @staticmethod
+    def write_multiplicative_dispatch_compatibility():
+        """Provide unreachable multiplicative symbols for a density plan."""
+
+        source = """
       INTEGER FUNCTION SDM_MULTIPLICATIVE_BLOCK_COUNT()
       IMPLICIT NONE
       SDM_MULTIPLICATIVE_BLOCK_COUNT=0
@@ -3289,20 +3347,33 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
       STOP 1
       END
 
-      SUBROUTINE SDM_MULTIPLICATIVE_CONTRACTION(EVENT_SLOTS,
-     $ INSERTION_KINDS,INSERTION_IDS,INSERTION_RANKS,
-     $ CORRELATION_LEGS,RESULT,PREC_ASKED,PREC_FOUND,RET_CODE)
+      SUBROUTINE SDM_MULTIPLICATIVE_PREPARE_BASIS(EVENT_SLOTS,
+     $ MAXPRIMITIVES,PRIMITIVE_COUNTS,INSERTION_KINDS,INSERTION_IDS,
+     $ INSERTION_RANKS,CORRELATION_LEGS,INCLUDE_VIRTUAL,PREC_ASKED,
+     $ PREC_FOUND,RET_CODE)
       IMPLICIT NONE
-      INTEGER EVENT_SLOTS(*),INSERTION_KINDS(*),INSERTION_IDS(*)
-      INTEGER INSERTION_RANKS(*),CORRELATION_LEGS(*),RET_CODE
+      INTEGER EVENT_SLOTS(*),MAXPRIMITIVES,PRIMITIVE_COUNTS(*)
+      INTEGER INSERTION_KINDS(MAXPRIMITIVES,*)
+      INTEGER INSERTION_IDS(MAXPRIMITIVES,*)
+      INTEGER INSERTION_RANKS(MAXPRIMITIVES,*)
+      INTEGER CORRELATION_LEGS(MAXPRIMITIVES,*),RET_CODE
+      LOGICAL INCLUDE_VIRTUAL
       DOUBLE PRECISION PREC_ASKED,PREC_FOUND
-      COMPLEX*16 RESULT
-      WRITE(*,*) 'Multiplicative contraction requested for a legacy process'
+      WRITE(*,*) 'Multiplicative basis requested for a legacy process'
+      STOP 1
+      END
+
+      SUBROUTINE SDM_MULTIPLICATIVE_EVALUATE_BASIS(MAXPRIMITIVES,
+     $ PRIMITIVE_COUNTS,COEFFICIENTS,RESULT)
+      IMPLICIT NONE
+      INTEGER MAXPRIMITIVES,PRIMITIVE_COUNTS(*)
+      COMPLEX*16 COEFFICIENTS(MAXPRIMITIVES,*),RESULT
+      WRITE(*,*) 'Multiplicative basis requested for a legacy process'
       STOP 1
       END
 """
         writers.FortranWriter(
-            'spin_density_virtual_compatibility.f').writelines(source)
+            'spin_density_multiplicative_compatibility.f').writelines(source)
 
 
     @staticmethod

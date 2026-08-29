@@ -197,6 +197,7 @@ class TestFKSDecayChains(unittest.TestCase):
             'DUMMY_WIDTH_RATIO 1.0000000000000001e-01\n'
             'PRODUCTION_REN_SCALE_MOMENTA CORE\n'
             'NLO_COMBINATION_MODE ADDITIVE\n'
+            'MULTIPLICATIVE_VIRTUAL_FRACTION 1.0000000000000000e+00\n'
             'DECAY_WIDTH 6 1.4915000000000000e+00\n'
             'DECAY_REN_SCALE 6 1.7300000000000000e+02\n'
             'DECAY_WIDTH 24 2.0476000000000001e+00\n'
@@ -227,6 +228,18 @@ class TestFKSDecayChains(unittest.TestCase):
         self.assertIn(
             'NLO_COMBINATION_MODE MULTIPLICATIVE\n',
             multiplicative_card_text)
+        sampled_virtual_card_text = fks_decay.decay_card_text(
+            {6: 1.4915}, {6: 173.0}, nlo_width_pdgs={6},
+            nlo_widths={6: 1.3646},
+            nlo_combination_mode='multiplicative',
+            multiplicative_virtual_fraction=0.25)
+        self.assertIn(
+            'MULTIPLICATIVE_VIRTUAL_FRACTION 2.5000000000000000e-01\n',
+            sampled_virtual_card_text)
+        with self.assertRaisesRegex(ValueError, 'multiplicative mode'):
+            fks_decay.decay_card_text(
+                {6: 1.4915}, {6: 173.0},
+                multiplicative_virtual_fraction=0.25)
         with self.assertRaisesRegex(ValueError, 'explicit NLO widths'):
             fks_decay.decay_card_text(
                 {6: 1.4915}, {6: 173.0},
@@ -828,6 +841,7 @@ class TestFKSDecayChains(unittest.TestCase):
              'generated_index': 1}])
         info = fks_decay.nlo_decay_info_text(metadata)
         self.assertIn('FORMAT 5\n', info)
+        self.assertIn('FAST_VIRTUAL 0\n', info)
         self.assertIn('FORCED_SPECIES 1 6\n', info)
         self.assertIn('TOPOLOGY 1 2 1\n', info)
         self.assertIn('NODE 1 0 6 0 2 2 LEAF 1 LEAF 2\n', info)
@@ -951,6 +965,7 @@ class TestFKSDecayChains(unittest.TestCase):
         self.assertIn(virtual, helas.get_virt_matrix_elements())
         self.assertTrue(helas['has_loops'])
         self.assertTrue(matrix_element.nlo_decay_metadata['has_virtual'])
+        self.assertTrue(matrix_element.nlo_decay_metadata['fast_virtual'])
         self.assertEqual(
             matrix_element.nlo_decay_metadata['virtual_composition'],
             'SPIN_DENSITY_MATRIX')
@@ -968,8 +983,33 @@ class TestFKSDecayChains(unittest.TestCase):
         self.assertEqual(len(plan['virtual_variants']), 1)
         self.assertIs(plan['virtual_variants'][0]['matrix_element'], virtual)
         self.assertEqual(plan['virtual_variants'][0]['active_component'], 1)
+        self.assertEqual(
+            plan['virtual_variants'][0]['analytic_top_decay'], {
+                'mode': 'TOP',
+                'parent_pdg': 6,
+                'parent_position': 1,
+                'bottom_position': 2,
+                'vector_position': 3,
+                'massless_bottom': False})
         self.assertEqual(plan['components'][0]['kind'], 'PRODUCTION')
         self.assertEqual(plan['components'][1]['kind'], 'DECAY')
+
+    def test_analytic_top_virtual_supports_massless_bottom_model(self):
+        command = MasterCmd()
+        command.exec_cmd(
+            'import model loop_sm-no_b_mass', printcmd=False, precmd=True)
+        command.exec_cmd(
+            'generate u u~ > t t~, '
+            '(t > w+ b QED^2=2 QCD^2=0 [QCD])',
+            printcmd=False, precmd=True)
+        matrix_element = fks_helas_objects.FKSHelasMultiProcess(
+            command._fks_multi_proc,
+            loop_optimized=False)['matrix_elements'][0]
+
+        specification = matrix_element.spin_density_plan[
+            'virtual_variants'][0]['analytic_top_decay']
+        self.assertTrue(specification['massless_bottom'])
+        self.assertTrue(matrix_element.nlo_decay_metadata['fast_virtual'])
 
     def test_nlo_decay_virtual_composes_in_optimized_representation(self):
         command = self.generate(
@@ -1086,6 +1126,34 @@ class TestFKSDecayChains(unittest.TestCase):
                 'VIRTUAL_COMPOSITION SPIN_DENSITY_MATRIX\n',
                 metadata)
             self.assertIn('VIRTUAL_CURRENT_COUNT 1\n', metadata)
+            self.assertIn('FAST_VIRTUAL 1\n', metadata)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'multiplicative_generated_metadata.f90')) as stream:
+                compatibility_metadata = stream.read().lower()
+            self.assertIn(
+                'multiplicative_block_count = 0',
+                compatibility_metadata)
+            self.assertTrue(os.path.isfile(os.path.join(
+                subprocess_dir,
+                'spin_density_multiplicative_compatibility.f')))
+            with open(os.path.join(
+                    subprocess_dir, 'virtual_libraries.inc')) as stream:
+                virtual_libraries = stream.read()
+            self.assertIn('FNLO_DENSITY_VIRTUAL = 1', virtual_libraries)
+            with open(os.path.join(
+                    subprocess_dir, 'fks_singular.f90')) as stream:
+                singular_source = stream.read().lower()
+            self.assertIn(
+                'active_contribution_has_fast_virtual() .or.',
+                singular_source)
+            self.assertIn('nlo_decay_has_fast_virtual()', singular_source)
+            with open(os.path.join(
+                    subprocess_dir, 'check_poles.f90')) as stream:
+                pole_source = stream.read().lower()
+            self.assertIn(
+                'if (.not. nlo_decay_has_fast_virtual()) then',
+                pole_source)
 
     def test_nlo_decay_factorized_fortran_matrix_elements_are_written(self):
         command = self.generate(
@@ -1469,6 +1537,11 @@ class TestFKSDecayChains(unittest.TestCase):
                     variant['open_nodes'],
                     plan['components'][metadata['corrected_node']]
                     ['born']['open_nodes'])
+                if corrected_pdg == 6:
+                    self.assertEqual(
+                        variant['analytic_top_decay']['mode'], 'TOP_W')
+                else:
+                    self.assertNotIn('analytic_top_decay', variant)
 
     def test_nlo_decay_symmetry_is_local_to_the_corrected_decay(self):
         command = self.generate(
@@ -1596,22 +1669,28 @@ class TestFKSDecayChains(unittest.TestCase):
             with open(os.path.join(
                     subprocess_dir, 'mint_module.f90')) as stream:
                 mint_source = stream.read()
+            with open(os.path.join(
+                    subprocess_dir, 'factorized_mint_policy.f90')) as stream:
+                mint_policy_source = stream.read()
             self.assertIn(
                 'radiation_block = factorized_radiation_block',
-                mint_source)
+                mint_policy_source)
             self.assertIn(
                 'component = bundle_nlo_component(radiation_block)',
+                mint_policy_source)
+            self.assertIn(
+                'grid_weight = integrals(component_integral)',
+                mint_policy_source)
+            self.assertIn(
+                'grid_weight = abs(integrals(lo_integral))',
+                mint_policy_source)
+            self.assertIn(
+                'call factorized_mint_grid_weight',
                 mint_source)
             self.assertIn(
-                'grid_weight = f(component_integral)',
+                'if (factorized_mint_uses_uniform_channels()) then',
                 mint_source)
-            self.assertIn(
-                'grid_weight = abs(f(multiplicative_lo_integral))',
-                mint_source)
-            self.assertIn(
-                'if (uses_multiplicative_nlo_combination()) then\n'
-                '        ! The absolute multiplicative integrand',
-                mint_source)
+            self.assertIn('MINT_GRID', mint_source)
             self.assertIn(
                 'ans(i, kchan)/unc(i, 0)**2',
                 mint_source)
@@ -1686,15 +1765,29 @@ class TestFKSDecayChains(unittest.TestCase):
                     subprocess_dir,
                     'spin_density_multiplicative_contraction.f')) as stream:
                 product_source = stream.read()
+            with open(os.path.join(
+                    subprocess_dir,
+                    'multiplicative_generated_metadata.f90')) as stream:
+                generated_metadata = stream.read()
             self.assertIn(
-                'SUBROUTINE SDM_MULTIPLICATIVE_CONTRACTION(',
+                'module multiplicative_generated_metadata',
+                generated_metadata.lower())
+            self.assertIn(
+                'multiplicative_block_count = 3',
+                generated_metadata.lower())
+            self.assertIn(
+                'SUBROUTINE SDM_MULTIPLICATIVE_PREPARE_BASIS(',
+                product_source)
+            self.assertIn(
+                'SUBROUTINE SDM_MULTIPLICATIVE_EVALUATE_BASIS(',
                 product_source)
             self.assertIn('INTEGER EVENT_SLOTS(NBLOCKS)', product_source)
             flat_product_source = ' '.join(
                 product_source.replace('$', ' ').split()).replace(' ,', ',')
             self.assertIn(
-                'MULTIPLICATIVE_SPIN_DENSITY_PRODUCT(SDM_BLOCKS,',
+                'SDM_MESSAGE_',
                 flat_product_source)
+            self.assertNotIn('NSTATES', product_source)
             self.assertIn(
                 'LOAD_CACHED_SPIN_DENSITY_INSERTION(',
                 flat_product_source)
@@ -1756,7 +1849,9 @@ class TestFKSDecayChains(unittest.TestCase):
                 contraction_source = stream.read().lower()
             self.assertIn('call realize_factorized_event_tuple',
                           contraction_source)
-            self.assertIn('call sdm_multiplicative_contraction',
+            self.assertIn('call sdm_multiplicative_prepare_basis',
+                          contraction_source)
+            self.assertIn('call sdm_multiplicative_evaluate_basis',
                           contraction_source)
             with open(os.path.join(
                     subprocess_dir,
@@ -1797,6 +1892,38 @@ class TestFKSDecayChains(unittest.TestCase):
              for metadata in
              matrix_element.bundle_nlo_decay_metadata],
             [6, 24])
+
+    def test_bundle_virtual_orders_include_nested_lo_decay_blocks(self):
+        command = self.generate(
+            'u u~ > t t~ [QCD], '
+            '(t > w+ b QED=1 [QCD], w+ > e+ ve), '
+            '(t~ > w- b~, w- > e- ve~)')
+        matrix_element = fks_helas_objects.FKSHelasMultiProcess(
+            command._fks_multi_proc,
+            loop_optimized=False)['matrix_elements'][0]
+
+        self.assertEqual(
+            [entry['kind'] for entry in
+             matrix_element.bundle_contributions],
+            ['PRODUCTION', 'NLO_DECAY'])
+        self.assertEqual(
+            [entry['fast_virtual'] for entry in
+             matrix_element.bundle_contributions],
+            [False, True])
+        # The production virtual carries its QCD loop power plus the Born
+        # QED powers of both top and both W decay blocks.  The analytic top
+        # virtual needs no approximation-grid split order.
+        self.assertEqual(
+            matrix_element.bundle_contributions[0]['virtual_orders'],
+            [(6, 8)])
+        self.assertEqual(
+            matrix_element.bundle_contributions[1]['virtual_orders'], [])
+        analytic = next(
+            variant['analytic_top_decay']
+            for variant in
+            matrix_element.spin_density_plan['virtual_variants']
+            if variant['contribution_id'] == 2)
+        self.assertEqual(analytic['mode'], 'TOP_W')
 
     def test_full_nlo_bundle_expands_identical_decay_occurrences(self):
         command = self.generate(
@@ -1887,6 +2014,31 @@ class TestFKSDecayChains(unittest.TestCase):
                  matrix_element.bundle_contributions],
                 ['PRODUCTION', 'NLO_DECAY'])
         self.assertEqual(actual_groups, expected_groups)
+
+    def test_fnlo_standalone_decay_exports_luminosity_dispatcher(self):
+        command = self.generate('t > w+ b QED=1 [QCD]')
+        with tempfile.TemporaryDirectory() as output_dir:
+            process_dir = os.path.join(output_dir, 'PROC')
+            command.exec_cmd(
+                'output fNLO %s' % process_dir,
+                printcmd=False, precmd=True)
+            subprocess_root = os.path.join(process_dir, 'SubProcesses')
+            subprocess_dir = next(
+                os.path.join(subprocess_root, name)
+                for name in os.listdir(subprocess_root)
+                if name.startswith('P') and os.path.isdir(
+                    os.path.join(subprocess_root, name)))
+            with open(os.path.join(
+                    subprocess_dir, 'parton_lum_chooser.f')) as stream:
+                luminosity_source = stream.read().upper()
+            self.assertIn(
+                'DOUBLE PRECISION FUNCTION DLUM_CONFIGURATION(',
+                luminosity_source)
+            normalized_source = ''.join(
+                luminosity_source.replace('$', ' ').split())
+            self.assertIn(
+                'CALLDLUM_1(DLUM_CONFIGURATION,BJORKEN_X)',
+                normalized_source)
 
     def test_full_nlo_bundle_supports_additional_production_processes(self):
         command = self.generate(
@@ -2006,6 +2158,33 @@ class TestFKSDecayChains(unittest.TestCase):
                     density_source)
                 self.assertIn('COMPLEX*16 RHO(3,NOPEN,NOPEN)',
                               density_source)
+                if contribution > 1:
+                    self.assertIn('USE TOP_DECAY_VIRTUAL_CDR',
+                                  density_source)
+                    flattened_density = ' '.join(
+                        density_source.replace('$', ' ').split()).replace(
+                            ' ,', ',')
+                    self.assertIn('_MADLOOP(P,RHO,PREC_ASKED',
+                                  flattened_density)
+                    self.assertIn(
+                        'SDM_VALIDATION_POINTS=2',
+                        ' '.join(density_source.replace('$', ' ').split()))
+            with open(os.path.join(
+                    subprocess_dir,
+                    'spin_density_multiplicative_contraction.f')) as stream:
+                multiplicative_source = stream.read()
+            self.assertIn(
+                'SPIN_DENSITY_FAST_VIRTUAL_INSERTION',
+                multiplicative_source)
+            self.assertFalse([
+                (line_number, len(line))
+                for line_number, line in enumerate(
+                    multiplicative_source.splitlines(), 1)
+                if len(line) > 132])
+            with open(os.path.join(
+                    subprocess_dir, 'top_decay_virtual_cdr.f90')) as stream:
+                analytic_source = stream.read().lower()
+            self.assertIn('module top_decay_virtual_cdr', analytic_source)
             with open(os.path.join(
                     subprocess_dir, 'virtual_libraries.inc')) as stream:
                 libraries = stream.read()
@@ -2016,13 +2195,26 @@ class TestFKSDecayChains(unittest.TestCase):
                     subprocess_dir,
                     'nlo_contribution_info.dat')) as stream:
                 metadata = stream.read()
-            self.assertIn('FORMAT 3\n', metadata)
+            self.assertIn('FORMAT 4\n', metadata)
             self.assertIn('COUNT 3\n', metadata)
-            self.assertIn('VIRTUAL_GRIDS 3\n', metadata)
-            self.assertEqual(metadata.count('\nVIRTUAL_GRID '), 3)
+            self.assertIn('VIRTUAL_GRIDS 1\n', metadata)
+            self.assertEqual(metadata.count('\nVIRTUAL_GRID '), 1)
             self.assertIn('VIRTUAL_GRID 1 1 6 4\n', metadata)
-            self.assertIn('VIRTUAL_GRID 2 2 6 4\n', metadata)
-            self.assertIn('VIRTUAL_GRID 3 3 6 4\n', metadata)
+            contribution_lines = [
+                line.split() for line in metadata.splitlines()
+                if line.startswith('CONTRIBUTION ')]
+            self.assertEqual(
+                [int(fields[7]) for fields in contribution_lines],
+                [0, 1, 1])
+            self.assertRegex(
+                metadata,
+                r'CONTRIBUTION 1 PRODUCTION [0-9 ]+ 1 0 0 0 0\n')
+            self.assertRegex(
+                metadata,
+                r'CONTRIBUTION 2 NLO_DECAY [0-9 ]+ 1 1 -?6 [0-9]+ [0-9]+\n')
+            self.assertRegex(
+                metadata,
+                r'CONTRIBUTION 3 NLO_DECAY [0-9 ]+ 1 1 -?6 [0-9]+ [0-9]+\n')
             with open(os.path.join(
                     subprocess_dir, 'BinothLHA.f90')) as stream:
                 virtual_backend = stream.read().lower()
@@ -2042,6 +2234,15 @@ class TestFKSDecayChains(unittest.TestCase):
                 '$(FNLO_BUNDLE_VIRTUAL_DEPS)', makefile)
             self.assertIn(
                 'gensym: $(SYM) $(FNLO_BUNDLE_VIRTUAL_DEPS)', makefile)
+            self.assertIn('top_decay_virtual_cdr.o:', makefile)
+            self.assertIn(
+                '$(filter-out -fno-automatic,$(FFLAGS))', makefile)
+            with open(os.path.join(
+                    subprocess_dir, 'check_poles.f90')) as stream:
+                pole_check_source = stream.read().lower()
+            self.assertIn(
+                'contribution_has_fast_virtual(contribution)',
+                pole_check_source)
             with open(os.path.join(
                     subprocess_dir, 'driver_mintFO.f90')) as stream:
                 driver_source = ' '.join(stream.read().split()).lower()
@@ -2055,8 +2256,8 @@ class TestFKSDecayChains(unittest.TestCase):
                 'channel_born_weight)')
             channel_reference = driver_source.index(
                 'call activate_multiplicative_block_reference(0)')
-            channel_cache_reset = driver_source.index(
-                'call reset_spin_density_caches()')
+            self.assertNotIn(
+                'call reset_spin_density_caches()', driver_source)
             initial_production_select = driver_source.index(
                 'nfksprocess = contribution_representative_fks(1)')
             event_capacity_setup = driver_source.index(
@@ -2065,10 +2266,11 @@ class TestFKSDecayChains(unittest.TestCase):
             integrand_production_select = driver_source.index(
                 'call update_fks_dir_impl('
                 'contribution_representative_fks(1))')
-            validation_width_setup = driver_source.index(
-                'call initialize_validation_widths(')
+            process_plan_setup = driver_source.index(
+                'call acquire_multiplicative_process_plan(plan)',
+                integrand_production_select)
             self.assertLess(
-                integrand_production_select, validation_width_setup)
+                integrand_production_select, process_plan_setup)
             self.assertIn('precisionvirtualatruntime,', driver_source)
             self.assertNotIn(
                 'coupling_rescaling, vegas_wgt, 1d-6', driver_source)
@@ -2076,7 +2278,13 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertLess(tuple_boost, channel_born)
             self.assertLess(tuple_boost, channel_reference)
             self.assertLess(channel_reference, channel_born)
-            self.assertLess(channel_born, channel_cache_reset)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'spin_density_matrix_results.f90')) as stream:
+                cache_source = stream.read().lower()
+            self.assertIn('coupling_context', cache_source)
+            self.assertIn(
+                'multiplicative_active_coupling_context()', cache_source)
             with open(os.path.join(
                     subprocess_dir, 'write_ajob.f90')) as stream:
                 ajob_writer = stream.read().lower()

@@ -69,6 +69,8 @@ program test_nested_tuple_boosts
   use multiplicative_kinematics
   implicit none
   integer :: slots(0:5), pdgs(5), kinds(5), targets(5)
+  integer :: previous_slots(0:5)
+  integer(kind=8) :: root_revision, first_revision, second_revision
   integer :: visible_pdgs(5), visible_origins(5), visible_count
   logical :: finals(5), pass, available
   type(factorized_measure_state) :: measure, fetched
@@ -159,6 +161,33 @@ program test_nested_tuple_boosts
                  realized_first(:, 2))) > 1d-12) stop 15
   previous_second_parent = realized_second(:, 1)
 
+  root_revision = factorized_block_momentum_revision(3, 0)
+  first_revision = factorized_block_momentum_revision(0, 1)
+  second_revision = factorized_block_momentum_revision(3, 2)
+  previous_slots = slots
+  call realize_factorized_event_transition( &
+       slots, previous_slots, .true., pass)
+  if (.not. pass) stop 26
+  if (factorized_block_momentum_revision(3, 0) /= root_revision .or. &
+      factorized_block_momentum_revision(0, 1) /= first_revision .or. &
+      factorized_block_momentum_revision(3, 2) /= second_revision) stop 27
+
+  ! A leaf-only slot transition must not rewrite either ancestor cache.
+  call store_factorized_local_momenta(0, 2, 3, second)
+  call store_factorized_local_layout( &
+       0, 2, 3, pdgs, finals, kinds, targets)
+  slots(2) = 0
+  call realize_factorized_event_transition( &
+       slots, previous_slots, .true., pass)
+  if (.not. pass) stop 28
+  if (factorized_block_momentum_revision(3, 0) /= root_revision .or. &
+      factorized_block_momentum_revision(0, 1) /= first_revision) stop 29
+  if (factorized_block_momentum_revision(0, 2) <= 0_8) stop 30
+  call fetch_factorized_block_momenta( &
+       0, 2, 3, realized_second, available)
+  if (.not. available) stop 31
+  previous_second_parent = realized_second(:, 1)
+
   call factorized_production_scale_sums(slots, sum_et, sum_mt)
   if (abs(sum_et) > 1d-12 .or. abs(sum_mt - 4d0) > 1d-12) stop 21
   call factorized_visible_scale_sums(slots, sum_et, sum_mt)
@@ -176,7 +205,7 @@ program test_nested_tuple_boosts
   call realize_factorized_event_tuple(slots, pass)
   if (.not. pass) stop 18
   call fetch_factorized_block_momenta( &
-       3, 2, 3, realized_second, available)
+       slots(2), 2, 3, realized_second, available)
   if (.not. available) stop 19
   if (maxval(abs(realized_second(:, 1) - &
                  previous_second_parent)) < 1d-6) stop 20

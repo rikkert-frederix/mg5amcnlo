@@ -4,10 +4,6 @@ module factorized_phase_space
   implicit none
   private
 
-  double precision, allocatable, save :: block_momenta(:, :, :, :)
-  integer, allocatable, save :: block_particle_count(:, :)
-  logical, allocatable, save :: block_is_valid(:, :)
-  integer(kind=8), allocatable, save :: block_momentum_revision(:, :)
   integer(kind=8), save :: next_block_momentum_revision = 0_8
 
   ! Particle identities are part of a matrix-element block, just as much as
@@ -15,45 +11,24 @@ module factorized_phase_space
   ! local layout may subsequently change to a real-emission context (an ISR
   ! soft projection can even change an incoming flavour), while the reduced
   ! Born block in slot zero must retain its own immutable layout.
-  integer, allocatable, save :: matrix_particle_count(:, :)
-  integer, allocatable, save :: matrix_pdg(:, :, :)
-  logical, allocatable, save :: matrix_particle_is_final(:, :, :)
-  logical, allocatable, save :: matrix_layout_is_valid(:, :)
-
   ! Embedding storage is deliberately distinct from the matrix-element
   ! block cache above.  In particular, a soft projection can have a
   ! real-context particle layout while the Born density matrix in slot zero
   ! must retain its Born layout.  Event materialization consumes this cache;
   ! matrix elements never do.
-  double precision, allocatable, save :: embedded_momenta(:, :, :, :)
-  integer, allocatable, save :: embedded_particle_count(:, :)
-  logical, allocatable, save :: embedded_is_valid(:, :)
-
   ! Matrix elements and subtraction kernels deliberately use different
   ! representations of the same block.  The former needs the block boosted
   ! into the event frame, whereas the latter is most naturally evaluated in
   ! the frame in which its three FKS variables were generated.
-  double precision, allocatable, save :: kernel_momenta(:, :, :, :)
-  integer, allocatable, save :: kernel_particle_count(:, :)
-  logical, allocatable, save :: kernel_is_valid(:, :)
-
   ! Tuple realization starts from an immutable block-local representation.
   ! For a decay this is the parent rest frame; for production it is the
   ! generated partonic event frame.  It must remain distinct from both the
   ! boosted matrix-element cache and the subtraction-kernel cache: selecting
   ! a different ancestor term changes the boost of every descendant without
   ! changing the descendant's independently generated local configuration.
-  double precision, allocatable, save :: local_momenta(:, :, :, :)
-  integer, allocatable, save :: local_particle_count(:, :)
-  logical, allocatable, save :: local_is_valid(:, :)
   integer, parameter, public :: factorized_no_target = 0
   integer, parameter, public :: factorized_visible_target = 1
   integer, parameter, public :: factorized_block_target = 2
-  integer, allocatable, save :: local_pdg(:, :, :)
-  logical, allocatable, save :: local_particle_is_final(:, :, :)
-  integer, allocatable, save :: local_target_kind(:, :, :)
-  integer, allocatable, save :: local_target_id(:, :, :)
-  logical, allocatable, save :: local_layout_is_valid(:, :)
 
   type, public :: factorized_radiation_state
     double precision :: jacobian = -1d0
@@ -72,9 +47,6 @@ module factorized_phase_space
     double precision :: y_to_lab = 0d0
   end type factorized_radiation_state
 
-  type(factorized_radiation_state), allocatable, save :: block_radiation(:, :)
-  logical, allocatable, save :: block_radiation_is_valid(:, :)
-
   ! The underlying-Born measure is a product of one independently generated
   ! production block and one factor for every decay node.  Event measures
   ! contain only the event-dependent radiation map, flux and incoming MINT
@@ -85,47 +57,59 @@ module factorized_phase_space
     double precision :: phase_space_weight = 1d0
   end type factorized_measure_state
 
-  type(factorized_measure_state), allocatable, save :: base_measure(:)
-  logical, allocatable, save :: base_measure_is_valid(:)
-  type(factorized_measure_state), allocatable, save :: event_measure(:, :)
-  logical, allocatable, save :: event_measure_is_valid(:, :)
+  ! All data belonging to one (block,event-slot) identity live in one value.
+  ! This replaces the former two dozen parallel global arrays and makes a
+  ! snapshot an intrinsic assignment.  The process dimensions are initialized
+  ! at run time, so the particle buffers are allocatable components which are
+  ! allocated once when the persistent block store is created.
+  type :: factorized_slot_state
+    double precision, allocatable :: momenta(:,:)
+    integer :: particle_count = 0
+    logical :: is_valid = .false.
+    integer(kind=8) :: momentum_revision = 0_8
+    integer :: matrix_count = 0
+    integer, allocatable :: matrix_pdg(:)
+    logical, allocatable :: matrix_final(:)
+    logical :: matrix_layout_valid = .false.
+    double precision, allocatable :: embedded(:,:)
+    integer :: embedded_count = 0
+    logical :: embedded_valid = .false.
+    double precision, allocatable :: kernel(:,:)
+    integer :: kernel_count = 0
+    logical :: kernel_valid = .false.
+    double precision, allocatable :: local(:,:)
+    integer :: local_count = 0
+    logical :: local_valid = .false.
+    integer, allocatable :: local_pdg(:)
+    logical, allocatable :: local_final(:)
+    integer, allocatable :: local_target_kind(:)
+    integer, allocatable :: local_target_id(:)
+    logical :: local_layout_valid = .false.
+    type(factorized_radiation_state) :: radiation
+    logical :: radiation_valid = .false.
+    type(factorized_measure_state) :: measure
+    logical :: measure_valid = .false.
+  end type factorized_slot_state
+
+  type :: factorized_block_state
+    integer :: block = -1
+    logical :: initialized = .false.
+    type(factorized_slot_state) :: slot( &
+         soft_counterevent:real_event)
+    type(factorized_measure_state) :: base
+    logical :: base_valid = .false.
+  end type factorized_block_state
 
   ! Sequential generation of independent radiative blocks must not let the
   ! later block overwrite an earlier block's real/counterevent family.  A
   ! snapshot owns one physical block in every event slot and can therefore be
   ! overlaid on a common Born baseline without copying or pre-summing events.
   type, public :: factorized_block_snapshot
-    integer :: block = -1
     logical :: initialized = .false.
-    double precision, allocatable :: momenta(:, :, :)
-    integer, allocatable :: particle_count(:)
-    logical, allocatable :: is_valid(:)
-    integer(kind=8), allocatable :: momentum_revision(:)
-    integer, allocatable :: matrix_count(:)
-    integer, allocatable :: matrix_pdg(:, :)
-    logical, allocatable :: matrix_final(:, :)
-    logical, allocatable :: matrix_layout_valid(:)
-    double precision, allocatable :: embedded(:, :, :)
-    integer, allocatable :: embedded_count(:)
-    logical, allocatable :: embedded_valid(:)
-    double precision, allocatable :: kernel(:, :, :)
-    integer, allocatable :: kernel_count(:)
-    logical, allocatable :: kernel_valid(:)
-    double precision, allocatable :: local(:, :, :)
-    integer, allocatable :: local_count(:)
-    logical, allocatable :: local_valid(:)
-    integer, allocatable :: local_pdg(:, :)
-    logical, allocatable :: local_final(:, :)
-    integer, allocatable :: local_target_kind(:, :)
-    integer, allocatable :: local_target_id(:, :)
-    logical, allocatable :: local_layout_valid(:)
-    type(factorized_radiation_state), allocatable :: radiation(:)
-    logical, allocatable :: radiation_valid(:)
-    type(factorized_measure_state) :: base
-    logical :: base_valid = .false.
-    type(factorized_measure_state), allocatable :: measure(:)
-    logical, allocatable :: measure_valid(:)
+    type(factorized_block_state) :: state
   end type factorized_block_snapshot
+
+  type(factorized_block_state), allocatable, save :: block_state(:)
 
   public :: reset_factorized_phase_space
   public :: store_factorized_block_momenta
@@ -160,35 +144,12 @@ module factorized_phase_space
 contains
 
   subroutine reset_factorized_phase_space()
+    integer :: block
+
     call ensure_storage()
-    block_momenta = 0d0
-    block_particle_count = 0
-    block_is_valid = .false.
-    block_momentum_revision = 0_8
-    matrix_particle_count = 0
-    matrix_pdg = 0
-    matrix_particle_is_final = .false.
-    matrix_layout_is_valid = .false.
-    embedded_momenta = 0d0
-    embedded_particle_count = 0
-    embedded_is_valid = .false.
-    kernel_momenta = 0d0
-    kernel_particle_count = 0
-    kernel_is_valid = .false.
-    local_momenta = 0d0
-    local_particle_count = 0
-    local_is_valid = .false.
-    local_pdg = 0
-    local_particle_is_final = .false.
-    local_target_kind = factorized_no_target
-    local_target_id = 0
-    local_layout_is_valid = .false.
-    block_radiation = factorized_radiation_state()
-    block_radiation_is_valid = .false.
-    base_measure = factorized_measure_state()
-    base_measure_is_valid = .false.
-    event_measure = factorized_measure_state()
-    event_measure_is_valid = .false.
+    do block = 0, nexternal
+      call initialize_block_state(block_state(block), block)
+    end do
   end subroutine reset_factorized_phase_space
 
 
@@ -198,72 +159,7 @@ contains
 
     call ensure_storage()
     call validate_block(block)
-    allocate(snapshot%momenta(0:3, nexternal, &
-                              soft_counterevent:real_event))
-    allocate(snapshot%particle_count(soft_counterevent:real_event))
-    allocate(snapshot%is_valid(soft_counterevent:real_event))
-    allocate(snapshot%momentum_revision(soft_counterevent:real_event))
-    allocate(snapshot%matrix_count(soft_counterevent:real_event))
-    allocate(snapshot%matrix_pdg(nexternal, &
-                                 soft_counterevent:real_event))
-    allocate(snapshot%matrix_final(nexternal, &
-                                   soft_counterevent:real_event))
-    allocate(snapshot%matrix_layout_valid(soft_counterevent:real_event))
-    allocate(snapshot%embedded(0:3, nexternal, &
-                               soft_counterevent:real_event))
-    allocate(snapshot%embedded_count(soft_counterevent:real_event))
-    allocate(snapshot%embedded_valid(soft_counterevent:real_event))
-    allocate(snapshot%kernel(0:3, nexternal, &
-                             soft_counterevent:real_event))
-    allocate(snapshot%kernel_count(soft_counterevent:real_event))
-    allocate(snapshot%kernel_valid(soft_counterevent:real_event))
-    allocate(snapshot%local(0:3, nexternal, &
-                            soft_counterevent:real_event))
-    allocate(snapshot%local_count(soft_counterevent:real_event))
-    allocate(snapshot%local_valid(soft_counterevent:real_event))
-    allocate(snapshot%local_pdg(nexternal, &
-                                soft_counterevent:real_event))
-    allocate(snapshot%local_final(nexternal, &
-                                  soft_counterevent:real_event))
-    allocate(snapshot%local_target_kind(nexternal, &
-                                        soft_counterevent:real_event))
-    allocate(snapshot%local_target_id(nexternal, &
-                                      soft_counterevent:real_event))
-    allocate(snapshot%local_layout_valid(soft_counterevent:real_event))
-    allocate(snapshot%radiation(soft_counterevent:real_event))
-    allocate(snapshot%radiation_valid(soft_counterevent:real_event))
-    allocate(snapshot%measure(soft_counterevent:real_event))
-    allocate(snapshot%measure_valid(soft_counterevent:real_event))
-
-    snapshot%block = block
-    snapshot%momenta = block_momenta(:, :, block, :)
-    snapshot%particle_count = block_particle_count(block, :)
-    snapshot%is_valid = block_is_valid(block, :)
-    snapshot%momentum_revision = block_momentum_revision(block, :)
-    snapshot%matrix_count = matrix_particle_count(block, :)
-    snapshot%matrix_pdg = matrix_pdg(:, block, :)
-    snapshot%matrix_final = matrix_particle_is_final(:, block, :)
-    snapshot%matrix_layout_valid = matrix_layout_is_valid(block, :)
-    snapshot%embedded = embedded_momenta(:, :, block, :)
-    snapshot%embedded_count = embedded_particle_count(block, :)
-    snapshot%embedded_valid = embedded_is_valid(block, :)
-    snapshot%kernel = kernel_momenta(:, :, block, :)
-    snapshot%kernel_count = kernel_particle_count(block, :)
-    snapshot%kernel_valid = kernel_is_valid(block, :)
-    snapshot%local = local_momenta(:, :, block, :)
-    snapshot%local_count = local_particle_count(block, :)
-    snapshot%local_valid = local_is_valid(block, :)
-    snapshot%local_pdg = local_pdg(:, block, :)
-    snapshot%local_final = local_particle_is_final(:, block, :)
-    snapshot%local_target_kind = local_target_kind(:, block, :)
-    snapshot%local_target_id = local_target_id(:, block, :)
-    snapshot%local_layout_valid = local_layout_is_valid(block, :)
-    snapshot%radiation = block_radiation(block, :)
-    snapshot%radiation_valid = block_radiation_is_valid(block, :)
-    snapshot%base = base_measure(block)
-    snapshot%base_valid = base_measure_is_valid(block)
-    snapshot%measure = event_measure(block, :)
-    snapshot%measure_valid = event_measure_is_valid(block, :)
+    snapshot%state = block_state(block)
     snapshot%initialized = .true.
   end subroutine capture_factorized_block
 
@@ -276,44 +172,12 @@ contains
     if (.not. snapshot%initialized) then
       call fail_factorized_phase_space('a block snapshot is uninitialized')
     end if
-    block = snapshot%block
+    block = snapshot%state%block
     call validate_block(block)
-    if (.not. allocated(snapshot%momenta) .or. &
-        size(snapshot%momenta, 1) /= 4 .or. &
-        size(snapshot%momenta, 2) /= nexternal .or. &
-        size(snapshot%momenta, 3) /= &
-        real_event - soft_counterevent + 1) then
-      call fail_factorized_phase_space('a block snapshot has the wrong shape')
+    if (.not. snapshot%state%initialized) then
+      call fail_factorized_phase_space('a block snapshot has no state')
     end if
-
-    block_momenta(:, :, block, :) = snapshot%momenta
-    block_particle_count(block, :) = snapshot%particle_count
-    block_is_valid(block, :) = snapshot%is_valid
-    block_momentum_revision(block, :) = snapshot%momentum_revision
-    matrix_particle_count(block, :) = snapshot%matrix_count
-    matrix_pdg(:, block, :) = snapshot%matrix_pdg
-    matrix_particle_is_final(:, block, :) = snapshot%matrix_final
-    matrix_layout_is_valid(block, :) = snapshot%matrix_layout_valid
-    embedded_momenta(:, :, block, :) = snapshot%embedded
-    embedded_particle_count(block, :) = snapshot%embedded_count
-    embedded_is_valid(block, :) = snapshot%embedded_valid
-    kernel_momenta(:, :, block, :) = snapshot%kernel
-    kernel_particle_count(block, :) = snapshot%kernel_count
-    kernel_is_valid(block, :) = snapshot%kernel_valid
-    local_momenta(:, :, block, :) = snapshot%local
-    local_particle_count(block, :) = snapshot%local_count
-    local_is_valid(block, :) = snapshot%local_valid
-    local_pdg(:, block, :) = snapshot%local_pdg
-    local_particle_is_final(:, block, :) = snapshot%local_final
-    local_target_kind(:, block, :) = snapshot%local_target_kind
-    local_target_id(:, block, :) = snapshot%local_target_id
-    local_layout_is_valid(block, :) = snapshot%local_layout_valid
-    block_radiation(block, :) = snapshot%radiation
-    block_radiation_is_valid(block, :) = snapshot%radiation_valid
-    base_measure(block) = snapshot%base
-    base_measure_is_valid(block) = snapshot%base_valid
-    event_measure(block, :) = snapshot%measure
-    event_measure_is_valid(block, :) = snapshot%measure_valid
+    block_state(block) = snapshot%state
   end subroutine restore_factorized_block
 
 
@@ -321,6 +185,7 @@ contains
                                              particle_count, momenta)
     integer, intent(in) :: event_slot, block, particle_count
     double precision, intent(in) :: momenta(0:, :)
+    integer :: cached_block, cached_slot
 
     call ensure_storage()
     call validate_indices(event_slot, block, particle_count)
@@ -338,22 +203,25 @@ contains
     ! The matrix layout is immutable once these momenta have been captured;
     ! a subsequently installed real-context layout must not invalidate the
     ! reduced-Born identity of an unchanged soft block.
-    if (block_is_valid(block, event_slot) .and. &
-        block_particle_count(block, event_slot) == particle_count) then
-      if (all(block_momenta(:, 1:particle_count, block, event_slot) == &
+    if (block_state(block)%slot(event_slot)%is_valid .and. &
+        block_state(block)%slot(event_slot)%particle_count == &
+        particle_count) then
+      if (all(block_state(block)%slot(event_slot)% &
+              momenta(:, 1:particle_count) == &
               momenta(0:3, 1:particle_count))) return
     end if
-    block_momenta(:, :, block, event_slot) = 0d0
-    block_momenta(:, 1:particle_count, block, event_slot) = &
+    block_state(block)%slot(event_slot)%momenta = 0d0
+    block_state(block)%slot(event_slot)%momenta(:, 1:particle_count) = &
          momenta(0:3, 1:particle_count)
-    block_particle_count(block, event_slot) = particle_count
-    block_is_valid(block, event_slot) = .true.
-    matrix_particle_count(block, event_slot) = 0
-    matrix_pdg(:, block, event_slot) = 0
-    matrix_particle_is_final(:, block, event_slot) = .false.
-    matrix_layout_is_valid(block, event_slot) = .false.
-    if (local_layout_is_valid(block, event_slot) .and. &
-        local_particle_count(block, event_slot) >= particle_count) then
+    block_state(block)%slot(event_slot)%particle_count = particle_count
+    block_state(block)%slot(event_slot)%is_valid = .true.
+    block_state(block)%slot(event_slot)%matrix_count = 0
+    block_state(block)%slot(event_slot)%matrix_pdg = 0
+    block_state(block)%slot(event_slot)%matrix_final = .false.
+    block_state(block)%slot(event_slot)%matrix_layout_valid = .false.
+    if (block_state(block)%slot(event_slot)%local_layout_valid .and. &
+        block_state(block)%slot(event_slot)%local_count >= &
+        particle_count) then
       call capture_matrix_layout(event_slot, block, particle_count)
     end if
     next_block_momentum_revision = next_block_momentum_revision + 1_8
@@ -361,9 +229,14 @@ contains
       ! A wrap is fantastically unlikely, but resetting all identities is
       ! safer than allowing a stale density-matrix cache entry to match.
       next_block_momentum_revision = 1_8
-      block_momentum_revision = 0_8
+      do cached_block = 0, nexternal
+        do cached_slot = soft_counterevent, real_event
+          block_state(cached_block)%slot(cached_slot)% &
+               momentum_revision = 0_8
+        end do
+      end do
     end if
-    block_momentum_revision(block, event_slot) = &
+    block_state(block)%slot(event_slot)%momentum_revision = &
          next_block_momentum_revision
   end subroutine store_factorized_block_momenta
 
@@ -377,11 +250,12 @@ contains
 
     call ensure_storage()
     call validate_indices(event_slot, block, particle_count)
-    available = block_is_valid(block, event_slot) .and. &
-         block_particle_count(block, event_slot) == particle_count
+    available = block_state(block)%slot(event_slot)%is_valid .and. &
+         block_state(block)%slot(event_slot)%particle_count == particle_count
     momenta = 0d0
     if (available) then
-      momenta = block_momenta(:, 1:particle_count, block, event_slot)
+      momenta = block_state(block)%slot(event_slot)% &
+           momenta(:, 1:particle_count)
     end if
   end subroutine fetch_factorized_block_momenta
 
@@ -400,11 +274,12 @@ contains
     ! soft and collinear density insertions use the reduced Born prefix of
     ! precisely that already-boosted layout.  The exporter guarantees that
     ! the extra FKS leg is appended after all Born legs.
-    available = block_is_valid(block, event_slot) .and. &
-         block_particle_count(block, event_slot) >= particle_count
+    available = block_state(block)%slot(event_slot)%is_valid .and. &
+         block_state(block)%slot(event_slot)%particle_count >= particle_count
     momenta = 0d0
     if (available) then
-      momenta = block_momenta(:, 1:particle_count, block, event_slot)
+      momenta = block_state(block)%slot(event_slot)% &
+           momenta(:, 1:particle_count)
     end if
   end subroutine fetch_factorized_matrix_momenta
 
@@ -421,7 +296,7 @@ contains
     call ensure_storage()
     call validate_indices(event_slot, block, particle_count)
     momenta = 0d0
-    available = block_is_valid(block, event_slot)
+    available = block_state(block)%slot(event_slot)%is_valid
     if (.not. available) return
     if (any(expected_final /= 0 .and. expected_final /= 1)) then
       call fail_factorized_phase_space( &
@@ -457,10 +332,11 @@ contains
     integer :: source_count, expected, source
 
     momenta = 0d0
-    available = matrix_layout_is_valid(block, layout_slot)
+    available = block_state(block)%slot(layout_slot)%matrix_layout_valid
     if (.not. available) return
-    source_count = min(block_particle_count(block, event_slot), &
-                       matrix_particle_count(block, layout_slot))
+    source_count = min( &
+         block_state(block)%slot(event_slot)%particle_count, &
+         block_state(block)%slot(layout_slot)%matrix_count)
     if (source_count < particle_count) then
       available = .false.
       return
@@ -474,11 +350,12 @@ contains
       available = .false.
       do source = 1, source_count
         if (used(source)) cycle
-        if (matrix_pdg(source, block, layout_slot) /= &
+        if (block_state(block)%slot(layout_slot)%matrix_pdg(source) /= &
             expected_pdgs(expected)) cycle
-        if (matrix_particle_is_final(source, block, layout_slot) .neqv. &
+        if (block_state(block)%slot(layout_slot)%matrix_final(source) .neqv. &
             (expected_final(expected) == 1)) cycle
-        momenta(:, expected) = block_momenta(:, source, block, event_slot)
+        momenta(:, expected) = &
+             block_state(block)%slot(event_slot)%momenta(:, source)
         used(source) = .true.
         available = .true.
         exit
@@ -497,9 +374,9 @@ contains
 
     call ensure_storage()
     call validate_event_and_block(event_slot, block)
-    if (block_is_valid(block, event_slot)) then
+    if (block_state(block)%slot(event_slot)%is_valid) then
       factorized_block_momentum_revision = &
-           block_momentum_revision(block, event_slot)
+           block_state(block)%slot(event_slot)%momentum_revision
     else
       factorized_block_momentum_revision = 0_8
     end if
@@ -517,11 +394,12 @@ contains
       call fail_factorized_phase_space( &
            'an embedded momentum array has inconsistent bounds')
     end if
-    embedded_momenta(:, :, block, event_slot) = 0d0
-    embedded_momenta(:, 1:particle_count, block, event_slot) = &
+    block_state(block)%slot(event_slot)%embedded = 0d0
+    block_state(block)%slot(event_slot)% &
+         embedded(:, 1:particle_count) = &
          momenta(0:3, 1:particle_count)
-    embedded_particle_count(block, event_slot) = particle_count
-    embedded_is_valid(block, event_slot) = .true.
+    block_state(block)%slot(event_slot)%embedded_count = particle_count
+    block_state(block)%slot(event_slot)%embedded_valid = .true.
   end subroutine store_factorized_embedded_momenta
 
 
@@ -534,11 +412,12 @@ contains
 
     call ensure_storage()
     call validate_indices(event_slot, block, particle_count)
-    available = embedded_is_valid(block, event_slot) .and. &
-         embedded_particle_count(block, event_slot) == particle_count
+    available = block_state(block)%slot(event_slot)%embedded_valid .and. &
+         block_state(block)%slot(event_slot)%embedded_count == particle_count
     momenta = 0d0
     if (available) then
-      momenta = embedded_momenta(:, 1:particle_count, block, event_slot)
+      momenta = block_state(block)%slot(event_slot)% &
+           embedded(:, 1:particle_count)
     end if
   end subroutine fetch_factorized_embedded_momenta
 
@@ -554,11 +433,11 @@ contains
       call fail_factorized_phase_space( &
            'a kernel momentum array has inconsistent bounds')
     end if
-    kernel_momenta(:, :, block, event_slot) = 0d0
-    kernel_momenta(:, 1:particle_count, block, event_slot) = &
+    block_state(block)%slot(event_slot)%kernel = 0d0
+    block_state(block)%slot(event_slot)%kernel(:, 1:particle_count) = &
          momenta(0:3, 1:particle_count)
-    kernel_particle_count(block, event_slot) = particle_count
-    kernel_is_valid(block, event_slot) = .true.
+    block_state(block)%slot(event_slot)%kernel_count = particle_count
+    block_state(block)%slot(event_slot)%kernel_valid = .true.
   end subroutine store_factorized_kernel_momenta
 
 
@@ -571,11 +450,12 @@ contains
 
     call ensure_storage()
     call validate_indices(event_slot, block, particle_count)
-    available = kernel_is_valid(block, event_slot) .and. &
-         kernel_particle_count(block, event_slot) == particle_count
+    available = block_state(block)%slot(event_slot)%kernel_valid .and. &
+         block_state(block)%slot(event_slot)%kernel_count == particle_count
     momenta = 0d0
     if (available) then
-      momenta = kernel_momenta(:, 1:particle_count, block, event_slot)
+      momenta = block_state(block)%slot(event_slot)% &
+           kernel(:, 1:particle_count)
     end if
   end subroutine fetch_factorized_kernel_momenta
 
@@ -591,11 +471,11 @@ contains
       call fail_factorized_phase_space( &
            'a block-local momentum array has inconsistent bounds')
     end if
-    local_momenta(:, :, block, event_slot) = 0d0
-    local_momenta(:, 1:particle_count, block, event_slot) = &
+    block_state(block)%slot(event_slot)%local = 0d0
+    block_state(block)%slot(event_slot)%local(:, 1:particle_count) = &
          momenta(0:3, 1:particle_count)
-    local_particle_count(block, event_slot) = particle_count
-    local_is_valid(block, event_slot) = .true.
+    block_state(block)%slot(event_slot)%local_count = particle_count
+    block_state(block)%slot(event_slot)%local_valid = .true.
   end subroutine store_factorized_local_momenta
 
 
@@ -608,11 +488,12 @@ contains
 
     call ensure_storage()
     call validate_indices(event_slot, block, particle_count)
-    available = local_is_valid(block, event_slot) .and. &
-         local_particle_count(block, event_slot) == particle_count
+    available = block_state(block)%slot(event_slot)%local_valid .and. &
+         block_state(block)%slot(event_slot)%local_count == particle_count
     momenta = 0d0
     if (available) then
-      momenta = local_momenta(:, 1:particle_count, block, event_slot)
+      momenta = block_state(block)%slot(event_slot)% &
+           local(:, 1:particle_count)
     end if
   end subroutine fetch_factorized_local_momenta
 
@@ -622,8 +503,9 @@ contains
 
     call ensure_storage()
     call validate_event_and_block(event_slot, block)
-    if (local_is_valid(block, event_slot)) then
-      factorized_local_count = local_particle_count(block, event_slot)
+    if (block_state(block)%slot(event_slot)%local_valid) then
+      factorized_local_count = &
+           block_state(block)%slot(event_slot)%local_count
     else
       factorized_local_count = 0
     end if
@@ -673,23 +555,30 @@ contains
       end if
     end do
 
-    local_pdg(:, block, event_slot) = 0
-    local_particle_is_final(:, block, event_slot) = .false.
-    local_target_kind(:, block, event_slot) = factorized_no_target
-    local_target_id(:, block, event_slot) = 0
-    local_pdg(1:particle_count, block, event_slot) = pdgs(1:particle_count)
-    local_particle_is_final(1:particle_count, block, event_slot) = &
+    block_state(block)%slot(event_slot)%local_pdg = 0
+    block_state(block)%slot(event_slot)%local_final = .false.
+    block_state(block)%slot(event_slot)%local_target_kind = &
+         factorized_no_target
+    block_state(block)%slot(event_slot)%local_target_id = 0
+    block_state(block)%slot(event_slot)%local_pdg(1:particle_count) = &
+         pdgs(1:particle_count)
+    block_state(block)%slot(event_slot)% &
+         local_final(1:particle_count) = &
          particle_is_final(1:particle_count)
-    local_target_kind(1:particle_count, block, event_slot) = &
+    block_state(block)%slot(event_slot)% &
+         local_target_kind(1:particle_count) = &
          target_kinds(1:particle_count)
-    local_target_id(1:particle_count, block, event_slot) = &
+    block_state(block)%slot(event_slot)% &
+         local_target_id(1:particle_count) = &
          target_ids(1:particle_count)
-    local_layout_is_valid(block, event_slot) = .true.
-    if (block_is_valid(block, event_slot) .and. &
-        .not. matrix_layout_is_valid(block, event_slot) .and. &
-        block_particle_count(block, event_slot) <= particle_count) then
+    block_state(block)%slot(event_slot)%local_layout_valid = .true.
+    if (block_state(block)%slot(event_slot)%is_valid .and. &
+        .not. block_state(block)%slot(event_slot)%matrix_layout_valid .and. &
+        block_state(block)%slot(event_slot)%particle_count <= &
+        particle_count) then
       call capture_matrix_layout( &
-           event_slot, block, block_particle_count(block, event_slot))
+           event_slot, block, &
+           block_state(block)%slot(event_slot)%particle_count)
     end if
   end subroutine store_factorized_local_layout
 
@@ -697,14 +586,18 @@ contains
   subroutine capture_matrix_layout(event_slot, block, particle_count)
     integer, intent(in) :: event_slot, block, particle_count
 
-    matrix_particle_count(block, event_slot) = particle_count
-    matrix_pdg(:, block, event_slot) = 0
-    matrix_particle_is_final(:, block, event_slot) = .false.
-    matrix_pdg(1:particle_count, block, event_slot) = &
-         local_pdg(1:particle_count, block, event_slot)
-    matrix_particle_is_final(1:particle_count, block, event_slot) = &
-         local_particle_is_final(1:particle_count, block, event_slot)
-    matrix_layout_is_valid(block, event_slot) = .true.
+    block_state(block)%slot(event_slot)%matrix_count = particle_count
+    block_state(block)%slot(event_slot)%matrix_pdg = 0
+    block_state(block)%slot(event_slot)%matrix_final = .false.
+    block_state(block)%slot(event_slot)% &
+         matrix_pdg(1:particle_count) = &
+         block_state(block)%slot(event_slot)% &
+         local_pdg(1:particle_count)
+    block_state(block)%slot(event_slot)% &
+         matrix_final(1:particle_count) = &
+         block_state(block)%slot(event_slot)% &
+         local_final(1:particle_count)
+    block_state(block)%slot(event_slot)%matrix_layout_valid = .true.
   end subroutine capture_matrix_layout
 
 
@@ -720,19 +613,24 @@ contains
 
     call ensure_storage()
     call validate_indices(event_slot, block, particle_count)
-    available = local_layout_is_valid(block, event_slot) .and. &
-         local_particle_count(block, event_slot) == particle_count
+    available = block_state(block)%slot(event_slot)% &
+         local_layout_valid .and. &
+         block_state(block)%slot(event_slot)%local_count == particle_count
     pdgs = 0
     particle_is_final = .false.
     target_kinds = factorized_no_target
     target_ids = 0
     if (available) then
-      pdgs = local_pdg(1:particle_count, block, event_slot)
+      pdgs = block_state(block)%slot(event_slot)% &
+           local_pdg(1:particle_count)
       particle_is_final = &
-           local_particle_is_final(1:particle_count, block, event_slot)
+           block_state(block)%slot(event_slot)% &
+           local_final(1:particle_count)
       target_kinds = &
-           local_target_kind(1:particle_count, block, event_slot)
-      target_ids = local_target_id(1:particle_count, block, event_slot)
+           block_state(block)%slot(event_slot)% &
+           local_target_kind(1:particle_count)
+      target_ids = block_state(block)%slot(event_slot)% &
+           local_target_id(1:particle_count)
     end if
   end subroutine fetch_factorized_local_layout
 
@@ -743,8 +641,8 @@ contains
 
     call ensure_storage()
     call validate_event_and_block(event_slot, block)
-    block_radiation(block, event_slot) = state
-    block_radiation_is_valid(block, event_slot) = .true.
+    block_state(block)%slot(event_slot)%radiation = state
+    block_state(block)%slot(event_slot)%radiation_valid = .true.
   end subroutine store_factorized_radiation_state
 
 
@@ -756,9 +654,9 @@ contains
 
     call ensure_storage()
     call validate_event_and_block(event_slot, block)
-    available = block_radiation_is_valid(block, event_slot)
+    available = block_state(block)%slot(event_slot)%radiation_valid
     state = factorized_radiation_state()
-    if (available) state = block_radiation(block, event_slot)
+    if (available) state = block_state(block)%slot(event_slot)%radiation
   end subroutine fetch_factorized_radiation_state
 
 
@@ -769,9 +667,10 @@ contains
     call ensure_storage()
     do event_slot = soft_counterevent, real_event
       do block = 0, nexternal
-        if (block_radiation_is_valid(block, event_slot)) then
-          block_radiation(block, event_slot)%jacobian = &
-               block_radiation(block, event_slot)%jacobian*weight
+        if (block_state(block)%slot(event_slot)%radiation_valid) then
+          block_state(block)%slot(event_slot)%radiation%jacobian = &
+               block_state(block)%slot(event_slot)% &
+               radiation%jacobian*weight
         end if
       end do
     end do
@@ -785,8 +684,8 @@ contains
     call ensure_storage()
     call validate_block(block)
     call validate_measure(measure)
-    base_measure(block) = measure
-    base_measure_is_valid(block) = .true.
+    block_state(block)%base = measure
+    block_state(block)%base_valid = .true.
   end subroutine store_factorized_base_measure
 
 
@@ -797,11 +696,11 @@ contains
     call ensure_storage()
     call validate_block(block)
     call validate_measure(measure)
-    if (.not. base_measure_is_valid(block)) then
-      base_measure(block) = factorized_measure_state()
-      base_measure_is_valid(block) = .true.
+    if (.not. block_state(block)%base_valid) then
+      block_state(block)%base = factorized_measure_state()
+      block_state(block)%base_valid = .true.
     end if
-    call multiply_measure(base_measure(block), measure)
+    call multiply_measure(block_state(block)%base, measure)
   end subroutine multiply_factorized_base_measure
 
 
@@ -812,9 +711,9 @@ contains
 
     call ensure_storage()
     call validate_block(block)
-    available = base_measure_is_valid(block)
+    available = block_state(block)%base_valid
     measure = factorized_measure_state()
-    if (available) measure = base_measure(block)
+    if (available) measure = block_state(block)%base
   end subroutine fetch_factorized_base_measure
 
 
@@ -825,8 +724,8 @@ contains
     call ensure_storage()
     call validate_event_and_block(event_slot, block)
     call validate_measure(measure)
-    event_measure(block, event_slot) = measure
-    event_measure_is_valid(block, event_slot) = .true.
+    block_state(block)%slot(event_slot)%measure = measure
+    block_state(block)%slot(event_slot)%measure_valid = .true.
   end subroutine store_factorized_event_measure
 
 
@@ -837,11 +736,12 @@ contains
     call ensure_storage()
     call validate_event_and_block(event_slot, block)
     call validate_measure(measure)
-    if (.not. event_measure_is_valid(block, event_slot)) then
-      event_measure(block, event_slot) = factorized_measure_state()
-      event_measure_is_valid(block, event_slot) = .true.
+    if (.not. block_state(block)%slot(event_slot)%measure_valid) then
+      block_state(block)%slot(event_slot)%measure = &
+           factorized_measure_state()
+      block_state(block)%slot(event_slot)%measure_valid = .true.
     end if
-    call multiply_measure(event_measure(block, event_slot), measure)
+    call multiply_measure(block_state(block)%slot(event_slot)%measure, measure)
   end subroutine multiply_factorized_event_measure
 
 
@@ -853,9 +753,9 @@ contains
 
     call ensure_storage()
     call validate_event_and_block(event_slot, block)
-    available = event_measure_is_valid(block, event_slot)
+    available = block_state(block)%slot(event_slot)%measure_valid
     measure = factorized_measure_state()
-    if (available) measure = event_measure(block, event_slot)
+    if (available) measure = block_state(block)%slot(event_slot)%measure
   end subroutine fetch_factorized_event_measure
 
 
@@ -868,13 +768,13 @@ contains
     call ensure_storage()
     jacobian = 1d0
     phase_space_weight = 1d0
-    available = base_measure_is_valid(0)
+    available = block_state(0)%base_valid
     if (.not. available) return
     do block = 0, nexternal
-      if (.not. base_measure_is_valid(block)) cycle
-      jacobian = jacobian*base_measure(block)%jacobian
+      if (.not. block_state(block)%base_valid) cycle
+      jacobian = jacobian*block_state(block)%base%jacobian
       phase_space_weight = phase_space_weight* &
-           base_measure(block)%phase_space_weight
+           block_state(block)%base%phase_space_weight
     end do
   end subroutine compose_factorized_base_measure
 
@@ -912,12 +812,13 @@ contains
     do block = 0, nexternal
       selected_slot = event_slots(block)
       call validate_event_and_block(selected_slot, block)
-      if (event_measure_is_valid(block, selected_slot)) then
+      if (block_state(block)%slot(selected_slot)%measure_valid) then
         available = .true.
         jacobian = jacobian* &
-             event_measure(block, selected_slot)%jacobian
+             block_state(block)%slot(selected_slot)%measure%jacobian
         phase_space_weight = phase_space_weight* &
-             event_measure(block, selected_slot)%phase_space_weight
+             block_state(block)%slot(selected_slot)% &
+             measure%phase_space_weight
       end if
     end do
     if (.not. available) return
@@ -940,7 +841,7 @@ contains
     incoming_measure%jacobian = weight
     call ensure_storage()
     do event_slot = soft_counterevent, real_event
-      if (event_measure_is_valid(target_block, event_slot)) then
+      if (block_state(target_block)%slot(event_slot)%measure_valid) then
         call multiply_factorized_event_measure( &
              event_slot, target_block, incoming_measure)
       end if
@@ -959,91 +860,83 @@ contains
 
 
   subroutine ensure_storage()
+    integer :: block
+
     call validate_process_dimensions()
-    if (allocated(block_momenta)) return
-    allocate(block_momenta(0:3, nexternal, 0:nexternal, &
-                           soft_counterevent:real_event))
-    allocate(block_particle_count(0:nexternal, &
-                                  soft_counterevent:real_event))
-    allocate(block_is_valid(0:nexternal, &
-                            soft_counterevent:real_event))
-    allocate(block_momentum_revision(0:nexternal, &
-                                     soft_counterevent:real_event))
-    allocate(matrix_particle_count(0:nexternal, &
-                                   soft_counterevent:real_event))
-    allocate(matrix_pdg(nexternal, 0:nexternal, &
-                        soft_counterevent:real_event))
-    allocate(matrix_particle_is_final(nexternal, 0:nexternal, &
-                                      soft_counterevent:real_event))
-    allocate(matrix_layout_is_valid(0:nexternal, &
-                                    soft_counterevent:real_event))
-    allocate(embedded_momenta(0:3, nexternal, 0:nexternal, &
-                              soft_counterevent:real_event))
-    allocate(embedded_particle_count(0:nexternal, &
-                                     soft_counterevent:real_event))
-    allocate(embedded_is_valid(0:nexternal, &
-                               soft_counterevent:real_event))
-    allocate(kernel_momenta(0:3, nexternal, 0:nexternal, &
-                            soft_counterevent:real_event))
-    allocate(kernel_particle_count(0:nexternal, &
-                                   soft_counterevent:real_event))
-    allocate(kernel_is_valid(0:nexternal, &
-                             soft_counterevent:real_event))
-    allocate(local_momenta(0:3, nexternal, 0:nexternal, &
-                           soft_counterevent:real_event))
-    allocate(local_particle_count(0:nexternal, &
-                                  soft_counterevent:real_event))
-    allocate(local_is_valid(0:nexternal, &
-                            soft_counterevent:real_event))
-    allocate(local_pdg(nexternal, 0:nexternal, &
-                       soft_counterevent:real_event))
-    allocate(local_particle_is_final(nexternal, 0:nexternal, &
-                                     soft_counterevent:real_event))
-    allocate(local_target_kind(nexternal, 0:nexternal, &
-                               soft_counterevent:real_event))
-    allocate(local_target_id(nexternal, 0:nexternal, &
-                             soft_counterevent:real_event))
-    allocate(local_layout_is_valid(0:nexternal, &
-                                   soft_counterevent:real_event))
-    allocate(block_radiation(0:nexternal, &
-                             soft_counterevent:real_event))
-    allocate(block_radiation_is_valid(0:nexternal, &
-                                      soft_counterevent:real_event))
-    allocate(base_measure(0:nexternal))
-    allocate(base_measure_is_valid(0:nexternal))
-    allocate(event_measure(0:nexternal, &
-                           soft_counterevent:real_event))
-    allocate(event_measure_is_valid(0:nexternal, &
-                                    soft_counterevent:real_event))
-    block_momenta = 0d0
-    block_particle_count = 0
-    block_is_valid = .false.
-    block_momentum_revision = 0_8
-    matrix_particle_count = 0
-    matrix_pdg = 0
-    matrix_particle_is_final = .false.
-    matrix_layout_is_valid = .false.
-    embedded_momenta = 0d0
-    embedded_particle_count = 0
-    embedded_is_valid = .false.
-    kernel_momenta = 0d0
-    kernel_particle_count = 0
-    kernel_is_valid = .false.
-    local_momenta = 0d0
-    local_particle_count = 0
-    local_is_valid = .false.
-    local_pdg = 0
-    local_particle_is_final = .false.
-    local_target_kind = factorized_no_target
-    local_target_id = 0
-    local_layout_is_valid = .false.
-    block_radiation = factorized_radiation_state()
-    block_radiation_is_valid = .false.
-    base_measure = factorized_measure_state()
-    base_measure_is_valid = .false.
-    event_measure = factorized_measure_state()
-    event_measure_is_valid = .false.
+    if (allocated(block_state)) return
+    allocate(block_state(0:nexternal))
+    do block = 0, nexternal
+      call initialize_block_state(block_state(block), block)
+    end do
   end subroutine ensure_storage
+
+
+  subroutine initialize_block_state(state, block)
+    type(factorized_block_state), intent(inout) :: state
+    integer, intent(in) :: block
+    integer :: event_slot
+
+    state%block = block
+    state%initialized = .true.
+    state%base = factorized_measure_state()
+    state%base_valid = .false.
+    do event_slot = soft_counterevent, real_event
+      call initialize_slot_state(state%slot(event_slot))
+    end do
+  end subroutine initialize_block_state
+
+
+  subroutine initialize_slot_state(state)
+    type(factorized_slot_state), intent(inout) :: state
+
+    if (.not. allocated(state%momenta)) &
+         allocate(state%momenta(0:3, nexternal))
+    if (.not. allocated(state%matrix_pdg)) &
+         allocate(state%matrix_pdg(nexternal))
+    if (.not. allocated(state%matrix_final)) &
+         allocate(state%matrix_final(nexternal))
+    if (.not. allocated(state%embedded)) &
+         allocate(state%embedded(0:3, nexternal))
+    if (.not. allocated(state%kernel)) &
+         allocate(state%kernel(0:3, nexternal))
+    if (.not. allocated(state%local)) &
+         allocate(state%local(0:3, nexternal))
+    if (.not. allocated(state%local_pdg)) &
+         allocate(state%local_pdg(nexternal))
+    if (.not. allocated(state%local_final)) &
+         allocate(state%local_final(nexternal))
+    if (.not. allocated(state%local_target_kind)) &
+         allocate(state%local_target_kind(nexternal))
+    if (.not. allocated(state%local_target_id)) &
+         allocate(state%local_target_id(nexternal))
+
+    state%particle_count = 0
+    state%is_valid = .false.
+    state%momentum_revision = 0_8
+    state%matrix_count = 0
+    state%matrix_layout_valid = .false.
+    state%embedded_count = 0
+    state%embedded_valid = .false.
+    state%kernel_count = 0
+    state%kernel_valid = .false.
+    state%local_count = 0
+    state%local_valid = .false.
+    state%local_layout_valid = .false.
+    state%radiation = factorized_radiation_state()
+    state%radiation_valid = .false.
+    state%measure = factorized_measure_state()
+    state%measure_valid = .false.
+    state%momenta = 0d0
+    state%matrix_pdg = 0
+    state%matrix_final = .false.
+    state%embedded = 0d0
+    state%kernel = 0d0
+    state%local = 0d0
+    state%local_pdg = 0
+    state%local_final = .false.
+    state%local_target_kind = factorized_no_target
+    state%local_target_id = 0
+  end subroutine initialize_slot_state
 
 
   subroutine validate_indices(event_slot, block, particle_count)

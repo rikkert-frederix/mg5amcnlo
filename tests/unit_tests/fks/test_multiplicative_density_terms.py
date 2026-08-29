@@ -67,10 +67,10 @@ program test_density_tuples
   coefficients = (0d0, 0d0)
   coefficients(1) = (2d0, 0d0)
   expected_signs = (/1, -1, -1, 1/)
-  expected_slots(:, 1) = (/3, 3/)
+  expected_slots(:, 1) = (/0, 0/)
   expected_slots(:, 2) = (/0, 3/)
   expected_slots(:, 3) = (/3, 0/)
-  expected_slots(:, 4) = (/0, 0/)
+  expected_slots(:, 4) = (/3, 3/)
 
   do distribution = 1, 2
     call initialize_block_distribution( &

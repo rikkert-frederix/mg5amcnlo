@@ -47,6 +47,7 @@ module spin_density_matrix_results
   integer, parameter :: spin_density_born_insertion = 1
   integer, parameter :: spin_density_virtual_insertion = 3
   integer, parameter :: spin_density_color_insertion = 4
+  integer, parameter :: spin_density_fast_virtual_insertion = 5
 end module spin_density_matrix_results
 
 module factorized_phase_space
@@ -91,6 +92,10 @@ contains
     integer, intent(in) :: contribution
     contribution_has_virtual = contribution == 2
   end function contribution_has_virtual
+  logical function contribution_has_fast_virtual(contribution)
+    integer, intent(in) :: contribution
+    contribution_has_fast_virtual = contribution == 2
+  end function contribution_has_fast_virtual
   logical function contribution_is_nlo_decay(contribution)
     integer, intent(in) :: contribution
     contribution_is_nlo_decay = contribution == 2
@@ -171,7 +176,7 @@ program test_nbody_density
   if (nlo_term%primitive_count /= 3) stop 24
   if (nlo_term%primitives(1)%insertion_kind /= 1) stop 25
   if (nlo_term%primitives(2)%insertion_kind /= 4) stop 26
-  if (nlo_term%primitives(3)%insertion_kind /= 3) stop 27
+  if (nlo_term%primitives(3)%insertion_kind /= 5) stop 27
   if (nlo_term%primitives(3)%insertion_rank /= 1) stop 28
   if (abs(dble(nlo_term%primitives(1)%scale_coefficients(1)) - &
           1d0*prefactor) > 1d-12) stop 29

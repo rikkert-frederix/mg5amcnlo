@@ -14,13 +14,14 @@ module check_poles_module
   use decay_chain_kinematics, only: initialize_decay_chain_kinematics, &
        minimum_core_final_mass, generate_core_born_and_decays
   use nlo_decay_metadata, only: initialize_nlo_decay_metadata, &
-                                has_nlo_decay, corrected_parent_pdg
+       has_nlo_decay, nlo_decay_has_fast_virtual, corrected_parent_pdg
   use decay_chain_parameters, only: decay_renormalization_scale
   use nlo_decay_kinematics, only: initialize_nlo_decay_kinematics, &
        nlo_decay_minimum_production_mass, &
        generate_nlo_decay_born_momenta
   use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
        nlo_contribution_count, contribution_has_virtual, &
+       contribution_has_fast_virtual, &
        contribution_fks_first, contribution_fks_last
   use fnlo_process_common, only: calculatedborn => calculated_born, &
                                  nfksprocess, qes2, force_polecheck, &
@@ -203,6 +204,11 @@ contains
     if (has_nlo_contribution_bundle()) then
       do contribution = 1, nlo_contribution_count()
         if (.not. contribution_has_virtual(contribution)) cycle
+        ! Fast analytic decay densities compare all Laurent coefficients to
+        ! MadLoop in their own first two calls.  They intentionally have no
+        ! approximation-grid split order, so the legacy scalar pole checker
+        ! must not route them through orders_to_amp_split_pos.
+        if (contribution_has_fast_virtual(contribution)) cycle
         first_configuration = contribution_fks_first(contribution)
         do configuration = contribution_fks_first(contribution), &
                            contribution_fks_last(contribution)
@@ -220,16 +226,18 @@ contains
       end do
     else
       first_configuration = 0
-      do configuration = 1, fks_configs
-        nfksprocess = configuration
-        call fks_inc_chooser()
-        particle = fks_i_d(nfksprocess)
-        if (abs(pdg_type_d(nfksprocess, particle)) == 21 .or. &
-            pdg_type_d(nfksprocess, particle) == 22) then
-          first_configuration = configuration
-          exit
-        end if
-      end do
+      if (.not. nlo_decay_has_fast_virtual()) then
+        do configuration = 1, fks_configs
+          nfksprocess = configuration
+          call fks_inc_chooser()
+          particle = fks_i_d(nfksprocess)
+          if (abs(pdg_type_d(nfksprocess, particle)) == 21 .or. &
+              pdg_type_d(nfksprocess, particle) == 22) then
+            first_configuration = configuration
+            exit
+          end if
+        end do
+      end if
       if (first_configuration > 0) then
         target_count = 1
         target_configurations(1) = first_configuration

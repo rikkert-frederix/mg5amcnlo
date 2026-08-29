@@ -27,15 +27,18 @@ NLOLIBS=-L$(LIBDIR) $(FNLO_MADLOOP_LIBRARIES) \
 
 # The generated spin-density virtual providers are part of FILES so that the
 # same independently swappable matrix-element objects are available to every
-# executable.  In a bundled full-NLO process they retain direct references to
-# the separately prefixed MadLoop archives.  The auxiliary gensym and
-# soft/collinear executables must therefore build and link those archives too;
-# omitting them is a link error even when that particular executable never
-# calls a virtual provider at run time.
+# executable.  Full-NLO bundles reference separately prefixed MadLoop archives,
+# while a standalone analytic top-decay provider retains the ordinary archive
+# for its two-point validation.  The auxiliary gensym and soft/collinear
+# executables must therefore build and link whichever archive is selected;
+# omitting it is a link error even when that particular executable never calls
+# a virtual provider at run time.
 FNLO_BUNDLE_VIRTUAL_DEPS = \
-	$(if $(strip $(FNLO_VIRTUAL_LIBRARIES)),$(FNLO_MADLOOP_LIBRARIES))
+	$(if $(strip $(FNLO_VIRTUAL_LIBRARIES)$(FNLO_DENSITY_VIRTUAL)),\
+	$(FNLO_MADLOOP_LIBRARIES))
 FNLO_BUNDLE_VIRTUAL_LINKS = \
-	$(if $(strip $(FNLO_VIRTUAL_LIBRARIES)),$(NLOLIBS))
+	$(if $(strip $(FNLO_VIRTUAL_LIBRARIES)$(FNLO_DENSITY_VIRTUAL)),\
+	$(NLOLIBS))
 
 # Uncomment the line below to compile with MadLoop without setting the environnement 
 # variables 'by hand'
@@ -56,6 +59,8 @@ FILES= fnlo_process_common.o process_dimensions.o			\
 	 nlo_contribution_bundle.o					\
 	 nlo_decay_metadata.o decay_chain_metadata.o			\
 	 decay_chain_parameters.o					\
+	 multiplicative_generated_metadata.o			\
+	 multiplicative_process_plan.o				\
 	 fnlo_scale_variations.o					\
 	 decay_chain_parameters_bridge.o phase_space_kinematics.o	\
 	 factorized_phase_space.o factorized_block_kinematics.o	\
@@ -64,6 +69,7 @@ FILES= fnlo_process_common.o process_dimensions.o			\
 	 multiplicative_kinematics.o				\
 	 multiplicative_scale_state.o				\
 	 multiplicative_production_channels.o			\
+	 top_decay_virtual_cdr.o				\
 	 spin_density_matrix_results.o					\
 	 multiplicative_density_terms.o				\
 	 multiplicative_lambda_validation.o			\
@@ -71,7 +77,9 @@ FILES= fnlo_process_common.o process_dimensions.o			\
 	 multiplicative_fks_density.o multiplicative_nbody_density.o \
 	 multiplicative_block_distribution.o \
 	 multiplicative_density_contraction.o			\
-	 multiplicative_runtime.o \
+	 multiplicative_runtime.o multiplicative_tuple_executor.o	\
+	 multiplicative_reweighter.o multiplicative_point_workspace.o \
+	 factorized_mint_policy.o				\
 	 decay_chain_kinematics.o nlo_decay_kinematics.o		\
 	 decay_chain_scales.o						\
 	 fks_diagnostics.o fks_qcd_splitting.o fks_soft_kernels.o	\
@@ -186,6 +194,14 @@ SYM= $(RUN) BinothLHADummy.o BinothLHADummy_bridge.o \
 	symmetry_fks_v3.o						\
 	symmetry_fks_v3_bridge.o write_ajob.o
 
+# The analytic top-decay module contains PURE numerical helper functions.
+# fNLO's legacy -fno-automatic setting would implicitly give their local
+# variables SAVE semantics, which is both unnecessary and rejected by
+# gfortran for a PURE procedure.  Keep the source compiler-independent and
+# compile this self-contained module with ordinary automatic local storage.
+top_decay_virtual_cdr.o: top_decay_virtual_cdr.f90
+	$(FC) $(filter-out -fno-automatic,$(FFLAGS)) -c -I. -I$(LIBDIR) $<
+
 %.o: %.f
 	$(FC) $(FFLAGS) -c -I. -I$(LIBDIR) $<
 %.o: %.f90
@@ -252,6 +268,9 @@ decay_chain_metadata.o: process_dimensions.o fks_metadata.o \
 decay_chain_parameters.o: decay_chain_metadata.o nlo_decay_metadata.o \
 	nlo_contribution_bundle.o
 decay_chain_parameters_bridge.o: decay_chain_parameters.o
+multiplicative_process_plan.o: multiplicative_generated_metadata.o \
+	nlo_contribution_bundle.o \
+	decay_chain_metadata.o decay_chain_parameters.o
 fnlo_scale_variations.o: decay_chain_metadata.o nlo_decay_metadata.o \
 	decay_chain_parameters.o $(LIBDIR)run_state.mod \
 	$(LIBDIR)extra_weights.mod
@@ -266,11 +285,13 @@ multiplicative_kinematics.o: process_dimensions.o factorized_phase_space.o \
 multiplicative_scale_state.o: process_dimensions.o factorized_phase_space.o \
 	decay_chain_parameters.o $(LIBDIR)alfas_functions_module.mod \
 	$(LIBDIR)run_state.mod fnlo_process_common.o multiplicative_kinematics.o \
-	dummy_fct.o
+	dummy_fct.o multiplicative_generated_metadata.o
 spin_density_multiplicative_contraction.o: multiplicative_scale_state.o \
 	spin_density_matrix_results.o factorized_phase_space.o
+$(patsubst %.f,%.o,$(wildcard spin_density_*virtual*.f)): \
+	top_decay_virtual_cdr.o
 spin_density_matrix_results.o: process_dimensions.o fnlo_process_common.o \
-	factorized_phase_space.o
+	factorized_phase_space.o multiplicative_scale_state.o
 multiplicative_density_terms.o: process_dimensions.o fnlo_process_common.o \
 	spin_density_matrix_results.o
 multiplicative_lambda_validation.o:
@@ -286,11 +307,25 @@ multiplicative_block_distribution.o: multiplicative_density_terms.o \
 	multiplicative_scale_state.o nlo_contribution_bundle.o
 multiplicative_density_contraction.o: process_dimensions.o \
 	spin_density_matrix_results.o multiplicative_density_terms.o \
-	multiplicative_kinematics.o
+	multiplicative_kinematics.o multiplicative_generated_metadata.o
 multiplicative_runtime.o: process_dimensions.o factorized_phase_space.o \
 	nlo_contribution_bundle.o fnlo_process_common.o \
 	multiplicative_density_terms.o multiplicative_density_contraction.o \
 	multiplicative_kinematics.o
+multiplicative_tuple_executor.o: process_dimensions.o \
+	multiplicative_density_terms.o multiplicative_density_contraction.o \
+	multiplicative_kinematics.o multiplicative_scale_state.o \
+	multiplicative_runtime.o
+multiplicative_reweighter.o: process_dimensions.o \
+	multiplicative_density_contraction.o multiplicative_runtime.o \
+	multiplicative_scale_state.o
+multiplicative_point_workspace.o: process_dimensions.o \
+	multiplicative_process_plan.o multiplicative_phase_space.o \
+	multiplicative_density_terms.o multiplicative_runtime.o \
+	multiplicative_reweighter.o \
+	multiplicative_lambda_validation.o
+factorized_mint_policy.o: nlo_contribution_bundle.o \
+	decay_chain_parameters.o
 factorized_block_kinematics.o: process_dimensions.o phase_space_kinematics.o
 decay_chain_kinematics.o: process_dimensions.o fnlo_process_common.o \
 	decay_chain_metadata.o \
@@ -330,7 +365,7 @@ analysis_HwU_pp_tj.o: $(LIBDIR)run_state.mod
 analysis_HwU_pp_V.o analysis_HwU_pp_taptam.o \
 	analysis_HwU_pp_ttx_v2.o: $(LIBDIR)kin_functions_module.mod
 mint_module.o : FKSParams.o MC_integer.o polfit.o nlo_contribution_bundle.o \
-	decay_chain_parameters.o
+	decay_chain_parameters.o factorized_mint_policy.o
 BinothLHA_OLP.o: process_dimensions.o FKSParams.o fks_singular.o
 BinothLHA.o: process_dimensions.o FKSParams.o splitorders_stuff.o cuts.o \
 	fks_singular.o nlo_contribution_bundle.o
@@ -372,7 +407,9 @@ driver_mintFO.o: process_dimensions.o fks_metadata.o fks_channel_map.o \
 	multiplicative_density_terms.o multiplicative_block_distribution.o \
 	multiplicative_kinematics.o multiplicative_scale_state.o \
 	multiplicative_production_channels.o \
-	multiplicative_runtime.o multiplicative_lambda_validation.o \
+	multiplicative_runtime.o multiplicative_tuple_executor.o \
+	multiplicative_reweighter.o multiplicative_lambda_validation.o \
+	multiplicative_process_plan.o multiplicative_point_workspace.o \
 	fnlo_scale_variations.o \
 	fks_random.o genps_fks.o \
 	weight_lines.o mint_module.o FKSParams.o MC_integer.o setscales.o \

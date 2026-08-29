@@ -3,6 +3,8 @@ module spin_density_matrix_results
   use fnlo_process_common, only: soft_counterevent, real_event
   use factorized_phase_space, only: &
        factorized_block_momentum_revision
+  use multiplicative_scale_state, only: &
+       multiplicative_active_coupling_context
   implicit none
   private
 
@@ -11,6 +13,7 @@ module spin_density_matrix_results
   integer, parameter, public :: spin_density_real_insertion = 2
   integer, parameter, public :: spin_density_virtual_insertion = 3
   integer, parameter, public :: spin_density_color_insertion = 4
+  integer, parameter, public :: spin_density_fast_virtual_insertion = 5
 
   ! One physical production or decay block.  LO is the reusable spectator
   ! density.  INSERTION is the block-local object selected for one term of a
@@ -24,6 +27,7 @@ module spin_density_matrix_results
     integer :: open_size = 0
     integer :: insertion_kind = spin_density_no_insertion
     integer :: insertion_order = 0
+    integer(kind=8) :: coupling_context = 0_8
     logical :: has_lo = .false.
     logical :: has_insertion = .false.
     complex(kind=8), allocatable :: lo(:, :, :)
@@ -32,6 +36,7 @@ module spin_density_matrix_results
 
   type :: spin_density_cache_entry
     integer(kind=8) :: momentum_revision = 0_8
+    integer(kind=8) :: coupling_context = 0_8
     integer :: open_size = 0
     logical :: valid = .false.
     complex(kind=8), allocatable :: value(:, :, :)
@@ -51,15 +56,28 @@ module spin_density_matrix_results
 
   type :: spin_density_insertion_cache
     integer(kind=8) :: momentum_revision = 0_8
+    integer(kind=8) :: coupling_context = 0_8
     type(spin_density_insertion_cache_entry), allocatable :: entries(:)
   end type spin_density_insertion_cache
+
+  type, public :: spin_density_cache_statistics
+    integer(kind=8) :: lo_hits = 0_8
+    integer(kind=8) :: lo_misses = 0_8
+    integer(kind=8) :: insertion_hits = 0_8
+    integer(kind=8) :: insertion_misses = 0_8
+    integer(kind=8) :: lo_provider_evaluations = 0_8
+    integer(kind=8) :: insertion_provider_evaluations = 0_8
+  end type spin_density_cache_statistics
 
   type(spin_density_cache_entry), allocatable, save :: lo_cache(:, :)
   type(spin_density_insertion_cache), allocatable, save :: &
        insertion_cache(:, :)
+  type(spin_density_cache_statistics), save :: cache_statistics
 
   public :: initialize_spin_density_block
   public :: reset_spin_density_caches
+  public :: reset_spin_density_cache_statistics
+  public :: fetch_spin_density_cache_statistics
   public :: load_cached_lo_density, record_lo_density
   public :: load_cached_spin_density_insertion
   public :: record_spin_density_insertion
@@ -70,13 +88,20 @@ module spin_density_matrix_results
 
 contains
 
+  subroutine reset_spin_density_cache_statistics()
+    cache_statistics = spin_density_cache_statistics()
+  end subroutine reset_spin_density_cache_statistics
+
+
+  subroutine fetch_spin_density_cache_statistics(statistics)
+    type(spin_density_cache_statistics), intent(out) :: statistics
+
+    statistics = cache_statistics
+  end subroutine fetch_spin_density_cache_statistics
+
   subroutine reset_spin_density_caches()
-    ! A diagnostic or channel-partition contraction can evaluate several
-    ! blocks while one global model coupling is active.  Those matrices are
-    ! valid for that contraction, but they must not leak into the subsequent
-    ! block-factorized evaluation, where every block is evaluated at its own
-    ! immutable reference coupling.  Momentum revisions alone cannot
-    ! distinguish the two coupling contexts.
+    ! Explicit reset remains available for process changes and diagnostics.
+    ! Ordinary block-reference changes are distinguished by the cache key.
     if (allocated(lo_cache)) deallocate(lo_cache)
     if (allocated(insertion_cache)) deallocate(insertion_cache)
   end subroutine reset_spin_density_caches
@@ -90,6 +115,7 @@ contains
     result%block = block
     result%event_slot = event_slot
     result%open_size = open_size
+    result%coupling_context = multiplicative_active_coupling_context()
   end subroutine initialize_spin_density_block
 
 
@@ -106,9 +132,15 @@ contains
          lo_cache(result%block, result%event_slot)%valid .and. &
          lo_cache(result%block, result%event_slot)%momentum_revision == &
          revision .and. &
+         lo_cache(result%block, result%event_slot)%coupling_context == &
+         result%coupling_context .and. &
          lo_cache(result%block, result%event_slot)%open_size == &
          result%open_size
-    if (.not. available) return
+    if (.not. available) then
+      cache_statistics%lo_misses = cache_statistics%lo_misses + 1_8
+      return
+    end if
+    cache_statistics%lo_hits = cache_statistics%lo_hits + 1_8
     allocate(result%lo(1, result%open_size, result%open_size))
     result%lo = lo_cache(result%block, result%event_slot)%value
     result%has_lo = .true.
@@ -137,12 +169,15 @@ contains
     allocate(result%lo(1, result%open_size, result%open_size))
     result%lo = density
     result%has_lo = .true.
+    cache_statistics%lo_provider_evaluations = &
+         cache_statistics%lo_provider_evaluations + 1_8
 
     associate(entry => lo_cache(result%block, result%event_slot))
       if (allocated(entry%value)) deallocate(entry%value)
       allocate(entry%value(1, result%open_size, result%open_size))
       entry%value = density
       entry%momentum_revision = revision
+      entry%coupling_context = result%coupling_context
       entry%open_size = result%open_size
       entry%valid = .true.
     end associate
@@ -168,23 +203,28 @@ contains
     precision_found = 0d0
     return_code = 0
     associate(cache => insertion_cache(result%block, result%event_slot))
-      if (.not. allocated(cache%entries)) return
-      do entry_index = 1, size(cache%entries)
-        associate(entry => cache%entries(entry_index))
-          if (entry%kind /= kind .or. &
-              entry%identifier /= identifier .or. &
-              entry%correlation_leg /= correlation_leg .or. &
-              entry%open_size /= result%open_size .or. &
-              entry%precision_asked /= precision_asked) cycle
-          call set_spin_density_insertion( &
-               result, entry%kind, entry%order, entry%value)
-          precision_found = entry%precision_found
-          return_code = entry%return_code
-          available = .true.
-          return
-        end associate
-      end do
+      if (allocated(cache%entries)) then
+        do entry_index = 1, size(cache%entries)
+          associate(entry => cache%entries(entry_index))
+            if (entry%kind /= kind .or. &
+                entry%identifier /= identifier .or. &
+                entry%correlation_leg /= correlation_leg .or. &
+                entry%open_size /= result%open_size .or. &
+                entry%precision_asked /= precision_asked) cycle
+            call set_spin_density_insertion( &
+                 result, entry%kind, entry%order, entry%value)
+            precision_found = entry%precision_found
+            return_code = entry%return_code
+            available = .true.
+            cache_statistics%insertion_hits = &
+                 cache_statistics%insertion_hits + 1_8
+            return
+          end associate
+        end do
+      end if
     end associate
+    cache_statistics%insertion_misses = &
+         cache_statistics%insertion_misses + 1_8
   end subroutine load_cached_spin_density_insertion
 
 
@@ -203,6 +243,8 @@ contains
     call validate_insertion_key(kind, identifier, correlation_leg)
     call prepare_insertion_cache(result, revision)
     call set_spin_density_insertion(result, kind, order, density)
+    cache_statistics%insertion_provider_evaluations = &
+         cache_statistics%insertion_provider_evaluations + 1_8
     associate(cache => insertion_cache(result%block, result%event_slot))
       entry_count = 0
       if (allocated(cache%entries)) entry_count = size(cache%entries)
@@ -419,9 +461,11 @@ contains
            'cannot cache an insertion without boosted block momenta')
     end if
     associate(cache => insertion_cache(result%block, result%event_slot))
-      if (cache%momentum_revision /= revision) then
+      if (cache%momentum_revision /= revision .or. &
+          cache%coupling_context /= result%coupling_context) then
         if (allocated(cache%entries)) deallocate(cache%entries)
         cache%momentum_revision = revision
+        cache%coupling_context = result%coupling_context
       end if
     end associate
   end subroutine prepare_insertion_cache

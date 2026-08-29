@@ -521,20 +521,48 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
         return tuple(sorted(initial_states)), final_state
 
     @staticmethod
-    def _single_squared_order(matrix_element, description):
-        """Return the sole squared coupling order of an fNLO component."""
+    def _component_squared_orders(matrix_element, canonical_orders,
+                                  description):
+        """Return a tree component's squared orders in a common basis.
 
-        squared_orders, _ = matrix_element.get_split_orders_mapping()
-        if len(squared_orders) != 1:
+        Pure-LO nested decay processes do not normally request split-order
+        bookkeeping, so ``get_split_orders_mapping`` legitimately returns an
+        empty mapping for them.  Their coupling powers are nevertheless part
+        of the complete decay-chain weight.  Recover those powers directly
+        from the HELAS diagrams and form every allowed interference order.
+        """
+
+        process = matrix_element.get('processes')[0]
+        component_orders = list(process.get('split_orders'))
+        squared_orders = []
+        if component_orders:
+            mapped_orders, _ = matrix_element.get_split_orders_mapping()
+            component_orders = list(process.get('split_orders'))
+            for mapped_order in mapped_orders:
+                order = (mapped_order[0] if mapped_order and
+                         isinstance(mapped_order[0], tuple)
+                         else mapped_order)
+                by_name = dict(zip(component_orders, order))
+                squared_orders.append(tuple(
+                    int(by_name.get(name, 0)) for name in canonical_orders))
+        else:
+            amplitude_orders = []
+            for diagram in matrix_element.get('diagrams'):
+                diagram_orders = diagram.calculate_orders()
+                order = tuple(int(diagram_orders.get(name, 0))
+                              for name in canonical_orders)
+                if order not in amplitude_orders:
+                    amplitude_orders.append(order)
+            for index, left in enumerate(amplitude_orders):
+                for right in amplitude_orders[:index + 1]:
+                    order = tuple(a + b for a, b in zip(left, right))
+                    if order not in squared_orders:
+                        squared_orders.append(order)
+
+        if not squared_orders:
             raise fks_common.FKSProcessError(
-                '%s requires exactly one squared coupling order' %
-                description)
-        order = squared_orders[0]
-        # Loop mappings pair the interference order with the contributing
-        # loop-amplitude orders; tree mappings expose the order directly.
-        if order and isinstance(order[0], tuple):
-            order = order[0]
-        return tuple(order)
+                '%s has no recoverable squared coupling order' % description)
+        return squared_orders
 
     @classmethod
     def _global_virtual_orders(cls, plan, active_component,
@@ -543,38 +571,48 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
 
         The runtime amplitude-order slots describe the complete decay chain,
         whereas an independent loop provider describes only its own block.
-        Adding every other block's Born squared order gives the unique global
-        O(alpha_s) order without ever constructing products of corrections.
+        Adding every other block's Born squared orders gives all global
+        O(alpha_s) orders without ever constructing products of corrections.
+        This also covers nested LO blocks whose process did not explicitly
+        enable split-order bookkeeping.
         """
 
-        spectator = None
+        active_matrix_element = plan['components'][active_component][
+            'born']['matrix_element']
+        active_process = active_matrix_element.get('processes')[0]
+        canonical_orders = list(active_process.get('split_orders'))
+        active_matrix_element.sort_split_orders(canonical_orders)
+        if (not canonical_orders or any(
+                len(order) != len(canonical_orders)
+                for order in local_virtual_orders)):
+            raise fks_common.FKSProcessError(
+                'A virtual density provider has no common split-order basis')
+
+        spectator_orders = [tuple(0 for _ in canonical_orders)]
         for component_id, component in plan['components'].items():
             if component_id == active_component:
                 continue
-            order = cls._single_squared_order(
+            component_orders = cls._component_squared_orders(
                 component['born']['matrix_element'],
+                canonical_orders,
                 'A spectator density-matrix component')
-            if spectator is None:
-                spectator = [0] * len(order)
-            if len(order) != len(spectator):
-                raise fks_common.FKSProcessError(
-                    'Density-matrix components use incompatible split '
-                    'orders')
-            spectator = [left + right for left, right in
-                         zip(spectator, order)]
+            combined_orders = []
+            for spectator in spectator_orders:
+                for component_order in component_orders:
+                    combined = tuple(
+                        left + right for left, right in
+                        zip(spectator, component_order))
+                    if combined not in combined_orders:
+                        combined_orders.append(combined)
+            spectator_orders = combined_orders
 
         result = []
         for order in local_virtual_orders:
-            if spectator is None:
-                spectator = [0] * len(order)
-            if len(order) != len(spectator):
-                raise fks_common.FKSProcessError(
-                    'A virtual density provider uses incompatible split '
-                    'orders')
-            global_order = tuple(left + right for left, right in
-                                 zip(order, spectator))
-            if global_order not in result:
-                result.append(global_order)
+            for spectator in spectator_orders:
+                global_order = tuple(left + right for left, right in
+                                     zip(order, spectator))
+                if global_order not in result:
+                    result.append(global_order)
         return result
 
     def initialize_full_nlo_decay_bundle(self, fksmulti, loop_optimized,
@@ -728,8 +766,11 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
                         'density providers')
                 virtual = (virtual_variants[0]['matrix_element']
                            if virtual_variants else None)
+                fast_virtual = bool(
+                    virtual_variants and
+                    virtual_variants[0].get('analytic_top_decay'))
                 virtual_orders = []
-                if virtual is not None:
+                if virtual is not None and not fast_virtual:
                     squared_orders, _ = virtual.get_split_orders_mapping()
                     virtual_orders = [
                         tuple(order[0]) if (order and
@@ -745,6 +786,7 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
                     'last': last_configuration,
                     'representative': first_configuration,
                     'has_virtual': bool(virtual),
+                    'fast_virtual': fast_virtual,
                     'optimized_virtual': bool(
                         virtual is not None and virtual.optimized_output),
                     'virtual_orders': virtual_orders,

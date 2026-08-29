@@ -107,6 +107,10 @@ class SpinDensityExporter(object):
 
     def _prepare_virtual_variant(self, plan, variant, index):
         if 'fortran_name' in variant:
+            if variant.get('analytic_top_decay'):
+                variant.setdefault(
+                    'madloop_fortran_name',
+                    variant['fortran_name'] + '_MADLOOP')
             return
         label = variant.get(
             'label', 'component_%d_virtual' % variant['active_component'])
@@ -119,6 +123,134 @@ class SpinDensityExporter(object):
         variant['open_dimensions'] = tuple(dimensions)
         variant['open_size'] = _product(dimensions)
         variant.setdefault('loop_prefix', 'SDMV%d_' % index)
+        if variant.get('analytic_top_decay'):
+            variant['madloop_fortran_name'] = (
+                variant['fortran_name'] + '_MADLOOP')
+
+    @staticmethod
+    def _analytic_top_decay_wrapper_lines(variant):
+        """Return the checked analytic/MadLoop two-body decay dispatcher."""
+
+        specification = variant.get('analytic_top_decay')
+        if not specification:
+            return []
+        mode = specification['mode']
+        if mode == 'TOP':
+            open_size = 2
+            analytic_call = [
+                'CALL TDV_VIRTUAL_RHO_TOP(P(0,%d),P(0,%d),P(0,%d),' % (
+                    specification['parent_position'],
+                    specification['bottom_position'],
+                    specification['vector_position']),
+                '     $ MDL_MT,SDM_MB,MDL_MW,MU_R,SDM_ALPHAS,GC_11,',
+                '     $ SDM_RAW_RHO)']
+            charge_phases = (1, -1)
+        elif mode == 'TOP_W':
+            open_size = 6
+            analytic_call = [
+                'CALL TDV_VIRTUAL_RHO_TOP_W(P(0,%d),P(0,%d),P(0,%d),' % (
+                    specification['parent_position'],
+                    specification['bottom_position'],
+                    specification['vector_position']),
+                '     $ MDL_MT,SDM_MB,MDL_MW,MU_R,SDM_ALPHAS,GC_11,',
+                '     $ SDM_RAW_RHO)']
+            # Open indices have the top helicity running fastest.  Particle
+            # states are (-,+) x (-,0,+), while antiparticle state lists are
+            # reversed.  These are the corresponding HELAS charge-
+            # conjugation phases, up to one irrelevant common sign.
+            charge_phases = (1, -1, -1, 1, 1, -1)
+        else:
+            raise MadGraph5Error(
+                'Unknown analytic top-decay open-spin mode %s' % mode)
+        if variant['open_size'] != open_size:
+            raise MadGraph5Error(
+                'The analytic top-decay density has an unexpected size')
+
+        nexternal, _ = variant['matrix_element'].get_nexternal_ninitial()
+        bottom_mass = ('0D0' if specification['massless_bottom']
+                       else 'MDL_MB')
+        lines = [
+            '',
+            'SUBROUTINE %s(P,RHO,PREC_ASKED,PRECISION,RET_CODE)' %
+            variant['fortran_name'],
+            'USE TOP_DECAY_VIRTUAL_CDR',
+            'IMPLICIT NONE',
+            "INCLUDE 'coupl.inc'",
+            'INTEGER NEXTERNAL,NOPEN,SDM_VALIDATION_POINTS',
+            'PARAMETER (NEXTERNAL=%d,NOPEN=%d,SDM_VALIDATION_POINTS=2)' % (
+                nexternal, open_size),
+            'REAL*8 P(0:3,NEXTERNAL),PREC_ASKED,PRECISION',
+            'COMPLEX*16 RHO(3,NOPEN,NOPEN)',
+            'INTEGER RET_CODE,SDM_REFERENCE_CODE,SDM_VALIDATED',
+            'INTEGER SDM_K,SDM_A,SDM_B',
+            'REAL*8 SDM_REFERENCE_PRECISION,SDM_ALPHAS,SDM_MB',
+            'REAL*8 SDM_DIFFERENCE,SDM_SCALE,SDM_POINT_SCALE',
+            'REAL*8 SDM_LAST_P(0:3,NEXTERNAL)',
+            'COMPLEX*16 SDM_RAW_RHO(3,NOPEN,NOPEN)',
+            'COMPLEX*16 SDM_ANALYTIC_RHO(3,NOPEN,NOPEN)',
+            'COMPLEX*16 SDM_REFERENCE_RHO(3,NOPEN,NOPEN)',
+            'INTEGER SDM_CP_PHASE(NOPEN)',
+            'LOGICAL SDM_HAVE_LAST,SDM_NEW_POINT',
+            'SAVE SDM_VALIDATED,SDM_LAST_P,SDM_HAVE_LAST',
+            'DATA SDM_VALIDATED /0/',
+            'DATA SDM_HAVE_LAST /.FALSE./',
+            'DATA SDM_CP_PHASE /%s/' % ','.join(
+                str(phase) for phase in charge_phases),
+            'SDM_ALPHAS=G**2/(4D0*DACOS(-1D0))',
+            'SDM_MB=%s' % bottom_mass]
+        lines.extend(analytic_call)
+        if specification['parent_pdg'] < 0:
+            lines.extend([
+                'DO SDM_K=1,3',
+                '  DO SDM_A=1,NOPEN',
+                '    DO SDM_B=1,NOPEN',
+                '      SDM_ANALYTIC_RHO(SDM_K,SDM_A,SDM_B)=',
+                '     $ SDM_CP_PHASE(SDM_A)*SDM_CP_PHASE(SDM_B)*',
+                '     $ DCONJG(SDM_RAW_RHO(SDM_K,SDM_A,SDM_B))',
+                '    ENDDO',
+                '  ENDDO',
+                'ENDDO'])
+        else:
+            lines.append('SDM_ANALYTIC_RHO=SDM_RAW_RHO')
+        lines.extend([
+            'SDM_NEW_POINT=.NOT.SDM_HAVE_LAST',
+            'IF (SDM_HAVE_LAST) THEN',
+            '  SDM_POINT_SCALE=MAX(1D0,MAXVAL(DABS(P)))',
+            '  SDM_NEW_POINT=MAXVAL(DABS(P-SDM_LAST_P)).GT.',
+            '     $ 1D-12*SDM_POINT_SCALE',
+            'ENDIF',
+            'IF (SDM_VALIDATED.LT.SDM_VALIDATION_POINTS.AND.',
+            '     $ SDM_NEW_POINT) THEN',
+            '  CALL %s(P,SDM_REFERENCE_RHO,PREC_ASKED,' %
+            variant['madloop_fortran_name'],
+            '     $ SDM_REFERENCE_PRECISION,SDM_REFERENCE_CODE)',
+            '  SDM_DIFFERENCE=MAXVAL(ABS(',
+            '     $ SDM_ANALYTIC_RHO-SDM_REFERENCE_RHO))',
+            '  SDM_SCALE=MAX(1D-30,MAXVAL(ABS(SDM_ANALYTIC_RHO)),',
+            '     $ MAXVAL(ABS(SDM_REFERENCE_RHO)))',
+            '  IF (SDM_DIFFERENCE.GT.5D-7*SDM_SCALE) THEN',
+            "    WRITE(*,*) 'Analytic top-decay virtual disagrees with MadLoop'",
+            "    WRITE(*,*) 'Provider: %s'" % variant['fortran_name'],
+            "    WRITE(*,*) 'Relative matrix difference:',",
+            '     $ SDM_DIFFERENCE/SDM_SCALE',
+            "    WRITE(*,*) 'MadLoop precision/code:',",
+            '     $ SDM_REFERENCE_PRECISION,SDM_REFERENCE_CODE',
+            '    STOP 1',
+            '  ENDIF',
+            '  SDM_VALIDATED=SDM_VALIDATED+1',
+            '  SDM_LAST_P=P',
+            '  SDM_HAVE_LAST=.TRUE.',
+            '  IF (SDM_VALIDATED.EQ.SDM_VALIDATION_POINTS) THEN',
+            "    WRITE(*,*) 'Validated analytic top-decay virtual against ',",
+            "     $ 'MadLoop at ',SDM_VALIDATED,' phase-space points: ',",
+            "     $ '%s'" % variant['fortran_name'],
+            '  ENDIF',
+            'ENDIF',
+            'RHO=SDM_ANALYTIC_RHO',
+            'PRECISION=0D0',
+            'RET_CODE=0',
+            'END'])
+        return lines
 
     @staticmethod
     def _color_matrix_lines(matrix_element):
@@ -600,9 +732,11 @@ class SpinDensityExporter(object):
         normalization = standard_normalization / desired_normalization
         prefix = variant['loop_prefix'].upper()
 
+        provider_name = variant.get(
+            'madloop_fortran_name', variant['fortran_name'])
         lines = [
             'SUBROUTINE %s(P,RHO,PREC_ASKED,PRECISION,RET_CODE)' %
-            variant['fortran_name'],
+            provider_name,
             'IMPLICIT NONE',
             'INTEGER NEXTERNAL,NCOMB,NOPEN,NBORN,NCOLOR',
             ('PARAMETER (NEXTERNAL=%d,NCOMB=%d,NOPEN=%d,NBORN=%d,'
@@ -689,6 +823,7 @@ class SpinDensityExporter(object):
             'SDM_OVERRIDE_BORN=.FALSE.',
             'MP_SDM_OVERRIDE_BORN=.FALSE.',
             'END']
+        lines.extend(self._analytic_top_decay_wrapper_lines(variant))
         writer.writelines(lines)
 
     @staticmethod
@@ -1250,6 +1385,98 @@ class SpinDensityExporter(object):
             'ENDDO'])
         return declarations, code
 
+    def write_multiplicative_metadata(self, writer, plan):
+        """Write immutable block-graph metadata as a Fortran module."""
+
+        self.prepare_plan(plan)
+        providers = dict(
+            (component_id, component['born'])
+            for component_id, component in plan['components'].items())
+        positions = self._block_position_map(providers)
+        physical_blocks = sorted(providers)
+        topology_nodes = dict(
+            (node['id'], node) for node in plan['topology']['nodes'])
+
+        block_pdgs = []
+        born_qcd_powers = []
+        for component_id in physical_blocks:
+            block_pdgs.append(0 if component_id == 0 else int(
+                topology_nodes[component_id]['pdg']))
+            matrix_element = providers[component_id]['matrix_element']
+            split_orders = list(
+                matrix_element.get('processes')[0].get('split_orders'))
+            squared_orders, _ = matrix_element.get_split_orders_mapping()
+            if 'QCD' in split_orders and len(squared_orders) == 1:
+                powers = set([int(squared_orders[0][
+                    split_orders.index('QCD')])])
+            else:
+                powers = set(
+                    2 * int(diagram.calculate_orders().get('QCD', 0))
+                    for diagram in matrix_element.get('diagrams'))
+            if len(powers) != 1:
+                raise MadGraph5Error(
+                    'A multiplicative density block has inconsistent '
+                    'Born QCD powers')
+            born_qcd_powers.append(powers.pop())
+
+        contribution_positions = {}
+        for variant in plan.get('born_variants', []):
+            contribution = int(variant.get('contribution_id', 1))
+            position = positions[variant['active_component']]
+            previous = contribution_positions.get(contribution)
+            if previous is not None and previous != position:
+                raise MadGraph5Error(
+                    'An NLO contribution owns several density blocks')
+            contribution_positions[contribution] = position
+        contribution_count = max(contribution_positions or [0])
+        if set(contribution_positions) != set(range(1, contribution_count + 1)):
+            raise MadGraph5Error(
+                'Multiplicative contribution identifiers are not contiguous')
+
+        lines = [
+            'module multiplicative_generated_metadata',
+            '  implicit none',
+            '  private',
+            '  integer, parameter, public :: multiplicative_metadata_version = 1',
+            '  integer, parameter, public :: multiplicative_block_count = %d' %
+            len(physical_blocks),
+            '  integer, parameter, public :: '
+            'multiplicative_contribution_count = %d' % contribution_count,
+            '  integer, parameter, public :: multiplicative_physical_blocks(%d) = '
+            '(/%s/)' % (len(physical_blocks), ','.join(
+                map(str, physical_blocks))),
+            '  integer, parameter, public :: multiplicative_block_pdgs(%d) = '
+            '(/%s/)' % (len(block_pdgs), ','.join(map(str, block_pdgs))),
+            '  integer, parameter, public :: '
+            'multiplicative_born_qcd_powers(%d) = (/%s/)' % (
+                len(born_qcd_powers), ','.join(map(str, born_qcd_powers))),
+            '  integer, parameter, public :: '
+            'multiplicative_contribution_positions(%d) = (/%s/)' % (
+                contribution_count, ','.join(
+                    str(contribution_positions[index])
+                    for index in range(1, contribution_count + 1))),
+            '  public :: multiplicative_component_position',
+            'contains',
+            '  integer function multiplicative_component_position(block)',
+            '    integer, intent(in) :: block',
+            '    select case (block)']
+        for component_id, position in sorted(positions.items()):
+            lines.extend([
+                '    case (%d)' % component_id,
+                '      multiplicative_component_position = %d' % position])
+        lines.extend([
+            '    case default',
+            "      write (*,*) 'Invalid multiplicative physical block'",
+            '      stop 1',
+            '    end select',
+            '  end function multiplicative_component_position',
+            'end module multiplicative_generated_metadata'])
+        # This module is compiled as free-form Fortran.  The generic
+        # FortranWriter otherwise inserts fixed-form ``$`` continuations,
+        # which are invalid in a .f90 source file.
+        writer.writelines(lines, formatting=False)
+
+
     def write_multiplicative_dispatcher(self, writer, plan,
                                         fks_info_list=None):
         """Write the block-vector contraction used by product terms.
@@ -1263,13 +1490,17 @@ class SpinDensityExporter(object):
         """
 
         self.prepare_plan(plan)
-        _, state_count, states = self._contraction_layout(plan)
+        dimensions = dict(
+            (node['id'], len(self._node_helicities(plan, node['id'])))
+            for node in plan['topology']['nodes'])
         node_count = len(plan['topology']['nodes'])
         providers = dict(
             (component_id, component['born'])
             for component_id, component in plan['components'].items())
         positions = self._block_position_map(providers)
         component_count = len(providers)
+        maximum_open_size = max(
+            provider['open_size'] for provider in providers.values())
         born_qcd_powers = {}
         for component_id, provider in sorted(providers.items()):
             matrix_element = provider['matrix_element']
@@ -1323,31 +1554,41 @@ class SpinDensityExporter(object):
                 variant['active_component'], []).append((
                     variant['generated_index'], variant))
 
+        maximum_basis_primitives = max([
+            1 + len(born_variants.get(component_id, [])) +
+            len(real_variants.get(component_id, [])) +
+            len(virtual_variants.get(component_id, [])) +
+            len(color_variants.get(component_id, []))
+            for component_id in providers])
+
         lines = [
-            'SUBROUTINE SDM_MULTIPLICATIVE_CONTRACTION(EVENT_SLOTS,'
+            'SUBROUTINE SDM_MULTIPLICATIVE_PREPARE_BASIS('
+            'EVENT_SLOTS,MAXPRIMITIVES,PRIMITIVE_COUNTS,'
             'INSERTION_KINDS,INSERTION_IDS,INSERTION_RANKS,'
-            'CORRELATION_LEGS,RESULT,PREC_ASKED,PREC_FOUND,RET_CODE)',
+            'CORRELATION_LEGS,INCLUDE_VIRTUAL,PREC_ASKED,PREC_FOUND,'
+            'RET_CODE)',
             'USE SPIN_DENSITY_MATRIX_RESULTS',
             'USE MULTIPLICATIVE_SCALE_STATE, ONLY: '
             'ACTIVATE_MULTIPLICATIVE_BLOCK_REFERENCE',
             'IMPLICIT NONE',
-            'INTEGER NBLOCKS,NSTATES,NNODES',
-            'PARAMETER (NBLOCKS=%d,NSTATES=%d,NNODES=%d)' % (
-                component_count, state_count, max(1, node_count)),
-            'INTEGER EVENT_SLOTS(NBLOCKS),INSERTION_KINDS(NBLOCKS)',
-            'INTEGER INSERTION_IDS(NBLOCKS),INSERTION_RANKS(NBLOCKS)',
-            'INTEGER CORRELATION_LEGS(NBLOCKS),RET_CODE,SDM_LOCAL_CODE',
-            'INTEGER SDM_STATE,SDM_STATE2,SDM_LEFT(NBLOCKS)',
-            'INTEGER SDM_RIGHT(NBLOCKS)',
-            'INTEGER SDM_NODE_STATE(NNODES,NSTATES)',
+            'INTEGER NBLOCKS,MAXOPEN,MAXBASIS',
+            'PARAMETER (NBLOCKS=%d,MAXOPEN=%d,MAXBASIS=%d)' % (
+                component_count, maximum_open_size,
+                maximum_basis_primitives),
+            'INTEGER EVENT_SLOTS(NBLOCKS),MAXPRIMITIVES',
+            'INTEGER PRIMITIVE_COUNTS(NBLOCKS)',
+            'INTEGER INSERTION_KINDS(MAXPRIMITIVES,NBLOCKS)',
+            'INTEGER INSERTION_IDS(MAXPRIMITIVES,NBLOCKS)',
+            'INTEGER INSERTION_RANKS(MAXPRIMITIVES,NBLOCKS)',
+            'INTEGER CORRELATION_LEGS(MAXPRIMITIVES,NBLOCKS)',
+            'LOGICAL INCLUDE_VIRTUAL',
+            'INTEGER RET_CODE,SDM_LOCAL_CODE,SDM_PRIMITIVE',
+            'INTEGER SDM_KIND,SDM_IDENTIFIER,SDM_RANK,SDM_CORRELATION',
             'DOUBLE PRECISION PREC_ASKED,PREC_FOUND,SDM_PRECISION',
-            'COMPLEX*16 RESULT',
-            'TYPE(SPIN_DENSITY_BLOCK_RESULT) SDM_BLOCKS(NBLOCKS)']
-        for node_id in sorted(states):
-            lines.append(
-                'DATA (SDM_NODE_STATE(%d,SDM_STATE),SDM_STATE=1,%d) '
-                '/%s/' % (node_id, state_count,
-                          ','.join(map(str, states[node_id]))))
+            'COMPLEX*16 SDM_BASIS_RHO(MAXOPEN,MAXOPEN,MAXBASIS,NBLOCKS)',
+            'COMMON /SDM_MULTIPLICATIVE_BASIS_STORAGE/ SDM_BASIS_RHO',
+            'SAVE /SDM_MULTIPLICATIVE_BASIS_STORAGE/',
+            'TYPE(SPIN_DENSITY_BLOCK_RESULT) SDM_BLOCK']
 
         for component_id, provider in sorted(providers.items()):
             position = positions[component_id]
@@ -1377,9 +1618,13 @@ class SpinDensityExporter(object):
                 'LOGICAL SDM_INSERTION_AVAILABLE_%d' % position])
 
         lines.extend([
-            'RESULT=(0D0,0D0)',
             'PREC_FOUND=0D0',
-            'RET_CODE=0'])
+            'RET_CODE=0',
+            'SDM_BASIS_RHO=(0D0,0D0)',
+            'IF (MAXPRIMITIVES.LT.1.OR.MAXPRIMITIVES.GT.MAXBASIS) THEN',
+            "WRITE(*,*) 'Invalid effective-density primitive capacity'",
+            'STOP 1',
+            'ENDIF'])
 
         def provider_call(position, component_id, provider, corr_leg):
             return [
@@ -1390,7 +1635,7 @@ class SpinDensityExporter(object):
                     provider['fortran_name'], position, corr_leg, position)]
 
         def selection_cases(entries, body):
-            result = ['SELECT CASE (INSERTION_IDS(%d))' % body['position']]
+            result = ['SELECT CASE (SDM_IDENTIFIER)']
             for identifier, value in entries:
                 result.append('CASE (%d)' % identifier)
                 result.extend(body['emit'](value))
@@ -1406,40 +1651,51 @@ class SpinDensityExporter(object):
             open_size = provider['open_size']
             nexternal = provider['matrix_element'].get_nexternal_ninitial()[0]
             lines.extend([
+                'IF (PRIMITIVE_COUNTS(%d).LT.1.OR.' % position,
+                '     $ PRIMITIVE_COUNTS(%d).GT.MAXPRIMITIVES) THEN' %
+                position,
+                "WRITE(*,*) 'Invalid effective-density primitive count'",
+                'STOP 1',
+                'ENDIF',
+                'DO SDM_PRIMITIVE=1,PRIMITIVE_COUNTS(%d)' % position,
+                'SDM_KIND=INSERTION_KINDS(SDM_PRIMITIVE,%d)' % position,
+                'SDM_IDENTIFIER=INSERTION_IDS(SDM_PRIMITIVE,%d)' % position,
+                'SDM_RANK=INSERTION_RANKS(SDM_PRIMITIVE,%d)' % position,
+                'SDM_CORRELATION=CORRELATION_LEGS(SDM_PRIMITIVE,%d)' %
+                position,
+                'IF (.NOT.INCLUDE_VIRTUAL.AND.SDM_KIND.EQ.'
+                'SPIN_DENSITY_VIRTUAL_INSERTION) CYCLE',
                 'CALL ACTIVATE_MULTIPLICATIVE_BLOCK_REFERENCE(%d)' %
                 component_id,
-                'CALL INITIALIZE_SPIN_DENSITY_BLOCK(SDM_BLOCKS(%d),' %
-                position,
+                'CALL INITIALIZE_SPIN_DENSITY_BLOCK(SDM_BLOCK,',
                 '     $ EVENT_SLOTS(%d),%d,%d)' % (
                     position, component_id, open_size),
-                'IF (INSERTION_KINDS(%d).EQ.'
-                'SPIN_DENSITY_NO_INSERTION) THEN' % position,
-                'IF (INSERTION_RANKS(%d).NE.0) THEN' % position,
+                'SDM_PRECISION=0D0',
+                'SDM_LOCAL_CODE=0',
+                'IF (SDM_KIND.EQ.SPIN_DENSITY_NO_INSERTION) THEN',
+                'IF (SDM_RANK.NE.0) THEN',
                 "WRITE(*,*) 'LO block has a nonzero insertion rank'",
                 'STOP 1',
                 'ENDIF',
-                'CALL LOAD_CACHED_LO_DENSITY(SDM_BLOCKS(%d),'
-                'SDM_LO_AVAILABLE_%d)' % (position, position),
+                'CALL LOAD_CACHED_LO_DENSITY(SDM_BLOCK,'
+                'SDM_LO_AVAILABLE_%d)' % position,
                 'IF (.NOT.SDM_LO_AVAILABLE_%d) THEN' % position,
                 'CALL %s(EVENT_SLOTS(%d),%d,SDM_P_%d)' % (
                     provider['momentum_fortran_name'], position,
                     component_id, position),
                 'CALL %s(SDM_P_%d,0,SDM_RHO2_%d)' % (
                     provider['fortran_name'], position, position),
-                'CALL RECORD_LO_DENSITY(SDM_BLOCKS(%d),'
-                'SDM_RHO2_%d(1:1,:,:))' % (position, position),
+                'CALL RECORD_LO_DENSITY(SDM_BLOCK,'
+                'SDM_RHO2_%d(1:1,:,:))' % position,
                 'ENDIF',
                 'ELSE',
                 'CALL LOAD_CACHED_SPIN_DENSITY_INSERTION('
-                'SDM_BLOCKS(%d),INSERTION_KINDS(%d),'
-                'INSERTION_IDS(%d),CORRELATION_LEGS(%d),PREC_ASKED,'
+                'SDM_BLOCK,SDM_KIND,SDM_IDENTIFIER,SDM_CORRELATION,'
+                'PREC_ASKED,'
                 'SDM_INSERTION_AVAILABLE_%d,SDM_PRECISION,'
-                'SDM_LOCAL_CODE)' % (
-                    position, position, position, position, position),
+                'SDM_LOCAL_CODE)' % position,
                 'IF (.NOT.SDM_INSERTION_AVAILABLE_%d) THEN' % position,
-                'SDM_PRECISION=0D0',
-                'SDM_LOCAL_CODE=0',
-                'SELECT CASE (INSERTION_KINDS(%d))' % position])
+                'SELECT CASE (SDM_KIND)'])
 
             block_born = born_variants.get(component_id, [])
             if block_born:
@@ -1449,14 +1705,12 @@ class SpinDensityExporter(object):
                         'position': position,
                         'emit': lambda selected, p=position, c=component_id:
                             provider_call(
-                                p, c, selected,
-                                'CORRELATION_LEGS(%d)' % p)}))
+                                p, c, selected, 'SDM_CORRELATION')}))
                 lines.extend([
-                    'CALL RECORD_SPIN_DENSITY_INSERTION(SDM_BLOCKS(%d),'
-                    'SPIN_DENSITY_BORN_INSERTION,0,INSERTION_IDS(%d),'
-                    'CORRELATION_LEGS(%d),PREC_ASKED,SDM_PRECISION,'
-                    'SDM_LOCAL_CODE,SDM_RHO2_%d)' % (
-                        position, position, position, position)])
+                    'CALL RECORD_SPIN_DENSITY_INSERTION(SDM_BLOCK,'
+                    'SPIN_DENSITY_BORN_INSERTION,0,SDM_IDENTIFIER,'
+                    'SDM_CORRELATION,PREC_ASKED,SDM_PRECISION,'
+                    'SDM_LOCAL_CODE,SDM_RHO2_%d)' % position])
 
             block_real = real_variants.get(component_id, [])
             if block_real:
@@ -1467,11 +1721,10 @@ class SpinDensityExporter(object):
                         'emit': lambda selected, p=position, c=component_id:
                             provider_call(p, c, selected, '0')}))
                 lines.extend([
-                    'CALL RECORD_SPIN_DENSITY_INSERTION(SDM_BLOCKS(%d),'
-                    'SPIN_DENSITY_REAL_INSERTION,1,INSERTION_IDS(%d),'
-                    'CORRELATION_LEGS(%d),PREC_ASKED,SDM_PRECISION,'
-                    'SDM_LOCAL_CODE,SDM_RHO2_%d)' % (
-                        position, position, position, position)])
+                    'CALL RECORD_SPIN_DENSITY_INSERTION(SDM_BLOCK,'
+                    'SPIN_DENSITY_REAL_INSERTION,1,SDM_IDENTIFIER,'
+                    'SDM_CORRELATION,PREC_ASKED,SDM_PRECISION,'
+                    'SDM_LOCAL_CODE,SDM_RHO2_%d)' % position])
 
             block_virtual = virtual_variants.get(component_id, [])
             if block_virtual:
@@ -1485,17 +1738,27 @@ class SpinDensityExporter(object):
                         'CALL %s(SDM_P_%d,SDM_RHO3_%d,PREC_ASKED,'
                         'SDM_PRECISION,SDM_LOCAL_CODE)' % (
                             selected['fortran_name'], p, p)]
-                lines.append('CASE (SPIN_DENSITY_VIRTUAL_INSERTION)')
-                lines.extend(selection_cases(
-                    block_virtual, {
-                        'position': position,
-                        'emit': virtual_call}))
-                lines.extend([
-                    'CALL RECORD_SPIN_DENSITY_INSERTION(SDM_BLOCKS(%d),'
-                    'SPIN_DENSITY_VIRTUAL_INSERTION,1,INSERTION_IDS(%d),'
-                    'CORRELATION_LEGS(%d),PREC_ASKED,SDM_PRECISION,'
-                    'SDM_LOCAL_CODE,SDM_RHO3_%d)' % (
-                        position, position, position, position)])
+                virtual_groups = [
+                    ('SPIN_DENSITY_VIRTUAL_INSERTION', [
+                        item for item in block_virtual
+                        if not item[1].get('analytic_top_decay')]),
+                    ('SPIN_DENSITY_FAST_VIRTUAL_INSERTION', [
+                        item for item in block_virtual
+                        if item[1].get('analytic_top_decay')])]
+                for insertion_kind, entries in virtual_groups:
+                    if not entries:
+                        continue
+                    lines.append('CASE (%s)' % insertion_kind)
+                    lines.extend(selection_cases(
+                        entries, {
+                            'position': position,
+                            'emit': virtual_call}))
+                    lines.extend([
+                        'CALL RECORD_SPIN_DENSITY_INSERTION(SDM_BLOCK,'
+                        '%s,' % insertion_kind,
+                        '1,SDM_IDENTIFIER,SDM_CORRELATION,'
+                        'PREC_ASKED,SDM_PRECISION,'
+                        'SDM_LOCAL_CODE,SDM_RHO3_%d)' % position])
 
             block_color = color_variants.get(component_id, [])
             if block_color:
@@ -1514,11 +1777,10 @@ class SpinDensityExporter(object):
                 lines.extend([
                     'SDM_COLOR_INSERTION_%d(1,:,:)=SDM_COLOR_%d' % (
                         position, position),
-                    'CALL RECORD_SPIN_DENSITY_INSERTION(SDM_BLOCKS(%d),'
-                    'SPIN_DENSITY_COLOR_INSERTION,0,INSERTION_IDS(%d),'
-                    'CORRELATION_LEGS(%d),PREC_ASKED,SDM_PRECISION,'
-                    'SDM_LOCAL_CODE,SDM_COLOR_INSERTION_%d)' % (
-                        position, position, position, position)])
+                    'CALL RECORD_SPIN_DENSITY_INSERTION(SDM_BLOCK,'
+                    'SPIN_DENSITY_COLOR_INSERTION,0,SDM_IDENTIFIER,'
+                    'SDM_CORRELATION,PREC_ASKED,SDM_PRECISION,'
+                    'SDM_LOCAL_CODE,SDM_COLOR_INSERTION_%d)' % position])
 
             lines.extend([
                 'CASE DEFAULT',
@@ -1528,25 +1790,171 @@ class SpinDensityExporter(object):
                 'ENDIF',
                 'PREC_FOUND=MAX(PREC_FOUND,SDM_PRECISION)',
                 'RET_CODE=MAX(RET_CODE,SDM_LOCAL_CODE)',
-                'ENDIF'])
+                'ENDIF',
+                'IF (SDM_KIND.EQ.SPIN_DENSITY_NO_INSERTION) THEN',
+                'SDM_BASIS_RHO(1:%d,1:%d,SDM_PRIMITIVE,%d)=' % (
+                    open_size, open_size, position),
+                '     $ SDM_BLOCK%LO(1,:,:)',
+                'ELSE',
+                'IF (SDM_RANK.LT.1.OR.SDM_RANK.GT.'
+                'SIZE(SDM_BLOCK%INSERTION,1)) THEN',
+                "WRITE(*,*) 'Invalid effective-density insertion rank'",
+                'STOP 1',
+                'ENDIF',
+                'SDM_BASIS_RHO(1:%d,1:%d,SDM_PRIMITIVE,%d)=' % (
+                    open_size, open_size, position),
+                '     $ SDM_BLOCK%INSERTION(SDM_RANK,:,:)',
+                'ENDIF',
+                'ENDDO'])
 
         lines.extend([
-            'DO SDM_STATE=1,NSTATES',
-            '  DO SDM_STATE2=1,NSTATES'])
+            'END',
+            '',
+            'SUBROUTINE SDM_MULTIPLICATIVE_EVALUATE_BASIS('
+            'MAXPRIMITIVES,PRIMITIVE_COUNTS,COEFFICIENTS,RESULT)',
+            'IMPLICIT NONE',
+            'INTEGER NBLOCKS,MAXOPEN,MAXBASIS',
+            'PARAMETER (NBLOCKS=%d,MAXOPEN=%d,MAXBASIS=%d)' % (
+                component_count, maximum_open_size,
+                maximum_basis_primitives),
+            'INTEGER MAXPRIMITIVES,PRIMITIVE_COUNTS(NBLOCKS)',
+            'INTEGER SDM_PRIMITIVE,SDM_LOCAL_LEFT,SDM_LOCAL_RIGHT',
+            'COMPLEX*16 COEFFICIENTS(MAXPRIMITIVES,NBLOCKS)',
+            'COMPLEX*16 RESULT,SDM_PRODUCT',
+            'COMPLEX*16 SDM_EFFECTIVE(MAXOPEN,MAXOPEN,NBLOCKS)',
+            'COMPLEX*16 SDM_BASIS_RHO(MAXOPEN,MAXOPEN,MAXBASIS,NBLOCKS)',
+            'COMMON /SDM_MULTIPLICATIVE_BASIS_STORAGE/ SDM_BASIS_RHO',
+            'SAVE /SDM_MULTIPLICATIVE_BASIS_STORAGE/'])
+        if node_count:
+            lines.append('INTEGER %s' % ','.join(
+                item for node_id in sorted(dimensions)
+                for item in ('SDML%d' % node_id, 'SDMR%d' % node_id)))
+            for node_id in sorted(dimensions):
+                dimension = dimensions[node_id]
+                lines.append(
+                    'COMPLEX*16 SDM_MESSAGE_%d(%d,%d)' % (
+                        node_id, dimension, dimension))
+        lines.extend([
+            'IF (MAXPRIMITIVES.LT.1.OR.MAXPRIMITIVES.GT.MAXBASIS) THEN',
+            "WRITE(*,*) 'Invalid effective-density primitive capacity'",
+            'STOP 1',
+            'ENDIF',
+            'RESULT=(0D0,0D0)',
+            'SDM_EFFECTIVE=(0D0,0D0)'])
         for component_id, provider in sorted(providers.items()):
             position = positions[component_id]
+            open_size = provider['open_size']
             lines.extend([
-                '    SDM_LEFT(%d)=%s' % (
-                    position, self._state_index(provider, 'SDM_STATE')),
-                '    SDM_RIGHT(%d)=%s' % (
-                    position, self._state_index(
-                        provider, 'SDM_STATE2'))])
-        lines.extend([
-            'RESULT=RESULT+MULTIPLICATIVE_SPIN_DENSITY_PRODUCT('
-            'SDM_BLOCKS,INSERTION_RANKS,SDM_LEFT,SDM_RIGHT)',
-            '  ENDDO',
-            'ENDDO',
-            'END'])
+                'IF (PRIMITIVE_COUNTS(%d).LT.1.OR.' % position,
+                '     $ PRIMITIVE_COUNTS(%d).GT.MAXPRIMITIVES) THEN' %
+                position,
+                "WRITE(*,*) 'Invalid effective-density primitive count'",
+                'STOP 1',
+                'ENDIF',
+                'DO SDM_PRIMITIVE=1,PRIMITIVE_COUNTS(%d)' % position,
+                'SDM_EFFECTIVE(1:%d,1:%d,%d)=' % (
+                    open_size, open_size, position),
+                '     $ SDM_EFFECTIVE(1:%d,1:%d,%d)+' % (
+                    open_size, open_size, position),
+                '     $ COEFFICIENTS(SDM_PRIMITIVE,%d)*' % position,
+                '     $ SDM_BASIS_RHO(1:%d,1:%d,SDM_PRIMITIVE,%d)' % (
+                    open_size, open_size, position),
+                'ENDDO'])
+
+        topology_nodes = dict(
+            (node['id'], node) for node in plan['topology']['nodes'])
+
+        def state_variable(node_id, side):
+            return 'SDM%s%d' % ('L' if side == 'left' else 'R', node_id)
+
+        def flattened_state_index(provider, side):
+            terms = []
+            stride = 1
+            for node_id, dimension in zip(
+                    provider['open_nodes'], provider['open_dimensions']):
+                terms.append('(%s-1)*%d' % (
+                    state_variable(node_id, side), stride))
+                stride *= dimension
+            return '1' + ''.join('+%s' % term for term in terms)
+
+        def append_state_loops(target, node_ids, body):
+            for node_id in node_ids:
+                target.extend([
+                    'DO %s=1,%d' % (
+                        state_variable(node_id, 'left'),
+                        dimensions[node_id]),
+                    'DO %s=1,%d' % (
+                        state_variable(node_id, 'right'),
+                        dimensions[node_id])])
+            target.extend(body)
+            for _ in node_ids:
+                target.extend(['ENDDO', 'ENDDO'])
+
+        # Each decay factor contains its parent resonance and only its direct
+        # unstable children.  Eliminate those children from the leaves upward
+        # and retain a two-index message for the parent.  This is algebraically
+        # identical to the former global helicity Cartesian product but scales
+        # with local decay vertices rather than with every resonance at once.
+        for node_id in sorted(topology_nodes, reverse=True):
+            provider = providers[node_id]
+            open_nodes = list(provider['open_nodes'])
+            child_nodes = [
+                identifier for kind, identifier in
+                topology_nodes[node_id]['children'] if kind == 'NODE']
+            if (not open_nodes or open_nodes[0] != node_id or
+                    set(open_nodes[1:]) != set(child_nodes)):
+                raise MadGraph5Error(
+                    'A decay density block is not a local tree factor')
+            position = positions[node_id]
+            body = [
+                'SDM_LOCAL_LEFT=%s' %
+                flattened_state_index(provider, 'left'),
+                'SDM_LOCAL_RIGHT=%s' %
+                flattened_state_index(provider, 'right'),
+                'SDM_PRODUCT=SDM_EFFECTIVE(SDM_LOCAL_LEFT,',
+                '     $ SDM_LOCAL_RIGHT,%d)' % position]
+            for child in child_nodes:
+                body.extend([
+                    'SDM_PRODUCT=SDM_PRODUCT*SDM_MESSAGE_%d(%s,%s)' % (
+                        child, state_variable(child, 'left'),
+                        state_variable(child, 'right'))])
+            body.extend([
+                'SDM_MESSAGE_%d(%s,%s)=' % (
+                    node_id, state_variable(node_id, 'left'),
+                    state_variable(node_id, 'right')),
+                '     $ SDM_MESSAGE_%d(%s,%s)+SDM_PRODUCT' % (
+                    node_id, state_variable(node_id, 'left'),
+                    state_variable(node_id, 'right'))])
+            lines.append('SDM_MESSAGE_%d=(0D0,0D0)' % node_id)
+            append_state_loops(lines, open_nodes, body)
+
+        production = providers[0]
+        root_nodes = [
+            node_id for node_id in production['open_nodes']]
+        expected_roots = [
+            node_id for node_id, node in sorted(topology_nodes.items())
+            if node['parent'] == 0]
+        if set(root_nodes) != set(expected_roots):
+            raise MadGraph5Error(
+                'The production density does not expose every decay root')
+        if root_nodes:
+            body = [
+                'SDM_LOCAL_LEFT=%s' %
+                flattened_state_index(production, 'left'),
+                'SDM_LOCAL_RIGHT=%s' %
+                flattened_state_index(production, 'right'),
+                'SDM_PRODUCT=SDM_EFFECTIVE(SDM_LOCAL_LEFT,',
+                '     $ SDM_LOCAL_RIGHT,%d)' % positions[0]]
+            for root in root_nodes:
+                body.extend([
+                    'SDM_PRODUCT=SDM_PRODUCT*SDM_MESSAGE_%d(%s,%s)' % (
+                        root, state_variable(root, 'left'),
+                        state_variable(root, 'right'))])
+            body.append('RESULT=RESULT+SDM_PRODUCT')
+            append_state_loops(lines, root_nodes, body)
+        else:
+            lines.append('RESULT=SDM_EFFECTIVE(1,1,%d)' % positions[0])
+        lines.append('END')
 
         contribution_positions = {}
         for variant in plan.get('born_variants', []):
@@ -1597,8 +2005,6 @@ class SpinDensityExporter(object):
             'IMPLICIT NONE',
             'INTEGER BLOCK',
             'SELECT CASE (BLOCK)'])
-        topology_nodes = dict(
-            (node['id'], node) for node in plan['topology']['nodes'])
         for component_id in sorted(providers):
             pdg = 0 if component_id == 0 else int(
                 topology_nodes[component_id]['pdg'])

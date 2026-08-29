@@ -16,6 +16,7 @@ module decay_chain_parameters
   integer, parameter, public :: nlo_combination_additive = 0
   integer, parameter, public :: nlo_combination_multiplicative = 1
   integer, save :: nlo_combination_mode_value = nlo_combination_additive
+  double precision, save :: multiplicative_virtual_fraction_value = 1d0
   double precision, save :: dummy_width_ratio_value = 0d0
   logical, save :: use_decayed_production_momenta_value = .false.
   integer, save :: number_of_width_species = 0
@@ -52,6 +53,7 @@ module decay_chain_parameters
   public :: decay_scale_species_count, decay_scale_species
   public :: decay_scale_species_index
   public :: nlo_combination_mode, uses_multiplicative_nlo_combination
+  public :: multiplicative_virtual_sampling_fraction
 
 contains
 
@@ -59,7 +61,7 @@ contains
     logical :: exists, end_seen, format_seen, ratio_seen, momentum_mode_seen
     logical :: legacy_width_seen, explicit_lo_width_seen
     logical :: variation_mode_seen, scale_factors_seen
-    logical :: combination_mode_seen
+    logical :: combination_mode_seen, virtual_sampling_seen
     integer :: unit_number, ios, card_format, width_count, width_index
     integer :: scale_count, scale_index, factor_count, factor_index
     integer :: lo_variation_count, nlo_variation_count
@@ -159,6 +161,7 @@ contains
     number_of_nlo_width_variations = 0
     scale_variation_mode_value = decay_scale_none
     nlo_combination_mode_value = nlo_combination_additive
+    multiplicative_virtual_fraction_value = 1d0
     dummy_width_ratio_value = 0d0
     use_decayed_production_momenta_value = .false.
     end_seen = .false.
@@ -170,6 +173,7 @@ contains
     variation_mode_seen = .false.
     scale_factors_seen = .false.
     combination_mode_seen = .false.
+    virtual_sampling_seen = .false.
     do
       read(unit_number, '(a)', iostat=ios) line
       if (ios < 0) exit
@@ -224,6 +228,14 @@ contains
           end select
         end if
         combination_mode_seen = .true.
+      case ('MULTIPLICATIVE_VIRTUAL_FRACTION')
+        if (virtual_sampling_seen) then
+          call fail_parameters( &
+               'duplicate MULTIPLICATIVE_VIRTUAL_FRACTION record')
+        end if
+        read(line, *, iostat=ios) keyword, &
+             multiplicative_virtual_fraction_value
+        virtual_sampling_seen = .true.
       case ('DECAY_WIDTH', 'LO_DECAY_WIDTH', 'NLO_DECAY_WIDTH')
         read(line, *, iostat=ios) keyword, pdg, value
         if (ios == 0) then
@@ -358,6 +370,17 @@ contains
         .not. has_nlo_contribution_bundle()) then
       call fail_parameters(&
            'MULTIPLICATIVE mode requires a full NLO contribution bundle')
+    end if
+    if (.not. ieee_is_finite(multiplicative_virtual_fraction_value) .or. &
+        multiplicative_virtual_fraction_value <= 0d0 .or. &
+        multiplicative_virtual_fraction_value > 1d0) then
+      call fail_parameters( &
+           'MULTIPLICATIVE_VIRTUAL_FRACTION must be in (0,1]')
+    end if
+    if (multiplicative_virtual_fraction_value < 1d0 .and. &
+        nlo_combination_mode_value /= nlo_combination_multiplicative) then
+      call fail_parameters( &
+           'stochastic virtual sampling requires MULTIPLICATIVE mode')
     end if
     do width_index = 1, number_of_width_species
       if (has_lo_width(width_index)) then
@@ -602,6 +625,17 @@ contains
     uses_multiplicative_nlo_combination = &
          nlo_combination_mode_value == nlo_combination_multiplicative
   end function uses_multiplicative_nlo_combination
+
+
+  double precision function multiplicative_virtual_sampling_fraction()
+    if (.not. has_decay_chains() .and. .not. has_nlo_decay()) then
+      multiplicative_virtual_sampling_fraction = 1d0
+      return
+    end if
+    if (.not. initialized) call initialize_decay_chain_parameters()
+    multiplicative_virtual_sampling_fraction = &
+         multiplicative_virtual_fraction_value
+  end function multiplicative_virtual_sampling_fraction
 
 
   double precision function decay_renormalization_scale(pdg, factor_index)

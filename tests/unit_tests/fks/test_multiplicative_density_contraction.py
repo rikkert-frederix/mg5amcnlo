@@ -40,6 +40,7 @@ end module fnlo_process_common
 module spin_density_matrix_results
   implicit none
   integer, parameter :: spin_density_no_insertion = 0
+  integer, parameter :: spin_density_virtual_insertion = 3
   integer, parameter :: spin_density_color_insertion = 4
 end module spin_density_matrix_results
 
@@ -52,6 +53,17 @@ contains
     pass = .true.
   end subroutine realize_factorized_event_tuple
 end module multiplicative_kinematics
+
+module multiplicative_generated_metadata
+  implicit none
+  integer, parameter :: multiplicative_block_count = 2
+  integer, parameter :: multiplicative_physical_blocks(2) = (/0, 1/)
+contains
+  integer function multiplicative_component_position(block)
+    integer, intent(in) :: block
+    multiplicative_component_position = block + 1
+  end function multiplicative_component_position
+end module multiplicative_generated_metadata
 '''
         generated = r'''
 integer function sdm_multiplicative_block_count()
@@ -68,36 +80,74 @@ integer function sdm_multiplicative_component_position(block)
   sdm_multiplicative_component_position = block + 1
 end function sdm_multiplicative_component_position
 
-subroutine sdm_multiplicative_contraction( &
-     event_slots, insertion_kinds, insertion_ids, insertion_ranks, &
-     correlation_legs, result, precision_asked, precision_found, &
-     return_code)
-  integer, intent(in) :: event_slots(*), insertion_kinds(*)
-  integer, intent(in) :: insertion_ids(*), insertion_ranks(*)
-  integer, intent(in) :: correlation_legs(*)
-  complex(kind=8), intent(out) :: result
+module basis_stub
+  implicit none
+  integer :: saved_slots(2), saved_counts(2), saved_kinds(8,2)
+  integer :: evaluate_calls = 0
+end module basis_stub
+
+subroutine sdm_multiplicative_prepare_basis( &
+     event_slots, maximum_primitives, primitive_counts, insertion_kinds, &
+     insertion_ids, insertion_ranks, correlation_legs, include_virtual, &
+     precision_asked, precision_found, return_code)
+  use basis_stub
+  integer, intent(in) :: event_slots(*), maximum_primitives
+  integer, intent(in) :: primitive_counts(*)
+  integer, intent(in) :: insertion_kinds(maximum_primitives, *)
+  integer, intent(in) :: insertion_ids(maximum_primitives, *)
+  integer, intent(in) :: insertion_ranks(maximum_primitives, *)
+  integer, intent(in) :: correlation_legs(maximum_primitives, *)
+  logical, intent(in) :: include_virtual
   double precision, intent(in) :: precision_asked
   double precision, intent(out) :: precision_found
   integer, intent(out) :: return_code
   integer :: position
 
-  result = (1d0, 0d0)
+  saved_slots = event_slots(1:2)
+  saved_counts = primitive_counts(1:2)
+  saved_kinds = 0
   do position = 1, 2
-    result = result*dble(1 + event_slots(position) + &
-                         insertion_kinds(position))
+    saved_kinds(1:saved_counts(position), position) = &
+         insertion_kinds(1:saved_counts(position), position)
   end do
   precision_found = precision_asked
   return_code = 0
-end subroutine sdm_multiplicative_contraction
+end subroutine sdm_multiplicative_prepare_basis
+
+subroutine sdm_multiplicative_evaluate_basis( &
+     maximum_primitives, primitive_counts, coefficients, result)
+  use basis_stub
+  integer, intent(in) :: maximum_primitives, primitive_counts(*)
+  complex(kind=8), intent(in) :: coefficients(maximum_primitives, *)
+  complex(kind=8), intent(out) :: result
+  integer :: position, primitive
+  complex(kind=8) :: effective
+
+  evaluate_calls = evaluate_calls + 1
+  result = (1d0, 0d0)
+  do position = 1, 2
+    effective = (0d0, 0d0)
+    do primitive = 1, primitive_counts(position)
+      effective = effective + coefficients(primitive, position)* &
+           dble(1 + saved_slots(position) + &
+                saved_kinds(primitive, position))
+    end do
+    result = result*effective
+  end do
+end subroutine sdm_multiplicative_evaluate_basis
 '''
         program = r'''
 program test_density_contraction
+  use basis_stub
   use multiplicative_density_terms
   use multiplicative_density_contraction
   implicit none
   type(block_nlo_distribution) :: distributions(2)
-  complex(kind=8) :: coefficients(3), result
-  double precision :: logs(0:4), precision, coupling_rescaling(0:4,0:1)
+  type(multiplicative_density_tuple) :: tuple
+  type(multiplicative_density_basis) :: basis
+  complex(kind=8) :: coefficients(3), result, direct_result
+  double precision :: logs(0:4), varied_logs_r(0:4), varied_logs_f(0:4)
+  double precision :: precision, coupling_rescaling(0:4,0:1)
   integer :: slots(0:4), order, return_code, distribution
   integer :: term_slots(2), term_signs(2), term_kinds(2)
   double precision :: term_coefficients(2)
@@ -106,7 +156,7 @@ program test_density_contraction
   term_slots = (/3, 0/)
   term_signs = (/1, -1/)
   term_kinds = (/2, 1/)
-  expected = (/360d0, -180d0, -168d0, 84d0/)
+  expected = (/84d0, -180d0, -168d0, 360d0/)
   logs = 0d0
   coupling_rescaling = 1d0
   coupling_rescaling(0, 1) = 2d0
@@ -137,6 +187,27 @@ program test_density_contraction
     if (abs(dble(result) - 6d0*expected(distribution)) > 1d-12) stop 15
   end do
 
+  call decode_density_cartesian_tuple(distributions, 1, tuple)
+  call prepare_multiplicative_density_basis( &
+       distributions, tuple, 1d-6, basis, .true.)
+  varied_logs_r = 0d0
+  varied_logs_f = 0d0
+  varied_logs_r(0) = 0.2d0
+  varied_logs_r(1) = -0.3d0
+  varied_logs_f(0) = 0.4d0
+  varied_logs_f(1) = 0.1d0
+  evaluate_calls = 0
+  call evaluate_multiplicative_density_basis( &
+       basis, varied_logs_r, varied_logs_f, direct_result, &
+       coupling_rescaling)
+  call evaluate_multiplicative_scale_polynomial( &
+       basis, varied_logs_r, varied_logs_f, result, coupling_rescaling)
+  if (abs(result - direct_result) > 1d-12) stop 16
+  if (basis%scale_monomial_count /= 9 .or. evaluate_calls /= 10) stop 17
+  call evaluate_multiplicative_scale_polynomial( &
+       basis, varied_logs_r, varied_logs_f, result, coupling_rescaling)
+  if (evaluate_calls /= 10) stop 18
+
 contains
 
   subroutine fill_term(distribution, term, event_slot, sign, kind, value)
@@ -146,6 +217,8 @@ contains
 
     coefficients = (0d0, 0d0)
     coefficients(1) = cmplx(value, 0d0, kind=8)
+    coefficients(2) = cmplx(0.5d0*value, 0d0, kind=8)
+    coefficients(3) = cmplx(-0.25d0*value, 0d0, kind=8)
     call initialize_block_distribution_term( &
          distribution, term, event_slot, sign, 1, 1)
     call set_density_primitive( &
@@ -191,6 +264,7 @@ end module fnlo_process_common
 module spin_density_matrix_results
   implicit none
   integer, parameter :: spin_density_no_insertion = 0
+  integer, parameter :: spin_density_virtual_insertion = 3
   integer, parameter :: spin_density_color_insertion = 4
 end module spin_density_matrix_results
 
@@ -204,9 +278,21 @@ contains
   end subroutine realize_factorized_event_tuple
 end module multiplicative_kinematics
 
+module multiplicative_generated_metadata
+  implicit none
+  integer, parameter :: multiplicative_block_count = 2
+  integer, parameter :: multiplicative_physical_blocks(2) = (/0, 1/)
+contains
+  integer function multiplicative_component_position(block)
+    integer, intent(in) :: block
+    multiplicative_component_position = block + 1
+  end function multiplicative_component_position
+end module multiplicative_generated_metadata
+
 module contraction_trace
   implicit none
-  integer :: calls(0:4, 0:4) = 0
+  integer :: calls(0:4, 2) = 0
+  integer :: effective_calls = 0
 end module contraction_trace
 '''
         generated = r'''
@@ -224,26 +310,68 @@ integer function sdm_multiplicative_component_position(block)
   sdm_multiplicative_component_position = block + 1
 end function sdm_multiplicative_component_position
 
-subroutine sdm_multiplicative_contraction( &
-     event_slots, insertion_kinds, insertion_ids, insertion_ranks, &
-     correlation_legs, result, precision_asked, precision_found, &
-     return_code)
+module traced_basis_stub
+  implicit none
+  integer :: saved_counts(2), saved_kinds(8,2)
+end module traced_basis_stub
+
+subroutine sdm_multiplicative_prepare_basis( &
+     event_slots, maximum_primitives, primitive_counts, insertion_kinds, &
+     insertion_ids, insertion_ranks, correlation_legs, include_virtual, &
+     precision_asked, precision_found, return_code)
   use contraction_trace
-  integer, intent(in) :: event_slots(*), insertion_kinds(*)
-  integer, intent(in) :: insertion_ids(*), insertion_ranks(*)
-  integer, intent(in) :: correlation_legs(*)
-  complex(kind=8), intent(out) :: result
+  use traced_basis_stub
+  integer, intent(in) :: event_slots(*), maximum_primitives
+  integer, intent(in) :: primitive_counts(*)
+  integer, intent(in) :: insertion_kinds(maximum_primitives, *)
+  integer, intent(in) :: insertion_ids(maximum_primitives, *)
+  integer, intent(in) :: insertion_ranks(maximum_primitives, *)
+  integer, intent(in) :: correlation_legs(maximum_primitives, *)
+  logical, intent(in) :: include_virtual
   double precision, intent(in) :: precision_asked
   double precision, intent(out) :: precision_found
   integer, intent(out) :: return_code
 
-  calls(insertion_kinds(1), insertion_kinds(2)) = &
-       calls(insertion_kinds(1), insertion_kinds(2)) + 1
-  result = cmplx(10*insertion_kinds(1) + insertion_kinds(2), &
-                 0, kind=8)
+  integer :: position, primitive
+
+  saved_counts = primitive_counts(1:2)
+  saved_kinds = 0
+  do position = 1, 2
+    do primitive = 1, primitive_counts(position)
+      if (.not. include_virtual .and. &
+          insertion_kinds(primitive, position) == 3) cycle
+      calls(insertion_kinds(primitive, position), position) = &
+           calls(insertion_kinds(primitive, position), position) + 1
+      saved_kinds(primitive, position) = &
+           insertion_kinds(primitive, position)
+    end do
+  end do
   precision_found = precision_asked
   return_code = 0
-end subroutine sdm_multiplicative_contraction
+end subroutine sdm_multiplicative_prepare_basis
+
+subroutine sdm_multiplicative_evaluate_basis( &
+     maximum_primitives, primitive_counts, coefficients, result)
+  use contraction_trace
+  use traced_basis_stub
+  integer, intent(in) :: maximum_primitives, primitive_counts(*)
+  complex(kind=8), intent(in) :: coefficients(maximum_primitives, *)
+  complex(kind=8), intent(out) :: result
+  integer :: position, primitive
+  complex(kind=8) :: effective(2)
+
+  effective_calls = effective_calls + 1
+  effective = (0d0, 0d0)
+  do position = 1, 2
+    do primitive = 1, primitive_counts(position)
+      effective(position) = effective(position) + &
+           coefficients(primitive, position)* &
+           dble(saved_kinds(primitive, position))* &
+           merge(10d0, 1d0, position == 1)
+    end do
+  end do
+  result = effective(1)*effective(2)
+end subroutine sdm_multiplicative_evaluate_basis
 '''
         program = r'''
 program test_loop_times_loop
@@ -252,6 +380,8 @@ program test_loop_times_loop
   use multiplicative_density_contraction
   implicit none
   type(block_nlo_distribution) :: distributions(2)
+  type(multiplicative_density_tuple) :: tuple
+  type(multiplicative_density_basis) :: basis
   complex(kind=8) :: coefficients(3), result
   double precision :: logs(0:2), precision
   integer :: slots(0:2), order, return_code, distribution, primitive
@@ -279,10 +409,21 @@ program test_loop_times_loop
        distributions, 1, logs, logs, 1d-6, result, order, slots, &
        precision, return_code)
   if (order /= 2 .or. return_code /= 0) stop 11
-  if (abs(result - (110d0, 0d0)) > 1d-12) stop 12
-  if (sum(calls) /= 4) stop 13
-  if (calls(2, 2) /= 1 .or. calls(2, 3) /= 1 .or. &
-      calls(3, 2) /= 1 .or. calls(3, 3) /= 1) stop 14
+  if (abs(result - (250d0, 0d0)) > 1d-12) stop 12
+  if (effective_calls /= 1 .or. sum(calls) /= 4) stop 13
+  if (calls(2, 1) /= 1 .or. calls(3, 1) /= 1 .or. &
+      calls(2, 2) /= 1 .or. calls(3, 2) /= 1) stop 14
+
+  calls = 0
+  effective_calls = 0
+  call decode_density_cartesian_tuple(distributions, 1, tuple)
+  call prepare_multiplicative_density_basis( &
+       distributions, tuple, 1d-6, basis, .true., .false.)
+  call evaluate_multiplicative_density_basis( &
+       basis, logs, logs, result, include_virtual=.false.)
+  if (abs(result - (40d0, 0d0)) > 1d-12) stop 15
+  if (effective_calls /= 1 .or. sum(calls) /= 2) stop 16
+  if (any(calls(3, :) /= 0)) stop 17
 end program test_loop_times_loop
 '''
         with tempfile.TemporaryDirectory() as directory:

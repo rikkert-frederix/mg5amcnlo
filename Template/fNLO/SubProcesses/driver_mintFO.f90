@@ -48,28 +48,40 @@ module driver_mintfo_module
        bundle_nlo_component
   use decay_chain_parameters, only: uses_multiplicative_nlo_combination, &
        decay_width_denominator_rescaling, decay_scale_species_count, &
-       decay_scale_species, decay_lo_width, decay_nlo_width
+       decay_scale_species, decay_lo_width, decay_nlo_width, &
+       multiplicative_virtual_sampling_fraction
   use multiplicative_phase_space, only: &
        multiplicative_phase_space_assembly, &
        initialize_multiplicative_phase_space_assembly, &
        capture_multiplicative_contribution, &
        restore_multiplicative_phase_space_assembly
   use multiplicative_density_terms, only: block_nlo_distribution, &
-       multiplicative_density_tuple, density_cartesian_tuple_count, &
-       decode_density_cartesian_tuple
+       multiplicative_density_tuple, density_tuple_schedule, &
+       initialize_density_tuple_schedule, decode_scheduled_density_tuple
   use multiplicative_block_distribution, only: &
        build_multiplicative_block_nlo_distribution, &
        build_multiplicative_lo_only_distribution
   use multiplicative_kinematics, only: realize_factorized_event_tuple
   use multiplicative_scale_state, only: &
        initialize_multiplicative_scale_references, &
-       activate_multiplicative_block_reference, &
-       build_multiplicative_scale_tables
-  use spin_density_matrix_results, only: reset_spin_density_caches
+       activate_multiplicative_block_reference
   use multiplicative_production_channels, only: &
        multiplicative_production_channel_partition
-  use multiplicative_runtime, only: multiplicative_event_evaluation, &
-       evaluate_multiplicative_event_tuple
+  use multiplicative_runtime, only: multiplicative_event_evaluation
+  use multiplicative_tuple_executor, only: execute_multiplicative_tuple
+  use multiplicative_reweighter, only: multiplicative_partonic_reweight, &
+       reweight_multiplicative_scale_point
+  use multiplicative_density_contraction, only: &
+       multiplicative_density_basis
+  use spin_density_matrix_results, only: &
+       spin_density_cache_statistics, &
+       reset_spin_density_cache_statistics, &
+       fetch_spin_density_cache_statistics
+  use multiplicative_process_plan, only: &
+       multiplicative_process_plan_type, acquire_multiplicative_process_plan
+  use multiplicative_point_workspace, only: &
+       multiplicative_point_workspace_type, &
+       acquire_multiplicative_point_workspace
   use multiplicative_lambda_validation, only: &
        multiplicative_lambda_accumulator, &
        initialize_multiplicative_lambda_accumulator, &
@@ -173,21 +185,6 @@ module driver_mintfo_module
       integer, intent(in) :: set_index, member_index
     end subroutine InitPDFm
 
-    integer function sdm_multiplicative_block_count()
-    end function sdm_multiplicative_block_count
-
-    integer function sdm_multiplicative_physical_block(position)
-      integer, intent(in) :: position
-    end function sdm_multiplicative_physical_block
-
-    integer function sdm_multiplicative_block_pdg(block)
-      integer, intent(in) :: block
-    end function sdm_multiplicative_block_pdg
-
-    integer function sdm_contribution_component_position(contribution)
-      integer, intent(in) :: contribution
-    end function sdm_contribution_component_position
-
   end interface
 
 contains
@@ -227,6 +224,7 @@ contains
     integer :: restart_mode
     real :: time_before, time_after, time_other, time_total
     logical :: unequal_factorization_scales
+    type(spin_density_cache_statistics) :: density_cache_statistics
 
     call init_process_dimensions_bridge()
     call init_born_dimensions_bridge()
@@ -247,6 +245,7 @@ contains
 
     write (*, *) drv_getpid()
     call reset_timing_state()
+    call reset_spin_density_cache_statistics()
     call cpu_time(time_before)
 
     call FKSParamReader()
@@ -329,6 +328,18 @@ contains
       write (*, *) 'Unknown imode', imode
       stop
     end if
+
+    call fetch_spin_density_cache_statistics(density_cache_statistics)
+    write (*, '(a,3(1x,i0))') &
+         'Spin-density cache LO (hits misses provider_calls):', &
+         density_cache_statistics%lo_hits, &
+         density_cache_statistics%lo_misses, &
+         density_cache_statistics%lo_provider_evaluations
+    write (*, '(a,3(1x,i0))') &
+         'Spin-density cache insertions (hits misses provider_calls):', &
+         density_cache_statistics%insertion_hits, &
+         density_cache_statistics%insertion_misses, &
+         density_cache_statistics%insertion_provider_evaluations
 
     if (ntot /= 0) then
       write (*, *) 'Satistics from MadLoop:'
@@ -438,6 +449,9 @@ contains
   subroutine write_multiplicative_validation_results()
     integer :: unit_number, ios, contribution, group, integral, position
     double precision :: block_sum
+    type(multiplicative_process_plan_type), pointer :: plan
+
+    call acquire_multiplicative_process_plan(plan)
 
     open(newunit=unit_number, file='multiplicative_validation_results.dat', &
          status='replace', action='write', iostat=ios)
@@ -464,15 +478,15 @@ contains
          ans_result(multiplicative_additive_integral, 0) - &
          ans_result(multiplicative_lo_integral, 0)
     write(unit_number, '(a,1x,i0)') &
-         'BLOCK_LINEAR_COUNT', nlo_contribution_count()
+         'BLOCK_LINEAR_COUNT', plan%contribution_count
     block_sum = 0d0
-    do contribution = 1, nlo_contribution_count()
+    do contribution = 1, plan%contribution_count
       integral = first_multiplicative_linear_integral + contribution - 1
-      position = sdm_contribution_component_position(contribution)
+      position = plan%contribution_positions(contribution)
       write(unit_number, &
            '(a,1x,i0,1x,i0,1x,es24.16,1x,es24.16)') &
            'BLOCK_LINEAR', contribution, &
-           sdm_multiplicative_physical_block(position), &
+           plan%component_blocks(position), &
            ans_result(integral, 0), unc_result(integral, 0)
       block_sum = block_sum + ans_result(integral, 0)
     end do
@@ -483,16 +497,16 @@ contains
          (ans_result(multiplicative_additive_integral, 0) - &
           ans_result(multiplicative_lo_integral, 0))
     write(unit_number, '(a,1x,i0)') &
-         'BLOCK_LINEAR_GROUP_COUNT', 3*nlo_contribution_count()
-    do contribution = 1, nlo_contribution_count()
-      position = sdm_contribution_component_position(contribution)
+         'BLOCK_LINEAR_GROUP_COUNT', 3*plan%contribution_count
+    do contribution = 1, plan%contribution_count
+      position = plan%contribution_positions(contribution)
       do group = 1, 3
         integral = first_multiplicative_group_integral + &
              3*(contribution - 1) + group - 1
         write(unit_number, &
              '(a,1x,i0,1x,i0,1x,i0,1x,es24.16,1x,es24.16)') &
              'BLOCK_LINEAR_GROUP', contribution, &
-             sdm_multiplicative_physical_block(position), group, &
+             plan%component_blocks(position), group, &
              ans_result(integral, 0), unc_result(integral, 0)
       end do
     end do
@@ -705,41 +719,48 @@ contains
          event_momenta(0:3,nexternal,soft_counterevent:real_event)
     double precision, intent(inout) :: p_born(0:3,nexternal-1)
     character(len=4), intent(in) :: abrv
-    type(multiplicative_phase_space_assembly) :: assembly
-    type(block_nlo_distribution), allocatable :: distributions(:)
+    type(multiplicative_process_plan_type), pointer :: plan
+    type(multiplicative_point_workspace_type), pointer :: workspace
+    type(multiplicative_phase_space_assembly), pointer :: assembly
+    type(block_nlo_distribution), pointer :: distributions(:)
     type(block_nlo_distribution) :: distribution
-    type(multiplicative_density_tuple) :: tuple
-    type(multiplicative_event_evaluation) :: evaluation
-    type(multiplicative_event_evaluation) :: variation_evaluation
-    type(multiplicative_lambda_accumulator) :: lambda_validation
+    type(multiplicative_density_tuple), pointer :: tuple
+    type(density_tuple_schedule), pointer :: tuple_schedule
+    type(multiplicative_density_basis), pointer :: density_basis
+    type(multiplicative_event_evaluation), pointer :: evaluation
+    type(multiplicative_partonic_reweight), pointer :: variation_reweight
+    type(multiplicative_lambda_accumulator), pointer :: lambda_validation
     double precision :: vegas_variables(99), momentum(0:3,nexternal)
     double precision :: jacobian, volume
     double precision :: logarithmic_mu2_r(0:nexternal)
     double precision :: logarithmic_mu2_f(0:nexternal)
     double precision :: coupling_rescaling(0:nexternal,0:1)
     double precision :: production_mu2_r, production_mu2_f
+    double precision :: central_production_mu2_f
     double precision :: luminosity, reweight, tuple_weight, total_weight
     double precision :: width_rescaling, production_channel_partition
     double precision :: channel_born_weight
     double precision :: nbody_channel_partition
     double precision :: raw_lo_weight, formal_lo_value, formal_block_value
     double precision :: formal_lo_rescaling
-    double precision, allocatable :: validation_lo_widths(:)
-    double precision, allocatable :: validation_nlo_widths(:)
-    double precision, allocatable :: plotted_weight(:)
-    double precision, allocatable :: radiation_grid_weights(:)
-    double precision, allocatable :: radiation_grid_groups(:, :)
-    double precision, allocatable :: linear_radiation_groups(:, :)
-    integer, allocatable :: sampled_fks(:), sampled_integer(:)
-    integer, allocatable :: sampled_dimension(:)
-    integer, allocatable :: factor_indices(:)
-    integer, allocatable :: contribution_positions(:)
-    integer, allocatable :: validation_block_orders(:)
-    integer, allocatable :: validation_width_blocks(:)
-    double precision, allocatable :: sampled_volume(:)
-    integer :: decay_block_factor_indices(0:nexternal)
-    integer :: channel_event_slots(0:nexternal)
-    logical, allocatable :: component_owned(:)
+    double precision :: virtual_sampling_fraction
+    double precision, pointer :: validation_lo_widths(:)
+    double precision, pointer :: validation_nlo_widths(:)
+    double precision, pointer :: plotted_weight(:)
+    double precision, pointer :: radiation_grid_weights(:)
+    double precision, pointer :: radiation_grid_groups(:, :)
+    double precision, pointer :: linear_radiation_groups(:, :)
+    integer, pointer :: sampled_fks(:), sampled_integer(:)
+    integer, pointer :: sampled_dimension(:)
+    integer, pointer :: factor_indices(:)
+    integer, pointer :: contribution_positions(:)
+    integer, pointer :: validation_block_orders(:)
+    integer, pointer :: validation_width_blocks(:)
+    double precision, pointer :: sampled_volume(:)
+    integer, pointer :: decay_block_factor_indices(:)
+    integer, pointer :: channel_event_slots(:)
+    integer, pointer :: previous_event_slots(:)
+    logical, pointer :: component_owned(:)
     integer :: contribution_count, contribution, category, channel_count
     integer :: picked, configuration, component_count, component_position
     integer :: position, block, tuple_index, tuple_count, sampled_count
@@ -749,7 +770,8 @@ contains
     integer :: luminosity_configuration
     integer :: weight_count, weight_index, dd, point, kr, kf
     integer :: pdf_set, pdf_member, species_count
-    logical :: available, pass
+    logical :: available, pass, previous_tuple_available
+    logical :: sample_virtual_residual
 
     f = 0d0
     nbody = .false.
@@ -757,67 +779,45 @@ contains
       call fail_driver( &
            'MULTIPLICATIVE mode requires one unsplit RUN_MODE=all job')
     end if
-    contribution_count = nlo_contribution_count()
     ! The previous integrand call normally leaves the generated COMMON state
-    ! on its last decay contribution.  Width metadata below describe the full
-    ! chain and therefore require the production context, independently of
-    ! which MINT channel this point will subsequently sample.
+    ! on its last decay contribution.  The immutable plan reads width metadata
+    ! once in production context, independently of the sampled MINT channel.
     call update_fks_dir_impl(contribution_representative_fks(1))
-    component_count = sdm_multiplicative_block_count()
-    if (contribution_count < 1 .or. component_count < contribution_count) then
-      call fail_driver('the multiplicative block graph is incomplete')
-    end if
-    if (allocated(validation_block_orders)) then
-      deallocate(validation_block_orders)
-    end if
-    if (allocated(validation_width_blocks)) then
-      deallocate(validation_width_blocks)
-    end if
-    if (allocated(validation_lo_widths)) deallocate(validation_lo_widths)
-    if (allocated(validation_nlo_widths)) deallocate(validation_nlo_widths)
-    call initialize_multiplicative_lambda_accumulator( &
-         lambda_validation, component_count)
-    allocate(validation_block_orders(component_count))
-    call initialize_validation_widths( &
-         validation_width_blocks, validation_lo_widths, &
-         validation_nlo_widths)
-    if (allocated(sampled_fks)) deallocate(sampled_fks)
-    if (allocated(sampled_integer)) deallocate(sampled_integer)
-    if (allocated(sampled_dimension)) deallocate(sampled_dimension)
-    if (allocated(sampled_volume)) deallocate(sampled_volume)
-    if (allocated(distributions)) deallocate(distributions)
-    if (allocated(component_owned)) deallocate(component_owned)
-    if (allocated(factor_indices)) deallocate(factor_indices)
-    if (allocated(plotted_weight)) deallocate(plotted_weight)
-    if (allocated(radiation_grid_weights)) &
-         deallocate(radiation_grid_weights)
-    if (allocated(radiation_grid_groups)) &
-         deallocate(radiation_grid_groups)
-    if (allocated(linear_radiation_groups)) &
-         deallocate(linear_radiation_groups)
-    if (allocated(contribution_positions)) &
-         deallocate(contribution_positions)
-    allocate(sampled_fks(contribution_count))
-    allocate(sampled_integer(contribution_count))
-    allocate(sampled_dimension(contribution_count))
-    allocate(sampled_volume(contribution_count))
-    allocate(radiation_grid_weights(contribution_count))
-    allocate(radiation_grid_groups(contribution_count, 3))
-    allocate(linear_radiation_groups(contribution_count, 3))
-    allocate(contribution_positions(contribution_count))
-    allocate(distributions(component_count))
-    allocate(component_owned(component_count))
+    call acquire_multiplicative_process_plan(plan)
+    contribution_count = plan%contribution_count
+    component_count = plan%component_count
     species_count = 0
     if (do_rwgt_decay_scale) species_count = decay_scale_species_count()
-    allocate(factor_indices(species_count))
     weight_count = multiplicative_plot_weight_count()
-    allocate(plotted_weight(weight_count))
-    component_owned = .false.
-    radiation_grid_weights = 0d0
-    radiation_grid_groups = 0d0
-    linear_radiation_groups = 0d0
+    call acquire_multiplicative_point_workspace( &
+         plan, weight_count, species_count, workspace)
+    assembly => workspace%assembly
+    distributions => workspace%distributions
+    tuple => workspace%tuple
+    tuple_schedule => workspace%tuple_schedule
+    density_basis => workspace%density_basis
+    evaluation => workspace%evaluation
+    variation_reweight => workspace%variation_reweight
+    lambda_validation => workspace%lambda_validation
+    sampled_fks => workspace%sampled_fks
+    sampled_integer => workspace%sampled_integer
+    sampled_dimension => workspace%sampled_dimension
+    sampled_volume => workspace%sampled_volume
+    radiation_grid_weights => workspace%radiation_grid_weights
+    radiation_grid_groups => workspace%radiation_grid_groups
+    linear_radiation_groups => workspace%linear_radiation_groups
+    component_owned => workspace%component_owned
+    factor_indices => workspace%factor_indices
+    plotted_weight => workspace%plotted_weight
+    validation_block_orders => workspace%validation_block_orders
+    channel_event_slots => workspace%channel_event_slots
+    previous_event_slots => workspace%previous_event_slots
+    decay_block_factor_indices => workspace%decay_block_factor_indices
+    contribution_positions => plan%contribution_positions
+    validation_width_blocks => plan%width_blocks
+    validation_lo_widths => plan%lo_widths
+    validation_nlo_widths => plan%nlo_widths
     raw_lo_weight = 0d0
-    contribution_positions = 0
     sampled_count = 0
 
     do contribution = 1, contribution_count
@@ -854,6 +854,13 @@ contains
     end do
     call restore_multiplicative_phase_space_assembly(assembly)
     call initialize_multiplicative_scale_references()
+    virtual_sampling_fraction = &
+         multiplicative_virtual_sampling_fraction()
+    sample_virtual_residual = .true.
+    if (virtual_sampling_fraction < 1d0) then
+      sample_virtual_residual = &
+           random_unit_interval(iconfig) < virtual_sampling_fraction
+    end if
 
     ! All terms in one production FKS family use one Born-level channel
     ! partition.  Materialize the all-Born tuple first so that every matrix
@@ -873,10 +880,10 @@ contains
          ini_fin_fks, iconfigs, nchans, ichan, amp2, &
          config_map(:,0), diagramsymmetryfactor)
     ! The channel-weight contraction evaluates every spectator block while
-    ! the production reference coupling is active.  Its AMP2 values have
-    ! now been consumed; discard the accompanying density caches so the
-    ! Cartesian contraction rebuilds each block at that block's reference.
-    call reset_spin_density_caches()
+    ! the production reference coupling is active.  Coupling-reference
+    ! identity is part of each density-cache key, so later block-local
+    ! contractions reuse the production matrix safely and rebuild only the
+    ! spectators whose reference context differs.
 
     do contribution = 1, contribution_count
       call update_fks_dir_impl(sampled_fks(contribution))
@@ -897,8 +904,7 @@ contains
         call fill_multiplicative_discrete_grids()
         return
       end if
-      component_position = &
-           sdm_contribution_component_position(contribution)
+      component_position = contribution_positions(contribution)
       if (component_position < 1 .or. &
           component_position > component_count .or. &
           component_owned(component_position)) then
@@ -907,17 +913,16 @@ contains
       end if
       distributions(component_position) = distribution
       component_owned(component_position) = .true.
-      contribution_positions(contribution) = component_position
     end do
     do position = 1, component_count
       if (component_owned(position)) cycle
-      block = sdm_multiplicative_physical_block(position)
+      block = plan%component_blocks(position)
       call build_multiplicative_lo_only_distribution( &
            block, distributions(position))
       component_owned(position) = .true.
     end do
 
-    production_position = contribution_positions(1)
+    production_position = plan%production_position
     if (production_position < 1 .or. &
         production_position > component_count .or. &
         distributions(production_position)%block /= 0) then
@@ -925,11 +930,14 @@ contains
            'the production contribution has no density component')
     end if
 
-    tuple_count = density_cartesian_tuple_count(distributions)
+    call initialize_density_tuple_schedule(distributions, tuple_schedule)
+    tuple_count = tuple_schedule%tuple_count
+    previous_event_slots = soft_counterevent
+    previous_tuple_available = .false.
     total_weight = 0d0
     do tuple_index = 1, tuple_count
-      call decode_density_cartesian_tuple( &
-           distributions, tuple_index, tuple)
+      call decode_scheduled_density_tuple( &
+           distributions, tuple_schedule, tuple_index, tuple)
       production_term_index = tuple%term_indices(production_position)
       luminosity_configuration = distributions(production_position)% &
            terms(production_term_index)%luminosity_configuration
@@ -938,16 +946,15 @@ contains
         call fail_driver( &
              'a production density term has no luminosity configuration')
       end if
-      call realize_factorized_event_tuple(tuple%event_slots, pass)
+      call execute_multiplicative_tuple( &
+           distributions, tuple, previous_event_slots, &
+           previous_tuple_available, vegas_wgt, &
+           PrecisionVirtualAtRunTime, density_basis, &
+           virtual_sampling_fraction, sample_virtual_residual, &
+           evaluation, logarithmic_mu2_r, logarithmic_mu2_f, &
+           coupling_rescaling, production_mu2_r, production_mu2_f, pass)
       if (.not. pass) cycle
-      call build_multiplicative_scale_tables( &
-           tuple%event_slots, logarithmic_mu2_r, logarithmic_mu2_f, &
-           coupling_rescaling, production_mu2_r, production_mu2_f)
-      call evaluate_multiplicative_event_tuple( &
-           distributions, tuple_index, logarithmic_mu2_r, &
-           logarithmic_mu2_f, coupling_rescaling, vegas_wgt, &
-           PrecisionVirtualAtRunTime, &
-           evaluation, .true.)
+      central_production_mu2_f = production_mu2_f
       if (.not. evaluation%available) cycle
       if (abs(aimag(evaluation%partonic_weight)) > &
           1d-8*max(1d0,abs(dble(evaluation%partonic_weight)))) then
@@ -980,28 +987,25 @@ contains
                  dd, point, kr, kf, factor_indices)
             call map_decay_factor_indices( &
                  factor_indices, decay_block_factor_indices)
-            call build_multiplicative_scale_tables( &
-                 tuple%event_slots, logarithmic_mu2_r, logarithmic_mu2_f, &
-                 coupling_rescaling, production_mu2_r, production_mu2_f, &
-                 scalevarR(kr), scalevarF(kf), &
-                 decay_block_factor_indices, dyn_scale(dd))
-            call evaluate_multiplicative_event_tuple( &
-                 distributions, tuple_index, logarithmic_mu2_r, &
-                 logarithmic_mu2_f, coupling_rescaling, vegas_wgt, &
-                 PrecisionVirtualAtRunTime, &
-                 variation_evaluation, .true.)
+            call reweight_multiplicative_scale_point( &
+                 density_basis, tuple%event_slots, &
+                 evaluation%kinematic_weight, scalevarR(kr), &
+                 scalevarF(kf), decay_block_factor_indices, dyn_scale(dd), &
+                 virtual_sampling_fraction, sample_virtual_residual, &
+                 variation_reweight, logarithmic_mu2_r, logarithmic_mu2_f, &
+                 coupling_rescaling, production_mu2_r, production_mu2_f)
             weight_index = weight_index + 1
-            if (.not. variation_evaluation%available) cycle
+            if (.not. variation_reweight%available) cycle
             call require_real_multiplicative_weight( &
-                 variation_evaluation%partonic_weight)
+                 variation_reweight%partonic_weight)
             q2fact = production_mu2_f
             luminosity = dlum_configuration( &
                  luminosity_configuration, &
-                 variation_evaluation%bjorken_x)
+                 evaluation%bjorken_x)
             width_rescaling = &
                  decay_width_denominator_rescaling(factor_indices)
             plotted_weight(weight_index) = &
-                 dble(variation_evaluation%partonic_weight)*luminosity* &
+                 dble(variation_reweight%partonic_weight)*luminosity* &
                  production_channel_partition*width_rescaling*reweight
           end do
         end do
@@ -1011,24 +1015,13 @@ contains
         do pdf_set = 1, lhaPDFid(0)
           do pdf_member = 0, nmemPDF(pdf_set)
             call InitPDFm(pdf_set, pdf_member)
-            call build_multiplicative_scale_tables( &
-                 tuple%event_slots, logarithmic_mu2_r, logarithmic_mu2_f, &
-                 coupling_rescaling, production_mu2_r, production_mu2_f)
-            call evaluate_multiplicative_event_tuple( &
-                 distributions, tuple_index, logarithmic_mu2_r, &
-                 logarithmic_mu2_f, coupling_rescaling, vegas_wgt, &
-                 PrecisionVirtualAtRunTime, &
-                 variation_evaluation, .true.)
             weight_index = weight_index + 1
-            if (.not. variation_evaluation%available) cycle
-            call require_real_multiplicative_weight( &
-                 variation_evaluation%partonic_weight)
-            q2fact = production_mu2_f
+            q2fact = central_production_mu2_f
             luminosity = dlum_configuration( &
                  luminosity_configuration, &
-                 variation_evaluation%bjorken_x)
+                 evaluation%bjorken_x)
             plotted_weight(weight_index) = &
-                 dble(variation_evaluation%partonic_weight)*luminosity* &
+                 dble(evaluation%partonic_weight)*luminosity* &
                  production_channel_partition*reweight
           end do
         end do
@@ -1172,45 +1165,6 @@ contains
     end subroutine fill_multiplicative_discrete_grids
 
 
-    subroutine initialize_validation_widths( &
-         width_blocks, lo_widths, nlo_widths)
-      integer, allocatable, intent(out) :: width_blocks(:)
-      double precision, allocatable, intent(out) :: lo_widths(:)
-      double precision, allocatable, intent(out) :: nlo_widths(:)
-      integer :: corrected_count, node, occurrence, owner, candidate
-      integer :: pdg
-
-      corrected_count = 0
-      do node = 1, decay_node_count()
-        if (bundle_species_is_nlo(node_pdg(node))) then
-          corrected_count = corrected_count + 1
-        end if
-      end do
-      allocate(width_blocks(corrected_count))
-      allocate(lo_widths(corrected_count))
-      allocate(nlo_widths(corrected_count))
-      occurrence = 0
-      do node = 1, decay_node_count()
-        pdg = node_pdg(node)
-        if (.not. bundle_species_is_nlo(pdg)) cycle
-        owner = 0
-        do candidate = 1, component_count
-          if (sdm_multiplicative_physical_block(candidate) /= node) cycle
-          owner = candidate
-          exit
-        end do
-        if (owner == 0) then
-          call fail_driver( &
-               'a corrected width has no multiplicative decay block')
-        end if
-        occurrence = occurrence + 1
-        width_blocks(occurrence) = owner
-        lo_widths(occurrence) = decay_lo_width(pdg)
-        nlo_widths(occurrence) = decay_nlo_width(pdg)
-      end do
-    end subroutine initialize_validation_widths
-
-
     subroutine extract_validation_block_orders( &
          selected_tuple, selected_distributions, evaluated_order, &
          block_orders)
@@ -1272,9 +1226,9 @@ contains
         call fail_driver('the decay scale-factor vector has the wrong size')
       end if
       do component = 1, component_count
-        physical_block = sdm_multiplicative_physical_block(component)
+        physical_block = plan%component_blocks(component)
         if (physical_block == 0) cycle
-        pdg = sdm_multiplicative_block_pdg(physical_block)
+        pdg = plan%component_pdgs(component)
         do species = 1, size(species_factors)
           if (abs(pdg) /= abs(decay_scale_species(species))) cycle
           block_factors(physical_block) = species_factors(species)
