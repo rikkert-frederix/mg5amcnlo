@@ -378,8 +378,9 @@ class SpinDensityExporter(object):
             'INTEGER NHEL(NEXTERNAL,NCOMB),OPEN_INDEX(NCOMB)',
             'INTEGER CLOSED_INDEX(NCOMB)',
             'LOGICAL IS_OPEN(NEXTERNAL)',
-            'INTEGER H,HP,I,J,A,B,DENOM',
+            'INTEGER H,HP,I,J,A,B,DENOM,NTRY',
             'INTEGER CF(NCOLOR,NCOLOR)',
+            'LOGICAL GOODHEL(NCOMB)',
             'COMPLEX*16 JAMP_HEL(NCOLOR,NCOMB)',
             'COMPLEX*16 AMP_HEL(NGRAPHS,NCOMB),VALUE',
             'DATA NHEL /%s/' % ','.join(
@@ -392,12 +393,23 @@ class SpinDensityExporter(object):
             for position in range(nexternal)))
         lines.extend(color_lines)
         lines.extend([
+            'DATA NTRY /0/',
+            'DATA GOODHEL /NCOMB*.FALSE./',
+            'SAVE NTRY,GOODHEL',
             'RHO=(0D0,0D0)',
             'JAMP_HEL=(0D0,0D0)',
+            'AMP_HEL=(0D0,0D0)',
+            'IF (NTRY.LT.3) NTRY=NTRY+1',
             'DO H=1,NCOMB',
-            '  CALL %s_JAMP(P,NHEL(1,H),JAMP_HEL(1,H),' %
+            '  IF (GOODHEL(H).OR.NTRY.LE.2) THEN',
+            '    CALL %s_JAMP(P,NHEL(1,H),JAMP_HEL(1,H),' %
             provider['fortran_name'],
-            '     $ AMP_HEL(1,H))',
+            '     $   AMP_HEL(1,H))',
+            '    IF (NTRY.LE.2.AND.(',
+            '     $  ANY(ABS(JAMP_HEL(:,H)).GT.0D0).OR.',
+            '     $  ANY(ABS(AMP_HEL(:,H)).GT.0D0)))',
+            '     $  GOODHEL(H)=.TRUE.',
+            '  ENDIF',
             'ENDDO',
             'DO H=1,NCOMB',
             '  A=OPEN_INDEX(H)',
@@ -499,19 +511,28 @@ class SpinDensityExporter(object):
                 nexternal, ncomb, ngraphs),
             'REAL*8 P(0:3,NEXTERNAL)',
             'DOUBLE PRECISION AMP2(NGRAPHS)',
-            'INTEGER NHEL(NEXTERNAL,NCOMB),H',
+            'INTEGER NHEL(NEXTERNAL,NCOMB),H,NTRY',
+            'LOGICAL GOODHEL(NCOMB)',
             'COMPLEX*16 AMPLITUDES(NGRAPHS)',
             'DATA NHEL /%s/' % ','.join(
                 str(value) for helicity in helicities
                 for value in helicity),
+            'DATA NTRY /0/',
+            'DATA GOODHEL /NCOMB*.FALSE./',
+            'SAVE NTRY,GOODHEL',
             'AMP2=0D0',
+            'IF (NTRY.LT.3) NTRY=NTRY+1',
             'DO H=1,NCOMB',
-            '  CALL SDM_BORN_CHANNEL_AMPLITUDES(P,NHEL(1,H),',
-            '     $ AMPLITUDES)',
+            '  IF (GOODHEL(H).OR.NTRY.LE.2) THEN',
+            '    CALL SDM_BORN_CHANNEL_AMPLITUDES(P,NHEL(1,H),',
+            '     $   AMPLITUDES)',
+            '    IF (NTRY.LE.2.AND.',
+            '     $  ANY(ABS(AMPLITUDES).GT.0D0)) GOODHEL(H)=.TRUE.',
         ]
-        lines.extend('  ' + line.replace('AMP(', 'AMPLITUDES(')
+        lines.extend('    ' + line.replace('AMP(', 'AMPLITUDES(')
                      for line in amp2_lines)
         lines.extend([
+            '  ENDIF',
             'ENDDO',
             'END',
             '',
@@ -596,8 +617,9 @@ class SpinDensityExporter(object):
             'COMPLEX*16 RHO(NOPEN,NOPEN)',
             'INTEGER NHEL(NEXTERNAL,NCOMB),OPEN_INDEX(NCOMB)',
             'INTEGER CLOSED_INDEX(NCOMB)',
-            'INTEGER H,HP,I,J,A,B,DENOM',
+            'INTEGER H,HP,I,J,A,B,DENOM,NTRY',
             'INTEGER CF(NCOLOR2,NCOLOR1)',
+            'LOGICAL GOODHEL(NCOMB)',
             'COMPLEX*16 JAMP1(NCOLOR1,NCOMB)',
             'COMPLEX*16 JAMP2(NCOLOR2),JAMP2_HEL(NCOLOR2,NCOMB)',
             'COMPLEX*16 AMP(NGRAPHS),VALUE,TMP_JAMP(%d)' %
@@ -609,17 +631,27 @@ class SpinDensityExporter(object):
             'DATA CLOSED_INDEX /%s/' % ','.join(map(str, closed_index))]
         lines.extend(color_lines)
         lines.extend([
+            'DATA NTRY /0/',
+            'DATA GOODHEL /NCOMB*.FALSE./',
+            'SAVE NTRY,GOODHEL',
             'RHO=(0D0,0D0)',
             'JAMP1=(0D0,0D0)',
             'JAMP2_HEL=(0D0,0D0)',
+            'IF (NTRY.LT.3) NTRY=NTRY+1',
             'DO H=1,NCOMB',
-            '  CALL %s_JAMP(P,NHEL(1,H),JAMP1(1,H),AMP)' %
+            '  IF (GOODHEL(H).OR.NTRY.LE.2) THEN',
+            '    CALL %s_JAMP(P,NHEL(1,H),JAMP1(1,H),AMP)' %
             provider['fortran_name'],
-            '  JAMP2=(0D0,0D0)',
-            '  TMP_JAMP=(0D0,0D0)'])
-        lines.extend('  ' + line for line in jamp2_lines)
+            '    JAMP2=(0D0,0D0)',
+            '    TMP_JAMP=(0D0,0D0)'])
+        lines.extend('    ' + line for line in jamp2_lines)
         lines.extend([
-            '  JAMP2_HEL(:,H)=JAMP2',
+            '    JAMP2_HEL(:,H)=JAMP2',
+            '    IF (NTRY.LE.2.AND.(',
+            '     $  ANY(ABS(AMP).GT.0D0).OR.',
+            '     $  ANY(ABS(JAMP1(:,H)).GT.0D0).OR.',
+            '     $  ANY(ABS(JAMP2).GT.0D0))) GOODHEL(H)=.TRUE.',
+            '  ENDIF',
             'ENDDO',
             'DO H=1,NCOMB',
             '  A=OPEN_INDEX(H)',

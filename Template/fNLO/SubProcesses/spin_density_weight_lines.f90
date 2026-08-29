@@ -52,18 +52,12 @@ contains
 
 
   subroutine clear_spin_density_weight_lines()
-    if (allocated(line_present)) deallocate(line_present)
-    if (allocated(weight_present)) deallocate(weight_present)
-    if (allocated(line_component)) deallocate(line_component)
-    if (allocated(line_branch)) deallocate(line_branch)
-    if (allocated(line_open_size)) deallocate(line_open_size)
-    if (allocated(line_qcd_power)) deallocate(line_qcd_power)
-    if (allocated(line_scale_pdg)) deallocate(line_scale_pdg)
-    if (allocated(line_is_production)) deallocate(line_is_production)
-    if (allocated(line_coefficients)) deallocate(line_coefficients)
-    if (allocated(evaluated_density)) deallocate(evaluated_density)
-    line_capacity = 0
-    weight_capacity = 0
+    ! The number and shape of generated lines are process-fixed.  Retain the
+    ! backing arrays between integrand points and clear only their presence
+    ! masks; each recorded line overwrites its active coefficient/density
+    ! slices before aggregation.
+    if (allocated(line_present)) line_present = .false.
+    if (allocated(weight_present)) weight_present = .false.
   end subroutine clear_spin_density_weight_lines
 
 
@@ -241,8 +235,7 @@ contains
 
   subroutine aggregate_spin_density_weight_lines(workspace)
     type(multiplicative_nlo_workspace), intent(inout) :: workspace
-    complex(kind=8), allocatable :: density(:, :, :)
-    integer :: line, open_size, weight
+    integer :: line, open_size
 
     if (.not. initialized .or. line_capacity == 0) return
     do line = 1, line_capacity
@@ -262,14 +255,10 @@ contains
         call fail_density_lines( &
              'a density line and component have different open sizes')
       end if
-      allocate(density(workspace%weight_count, open_size, open_size))
-      do weight = 1, workspace%weight_count
-        density(weight, :, :) = evaluated_density( &
-             weight, 1:open_size, 1:open_size, line)
-      end do
       call add_multiplicative_block_density( &
-           workspace, line_component(line), line_branch(line), density)
-      deallocate(density)
+           workspace, line_component(line), line_branch(line), &
+           evaluated_density(1:workspace%weight_count, &
+                             1:open_size, 1:open_size, line))
     end do
   end subroutine aggregate_spin_density_weight_lines
 

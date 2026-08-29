@@ -916,13 +916,20 @@ contains
     double precision xnoborn_cnt, xtot, wgt_c, enhance
     data xnoborn_cnt/0d0/
     integer inoborn_cnt, i, imode
+    logical single_channel_shortcut
     data inoborn_cnt/0/
 
     call cpu_time(tBefore)
 
-! Compute the multi-channel enhancement factor 'enhance'.
+! Compute the multi-channel enhancement factor 'enhance'.  With one Born
+! channel the normalized partition is identically one, so evaluating the
+! full helicity-summed Born solely to divide it by itself is wasted work.
     enhance = 1.d0
-    if (p_born(0, 1) .gt. 0d0) then
+    single_channel_shortcut = &
+         p_born(0, 1) > 0d0 .and. config_map(0, 0) == 1
+    if (single_channel_shortcut) then
+      enhance = diagramsymmetryfactor
+    else if (p_born(0, 1) .gt. 0d0) then
       call evaluate_born_matrix(soft_counterevent, wgt_c)
     elseif (p_born(0, 1) .lt. 0d0) then
       enhance = 0d0
@@ -933,13 +940,13 @@ contains
         write (*, *) 'WARNING: no Born momenta more than 10**', inoborn_cnt, 'times'
         inoborn_cnt = inoborn_cnt + 1
       end if
-    else
+    else if (config_map(0, 0) <= 0) then
+      write (*, *) 'Fatal error in compute_prefactor_nbody:'// &
+           ' no Born diagrams ', config_map, '. Check bornfromreal.inc'
+      write (*, *) 'Is fks_singular compiled correctly?'
+      stop 1
+    else if (.not. single_channel_shortcut) then
       xtot = 0d0
-      if (config_map(0, 0) .eq. 0) then
-        write (*, *) 'Fatal error in compute_prefactor_nbody:'//' no Born diagrams ', config_map, '. Check bornfromreal.inc'
-        write (*, *) 'Is fks_singular compiled correctly?'
-        stop 1
-      end if
       do i = 1, config_map(0, 0)
         xtot = xtot + amp2(config_map(i, 0))
       end do

@@ -52,6 +52,24 @@ module fks_weights_module
   double precision, save :: bundle_born_snapshot(0:n_ave_virt) = 0d0
   logical, save :: bundle_snapshot_active = .false.
 
+  ! A single factorized point contains many weight lines with identical
+  ! incoming momentum fractions and factorization scales.  Keep the small
+  ! point-local luminosity working set, including DLUM's subprocess side
+  ! effects, so those lines do not repeat the same PDF interpolation.
+  integer, parameter :: luminosity_cache_capacity = 512
+  logical, save :: luminosity_cache_valid( &
+       luminosity_cache_capacity) = .false.
+  integer, save :: luminosity_cache_channel( &
+       luminosity_cache_capacity) = 0
+  integer, save :: luminosity_cache_iproc(luminosity_cache_capacity) = 0
+  double precision, save :: luminosity_cache_x(2, &
+       luminosity_cache_capacity) = 0d0
+  double precision, save :: luminosity_cache_q2(2, &
+       luminosity_cache_capacity) = 0d0
+  double precision, save :: luminosity_cache_value( &
+       luminosity_cache_capacity) = 0d0
+  double precision, allocatable, save :: luminosity_cache_pd(:, :)
+
   integer, parameter, public :: real_contribution = 1
   integer, parameter, public :: born_contribution = 2
   integer, parameter, public :: integrated_contribution = 3
@@ -65,15 +83,85 @@ module fks_weights_module
   public :: reweight_scale, reweight_pdf, get_wgt_no_nbody
   public :: fill_plots, fill_mint_function
   public :: begin_bundle_virtual_tricks, finish_bundle_virtual_tricks
+  public :: reset_luminosity_cache
 
   interface
     double precision function dlum(bjorken_x)
       implicit none
       double precision, intent(in) :: bjorken_x(2)
     end function dlum
+    integer function dlum_cache_channel()
+      implicit none
+    end function dlum_cache_channel
   end interface
 
 contains
+
+  subroutine reset_luminosity_cache()
+    if (.not. allocated(luminosity_cache_pd)) then
+      allocate(luminosity_cache_pd(0:maxproc, &
+           luminosity_cache_capacity))
+    else if (lbound(luminosity_cache_pd, 1) /= 0 .or. &
+             ubound(luminosity_cache_pd, 1) /= maxproc) then
+      deallocate(luminosity_cache_pd)
+      allocate(luminosity_cache_pd(0:maxproc, &
+           luminosity_cache_capacity))
+    end if
+    luminosity_cache_valid = .false.
+  end subroutine reset_luminosity_cache
+
+
+  double precision function cached_dlum(bjorken_x)
+    use FKSParams, only: separate_flavour_configs
+    double precision, intent(in) :: bjorken_x(2)
+    integer :: channel, entry, store_entry
+    integer(kind=8) :: bits, hash
+
+    ! Separate-flavour mode consumes the individual subprocess luminosities
+    ! immediately and is uncommon for decay-chain integrations.  Preserve
+    ! its simple DLUM side-effect contract instead of caching it.
+    if (separate_flavour_configs) then
+      cached_dlum = dlum(bjorken_x)
+      return
+    end if
+
+    channel = dlum_cache_channel()
+    hash = int(channel, kind=8)
+    do entry = 1, 2
+      bits = transfer(bjorken_x(entry), 0_8)
+      hash = ieor(hash, bits)
+      hash = ieor(hash, ishft(hash, 13))
+      bits = transfer(q2fact(entry), 0_8)
+      hash = ieor(hash, bits)
+      hash = ieor(hash, ishft(hash, -7))
+    end do
+    store_entry = int(iand(hash, &
+         int(luminosity_cache_capacity - 1, kind=8))) + 1
+
+    entry = store_entry
+    if (luminosity_cache_valid(entry)) then
+      if (luminosity_cache_channel(entry) == channel .and. &
+          all(luminosity_cache_x(:, entry) == bjorken_x) .and. &
+          all(luminosity_cache_q2(:, entry) == q2fact)) then
+        cached_dlum = luminosity_cache_value(entry)
+        subproc_iproc = luminosity_cache_iproc(entry)
+        subproc_pd = luminosity_cache_pd(:, entry)
+        return
+      end if
+    end if
+
+    cached_dlum = dlum(bjorken_x)
+    ! This is intentionally direct-mapped.  Keys are verified on every hit,
+    ! so a collision can only reduce reuse, never change a value, while every
+    ! lookup remains constant-time even for points with many weight lines.
+    luminosity_cache_channel(store_entry) = channel
+    luminosity_cache_x(:, store_entry) = bjorken_x
+    luminosity_cache_q2(:, store_entry) = q2fact
+    luminosity_cache_value(store_entry) = cached_dlum
+    luminosity_cache_iproc(store_entry) = subproc_iproc
+    luminosity_cache_pd(:, store_entry) = subproc_pd
+    luminosity_cache_valid(store_entry) = .true.
+  end function cached_dlum
 
   subroutine begin_bundle_virtual_tricks()
     if (.not. has_nlo_contribution_bundle()) return
@@ -96,7 +184,7 @@ contains
       write (*,*) 'ERROR: missing bundle virtual-trick snapshot'
       stop 1
     end if
-    xlum = dlum(event_bjorken_x(:, soft_counterevent))
+    xlum = cached_dlum(event_bjorken_x(:, soft_counterevent))
     rescaling = decay_qcd_coupling_rescaling(&
          g, decay_qcd_squared_order())
     virt_wgt_mint(0) = bundle_virt_snapshot(0) + &
@@ -546,7 +634,7 @@ contains
       q2fact(1) = mu2_f
       q2fact(2) = mu2_f
 ! call the PDFs
-      xlum = dlum(bjx(:, i))
+      xlum = cached_dlum(bjx(:, i))
 ! iwgt=1 is the central value (i.e. no scale/PDF reweighting).
       iwgt = 1
       call weight_lines_allocated(nexternal, max_contr, iwgt, subproc_iproc)
@@ -759,7 +847,7 @@ contains
           g = sqrt(4d0*pi*alphas(sqrt(mu2_r)))
           q2fact(1) = mu2_f
           q2fact(2) = mu2_f
-          xlum = dlum(bjx(:, i))
+          xlum = cached_dlum(bjx(:, i))
           if (separate_flavour_configs .and. ipr(i) .ne. 0) then
             if (nincoming .eq. 2) then
               xlum = subproc_pd(ipr(i))*conv
@@ -816,6 +904,7 @@ contains
         iwgt = iwgt + 1
         call weight_lines_allocated(nexternal, max_contr, iwgt, max_iproc)
         call InitPDFm(nn, n)
+        call reset_luminosity_cache()
         do i = 1, icontr
           nFKSprocess = nFKS(i)
           mu2_r = scales2(2, i)
@@ -823,7 +912,7 @@ contains
           q2fact(1) = mu2_f
           q2fact(2) = mu2_f
 ! Compute the luminosity
-          xlum = dlum(bjx(:, i))
+          xlum = cached_dlum(bjx(:, i))
           if (separate_flavour_configs .and. ipr(i) .ne. 0) then
             if (nincoming .eq. 2) then
               xlum = subproc_pd(ipr(i))*conv
@@ -850,6 +939,7 @@ contains
     end do
     deallocate(central_factor_indices)
     call InitPDFm(1, 0)
+    call reset_luminosity_cache()
     call cpu_time(tAfter)
     tr_pdf = tr_pdf + (tAfter - tBefore)
     return
@@ -904,11 +994,10 @@ contains
 !  be different, for those processes without soft singularities
 !  from initial(final)-state configurations when the
 !  final(initial) confs are integrated (e.g. a a > e+ e-)
-!  This gives no problem for normal histogramming (and in
-!  fact plot_id 11 13 and 14 are merged into ibody=2 in
-!  outfun, but separate counterterm types are useful for diagnostics.
-!  Note that the separation between soft and soft-virtual
-!  may not be needed in reality
+!  This gives no problem for normal histogramming.  All n-body
+!  counterterms are exposed to the analysis as ibody=2, so IR-identical
+!  slots can be summed before entering potentially expensive jet and
+!  histogram code.
       if (itype(i) .eq. born_contribution) then
         plot_id(i) = 20 ! Born
       elseif (itype(i) .eq. real_contribution) then
@@ -927,7 +1016,9 @@ contains
 ! contribution makes sure that it is added as a new element.
       do ii = 1, i
         if (orderstag(ii) .ne. orderstag(i)) cycle
-        if (plot_id(ii) .ne. plot_id(i)) cycle
+        if (plot_id(ii) .ne. plot_id(i) .and. .not. &
+            (plot_id(ii) >= 12 .and. plot_id(ii) <= 14 .and. &
+             plot_id(i) >= 12 .and. plot_id(i) <= 14)) cycle
         if (plot_id(i) .ne. 11) then
           if (.not. pdg_equal(pdg_uborn(1, ii), pdg_uborn(1, i))) cycle
         else

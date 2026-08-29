@@ -2986,6 +2986,19 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                 common/c_nfksprocess/nfksprocess
                 """
 
+        # Several FKS configurations can dispatch to the same generated
+        # luminosity routine (for example the real, soft and collinear
+        # configurations of one splitting).  Expose that canonical routine
+        # number so the fixed-order runtime can share PDF results across
+        # configurations without having to infer process equivalence from
+        # floating-point results or Les Houches state.
+        text2 = \
+            """\n\ninteger function dlum_cache_channel()
+            implicit none
+            integer nfksprocess
+            common/c_nfksprocess/nfksprocess
+            """
+
         if matrix_element.real_processes:
             for n, info in enumerate(matrix_element.get_fks_info_list()):
                 text += \
@@ -2999,6 +3012,12 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                         'n': n + 1,
                         'n_me': info['n_me'],
                         'luminosity_argument': luminosity_argument}
+                text2 += \
+                    """if (nfksprocess.eq.%(n)d) then
+                    dlum_cache_channel=%(n_me)d
+                    else""" % {
+                        'n': n + 1,
+                        'n_me': info['n_me']}
 
             text += \
                 """
@@ -3010,6 +3029,15 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                 """
                 write(*,*) 'ERROR: invalid n in dlum :', nfksprocess\n stop\n endif
                 return \nend
+                """
+            text2 += \
+                """
+                write(*,*) 'ERROR: invalid n in dlum cache channel :',
+     $               nfksprocess
+                stop
+                endif
+                return
+                end
                 """
         else:
             text += \
@@ -3024,6 +3052,12 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                 return
                 end
                 """ % luminosity_argument
+            text2 += \
+                """
+                dlum_cache_channel=0
+                return
+                end
+                """
 
         if getattr(matrix_element, 'spin_density_plan', None) is not None:
             text += \
@@ -3063,7 +3097,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
 
         # Write the file
         writer_me.writelines(text)
-        writer_lum.writelines(text1)
+        writer_lum.writelines(text1 + text2)
         return 0
 
 
@@ -3850,7 +3884,8 @@ C     Legacy processes obtain their channel weights from SBORN itself.
     @staticmethod
     def _spin_density_cache_sections(
             result_name, result_declaration, density_name,
-            density_declaration, publisher, contribution, extra_key=None):
+            density_declaration, publisher, contribution, block_ids,
+            extra_key=None):
         """Build a scale- and phase-space-safe provider cache.
 
         Each generated provider owns one saved cache entry.  Keeping the
@@ -3858,17 +3893,23 @@ C     Legacy processes obtain their channel weights from SBORN itself.
         colour wrappers from drifting apart.
         """
 
+        if not block_ids:
+            raise fks_common.FKSProcessError(
+                'A spin-density cache needs at least one physical block')
+        block_ids = sorted(block_ids)
+        block_count = len(block_ids)
         uses = [
             'USE FACTORIZED_PHASE_SPACE, ONLY:',
-            '     $ FACTORIZED_PHASE_SPACE_REVISION',
+            '     $ FACTORIZED_BLOCK_MOMENTUM_REVISION',
             'USE FKS_MODEL_STATE_MODULE, ONLY: STRONG_COUPLING',
             'USE RUN_STATE, ONLY: MUR2_CURRENT,QES2_CURRENT',
             'USE SPIN_DENSITY_FKS_MATRICES, ONLY:',
             '     $ SPIN_DENSITY_FKS_COLLECTION_ENABLED,',
             '     $ %s' % publisher]
         declarations = [
-            'INTEGER*8 SDM_REVISION,SDM_CACHED_REVISION',
-            'INTEGER SDM_CACHED_EVENT_SLOT',
+            'INTEGER SDM_BLOCK,SDM_BLOCK_IDS(%d)' % block_count,
+            'INTEGER*8 SDM_REVISIONS(%d),' % block_count,
+            '     $ SDM_CACHED_REVISIONS(%d)' % block_count,
             'REAL*8 SDM_CACHED_G,SDM_CACHED_MUR2,SDM_CACHED_QES2',
             'LOGICAL SDM_CACHE_VALID,SDM_CACHE_HIT',
             result_declaration,
@@ -3876,23 +3917,19 @@ C     Legacy processes obtain their channel weights from SBORN itself.
         if extra_key is not None:
             declarations.append('INTEGER %s' % extra_key[1])
         declarations.extend([
-            'SAVE SDM_CACHE_VALID,SDM_CACHED_REVISION,',
-            '     $ SDM_CACHED_EVENT_SLOT,SDM_CACHED_RESULT,',
+            'SAVE SDM_CACHE_VALID,SDM_CACHED_REVISIONS,',
+            '     $ SDM_CACHED_RESULT,',
             '     $ SDM_CACHED_RHO,SDM_CACHED_G,SDM_CACHED_MUR2,',
             '     $ SDM_CACHED_QES2%s' % (
                 ',' + extra_key[1] if extra_key is not None else ''),
             'DATA SDM_CACHE_VALID /.FALSE./',
-            'DATA SDM_CACHED_REVISION /-1/,'])
-        if extra_key is None:
-            declarations.append('     $ SDM_CACHED_EVENT_SLOT /-1/')
-        else:
-            declarations.extend([
-                '     $ SDM_CACHED_EVENT_SLOT /-1/,',
-                '     $ %s /-1/' % extra_key[1]])
+            'DATA SDM_BLOCK_IDS /%s/' % ','.join(map(str, block_ids))])
+        if extra_key is not None:
+            declarations.append('DATA %s /-1/' % extra_key[1])
 
         conditions = [
-            'SDM_CACHED_REVISION.EQ.SDM_REVISION',
-            'SDM_CACHED_EVENT_SLOT.EQ.EVENT_SLOT']
+            'ALL(SDM_REVISIONS.GT.0)',
+            'ALL(SDM_CACHED_REVISIONS.EQ.SDM_REVISIONS)']
         if extra_key is not None:
             conditions.append('%s.EQ.%s' % (extra_key[1], extra_key[0]))
         conditions.extend([
@@ -3900,7 +3937,11 @@ C     Legacy processes obtain their channel weights from SBORN itself.
             'SDM_CACHED_MUR2.EQ.MUR2_CURRENT',
             'SDM_CACHED_QES2.EQ.QES2_CURRENT'])
         lookup = [
-            'SDM_REVISION=FACTORIZED_PHASE_SPACE_REVISION()',
+            'DO SDM_BLOCK=1,%d' % block_count,
+            '  SDM_REVISIONS(SDM_BLOCK)=',
+            '     $ FACTORIZED_BLOCK_MOMENTUM_REVISION(EVENT_SLOT,',
+            '     $ SDM_BLOCK_IDS(SDM_BLOCK))',
+            'ENDDO',
             'SDM_CACHE_HIT=.FALSE.',
             'IF (SDM_CACHE_VALID) THEN']
         for index, condition in enumerate(conditions):
@@ -3917,8 +3958,7 @@ C     Legacy processes obtain their channel weights from SBORN itself.
         store_and_publish = [
             '  SDM_CACHED_RESULT=%s' % result_name,
             '  SDM_CACHED_RHO=%s' % density_name,
-            '  SDM_CACHED_REVISION=SDM_REVISION',
-            '  SDM_CACHED_EVENT_SLOT=EVENT_SLOT']
+            '  SDM_CACHED_REVISIONS=SDM_REVISIONS']
         if extra_key is not None:
             store_and_publish.append(
                 '  %s=%s' % (extra_key[1], extra_key[0]))
@@ -4110,6 +4150,7 @@ C     Legacy processes obtain their channel weights from SBORN itself.
                         correlation_provider['open_size'],
                         correlation_provider['open_size']),
                     'SET_SPIN_DENSITY_BORN_MATRIX', contribution,
+                    plan['components'].keys(),
                     ('SDM_LOCAL_CORR', 'SDM_CACHED_CORR_LEG'))
             core.extend([
                 '',
@@ -4198,7 +4239,8 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
                 'SDM_INSERTION_RHO',
                 'COMPLEX*16 SDM_CACHED_RHO(2,%d,%d)' % (
                     open_size, open_size),
-                'SET_SPIN_DENSITY_REAL_MATRIX', contribution)
+                'SET_SPIN_DENSITY_REAL_MATRIX', contribution,
+                plan['components'].keys())
         replacement = {
             'info_lines': self.get_mg5_info_lines(),
             'process_lines': self.get_process_info_lines(reference),
@@ -4566,7 +4608,8 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
                     'SDM_COLOR_RHO',
                     'COMPLEX*16 SDM_CACHED_RHO(%d,%d)' % (
                         open_size, open_size),
-                    'SET_SPIN_DENSITY_COLOR_MATRIX', identifier)
+                    'SET_SPIN_DENSITY_COLOR_MATRIX', identifier,
+                    plan['components'].keys())
             core.extend([
                 '',
                 'SUBROUTINE SDM_COLOR_CONTRIBUTION_%d_%d(EVENT_SLOT,' % (

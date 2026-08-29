@@ -12,6 +12,7 @@ module genps_fks
   use factorized_phase_space, only: factorized_radiation_state, &
        factorized_measure_state, &
        reset_factorized_phase_space, store_factorized_kernel_momenta, &
+       prepare_factorized_born_reuse, &
        store_factorized_radiation_state, &
        scale_factorized_radiation_jacobians, &
        store_factorized_event_measure, &
@@ -24,6 +25,7 @@ module genps_fks
        get_core_mass_buffer, active_core_count, expand_real_decay_momenta, &
        store_core_event_momenta, fks_leg_mass
   use nlo_decay_metadata, only: has_nlo_decay, nlo_decay_corrected_node
+  use nlo_contribution_bundle, only: active_nlo_contribution
   use nlo_decay_kinematics, only: generate_nlo_decay_fks_event, &
                                   nlo_decay_fks_sister_mass, &
                                   nlo_decay_parent_mass, &
@@ -49,9 +51,15 @@ module genps_fks
                                  particle_masses
   implicit none
   private
-  public :: generate_momenta
+  public :: generate_momenta, generate_momenta_reusing_born
 
   double precision :: massive_xjac_cache = 1d0
+  type(born_phase_space), save :: reusable_born
+  double precision, save :: reusable_born_x(99) = 0d0
+  integer, save :: reusable_born_ndim = 0
+  integer, save :: reusable_born_iconfig = 0
+  integer, save :: reusable_born_contribution = 0
+  logical, save :: reusable_born_is_available = .false.
 
 contains
 
@@ -60,6 +68,27 @@ contains
     integer, intent(in) :: ndim, iconfig
     double precision, intent(inout) :: wgt, x(99)
     double precision, intent(out) :: p(0:3, nexternal)
+
+    call generate_momenta_impl(ndim, iconfig, wgt, x, p, .false.)
+  end subroutine generate_momenta
+
+
+  subroutine generate_momenta_reusing_born(ndim, iconfig, wgt, x, p)
+    implicit none
+    integer, intent(in) :: ndim, iconfig
+    double precision, intent(inout) :: wgt, x(99)
+    double precision, intent(out) :: p(0:3, nexternal)
+
+    call generate_momenta_impl(ndim, iconfig, wgt, x, p, .true.)
+  end subroutine generate_momenta_reusing_born
+
+
+  subroutine generate_momenta_impl(ndim, iconfig, wgt, x, p, reuse_born)
+    implicit none
+    integer, intent(in) :: ndim, iconfig
+    double precision, intent(inout) :: wgt, x(99)
+    double precision, intent(out) :: p(0:3, nexternal)
+    logical, intent(in) :: reuse_born
 
     type(born_phase_space) :: born
     real :: tBefore, tAfter
@@ -72,8 +101,20 @@ contains
     ! Block-local momenta belong to this one event/counterevent family.  Each
     ! block is generated in its own rest frame and boosted independently;
     ! matrix-element providers consume that cache, not the visible event.
-    call reset_factorized_phase_space()
-    call generate_born_phase_space(ndim, iconfig, x, born)
+    if (reuse_born) then
+      call require_reusable_born(ndim, iconfig, x)
+      call prepare_factorized_born_reuse()
+      born = reusable_born
+    else
+      call reset_factorized_phase_space()
+      call generate_born_phase_space(ndim, iconfig, x, born)
+      reusable_born = born
+      reusable_born_x = x
+      reusable_born_ndim = ndim
+      reusable_born_iconfig = iconfig
+      reusable_born_contribution = active_nlo_contribution()
+      reusable_born_is_available = .true.
+    end if
 
     pass = born%valid
     if (pass) then
@@ -113,7 +154,43 @@ contains
 
     call cpu_time(tAfter)
     tGenPS = tGenPS + (tAfter - tBefore)
-  end subroutine generate_momenta
+  end subroutine generate_momenta_impl
+
+
+  subroutine require_reusable_born(ndim, iconfig, x)
+    integer, intent(in) :: ndim, iconfig
+    double precision, intent(in) :: x(99)
+    integer :: shared_dimension
+
+    if (.not. reusable_born_is_available) then
+      call fail_genps_fks('no underlying Born point is reusable')
+    end if
+    if (ndim /= reusable_born_ndim .or. &
+        iconfig /= reusable_born_iconfig) then
+      call fail_genps_fks( &
+           'underlying Born reuse changed the integration channel')
+    end if
+    if (active_nlo_contribution() /= reusable_born_contribution) then
+      call fail_genps_fks( &
+           'underlying Born reuse crossed NLO contributions')
+    end if
+    shared_dimension = ndim - 3
+    if (shared_dimension > 0 .and. &
+        any(x(1:shared_dimension) /= &
+            reusable_born_x(1:shared_dimension))) then
+      call fail_genps_fks( &
+           'underlying Born reuse changed shared random variables')
+    end if
+  end subroutine require_reusable_born
+
+
+  subroutine fail_genps_fks(message)
+    character(len=*), intent(in) :: message
+
+    write (*,*) 'ERROR in factorized phase-space generation: ', &
+         trim(message)
+    stop 1
+  end subroutine fail_genps_fks
 
 
   subroutine generate_nlo_decay_FKS_kinematics(x, ndim, &
@@ -163,6 +240,12 @@ contains
     do event_position = 1, size(event_generation_order)
       event_slot = event_generation_order(event_position)
       if (skip_counterevents) exit
+      ! The n-body pass consumes only the real radiation normalization and
+      ! the soft-projected event.  Collinear projections are generated again
+      ! in the n+1-body pass when their counterterms are actually evaluated.
+      if (nbody .and. &
+          (event_slot == collinear_counterevent .or. &
+           event_slot == soft_collinear_counterevent)) cycle
       if (massive_sister .and. &
           (event_slot == collinear_counterevent .or. &
            event_slot == soft_collinear_counterevent)) cycle

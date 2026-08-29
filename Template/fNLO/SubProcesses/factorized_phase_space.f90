@@ -92,6 +92,7 @@ module factorized_phase_space
   logical, allocatable, save :: global_event_measure_is_valid(:)
 
   public :: reset_factorized_phase_space
+  public :: prepare_factorized_born_reuse
   public :: store_factorized_block_momenta
   public :: fetch_factorized_block_momenta
   public :: factorized_block_momentum_revision
@@ -124,25 +125,42 @@ contains
   subroutine reset_factorized_phase_space()
     call ensure_storage()
     call advance_phase_space_revision()
-    block_momenta = 0d0
     block_particle_count = 0
     block_is_valid = .false.
     block_momentum_revision = 0_8
-    embedded_momenta = 0d0
     embedded_particle_count = 0
     embedded_is_valid = .false.
-    kernel_momenta = 0d0
     kernel_particle_count = 0
     kernel_is_valid = .false.
-    block_radiation = factorized_radiation_state()
     block_radiation_is_valid = .false.
-    base_measure = factorized_measure_state()
     base_measure_is_valid = .false.
-    event_measure = factorized_measure_state()
     event_measure_is_valid = .false.
-    global_event_measure = factorized_measure_state()
     global_event_measure_is_valid = .false.
   end subroutine reset_factorized_phase_space
+
+
+  subroutine prepare_factorized_born_reuse()
+    integer :: event_slot
+
+    ! Keep the sampled underlying-Born blocks and their base measures, but
+    ! discard everything produced by the preceding FKS map.  The soft block
+    ! is deliberately retained: soft projection routines only re-embed it
+    ! and rely on its canonical Born matrix-element representation already
+    ! being present.  Every resolved/counterevent slot is rebuilt below.
+    call ensure_storage()
+    do event_slot = soft_counterevent + 1, real_event
+      block_particle_count(:, event_slot) = 0
+      block_is_valid(:, event_slot) = .false.
+      block_momentum_revision(:, event_slot) = 0_8
+      embedded_particle_count(:, event_slot) = 0
+      embedded_is_valid(:, event_slot) = .false.
+    end do
+    kernel_particle_count = 0
+    kernel_is_valid = .false.
+    block_radiation_is_valid = .false.
+    event_measure_is_valid = .false.
+    global_event_measure_is_valid = .false.
+  end subroutine prepare_factorized_born_reuse
 
 
   integer(kind=8) function factorized_phase_space_revision()
@@ -154,6 +172,8 @@ contains
                                              particle_count, momenta)
     integer, intent(in) :: event_slot, block, particle_count
     double precision, intent(in) :: momenta(0:, :)
+    integer :: candidate_slot
+    integer(kind=8) :: matching_revision
 
     call ensure_storage()
     call validate_indices(event_slot, block, particle_count)
@@ -161,21 +181,40 @@ contains
       call fail_factorized_phase_space( &
            'a block momentum array has inconsistent bounds')
     end if
-    block_momenta(:, :, block, event_slot) = 0d0
+    ! Projected FKS slots often contain exactly the same reduced block.  Give
+    ! those copies one identity so density caches can reuse their matrix
+    ! element without weakening the cache to a numerical tolerance.
+    matching_revision = 0_8
+    do candidate_slot = soft_counterevent, real_event
+      if (candidate_slot == event_slot) cycle
+      if (.not. block_is_valid(block, candidate_slot)) cycle
+      if (block_particle_count(block, candidate_slot) /= particle_count) &
+           cycle
+      if (all(block_momenta(:, 1:particle_count, block, candidate_slot) == &
+              momenta(0:3, 1:particle_count))) then
+        matching_revision = block_momentum_revision(block, candidate_slot)
+        exit
+      end if
+    end do
+
     block_momenta(:, 1:particle_count, block, event_slot) = &
          momenta(0:3, 1:particle_count)
     block_particle_count(block, event_slot) = particle_count
     block_is_valid(block, event_slot) = .true.
-    next_block_momentum_revision = next_block_momentum_revision + 1_8
     call advance_phase_space_revision()
-    if (next_block_momentum_revision <= 0_8) then
-      ! A wrap is fantastically unlikely, but resetting all identities is
-      ! safer than allowing a stale density-matrix cache entry to match.
-      next_block_momentum_revision = 1_8
-      block_momentum_revision = 0_8
+    if (matching_revision > 0_8) then
+      block_momentum_revision(block, event_slot) = matching_revision
+    else
+      next_block_momentum_revision = next_block_momentum_revision + 1_8
+      if (next_block_momentum_revision <= 0_8) then
+        ! A wrap is fantastically unlikely, but resetting all identities is
+        ! safer than allowing a stale density-matrix cache entry to match.
+        next_block_momentum_revision = 1_8
+        block_momentum_revision = 0_8
+      end if
+      block_momentum_revision(block, event_slot) = &
+           next_block_momentum_revision
     end if
-    block_momentum_revision(block, event_slot) = &
-         next_block_momentum_revision
   end subroutine store_factorized_block_momenta
 
 
@@ -562,7 +601,7 @@ contains
 
   subroutine capture_factorized_branch_snapshot(event_slot, block, snapshot)
     integer, intent(in) :: event_slot, block
-    type(factorized_branch_snapshot), intent(out) :: snapshot
+    type(factorized_branch_snapshot), intent(inout) :: snapshot
 
     call ensure_storage()
     call validate_event_and_block(event_slot, block)
@@ -579,12 +618,24 @@ contains
     snapshot%has_event_measure = event_measure_is_valid(block, event_slot)
     snapshot%has_global_measure = &
          global_event_measure_is_valid(event_slot)
-    allocate(snapshot%block_momenta(0:3, nexternal))
-    allocate(snapshot%embedded_momenta(0:3, nexternal))
-    allocate(snapshot%kernel_momenta(0:3, nexternal))
-    snapshot%block_momenta = block_momenta(:, :, block, event_slot)
-    snapshot%embedded_momenta = embedded_momenta(:, :, block, event_slot)
-    snapshot%kernel_momenta = kernel_momenta(:, :, block, event_slot)
+    if (.not. allocated(snapshot%block_momenta)) &
+         allocate(snapshot%block_momenta(0:3, nexternal))
+    if (.not. allocated(snapshot%embedded_momenta)) &
+         allocate(snapshot%embedded_momenta(0:3, nexternal))
+    if (.not. allocated(snapshot%kernel_momenta)) &
+         allocate(snapshot%kernel_momenta(0:3, nexternal))
+    if (snapshot%has_block) then
+      snapshot%block_momenta(:, 1:snapshot%block_count) = &
+           block_momenta(:, 1:snapshot%block_count, block, event_slot)
+    end if
+    if (snapshot%has_embedded) then
+      snapshot%embedded_momenta(:, 1:snapshot%embedded_count) = &
+           embedded_momenta(:, 1:snapshot%embedded_count, block, event_slot)
+    end if
+    if (snapshot%has_kernel) then
+      snapshot%kernel_momenta(:, 1:snapshot%kernel_count) = &
+           kernel_momenta(:, 1:snapshot%kernel_count, block, event_slot)
+    end if
     if (snapshot%has_radiation) then
       snapshot%radiation = block_radiation(block, event_slot)
     end if

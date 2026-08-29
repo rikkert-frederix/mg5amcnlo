@@ -24,7 +24,7 @@ module driver_mintfo_module
   use run_state, only: lpp, fixed_fac_scale, muf1_over_ref, &
                        muf2_over_ref, muf1_ref_fixed, muf2_ref_fixed, &
                        do_rwgt_scale, do_rwgt_decay_scale, do_rwgt_pdf
-  use genps_fks, only: generate_momenta
+  use genps_fks, only: generate_momenta, generate_momenta_reusing_born
   use decay_chain_metadata, only: real_phase_space_dimension
   use fnlo_scale_variations, only: configure_fnlo_scale_variations
   use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
@@ -49,7 +49,8 @@ module driver_mintfo_module
        compute_real_emission
   use fks_weights_module, only: include_pdf_and_alphas, reweight_scale, &
        reweight_pdf, get_wgt_no_nbody, fill_plots, fill_mint_function, &
-       begin_bundle_virtual_tricks, finish_bundle_virtual_tricks
+       begin_bundle_virtual_tricks, finish_bundle_virtual_tricks, &
+       reset_luminosity_cache
   use fks_singular_module, only: fill_configurations_common, setfksfactor
   use madfks_plot_module, only: topout_impl, outfun_multiplicative_impl
   use decay_chain_parameters, only: multiplicative_nlo_enabled
@@ -60,10 +61,10 @@ module driver_mintfo_module
   use spin_density_matrix_results, only: spin_density_bornlike_branch, &
        spin_density_real_branch
   use multiplicative_nlo_decay, only: multiplicative_nlo_workspace, &
-       initialize_generated_multiplicative_workspace, &
+       prepare_generated_multiplicative_workspace, &
        set_multiplicative_weight_count, reset_multiplicative_leaf_iterator, &
        next_multiplicative_leaf, capture_multiplicative_snapshot, &
-       set_multiplicative_real_configuration, restore_multiplicative_leaf, &
+       set_multiplicative_real_configuration, &
        multiplicative_leaf_has_snapshots, &
        complete_multiplicative_zero_branches, &
        contract_multiplicative_leaf
@@ -384,13 +385,15 @@ contains
     double precision, intent(inout) :: wgt_me_born, wgt_me_real
     double precision :: jacobian, momentum(0:3, nexternal)
     double precision :: reweight, volume, sampled_weight
-    double precision :: vegas_variables(99), mc_integer_weight
-    integer :: nfks_born, nfks_picked, ifks, nfks_min, nfks_max
-    integer :: amplitude_order, picked_integer, position, radiation_block
+    double precision :: vegas_variables(99)
+    integer :: nfks_born, nfks_picked
+    integer :: amplitude_order, picked_integer, radiation_block
     integer :: nbody_contribution, nbody_contribution_max
-    logical :: passcuts_nbody, passcuts_n1body, passcuts_coll
-    logical :: skip_nplusone
+    integer :: selected_contribution
+    logical :: passcuts_nbody
+    logical :: nplusone_evaluated, skip_nplusone
 
+    call reset_luminosity_cache()
     if (multiplicative_nlo_enabled()) then
       sigint_impl = sigint_multiplicative_impl( &
            xx, vegas_wgt, ifl, f, ini_fin_fks, nndim, nbody, &
@@ -414,6 +417,7 @@ contains
     virtual_over_born = 0d0
     wgt_me_born = 0d0
     wgt_me_real = 0d0
+    nplusone_evaluated = .false.
     skip_nplusone = .false.
 
     call get_mc_integer(max(ini_fin_fks(ichan), 1), &
@@ -421,6 +425,9 @@ contains
                         volume)
     nfks_picked = fks_channel_configuration(ini_fin_fks(ichan), &
                                             picked_integer)
+    selected_contribution = 1
+    if (has_nlo_contribution_bundle()) &
+         selected_contribution = contribution_for_fks(nfks_picked)
 
     if (abrv /= 'real') then
       nbody = .true.
@@ -484,68 +491,34 @@ contains
                  nbody_contribution == 1) then
           skip_nplusone = .true.
         end if
+
+        ! Pair the one sampled resolved sector with its reduced sector while
+        ! the latter's underlying Born decay tree is still resident.  The
+        ! production contribution remains first, which is required when the
+        ! process-specific decay metadata are initialized for the first time.
+        if (has_nlo_contribution_bundle() .and. &
+            nbody_contribution == selected_contribution .and. &
+            abrv(1:4) /= 'born' .and. abrv(1:4) /= 'bovi' .and. &
+            abrv(1:2) /= 'vi' .and. .not. skip_nplusone) then
+          nbody = .false.
+          call evaluate_additive_n1body_sector( &
+               xx, vegas_wgt, nndim, abrv, nfks_picked, volume, &
+               event_momenta, p_born, calculated_born, &
+               wgt_me_born, wgt_me_real, .true.)
+          nbody = .true.
+          nplusone_evaluated = .true.
+        end if
       end do
     end if
 
     if (abrv(1:4) /= 'born' .and. abrv(1:4) /= 'bovi' .and. &
         abrv(1:2) /= 'vi' .and. &
-        .not. skip_nplusone) then
+        .not. skip_nplusone .and. .not. nplusone_evaluated) then
       nbody = .false.
-      nfks_min = picked_integer
-      nfks_max = picked_integer
-      mc_integer_weight = 1d0/volume
-
-      do position = nfks_min, nfks_max
-        ifks = fks_channel_configuration(ini_fin_fks(ichan), position)
-        calculated_born = .false.
-        wgt_me_born = 0d0
-        wgt_me_real = 0d0
-        jacobian = mc_integer_weight
-        radiation_block = 1
-        if (has_nlo_contribution_bundle()) &
-             radiation_block = contribution_for_fks(ifks)
-        call update_vegas_x_impl(xx, vegas_variables, nndim, abrv, &
-                                 radiation_block)
-        call update_fks_dir_impl(ifks)
-        call generate_momenta(nndim, iconfig, jacobian, &
-                              vegas_variables, momentum)
-        if (p_born(0, 1) < 0d0) cycle
-
-        call compute_prefactors_n1body(vegas_wgt)
-        passcuts_nbody = passcuts( &
-                         event_momenta(0, 1, soft_counterevent), reweight, &
-                         ybst_til_tolab(soft_counterevent))
-        passcuts_coll = passcuts_nbody
-        if (.not. passcuts_coll) then
-          passcuts_coll = passcuts( &
-                            event_momenta(0, 1, collinear_counterevent), &
-                            reweight, &
-                            ybst_til_tolab(collinear_counterevent))
-        end if
-        passcuts_n1body = passcuts( &
-                             momentum, reweight, &
-                             ybst_til_tolab(real_event))
-
-        if (passcuts_nbody .and. abrv /= 'real') then
-          pass_cuts_check = .true.
-          call set_alphas( &
-            event_momenta(0:3, 1:nexternal, soft_counterevent))
-          call include_multichannel_enhance(3)
-          call compute_soft_counter_term()
-          call compute_soft_collinear_ct_impl()
-        end if
-        if (passcuts_coll .and. abrv /= 'real') then
-          call set_alphas( &
-            event_momenta(0:3, 1:nexternal, collinear_counterevent))
-          call compute_collinear_counter_term()
-        end if
-        if (passcuts_n1body) then
-          pass_cuts_check = .true.
-          call set_alphas(momentum)
-          call include_multichannel_enhance(2)
-          call compute_real_emission()
-        end if
-      end do
+      call evaluate_additive_n1body_sector( &
+           xx, vegas_wgt, nndim, abrv, nfks_picked, volume, &
+           event_momenta, p_born, calculated_born, &
+           wgt_me_born, wgt_me_real, .false.)
     end if
 
     call include_pdf_and_alphas()
@@ -561,6 +534,79 @@ contains
     call fill_plots()
     call fill_mint_function(f)
   end function sigint_impl
+
+
+  subroutine evaluate_additive_n1body_sector( &
+       xx, vegas_wgt, nndim, abrv, ifks, volume, event_momenta, p_born, &
+       calculated_born, wgt_me_born, wgt_me_real, reuse_born)
+    implicit none
+    double precision, intent(in) :: xx(ndimmax), vegas_wgt, volume
+    integer, intent(in) :: nndim, ifks
+    character(len=4), intent(in) :: abrv
+    double precision, intent(inout) :: &
+         event_momenta(0:3, nexternal, soft_counterevent:real_event)
+    double precision, intent(inout) :: p_born(0:3, nexternal - 1)
+    logical, intent(inout) :: calculated_born
+    double precision, intent(inout) :: wgt_me_born, wgt_me_real
+    logical, intent(in) :: reuse_born
+
+    double precision :: jacobian, momentum(0:3, nexternal), reweight
+    double precision :: vegas_variables(99)
+    integer :: radiation_block
+    logical :: passcuts_nbody, passcuts_n1body, passcuts_coll
+
+    calculated_born = .false.
+    wgt_me_born = 0d0
+    wgt_me_real = 0d0
+    jacobian = 1d0/volume
+    radiation_block = 1
+    if (has_nlo_contribution_bundle()) &
+         radiation_block = contribution_for_fks(ifks)
+    call update_vegas_x_impl( &
+         xx, vegas_variables, nndim, abrv, radiation_block)
+    call update_fks_dir_impl(ifks)
+    if (reuse_born) then
+      call generate_momenta_reusing_born( &
+           nndim, iconfig, jacobian, vegas_variables, momentum)
+    else
+      call generate_momenta( &
+           nndim, iconfig, jacobian, vegas_variables, momentum)
+    end if
+    if (p_born(0, 1) < 0d0) return
+
+    call compute_prefactors_n1body(vegas_wgt)
+    passcuts_nbody = passcuts( &
+         event_momenta(0, 1, soft_counterevent), reweight, &
+         ybst_til_tolab(soft_counterevent))
+    passcuts_coll = passcuts_nbody
+    if (.not. passcuts_coll) then
+      passcuts_coll = passcuts( &
+           event_momenta(0, 1, collinear_counterevent), reweight, &
+           ybst_til_tolab(collinear_counterevent))
+    end if
+    passcuts_n1body = passcuts( &
+         momentum, reweight, ybst_til_tolab(real_event))
+
+    if (passcuts_nbody .and. abrv /= 'real') then
+      pass_cuts_check = .true.
+      call set_alphas( &
+           event_momenta(0:3, 1:nexternal, soft_counterevent))
+      call include_multichannel_enhance(3)
+      call compute_soft_counter_term()
+      call compute_soft_collinear_ct_impl()
+    end if
+    if (passcuts_coll .and. abrv /= 'real') then
+      call set_alphas( &
+           event_momenta(0:3, 1:nexternal, collinear_counterevent))
+      call compute_collinear_counter_term()
+    end if
+    if (passcuts_n1body) then
+      pass_cuts_check = .true.
+      call set_alphas(momentum)
+      call include_multichannel_enhance(2)
+      call compute_real_emission()
+    end if
+  end subroutine evaluate_additive_n1body_sector
 
 
   double precision function sigint_multiplicative_impl( &
@@ -579,14 +625,14 @@ contains
     character(len=4), intent(in) :: abrv
     double precision, intent(inout) :: wgt_me_born, wgt_me_real
 
-    type(multiplicative_nlo_workspace) :: workspace
-    complex(kind=8), allocatable :: contracted_weights(:)
-    double precision, allocatable :: leaf_weights(:), total_weights(:)
-    double precision, allocatable :: leaf_momenta(:, :)
-    double precision, allocatable :: volumes(:)
-    integer, allocatable :: picked_integers(:), configurations(:)
-    integer, allocatable :: statuses(:), pdgs(:)
-    logical, allocatable :: particle_from_decay(:)
+    type(multiplicative_nlo_workspace), save :: workspace
+    complex(kind=8), allocatable, save :: contracted_weights(:)
+    double precision, allocatable, save :: leaf_weights(:), total_weights(:)
+    double precision, allocatable, save :: leaf_momenta(:, :)
+    double precision, allocatable, save :: volumes(:)
+    integer, allocatable, save :: picked_integers(:), configurations(:)
+    integer, allocatable, save :: statuses(:), pdgs(:)
+    logical, allocatable, save :: particle_from_decay(:)
     double precision :: jacobian, momentum(0:3, nexternal)
     double precision :: vegas_variables(99), reweight
     double precision :: production_boost(0:1), imaginary_tolerance
@@ -629,16 +675,23 @@ contains
     call clear_spin_density_weight_lines()
     call reset_spin_density_fks_matrices()
     call set_spin_density_fks_collection(.true.)
-    call initialize_generated_multiplicative_workspace(workspace)
+    call prepare_generated_multiplicative_workspace(workspace)
 
     contribution_count = nlo_contribution_count()
     if (workspace%corrected_count /= contribution_count) then
       call fail_driver( &
            'generated B/R branches do not match the NLO contributions')
     end if
-    allocate(picked_integers(contribution_count))
-    allocate(configurations(contribution_count))
-    allocate(volumes(contribution_count))
+    if (allocated(picked_integers)) then
+      if (size(picked_integers) /= contribution_count) then
+        deallocate(picked_integers, configurations, volumes)
+      end if
+    end if
+    if (.not. allocated(picked_integers)) then
+      allocate(picked_integers(contribution_count))
+      allocate(configurations(contribution_count))
+      allocate(volumes(contribution_count))
+    end if
     production_position = 0
     production_boost = 0d0
 
@@ -666,9 +719,11 @@ contains
            workspace, contribution, configurations(contribution))
     end do
 
-    ! First reduce every physical block to its canonical n-body branch.  No
-    ! cuts are applied to the internal FKS slots: their fully weighted
-    ! densities are combined before the global observable is evaluated.
+    ! Reduce each physical block and immediately evaluate its resolved
+    ! sector.  Both maps share all but the final three random variables, so
+    ! the second pass retains the complete underlying-Born decay tree and
+    ! regenerates only the local FKS radiation.  No cuts are applied to these
+    ! internal slots: their weighted densities are combined first.
     nbody = .true.
     do contribution = 1, contribution_count
       calculated_born = .false.
@@ -688,7 +743,6 @@ contains
            nndim, iconfig, jacobian, vegas_variables, momentum)
       if (p_born(0, 1) < 0d0) then
         call set_spin_density_fks_collection(.false.)
-        deallocate(picked_integers, configurations, volumes)
         return
       end if
 
@@ -698,44 +752,35 @@ contains
       ! The second solution of a massive real-emission map has no soft/Born
       ! counterevent.  It contributes only to R, so leave its B density and
       ! snapshot absent here; they are completed as an exact zero below.
-      if (event_momenta(0, 1, soft_counterevent) <= 0d0) cycle
+      if (event_momenta(0, 1, soft_counterevent) > 0d0) then
+        call compute_prefactors_nbody(vegas_wgt)
+        call set_alphas( &
+             event_momenta(0:3, 1:nexternal, soft_counterevent))
+        ! The multiplicative contraction contains every physical block, so
+        ! attach the global Born SDE partition exactly once, on production.
+        if (production_contribution) call include_multichannel_enhance(1)
+        call compute_born()
+        call begin_bundle_virtual_tricks()
+        call compute_nbody_noborn()
+        call finish_bundle_virtual_tricks()
 
-      call compute_prefactors_nbody(vegas_wgt)
-      call set_alphas( &
-           event_momenta(0:3, 1:nexternal, soft_counterevent))
-      ! The multiplicative contraction contains every physical block, so the
-      ! global Born SDE partition must be attached exactly once.  Put it on
-      ! production; applying it independently to the decay increments would
-      ! raise the channel weight to the number of corrected blocks.
-      if (production_contribution) call include_multichannel_enhance(1)
-      call compute_born()
-      call begin_bundle_virtual_tricks()
-      call compute_nbody_noborn()
-      call finish_bundle_virtual_tricks()
-
-      if (production_contribution) then
-        production_boost(spin_density_bornlike_branch) = &
-             ybst_til_tolab(soft_counterevent)
-        ! The production Born generation materializes the complete LO decay
-        ! tree.  Keep that one coherent embedding for every block; a decay
-        ! contribution adds its NLO increment but must not replace this B
-        ! snapshot with independently generated decay kinematics.
-        do component = 1, workspace%component_count
-          call capture_multiplicative_snapshot( &
-               workspace, component, spin_density_bornlike_branch, &
-               soft_counterevent)
-        end do
+        if (production_contribution) then
+          production_boost(spin_density_bornlike_branch) = &
+               ybst_til_tolab(soft_counterevent)
+          ! Production materializes one coherent LO embedding for all blocks;
+          ! decay increments must not replace those Born snapshots.
+          do component = 1, workspace%component_count
+            call capture_multiplicative_snapshot( &
+                 workspace, component, spin_density_bornlike_branch, &
+                 soft_counterevent)
+          end do
+        end if
       end if
-    end do
-    if (production_position == 0) then
-      call fail_driver('multiplicative branches contain no production block')
-    end if
 
-    ! Evaluate one resolved-real sector per block, together with its local
-    ! soft, collinear and soft-collinear counterterms.  Those counterterms
-    ! feed B; only the resolved event feeds R.
-    nbody = .false.
-    do contribution = 1, contribution_count
+      ! Evaluate this block's resolved sector and local counterterms using
+      ! the Born state retained above.  Counterterms feed B; only the
+      ! resolved event feeds R.
+      nbody = .false.
       ifks = configurations(contribution)
       calculated_born = .false.
       wgt_me_born = 0d0
@@ -744,46 +789,56 @@ contains
       call update_vegas_x_impl( &
            xx, vegas_variables, nndim, abrv, contribution)
       call update_fks_dir_impl(ifks)
-      call generate_momenta( &
+      call generate_momenta_reusing_born( &
            nndim, iconfig, jacobian, vegas_variables, momentum)
-      if (p_born(0, 1) < 0d0) cycle
-
-      component_position = &
-           workspace%contribution_positions(contribution)
-      call capture_multiplicative_snapshot( &
-           workspace, component_position, spin_density_real_branch, &
-           real_event)
-      production_contribution = &
-           .not. contribution_is_nlo_decay(contribution)
-      if (production_contribution) then
-        production_boost(spin_density_real_branch) = &
-             ybst_til_tolab(real_event)
-      end if
-
-      call compute_prefactors_n1body(vegas_wgt)
-      if (event_momenta(0, 1, soft_counterevent) > 0d0) then
-        call set_alphas( &
-             event_momenta(0:3, 1:nexternal, soft_counterevent))
-        if (production_contribution) call include_multichannel_enhance(3)
-        call compute_soft_counter_term()
-        if (event_momenta(0, 1, soft_collinear_counterevent) > 0d0) then
-          call compute_soft_collinear_ct_impl()
+      if (p_born(0, 1) >= 0d0) then
+        component_position = &
+             workspace%contribution_positions(contribution)
+        call capture_multiplicative_snapshot( &
+             workspace, component_position, spin_density_real_branch, &
+             real_event)
+        if (production_contribution) then
+          production_boost(spin_density_real_branch) = &
+               ybst_til_tolab(real_event)
         end if
+
+        call compute_prefactors_n1body(vegas_wgt)
+        if (event_momenta(0, 1, soft_counterevent) > 0d0) then
+          call set_alphas( &
+               event_momenta(0:3, 1:nexternal, soft_counterevent))
+          if (production_contribution) call include_multichannel_enhance(3)
+          call compute_soft_counter_term()
+          if (event_momenta(0, 1, soft_collinear_counterevent) > 0d0) then
+            call compute_soft_collinear_ct_impl()
+          end if
+        end if
+        if (event_momenta(0, 1, collinear_counterevent) > 0d0) then
+          call set_alphas( &
+               event_momenta(0:3, 1:nexternal, collinear_counterevent))
+          call compute_collinear_counter_term()
+        end if
+        call set_alphas(momentum)
+        if (production_contribution) call include_multichannel_enhance(2)
+        call compute_real_emission()
       end if
-      if (event_momenta(0, 1, collinear_counterevent) > 0d0) then
-        call set_alphas( &
-             event_momenta(0:3, 1:nexternal, collinear_counterevent))
-        call compute_collinear_counter_term()
-      end if
-      call set_alphas(momentum)
-      if (production_contribution) call include_multichannel_enhance(2)
-      call compute_real_emission()
+      nbody = .true.
     end do
+    nbody = .false.
+    if (production_position == 0) then
+      call fail_driver('multiplicative branches contain no production block')
+    end if
 
     leaf_capacity = multiplicative_leaf_particle_capacity()
-    allocate(leaf_momenta(0:3, leaf_capacity))
-    allocate(statuses(leaf_capacity), pdgs(leaf_capacity))
-    allocate(particle_from_decay(leaf_capacity))
+    if (allocated(statuses)) then
+      if (size(statuses) /= leaf_capacity) then
+        deallocate(leaf_momenta, statuses, pdgs, particle_from_decay)
+      end if
+    end if
+    if (.not. allocated(statuses)) then
+      allocate(leaf_momenta(0:3, leaf_capacity))
+      allocate(statuses(leaf_capacity), pdgs(leaf_capacity))
+      allocate(particle_from_decay(leaf_capacity))
+    end if
 
     call include_pdf_and_alphas()
     if (doreweight) then
@@ -823,9 +878,6 @@ contains
              picked_integers(contribution), 0d0)
       end do
       call set_spin_density_fks_collection(.false.)
-      deallocate(picked_integers, configurations, volumes)
-      deallocate(leaf_momenta, statuses, pdgs)
-      deallocate(particle_from_decay)
       return
     end if
     if (iwgt < 1) then
@@ -835,8 +887,15 @@ contains
     call aggregate_spin_density_weight_lines(workspace)
     call complete_multiplicative_zero_branches(workspace)
 
-    allocate(contracted_weights(iwgt), leaf_weights(iwgt))
-    allocate(total_weights(iwgt))
+    if (allocated(contracted_weights)) then
+      if (size(contracted_weights) /= iwgt) then
+        deallocate(contracted_weights, leaf_weights, total_weights)
+      end if
+    end if
+    if (.not. allocated(contracted_weights)) then
+      allocate(contracted_weights(iwgt), leaf_weights(iwgt))
+      allocate(total_weights(iwgt))
+    end if
     total_weights = 0d0
     leaves_seen = 0_8
     call reset_multiplicative_leaf_iterator(workspace)
@@ -907,10 +966,6 @@ contains
     call fill_multiplicative_mint_function( &
          f, total_weights(1), virtual_over_born)
     call set_spin_density_fks_collection(.false.)
-    deallocate(picked_integers, configurations, volumes)
-    deallocate(contracted_weights, leaf_weights, total_weights)
-    deallocate(leaf_momenta, statuses, pdgs)
-    deallocate(particle_from_decay)
   end function sigint_multiplicative_impl
 
 
@@ -935,9 +990,8 @@ contains
     particle_count = 0
     if (.not. materialized) return
 
-    call restore_multiplicative_leaf(workspace, soft_counterevent)
     call materialize_multiplicative_leaf( &
-         workspace, soft_counterevent, leaf_momenta, statuses, pdgs, &
+         workspace, leaf_momenta, statuses, pdgs, &
          particle_from_decay, particle_count)
     production_branch = &
          workspace%branch_by_component(production_position)

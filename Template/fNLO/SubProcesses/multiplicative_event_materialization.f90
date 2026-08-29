@@ -1,8 +1,6 @@
 module multiplicative_event_materialization
   use multiplicative_nlo_decay, only: multiplicative_nlo_workspace
   use spin_density_matrix_results, only: spin_density_real_branch
-  use factorized_phase_space, only: fetch_factorized_block_momenta, &
-       fetch_factorized_embedded_momenta
   use factorized_block_kinematics, only: &
        boost_factorized_momentum_from_rest, factorized_minkowski_square
   implicit none
@@ -41,16 +39,25 @@ contains
 
 
   subroutine materialize_multiplicative_leaf( &
-       workspace, event_slot, momenta, statuses, pdgs, &
+       workspace, momenta, statuses, pdgs, &
        particle_from_decay, particle_count)
     type(multiplicative_nlo_workspace), intent(in) :: workspace
-    integer, intent(in) :: event_slot
     double precision, intent(out) :: momenta(0:, :)
     integer, intent(out) :: statuses(:), pdgs(:)
     logical, intent(out) :: particle_from_decay(:)
     integer, intent(out) :: particle_count
     integer :: production_position, position
     double precision :: unused_parent(0:3)
+    double precision :: scratch_momenta( &
+         0:3, size(momenta, 2), workspace%component_count)
+    integer :: scratch_statuses( &
+         size(momenta, 2), workspace%component_count)
+    integer :: scratch_target_kinds( &
+         size(momenta, 2), workspace%component_count)
+    integer :: scratch_target_ids( &
+         size(momenta, 2), workspace%component_count)
+    integer :: scratch_pdgs( &
+         size(momenta, 2), workspace%component_count)
 
     if (size(momenta, 1) < 4 .or. &
         size(momenta, 2) < multiplicative_leaf_particle_capacity() .or. &
@@ -92,9 +99,6 @@ contains
       integer, intent(in) :: component_position
       double precision, intent(in) :: new_parent(0:3)
       logical, intent(in) :: has_parent
-      double precision, allocatable :: block_momenta(:, :)
-      integer, allocatable :: block_statuses(:), target_kinds(:)
-      integer, allocatable :: target_ids(:), block_pdgs(:)
       double precision :: old_parent(0:3), inverse_parent(0:3)
       double precision :: rest_momentum(0:3), event_momentum(0:3)
       double precision :: parent_mass2, parent_mass, tolerance
@@ -106,9 +110,9 @@ contains
       if (block_size < 1) then
         call fail_materialization('the generated block size is invalid')
       end if
-      allocate(block_momenta(0:3, block_size))
-      allocate(block_statuses(block_size), target_kinds(block_size))
-      allocate(target_ids(block_size), block_pdgs(block_size))
+      if (block_size > size(momenta, 2)) then
+        call fail_materialization('the block scratch storage is too small')
+      end if
       branch = workspace%branch_by_component(component_position)
       configuration = 0
       if (branch == spin_density_real_branch) then
@@ -121,23 +125,33 @@ contains
       end if
       call sdm_leaf_block_layout( &
            component_position, branch, configuration, block_count, &
-           block_statuses, target_kinds, target_ids, block_pdgs)
+           scratch_statuses(1, component_position), &
+           scratch_target_kinds(1, component_position), &
+           scratch_target_ids(1, component_position), &
+           scratch_pdgs(1, component_position))
       if (block_count < 1 .or. block_count > block_size) then
         call fail_materialization('a generated block count is invalid')
       end if
-      if (branch == spin_density_real_branch) then
-        call fetch_factorized_embedded_momenta( &
-             event_slot, workspace%component_ids(component_position), &
-             block_count, block_momenta(:, 1:block_count), available)
-      else
-        ! Counterevents may retain a real-context zero-momentum leg in the
-        ! embedding cache.  The reduced B branch is deliberately represented
-        ! by its canonical n-body matrix-element block: IR-safe observables
-        ! cannot distinguish the projected real layout from this one.
-        call fetch_factorized_block_momenta( &
-             event_slot, workspace%component_ids(component_position), &
-             block_count, block_momenta(:, 1:block_count), available)
-      end if
+      associate(snapshot => workspace%snapshots( &
+           branch, component_position))
+        if (branch == spin_density_real_branch) then
+          available = snapshot%has_embedded .and. &
+               snapshot%embedded_count == block_count
+          if (available) scratch_momenta(:, 1:block_count, &
+               component_position) = &
+               snapshot%embedded_momenta(:, 1:block_count)
+        else
+          ! Counterevents may retain a real-context zero-momentum leg in the
+          ! embedding cache.  The reduced B branch is deliberately represented
+          ! by its canonical n-body matrix-element block: IR-safe observables
+          ! cannot distinguish the projected real layout from this one.
+          available = snapshot%has_block .and. &
+               snapshot%block_count == block_count
+          if (available) scratch_momenta(:, 1:block_count, &
+               component_position) = &
+               snapshot%block_momenta(:, 1:block_count)
+        end if
+      end associate
       if (.not. available) then
         write (*, '(a,i0,a,i0,a,i0)') &
              'ERROR in multiplicative_event_materialization: block ', &
@@ -148,30 +162,32 @@ contains
 
       if (.not. has_parent) then
         do leg = 1, block_count
-          if (target_kinds(leg) == 1) then
-            if (block_statuses(leg) < 0) then
+          if (scratch_target_kinds(leg, component_position) == 1) then
+            if (scratch_statuses(leg, component_position) < 0) then
               call fail_materialization( &
                    'an incoming production leg targets a decay node')
             end if
-            child_position = component_position_for_id(target_ids(leg))
+            child_position = component_position_for_id( &
+                 scratch_target_ids(leg, component_position))
             call append_component( &
-                 child_position, block_momenta(:, leg), .true.)
+                 child_position, &
+                 scratch_momenta(:, leg, component_position), .true.)
           else
-            call append_particle(block_momenta(:, leg), &
-                 block_statuses(leg), block_pdgs(leg), .false.)
+            call append_particle( &
+                 scratch_momenta(:, leg, component_position), &
+                 scratch_statuses(leg, component_position), &
+                 scratch_pdgs(leg, component_position), .false.)
           end if
         end do
-        deallocate(block_momenta, block_statuses, target_kinds, &
-                   target_ids, block_pdgs)
         return
       end if
 
       initial_count = 0
       old_parent = 0d0
       do leg = 1, block_count
-        if (block_statuses(leg) >= 0) cycle
+        if (scratch_statuses(leg, component_position) >= 0) cycle
         initial_count = initial_count + 1
-        old_parent = block_momenta(:, leg)
+        old_parent = scratch_momenta(:, leg, component_position)
       end do
       if (initial_count /= 1) then
         call fail_materialization( &
@@ -192,22 +208,23 @@ contains
       inverse_parent(1:3) = -inverse_parent(1:3)
 
       do leg = 1, block_count
-        if (block_statuses(leg) < 0) cycle
+        if (scratch_statuses(leg, component_position) < 0) cycle
         call boost_factorized_momentum_from_rest( &
-             block_momenta(:, leg), inverse_parent, parent_mass, &
+             scratch_momenta(:, leg, component_position), &
+             inverse_parent, parent_mass, &
              rest_momentum)
         call boost_factorized_momentum_from_rest( &
              rest_momentum, new_parent, parent_mass, event_momentum)
-        if (target_kinds(leg) == 1) then
-          child_position = component_position_for_id(target_ids(leg))
+        if (scratch_target_kinds(leg, component_position) == 1) then
+          child_position = component_position_for_id( &
+               scratch_target_ids(leg, component_position))
           call append_component(child_position, event_momentum, .true.)
         else
-          call append_particle(event_momentum, block_statuses(leg), &
-               block_pdgs(leg), .true.)
+          call append_particle(event_momentum, &
+               scratch_statuses(leg, component_position), &
+               scratch_pdgs(leg, component_position), .true.)
         end if
       end do
-      deallocate(block_momenta, block_statuses, target_kinds, &
-                 target_ids, block_pdgs)
     end subroutine append_component
 
 

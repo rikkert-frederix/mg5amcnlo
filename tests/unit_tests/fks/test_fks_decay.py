@@ -1564,19 +1564,26 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn(
                 'leaves_seen /= workspace%leaf_count', driver_source)
             self.assertIn(
-                'event_momenta(0, 1, soft_counterevent) <= 0d0',
+                'event_momenta(0, 1, soft_counterevent) > 0d0',
                 driver_source)
+            self.assertGreaterEqual(
+                driver_source.count(
+                    'call generate_momenta_reusing_born('), 2)
             self.assertIn(
                 'f(component_integral) = central_weight', driver_source)
             additive_driver = driver_source.split(
                 'double precision function sigint_impl', 1)[1].split(
                     'end function sigint_impl', 1)[0]
+            additive_real_sector = driver_source.split(
+                'subroutine evaluate_additive_n1body_sector', 1)[1].split(
+                    'end subroutine evaluate_additive_n1body_sector', 1)[0]
             multiplicative_driver = driver_source.split(
                 'double precision function sigint_multiplicative_impl',
                 1)[1].split(
                     'end function sigint_multiplicative_impl', 1)[0]
             self.assertEqual(
-                additive_driver.count('call include_multichannel_enhance('),
+                (additive_driver + additive_real_sector).count(
+                    'call include_multichannel_enhance('),
                 3)
             for mode in [1, 2, 3]:
                 self.assertIn(
@@ -1660,11 +1667,12 @@ class TestFKSDecayChains(unittest.TestCase):
                 'SDM_BLOCK_AVAILABLE' not in source
                 for source in real_sources))
             self.assertTrue(all(
-                'FACTORIZED_PHASE_SPACE_REVISION' in source and
+                'FACTORIZED_BLOCK_MOMENTUM_REVISION' in source and
                 'SET_SPIN_DENSITY_REAL_MATRIX' in source and
                 'IF (SDM_CACHE_VALID) THEN' in source and
                 'IF (SDM_CACHE_VALID.AND.' not in source and
-                'SDM_CACHED_REVISION' in source and
+                'SDM_CACHED_REVISIONS' in source and
+                'ALL(SDM_REVISIONS.GT.0)' in source and
                 'SDM_CACHED_G' in source and
                 'SDM_CACHED_MUR2' in source and
                 'SDM_CACHED_QES2' in source
@@ -1676,7 +1684,10 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn('SET_SPIN_DENSITY_BORN_MATRIX', born_source)
             self.assertIn('IF (SDM_CACHE_VALID) THEN', born_source)
             self.assertNotIn('IF (SDM_CACHE_VALID.AND.', born_source)
-            self.assertIn('SDM_CACHED_REVISION', born_source)
+            self.assertIn(
+                'FACTORIZED_BLOCK_MOMENTUM_REVISION', born_source)
+            self.assertIn('SDM_CACHED_REVISIONS', born_source)
+            self.assertIn('ALL(SDM_REVISIONS.GT.0)', born_source)
             self.assertIn('SDM_CACHED_G', born_source)
             self.assertIn('SDM_CACHED_MUR2', born_source)
             self.assertIn('SDM_CACHED_QES2', born_source)
@@ -1691,7 +1702,9 @@ class TestFKSDecayChains(unittest.TestCase):
                 'SET_SPIN_DENSITY_COLOR_MATRIX' in source and
                 'IF (SDM_CACHE_VALID) THEN' in source and
                 'IF (SDM_CACHE_VALID.AND.' not in source and
-                'SDM_CACHED_REVISION' in source and
+                'FACTORIZED_BLOCK_MOMENTUM_REVISION' in source and
+                'SDM_CACHED_REVISIONS' in source and
+                'ALL(SDM_REVISIONS.GT.0)' in source and
                 'SDM_CACHED_G' in source and
                 'SDM_CACHED_MUR2' in source and
                 'SDM_CACHED_QES2' in source
@@ -1781,11 +1794,13 @@ class TestFKSDecayChains(unittest.TestCase):
                     'multiplicative_event_materialization.f90')) as stream:
                 materialization_source = stream.read().lower()
             self.assertIn(
-                'call fetch_factorized_block_momenta',
+                'snapshot%block_momenta(:, 1:block_count)',
                 materialization_source)
             self.assertIn(
-                'call fetch_factorized_embedded_momenta',
+                'snapshot%embedded_momenta(:, 1:block_count)',
                 materialization_source)
+            self.assertNotIn(
+                'call restore_multiplicative_leaf', materialization_source)
             self.assertIn('ir-safe observables', materialization_source)
             with open(os.path.join(
                     subprocess_dir,

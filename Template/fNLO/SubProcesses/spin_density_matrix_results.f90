@@ -93,20 +93,17 @@ contains
     type(spin_density_block_result), intent(inout) :: result
     logical, intent(out) :: available
     integer(kind=8) :: revision
+    integer :: cached_slot
 
     call ensure_cache()
     call validate_result_identity(result)
     revision = factorized_block_momentum_revision( &
          result%event_slot, result%block)
-    available = revision > 0_8 .and. &
-         lo_cache(result%block, result%event_slot)%valid .and. &
-         lo_cache(result%block, result%event_slot)%momentum_revision == &
-         revision .and. &
-         lo_cache(result%block, result%event_slot)%open_size == &
-         result%open_size
+    call find_cached_lo_slot( &
+         result%block, result%open_size, revision, cached_slot, available)
     if (.not. available) return
     allocate(result%lo(1, result%open_size, result%open_size))
-    result%lo = lo_cache(result%block, result%event_slot)%value
+    result%lo = lo_cache(result%block, cached_slot)%value
     result%has_lo = .true.
   end subroutine load_cached_lo_density
 
@@ -151,17 +148,38 @@ contains
     complex(kind=8), intent(out) :: density(1, open_size, open_size)
     logical, intent(out) :: available
     integer(kind=8) :: revision
+    integer :: cached_slot
 
     call ensure_cache()
     call validate_identity(event_slot, block, open_size)
     revision = factorized_block_momentum_revision(event_slot, block)
-    available = revision > 0_8 .and. &
-         lo_cache(block, event_slot)%valid .and. &
-         lo_cache(block, event_slot)%momentum_revision == revision .and. &
-         lo_cache(block, event_slot)%open_size == open_size
+    call find_cached_lo_slot( &
+         block, open_size, revision, cached_slot, available)
     density = (0d0, 0d0)
-    if (available) density = lo_cache(block, event_slot)%value
+    if (available) density = lo_cache(block, cached_slot)%value
   end subroutine fetch_cached_lo_density
+
+
+  subroutine find_cached_lo_slot( &
+       block, open_size, revision, cached_slot, available)
+    integer, intent(in) :: block, open_size
+    integer(kind=8), intent(in) :: revision
+    integer, intent(out) :: cached_slot
+    logical, intent(out) :: available
+    integer :: event_slot
+
+    cached_slot = soft_counterevent
+    available = .false.
+    if (revision <= 0_8) return
+    do event_slot = soft_counterevent, real_event
+      if (.not. lo_cache(block, event_slot)%valid) cycle
+      if (lo_cache(block, event_slot)%momentum_revision /= revision) cycle
+      if (lo_cache(block, event_slot)%open_size /= open_size) cycle
+      cached_slot = event_slot
+      available = .true.
+      return
+    end do
+  end subroutine find_cached_lo_slot
 
 
   subroutine set_spin_density_insertion(result, kind, order, density)
@@ -289,7 +307,7 @@ contains
 
   subroutine initialize_spin_density_branches(result, block, open_size, &
                                                weight_count)
-    type(spin_density_branch_result), intent(out) :: result
+    type(spin_density_branch_result), intent(inout) :: result
     integer, intent(in) :: block, open_size, weight_count
 
     call validate_identity(soft_counterevent, block, open_size)
@@ -299,8 +317,26 @@ contains
     result%block = block
     result%open_size = open_size
     result%weight_count = weight_count
-    allocate(result%bornlike(weight_count, open_size, open_size))
-    allocate(result%real(weight_count, open_size, open_size))
+    result%bornlike_event_slot = soft_counterevent
+    result%real_event_slot = real_event
+    result%has_bornlike = .false.
+    result%has_real = .false.
+    if (allocated(result%bornlike)) then
+      if (any(shape(result%bornlike) /= &
+              [weight_count, open_size, open_size])) then
+        deallocate(result%bornlike)
+      end if
+    end if
+    if (allocated(result%real)) then
+      if (any(shape(result%real) /= &
+              [weight_count, open_size, open_size])) then
+        deallocate(result%real)
+      end if
+    end if
+    if (.not. allocated(result%bornlike)) &
+         allocate(result%bornlike(weight_count, open_size, open_size))
+    if (.not. allocated(result%real)) &
+         allocate(result%real(weight_count, open_size, open_size))
     result%bornlike = (0d0, 0d0)
     result%real = (0d0, 0d0)
   end subroutine initialize_spin_density_branches

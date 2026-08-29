@@ -2,7 +2,7 @@ module multiplicative_nlo_decay
   use spin_density_matrix_results, only: spin_density_branch_result, &
        spin_density_bornlike_branch, spin_density_real_branch, &
        initialize_spin_density_branches, add_spin_density_branch, &
-       spin_density_branch_leaf_count, decode_spin_density_branch_mask
+       spin_density_branch_leaf_count
   use factorized_phase_space, only: factorized_branch_snapshot, &
        reset_factorized_phase_space, capture_factorized_branch_snapshot, &
        restore_factorized_branch_snapshot
@@ -27,6 +27,7 @@ module multiplicative_nlo_decay
 
   public :: initialize_multiplicative_workspace
   public :: initialize_generated_multiplicative_workspace
+  public :: prepare_generated_multiplicative_workspace
   public :: set_multiplicative_weight_count
   public :: reset_multiplicative_leaf_iterator
   public :: next_multiplicative_leaf
@@ -163,6 +164,43 @@ contains
   end subroutine initialize_generated_multiplicative_workspace
 
 
+  subroutine prepare_generated_multiplicative_workspace(workspace)
+    type(multiplicative_nlo_workspace), intent(inout) :: workspace
+    integer :: component, contribution
+
+    if (workspace%component_count == 0) then
+      call initialize_generated_multiplicative_workspace(workspace)
+      return
+    end if
+    call validate_workspace_layout(workspace)
+    if (workspace%component_count /= sdm_branch_component_count() .or. &
+        workspace%corrected_count /= sdm_branch_corrected_count()) then
+      call fail_multiplicative_nlo( &
+           'the generated multiplicative layout changed during a run')
+    end if
+    do component = 1, workspace%component_count
+      if (workspace%component_ids(component) /= &
+          sdm_branch_component_id(component) .or. &
+          workspace%component_open_sizes(component) /= &
+          sdm_branch_component_open_size(component)) then
+        call fail_multiplicative_nlo( &
+             'the generated component layout changed during a run')
+      end if
+    end do
+    do contribution = 1, workspace%corrected_count
+      if (workspace%contribution_positions(contribution) /= &
+          sdm_contribution_component_position(contribution)) then
+        call fail_multiplicative_nlo( &
+             'the generated contribution layout changed during a run')
+      end if
+    end do
+    workspace%weight_count = 0
+    workspace%real_configuration_by_component = 0
+    workspace%has_snapshot = .false.
+    call reset_multiplicative_leaf_iterator(workspace)
+  end subroutine prepare_generated_multiplicative_workspace
+
+
   subroutine set_multiplicative_weight_count(workspace, weight_count)
     type(multiplicative_nlo_workspace), intent(inout) :: workspace
     integer, intent(in) :: weight_count
@@ -172,12 +210,13 @@ contains
     if (weight_count < 1) then
       call fail_multiplicative_nlo('the multiplicative weight count is zero')
     end if
-    if (workspace%weight_count /= 0 .or. allocated(workspace%branches)) then
+    if (workspace%weight_count /= 0) then
       call fail_multiplicative_nlo( &
            'the multiplicative weights were initialized twice')
     end if
     workspace%weight_count = weight_count
-    allocate(workspace%branches(workspace%component_count))
+    if (.not. allocated(workspace%branches)) &
+         allocate(workspace%branches(workspace%component_count))
     do component = 1, workspace%component_count
       call initialize_spin_density_branches( &
            workspace%branches(component), &
@@ -200,7 +239,6 @@ contains
     type(multiplicative_nlo_workspace), intent(inout) :: workspace
     integer(kind=8), intent(out) :: mask
     logical, intent(out) :: available
-    integer, allocatable :: corrected_branches(:)
     integer :: contribution
 
     call validate_workspace_layout(workspace)
@@ -211,14 +249,13 @@ contains
     end if
     mask = workspace%next_mask
     workspace%branch_by_component = spin_density_bornlike_branch
-    allocate(corrected_branches(workspace%corrected_count))
-    call decode_spin_density_branch_mask(mask, corrected_branches)
     do contribution = 1, workspace%corrected_count
       workspace%branch_by_component( &
            workspace%contribution_positions(contribution)) = &
-           corrected_branches(contribution)
+           merge(spin_density_real_branch, &
+                 spin_density_bornlike_branch, &
+                 btest(mask, contribution - 1))
     end do
-    deallocate(corrected_branches)
     workspace%next_mask = workspace%next_mask + 1_8
   end subroutine next_multiplicative_leaf
 
@@ -226,6 +263,35 @@ contains
   subroutine store_multiplicative_snapshot( &
        workspace, component_position, branch, snapshot)
     type(multiplicative_nlo_workspace), intent(inout) :: workspace
+    integer, intent(in) :: component_position, branch
+    type(factorized_branch_snapshot), intent(in) :: snapshot
+
+    call validate_multiplicative_snapshot( &
+         workspace, component_position, branch, snapshot)
+    workspace%snapshots(branch, component_position) = snapshot
+    workspace%has_snapshot(branch, component_position) = .true.
+  end subroutine store_multiplicative_snapshot
+
+
+  subroutine capture_multiplicative_snapshot( &
+       workspace, component_position, branch, event_slot)
+    type(multiplicative_nlo_workspace), intent(inout) :: workspace
+    integer, intent(in) :: component_position, branch, event_slot
+    call validate_component_and_branch( &
+         workspace, component_position, branch)
+    call capture_factorized_branch_snapshot( &
+         event_slot, workspace%component_ids(component_position), &
+         workspace%snapshots(branch, component_position))
+    call validate_multiplicative_snapshot( &
+         workspace, component_position, branch, &
+         workspace%snapshots(branch, component_position))
+    workspace%has_snapshot(branch, component_position) = .true.
+  end subroutine capture_multiplicative_snapshot
+
+
+  subroutine validate_multiplicative_snapshot( &
+       workspace, component_position, branch, snapshot)
+    type(multiplicative_nlo_workspace), intent(in) :: workspace
     integer, intent(in) :: component_position, branch
     type(factorized_branch_snapshot), intent(in) :: snapshot
 
@@ -251,24 +317,7 @@ contains
       call fail_multiplicative_nlo( &
            'an R branch snapshot has no embedded real block')
     end if
-    workspace%snapshots(branch, component_position) = snapshot
-    workspace%has_snapshot(branch, component_position) = .true.
-  end subroutine store_multiplicative_snapshot
-
-
-  subroutine capture_multiplicative_snapshot( &
-       workspace, component_position, branch, event_slot)
-    type(multiplicative_nlo_workspace), intent(inout) :: workspace
-    integer, intent(in) :: component_position, branch, event_slot
-    type(factorized_branch_snapshot) :: snapshot
-
-    call validate_component_and_branch( &
-         workspace, component_position, branch)
-    call capture_factorized_branch_snapshot( &
-         event_slot, workspace%component_ids(component_position), snapshot)
-    call store_multiplicative_snapshot( &
-         workspace, component_position, branch, snapshot)
-  end subroutine capture_multiplicative_snapshot
+  end subroutine validate_multiplicative_snapshot
 
 
   subroutine set_multiplicative_real_configuration( &
