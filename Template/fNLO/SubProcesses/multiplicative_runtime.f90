@@ -4,12 +4,10 @@ module multiplicative_runtime
   use factorized_phase_space, only: factorized_radiation_state, &
        fetch_factorized_radiation_state, compose_factorized_tuple_measure
   use nlo_contribution_bundle, only: multiplicative_event_capacity
-  use fnlo_process_common, only: soft_counterevent
   use multiplicative_density_terms, only: block_nlo_distribution, &
-       multiplicative_density_tuple, decode_density_cartesian_tuple
+       multiplicative_density_tuple
   use multiplicative_density_contraction, only: &
        multiplicative_density_basis, &
-       contract_multiplicative_density_selection, &
        prepare_multiplicative_density_basis, &
        evaluate_multiplicative_density_basis, &
        evaluate_multiplicative_scale_polynomial
@@ -42,34 +40,11 @@ module multiplicative_runtime
     complex(kind=8) :: partonic_weight = (0d0, 0d0)
   end type multiplicative_partonic_reweight
 
-  public :: evaluate_multiplicative_event_tuple
   public :: evaluate_multiplicative_event_selection
-  public :: evaluate_multiplicative_partonic_reweight
   public :: evaluate_multiplicative_basis_reweight
+  public :: real_multiplicative_weight
 
 contains
-
-  subroutine evaluate_multiplicative_event_tuple( &
-       distributions, tuple_index, logarithmic_mu2_r, &
-       logarithmic_mu2_f, coupling_rescaling, vegas_weight, &
-       precision_asked, evaluation, already_realized)
-    type(block_nlo_distribution), intent(in) :: distributions(:)
-    integer, intent(in) :: tuple_index
-    double precision, intent(in) :: logarithmic_mu2_r(0:)
-    double precision, intent(in) :: logarithmic_mu2_f(0:)
-    double precision, intent(in) :: coupling_rescaling(0:, 0:)
-    double precision, intent(in) :: vegas_weight, precision_asked
-    type(multiplicative_event_evaluation), intent(inout) :: evaluation
-    logical, intent(in), optional :: already_realized
-    type(multiplicative_density_tuple) :: tuple
-
-    call decode_density_cartesian_tuple(distributions, tuple_index, tuple)
-    call evaluate_multiplicative_event_selection( &
-         distributions, tuple, logarithmic_mu2_r, logarithmic_mu2_f, &
-         coupling_rescaling, vegas_weight, precision_asked, evaluation, &
-         already_realized)
-  end subroutine evaluate_multiplicative_event_tuple
-
 
   subroutine evaluate_multiplicative_event_selection( &
        distributions, tuple, logarithmic_mu2_r, logarithmic_mu2_f, &
@@ -84,8 +59,7 @@ contains
     double precision, intent(in) :: vegas_weight, precision_asked
     type(multiplicative_event_evaluation), intent(inout) :: evaluation
     logical, intent(in), optional :: already_realized
-    type(multiplicative_density_basis), intent(inout), optional :: &
-         density_basis
+    type(multiplicative_density_basis), intent(inout) :: density_basis
     double precision, intent(in), optional :: virtual_sampling_fraction
     logical, intent(in), optional :: virtual_sampled
     type(factorized_radiation_state) :: production_radiation
@@ -116,36 +90,23 @@ contains
     load_virtual_primitives = &
          sampling_fraction >= 1d0 .or. sampled_virtual
 
-    ! CONTRACT_MULTIPLICATIVE_DENSITY_TUPLE recursively boosts every selected
-    ! block before calling any provider.  It does not assemble the visible
-    ! event.  R/S/C/SC choices therefore remain distinct signed atoms while
-    ! every matrix element sees only its boosted block-local momenta.
-    if (present(density_basis)) then
-      call prepare_multiplicative_density_basis( &
-           distributions, tuple, precision_asked, density_basis, &
-           use_realized_kinematics, load_virtual_primitives)
-      evaluation%nlo_order = density_basis%nlo_order
-      evaluation%event_slots = density_basis%event_slots
-      evaluation%precision_found = density_basis%precision_found
-      evaluation%return_code = density_basis%return_code
-      density_result = (0d0, 0d0)
-      if (density_basis%prepared) then
-        call evaluate_sampled_basis_density( &
-             density_basis, logarithmic_mu2_r, logarithmic_mu2_f, &
-             coupling_rescaling, sampling_fraction, sampled_virtual, &
-             density_result)
-      end if
-    else
-      if (sampling_fraction < 1d0) then
-        call fail_multiplicative_runtime( &
-             'virtual sampling requires a reusable density basis')
-      end if
-      call contract_multiplicative_density_selection( &
-           distributions, tuple, logarithmic_mu2_r, &
-           logarithmic_mu2_f, precision_asked, density_result, &
-           evaluation%nlo_order, evaluation%event_slots, &
-           evaluation%precision_found, evaluation%return_code, &
-           coupling_rescaling, use_realized_kinematics)
+    ! Density-basis preparation recursively boosts every selected block before
+    ! calling any provider.  It does not assemble the visible event.  R/S/C/SC
+    ! choices therefore remain distinct signed atoms while every matrix element
+    ! sees only its boosted block-local momenta.
+    call prepare_multiplicative_density_basis( &
+         distributions, tuple, precision_asked, density_basis, &
+         use_realized_kinematics, load_virtual_primitives)
+    evaluation%nlo_order = density_basis%nlo_order
+    evaluation%event_slots = density_basis%event_slots
+    evaluation%precision_found = density_basis%precision_found
+    evaluation%return_code = density_basis%return_code
+    density_result = (0d0, 0d0)
+    if (density_basis%prepared) then
+      call evaluate_sampled_basis_density( &
+           density_basis, logarithmic_mu2_r, logarithmic_mu2_f, &
+           coupling_rescaling, sampling_fraction, sampled_virtual, &
+           density_result)
     end if
     ! MadLoop return codes are diagnostic bit fields, not a Boolean success
     ! flag.  Ordinary stable evaluations therefore generally have a nonzero
@@ -184,34 +145,6 @@ contains
     evaluation%partonic_weight = density_result*evaluation%kinematic_weight
     evaluation%available = .true.
   end subroutine evaluate_multiplicative_event_selection
-
-
-  subroutine evaluate_multiplicative_partonic_reweight( &
-       distributions, tuple, logarithmic_mu2_r, logarithmic_mu2_f, &
-       coupling_rescaling, kinematic_weight, precision_asked, reweight)
-    type(block_nlo_distribution), intent(in) :: distributions(:)
-    type(multiplicative_density_tuple), intent(in) :: tuple
-    double precision, intent(in) :: logarithmic_mu2_r(0:)
-    double precision, intent(in) :: logarithmic_mu2_f(0:)
-    double precision, intent(in) :: coupling_rescaling(0:, 0:)
-    double precision, intent(in) :: kinematic_weight, precision_asked
-    type(multiplicative_partonic_reweight), intent(out) :: reweight
-    integer :: event_slots(0:nexternal)
-    complex(kind=8) :: density_result
-
-    if (kinematic_weight <= 0d0 .or. &
-        .not. ieee_is_finite(kinematic_weight)) return
-    call contract_multiplicative_density_selection( &
-         distributions, tuple, logarithmic_mu2_r, logarithmic_mu2_f, &
-         precision_asked, density_result, reweight%nlo_order, event_slots, &
-         reweight%precision_found, reweight%return_code, &
-         coupling_rescaling, .true.)
-    if (.not. usable_multiplicative_density_result( &
-        density_result, reweight%precision_found, &
-        reweight%return_code)) return
-    reweight%partonic_weight = density_result*kinematic_weight
-    reweight%available = .true.
-  end subroutine evaluate_multiplicative_partonic_reweight
 
 
   subroutine evaluate_multiplicative_basis_reweight( &
@@ -400,6 +333,22 @@ contains
         .not. ieee_is_finite(aimag(density))) return
     usable_multiplicative_density_result = .true.
   end function usable_multiplicative_density_result
+
+
+  double precision function real_multiplicative_weight(weight)
+    complex(kind=8), intent(in) :: weight
+
+    if (.not. ieee_is_finite(dble(weight)) .or. &
+        .not. ieee_is_finite(aimag(weight))) then
+      call fail_multiplicative_runtime( &
+           'a multiplicative density contraction is not finite')
+    end if
+    if (abs(aimag(weight)) > 1d-8*max(1d0, abs(dble(weight)))) then
+      call fail_multiplicative_runtime( &
+           'a multiplicative density contraction is not real')
+    end if
+    real_multiplicative_weight = dble(weight)
+  end function real_multiplicative_weight
 
 
   subroutine fail_multiplicative_runtime(message)

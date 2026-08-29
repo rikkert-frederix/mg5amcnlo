@@ -3,8 +3,7 @@ module multiplicative_density_contraction
   use spin_density_matrix_results, only: spin_density_no_insertion, &
        spin_density_virtual_insertion
   use multiplicative_density_terms, only: block_nlo_distribution, &
-       multiplicative_density_tuple, density_cartesian_tuple_count, &
-       decode_density_cartesian_tuple, density_scale_coefficient_count
+       multiplicative_density_tuple, density_scale_coefficient_count
   use multiplicative_kinematics, only: realize_factorized_event_tuple
   use multiplicative_generated_metadata, only: &
        multiplicative_block_count, multiplicative_physical_blocks, &
@@ -45,8 +44,6 @@ module multiplicative_density_contraction
     integer :: return_code = 0
   end type multiplicative_density_basis
 
-  public :: contract_multiplicative_density_tuple
-  public :: contract_multiplicative_density_selection
   public :: prepare_multiplicative_density_basis
   public :: evaluate_multiplicative_density_basis
   public :: prepare_multiplicative_scale_polynomial
@@ -80,69 +77,6 @@ module multiplicative_density_contraction
   end interface
 
 contains
-
-  subroutine contract_multiplicative_density_tuple( &
-       distributions, tuple_index, logarithmic_mu2_r, &
-       logarithmic_mu2_f, precision_asked, result, nlo_order, &
-       event_slots, precision_found, return_code, coupling_rescaling, &
-       already_realized)
-    type(block_nlo_distribution), intent(in) :: distributions(:)
-    integer, intent(in) :: tuple_index
-    double precision, intent(in) :: logarithmic_mu2_r(0:)
-    double precision, intent(in) :: logarithmic_mu2_f(0:)
-    double precision, intent(in) :: precision_asked
-    complex(kind=8), intent(out) :: result
-    integer, intent(out) :: nlo_order
-    integer, intent(out) :: event_slots(0:nexternal)
-    double precision, intent(out) :: precision_found
-    integer, intent(out) :: return_code
-    double precision, intent(in), optional :: coupling_rescaling(0:, 0:)
-    logical, intent(in), optional :: already_realized
-    type(multiplicative_density_tuple) :: tuple
-
-    if (tuple_index < 1 .or. &
-        tuple_index > density_cartesian_tuple_count(distributions)) then
-      call fail_density_contraction('a density tuple index is out of range')
-    end if
-    call decode_density_cartesian_tuple(distributions, tuple_index, tuple)
-    call contract_multiplicative_density_selection( &
-         distributions, tuple, logarithmic_mu2_r, logarithmic_mu2_f, &
-         precision_asked, result, nlo_order, event_slots, precision_found, &
-         return_code, coupling_rescaling, already_realized)
-  end subroutine contract_multiplicative_density_tuple
-
-
-  subroutine contract_multiplicative_density_selection( &
-       distributions, tuple, logarithmic_mu2_r, logarithmic_mu2_f, &
-       precision_asked, result, nlo_order, event_slots, precision_found, &
-       return_code, coupling_rescaling, already_realized)
-    type(block_nlo_distribution), intent(in) :: distributions(:)
-    type(multiplicative_density_tuple), intent(in) :: tuple
-    double precision, intent(in) :: logarithmic_mu2_r(0:)
-    double precision, intent(in) :: logarithmic_mu2_f(0:)
-    double precision, intent(in) :: precision_asked
-    complex(kind=8), intent(out) :: result
-    integer, intent(out) :: nlo_order
-    integer, intent(out) :: event_slots(0:nexternal)
-    double precision, intent(out) :: precision_found
-    integer, intent(out) :: return_code
-    double precision, intent(in), optional :: coupling_rescaling(0:, 0:)
-    logical, intent(in), optional :: already_realized
-    type(multiplicative_density_basis) :: basis
-
-    call prepare_multiplicative_density_basis( &
-         distributions, tuple, precision_asked, basis, already_realized)
-    nlo_order = basis%nlo_order
-    event_slots = basis%event_slots
-    precision_found = basis%precision_found
-    return_code = basis%return_code
-    result = (0d0, 0d0)
-    if (.not. basis%prepared) return
-    call evaluate_multiplicative_density_basis( &
-         basis, logarithmic_mu2_r, logarithmic_mu2_f, result, &
-         coupling_rescaling)
-  end subroutine contract_multiplicative_density_selection
-
 
   subroutine prepare_multiplicative_density_basis( &
        distributions, tuple, precision_asked, basis, already_realized, &

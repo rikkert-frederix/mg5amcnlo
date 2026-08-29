@@ -31,8 +31,7 @@ module driver_mintfo_module
                        do_rwgt_scale, do_rwgt_decay_scale, do_rwgt_pdf, &
                        q2fact
   use genps_fks, only: generate_momenta
-  use decay_chain_metadata, only: real_phase_space_dimension, &
-       decay_node_count, node_pdg
+  use decay_chain_metadata, only: real_phase_space_dimension
   use fnlo_scale_variations, only: configure_fnlo_scale_variations, &
        fnlo_scale_point_count, decode_fnlo_scale_point
   use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
@@ -44,11 +43,10 @@ module driver_mintfo_module
        contribution_fks_channel_configuration, &
        multiplicative_mc_integer_dimension, &
        nlo_virtual_grid_count, bundle_component_count, &
-       bundle_component_label, bundle_species_is_nlo, &
-       bundle_nlo_component
+       bundle_component_label, bundle_nlo_component
   use decay_chain_parameters, only: uses_multiplicative_nlo_combination, &
        decay_width_denominator_rescaling, decay_scale_species_count, &
-       decay_scale_species, decay_lo_width, decay_nlo_width, &
+       decay_scale_species, &
        multiplicative_virtual_sampling_fraction
   use multiplicative_phase_space, only: &
        multiplicative_phase_space_assembly, &
@@ -67,7 +65,8 @@ module driver_mintfo_module
        activate_multiplicative_block_reference
   use multiplicative_production_channels, only: &
        multiplicative_production_channel_partition
-  use multiplicative_runtime, only: multiplicative_event_evaluation
+  use multiplicative_runtime, only: multiplicative_event_evaluation, &
+       real_multiplicative_weight
   use multiplicative_tuple_executor, only: execute_multiplicative_tuple
   use multiplicative_reweighter, only: multiplicative_partonic_reweight, &
        reweight_multiplicative_scale_point
@@ -84,7 +83,6 @@ module driver_mintfo_module
        acquire_multiplicative_point_workspace
   use multiplicative_lambda_validation, only: &
        multiplicative_lambda_accumulator, &
-       initialize_multiplicative_lambda_accumulator, &
        accumulate_multiplicative_lambda_atom, &
        formal_lambda_lo_weight, formal_lambda_additive_weight, &
        formal_lambda_block_linear_correction, &
@@ -956,12 +954,6 @@ contains
       if (.not. pass) cycle
       central_production_mu2_f = production_mu2_f
       if (.not. evaluation%available) cycle
-      if (abs(aimag(evaluation%partonic_weight)) > &
-          1d-8*max(1d0,abs(dble(evaluation%partonic_weight)))) then
-        call fail_driver( &
-             'a multiplicative density contraction is not real')
-      end if
-
       q2fact = production_mu2_f
       luminosity = dlum_configuration( &
            luminosity_configuration, evaluation%bjorken_x)
@@ -972,7 +964,8 @@ contains
       pass_cuts_check = .true.
       ! Generated DLUM providers already apply the GeV^-2-to-pb conversion
       ! for two incoming beams, exactly as in the additive weight path.
-      tuple_weight = dble(evaluation%partonic_weight)*luminosity* &
+      tuple_weight = real_multiplicative_weight( &
+           evaluation%partonic_weight)*luminosity* &
            production_channel_partition
       tuple_weight = tuple_weight*reweight
       total_weight = total_weight + tuple_weight
@@ -996,8 +989,6 @@ contains
                  coupling_rescaling, production_mu2_r, production_mu2_f)
             weight_index = weight_index + 1
             if (.not. variation_reweight%available) cycle
-            call require_real_multiplicative_weight( &
-                 variation_reweight%partonic_weight)
             q2fact = production_mu2_f
             luminosity = dlum_configuration( &
                  luminosity_configuration, &
@@ -1005,7 +996,8 @@ contains
             width_rescaling = &
                  decay_width_denominator_rescaling(factor_indices)
             plotted_weight(weight_index) = &
-                 dble(variation_reweight%partonic_weight)*luminosity* &
+                 real_multiplicative_weight( &
+                      variation_reweight%partonic_weight)*luminosity* &
                  production_channel_partition*width_rescaling*reweight
           end do
         end do
@@ -1237,15 +1229,6 @@ contains
       end do
     end subroutine map_decay_factor_indices
 
-
-    subroutine require_real_multiplicative_weight(weight)
-      complex(kind=8), intent(in) :: weight
-
-      if (abs(aimag(weight)) > 1d-8*max(1d0,abs(dble(weight)))) then
-        call fail_driver( &
-             'a varied multiplicative density contraction is not real')
-      end if
-    end subroutine require_real_multiplicative_weight
 
   end subroutine sigint_multiplicative_impl
 

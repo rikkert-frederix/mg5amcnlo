@@ -1753,12 +1753,12 @@ class SpinDensityExporter(object):
                         entries, {
                             'position': position,
                             'emit': virtual_call}))
-                    lines.extend([
-                        'CALL RECORD_SPIN_DENSITY_INSERTION(SDM_BLOCK,'
-                        '%s,' % insertion_kind,
-                        '1,SDM_IDENTIFIER,SDM_CORRELATION,'
-                        'PREC_ASKED,SDM_PRECISION,'
-                        'SDM_LOCAL_CODE,SDM_RHO3_%d)' % position])
+                    lines.append(
+                        ('CALL RECORD_SPIN_DENSITY_INSERTION(SDM_BLOCK,'
+                         '%s,1,SDM_IDENTIFIER,SDM_CORRELATION,'
+                         'PREC_ASKED,SDM_PRECISION,'
+                         'SDM_LOCAL_CODE,SDM_RHO3_%d)') % (
+                             insertion_kind, position))
 
             block_color = color_variants.get(component_id, [])
             if block_color:

@@ -37,24 +37,7 @@ module multiplicative_density_terms
     integer, allocatable :: term_indices(:)
     integer, allocatable :: event_slots(:)
   end type multiplicative_density_tuple
-contains
-  subroutine decode_density_cartesian_tuple(distributions, tuple_index, tuple)
-    type(block_nlo_distribution), intent(in) :: distributions(:)
-    integer, intent(in) :: tuple_index
-    type(multiplicative_density_tuple), intent(out) :: tuple
-    allocate(tuple%term_indices(size(distributions)))
-    allocate(tuple%event_slots(0:4))
-    tuple%distribution_count = size(distributions)
-    tuple%term_indices = tuple_index
-    tuple%event_slots = 0
-    tuple%event_slots(0) = 3
-  end subroutine decode_density_cartesian_tuple
 end module multiplicative_density_terms
-
-module fnlo_process_common
-  implicit none
-  integer, parameter :: soft_counterevent = 0
-end module fnlo_process_common
 
 module nlo_contribution_bundle
   implicit none
@@ -150,32 +133,6 @@ contains
       if (.not. include_virtual) result = (3d0, 0d0)
     end if
   end subroutine evaluate_multiplicative_scale_polynomial
-  subroutine contract_multiplicative_density_selection( &
-       distributions, tuple, logs_r, logs_f, precision_asked, &
-       result, nlo_order, slots, precision_found, return_code, &
-       coupling_rescaling, already_realized)
-    type(block_nlo_distribution), intent(in) :: distributions(:)
-    type(multiplicative_density_tuple), intent(in) :: tuple
-    double precision, intent(in) :: logs_r(0:), logs_f(0:)
-    double precision, intent(in) :: precision_asked
-    complex(kind=8), intent(out) :: result
-    integer, intent(out) :: nlo_order, slots(0:), return_code
-    double precision, intent(out) :: precision_found
-    double precision, intent(in) :: coupling_rescaling(0:,0:)
-    logical, intent(in) :: already_realized
-    if (stage /= 0) stop 83
-    stage = 1
-    slots = 0
-    slots(0) = 3
-    result = (5d0, 0d0) + 0d0*sum(tuple%term_indices) + &
-         0d0*sum(logs_r) + 0d0*sum(logs_f) + &
-         0d0*sum(coupling_rescaling) + 0d0*size(distributions)
-    if (already_realized) stop 85
-    nlo_order = 2
-    precision_found = precision_asked
-    ! A normal MadLoop evaluation carries a nonzero diagnostic status code.
-    return_code = 210
-  end subroutine contract_multiplicative_density_selection
 end module multiplicative_density_contraction
 
 module multiplicative_kinematics
@@ -211,14 +168,20 @@ program test_runtime
   type(multiplicative_event_evaluation) :: evaluation
   type(multiplicative_event_evaluation) :: sampled, skipped
   type(multiplicative_density_tuple) :: tuple
-  type(multiplicative_density_basis) :: sampled_basis, skipped_basis
+  type(multiplicative_density_basis) :: basis, sampled_basis, skipped_basis
   double precision :: logs(0:4), rescaling(0:4,0:1)
   double precision :: expected_mean
 
   logs = 0d0
   rescaling = 1d0
-  call evaluate_multiplicative_event_tuple( &
-       distributions, 1, logs, logs, rescaling, 7d0, 1d-6, evaluation)
+  tuple%distribution_count = 1
+  allocate(tuple%term_indices(1), tuple%event_slots(0:4))
+  tuple%term_indices = 1
+  tuple%event_slots = 0
+  tuple%event_slots(0) = 3
+  call evaluate_multiplicative_event_selection( &
+       distributions, tuple, logs, logs, rescaling, 7d0, 1d-6, &
+       evaluation, .false., basis, 1d0, .true.)
   if (.not. evaluation%available .or. stage /= 3) stop 1
   if (abs(dble(evaluation%partonic_weight) - 210d0) > 1d-12) stop 2
   if (evaluation%visible_count /= 6 .or. evaluation%nlo_order /= 2) stop 3
@@ -226,7 +189,6 @@ program test_runtime
   if (maxval(abs(evaluation%bjorken_x - (/0.2d0, 0.3d0/))) > &
       1d-12) stop 4
 
-  call decode_density_cartesian_tuple(distributions, 1, tuple)
   stage = 0
   call evaluate_multiplicative_event_selection( &
        distributions, tuple, logs, logs, rescaling, 7d0, 1d-6, &
@@ -243,6 +205,8 @@ program test_runtime
   expected_mean = 0.25d0*dble(sampled%partonic_weight) + &
        0.75d0*dble(skipped%partonic_weight)
   if (abs(expected_mean - dble(evaluation%partonic_weight)) > 1d-12) stop 9
+  if (abs(real_multiplicative_weight((2d0, 1d-12)) - 2d0) > &
+      1d-12) stop 10
 end program test_runtime
 '''
         with tempfile.TemporaryDirectory() as directory:

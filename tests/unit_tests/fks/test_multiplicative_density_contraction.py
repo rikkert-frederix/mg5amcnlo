@@ -144,11 +144,12 @@ program test_density_contraction
   implicit none
   type(block_nlo_distribution) :: distributions(2)
   type(multiplicative_density_tuple) :: tuple
+  type(density_tuple_schedule) :: schedule
   type(multiplicative_density_basis) :: basis
   complex(kind=8) :: coefficients(3), result, direct_result
   double precision :: logs(0:4), varied_logs_r(0:4), varied_logs_f(0:4)
-  double precision :: precision, coupling_rescaling(0:4,0:1)
-  integer :: slots(0:4), order, return_code, distribution
+  double precision :: coupling_rescaling(0:4,0:1)
+  integer :: distribution
   integer :: term_slots(2), term_signs(2), term_kinds(2)
   double precision :: term_coefficients(2)
   double precision :: expected(4)
@@ -173,21 +174,24 @@ program test_density_contraction
     call finalize_block_distribution(distributions(distribution))
   end do
 
+  call initialize_density_tuple_schedule(distributions, schedule)
   do distribution = 1, 4
-    call contract_multiplicative_density_tuple( &
-         distributions, distribution, logs, logs, 1d-6, result, order, &
-         slots, precision, return_code)
+    call decode_scheduled_density_tuple( &
+         distributions, schedule, distribution, tuple)
+    call prepare_multiplicative_density_basis( &
+         distributions, tuple, 1d-6, basis)
+    call evaluate_multiplicative_density_basis( &
+         basis, logs, logs, result)
     if (abs(dble(result) - expected(distribution)) > 1d-12) stop 11
     if (abs(aimag(result)) > 1d-12) stop 12
-    if (order /= 2 .or. return_code /= 0) stop 13
-    if (abs(precision - 1d-6) > 1d-15) stop 14
-    call contract_multiplicative_density_tuple( &
-         distributions, distribution, logs, logs, 1d-6, result, order, &
-         slots, precision, return_code, coupling_rescaling)
+    if (basis%nlo_order /= 2 .or. basis%return_code /= 0) stop 13
+    if (abs(basis%precision_found - 1d-6) > 1d-15) stop 14
+    call evaluate_multiplicative_density_basis( &
+         basis, logs, logs, result, coupling_rescaling)
     if (abs(dble(result) - 6d0*expected(distribution)) > 1d-12) stop 15
   end do
 
-  call decode_density_cartesian_tuple(distributions, 1, tuple)
+  call decode_scheduled_density_tuple(distributions, schedule, 1, tuple)
   call prepare_multiplicative_density_basis( &
        distributions, tuple, 1d-6, basis, .true.)
   varied_logs_r = 0d0
@@ -381,10 +385,11 @@ program test_loop_times_loop
   implicit none
   type(block_nlo_distribution) :: distributions(2)
   type(multiplicative_density_tuple) :: tuple
+  type(density_tuple_schedule) :: schedule
   type(multiplicative_density_basis) :: basis
   complex(kind=8) :: coefficients(3), result
-  double precision :: logs(0:2), precision
-  integer :: slots(0:2), order, return_code, distribution, primitive
+  double precision :: logs(0:2)
+  integer :: distribution, primitive
 
   coefficients = (0d0, 0d0)
   coefficients(1) = (1d0, 0d0)
@@ -405,10 +410,13 @@ program test_loop_times_loop
     call finalize_block_distribution(distributions(distribution))
   end do
 
-  call contract_multiplicative_density_tuple( &
-       distributions, 1, logs, logs, 1d-6, result, order, slots, &
-       precision, return_code)
-  if (order /= 2 .or. return_code /= 0) stop 11
+  call initialize_density_tuple_schedule(distributions, schedule)
+  call decode_scheduled_density_tuple(distributions, schedule, 1, tuple)
+  call prepare_multiplicative_density_basis( &
+       distributions, tuple, 1d-6, basis, .true.)
+  call evaluate_multiplicative_density_basis( &
+       basis, logs, logs, result)
+  if (basis%nlo_order /= 2 .or. basis%return_code /= 0) stop 11
   if (abs(result - (250d0, 0d0)) > 1d-12) stop 12
   if (effective_calls /= 1 .or. sum(calls) /= 4) stop 13
   if (calls(2, 1) /= 1 .or. calls(3, 1) /= 1 .or. &
@@ -416,7 +424,6 @@ program test_loop_times_loop
 
   calls = 0
   effective_calls = 0
-  call decode_density_cartesian_tuple(distributions, 1, tuple)
   call prepare_multiplicative_density_basis( &
        distributions, tuple, 1d-6, basis, .true., .false.)
   call evaluate_multiplicative_density_basis( &

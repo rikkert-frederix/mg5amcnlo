@@ -14,7 +14,6 @@ module multiplicative_point_workspace
   private
 
   type, public :: multiplicative_point_workspace_type
-    logical :: initialized = .false.
     type(multiplicative_phase_space_assembly) :: assembly
     type(block_nlo_distribution), allocatable :: distributions(:)
     type(multiplicative_density_tuple) :: tuple
@@ -111,7 +110,6 @@ contains
     point_workspace%decay_block_factor_indices = 1
     call initialize_multiplicative_lambda_accumulator( &
          point_workspace%lambda_validation, plan%component_count)
-    point_workspace%initialized = .true.
     workspace => point_workspace
   end subroutine acquire_multiplicative_point_workspace
 

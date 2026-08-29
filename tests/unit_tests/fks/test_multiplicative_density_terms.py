@@ -52,13 +52,14 @@ end module spin_density_matrix_results
         return executable
 
     @unittest.skipUnless(shutil.which('gfortran'), 'gfortran is unavailable')
-    def test_cartesian_terms_retain_independent_event_slots(self):
+    def test_scheduled_terms_retain_independent_event_slots(self):
         program = r'''
 program test_density_tuples
   use multiplicative_density_terms
   implicit none
   type(block_nlo_distribution) :: distributions(2)
   type(multiplicative_density_tuple) :: tuple
+  type(density_tuple_schedule) :: schedule
   complex(kind=8) :: coefficients(3), evaluated
   integer :: distribution, term, tuple_index
   integer :: expected_signs(4)
@@ -90,9 +91,10 @@ program test_density_tuples
   end do
 
   if (density_cartesian_tuple_count(distributions) /= 4) stop 11
+  call initialize_density_tuple_schedule(distributions, schedule)
   do tuple_index = 1, 4
-    call decode_density_cartesian_tuple( &
-         distributions, tuple_index, tuple)
+    call decode_scheduled_density_tuple( &
+         distributions, schedule, tuple_index, tuple)
     if (tuple%sign /= expected_signs(tuple_index)) stop 12
     if (tuple%nlo_order /= 2) stop 13
     if (tuple%event_slots(0) /= expected_slots(1, tuple_index)) stop 14

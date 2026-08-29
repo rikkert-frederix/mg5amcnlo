@@ -82,7 +82,6 @@ module multiplicative_density_terms
   public :: finalize_block_distribution_term
   public :: finalize_block_distribution
   public :: density_cartesian_tuple_count
-  public :: decode_density_cartesian_tuple
   public :: initialize_density_tuple_schedule
   public :: prepare_scheduled_density_tuple
   public :: decode_scheduled_density_tuple
@@ -399,19 +398,6 @@ contains
            distributions(distribution)%terms(term)%nlo_order
     end do
   end subroutine decode_scheduled_density_tuple
-
-
-  subroutine decode_density_cartesian_tuple( &
-       distributions, tuple_index, tuple)
-    type(block_nlo_distribution), intent(in) :: distributions(:)
-    integer, intent(in) :: tuple_index
-    type(multiplicative_density_tuple), intent(out) :: tuple
-    type(density_tuple_schedule) :: schedule
-
-    call initialize_density_tuple_schedule(distributions, schedule)
-    call decode_scheduled_density_tuple( &
-         distributions, schedule, tuple_index, tuple)
-  end subroutine decode_density_cartesian_tuple
 
 
   logical function term_precedes(left, left_index, right, right_index)

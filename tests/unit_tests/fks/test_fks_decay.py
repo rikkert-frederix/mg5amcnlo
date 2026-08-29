@@ -66,6 +66,28 @@ class TestFKSDecayChains(unittest.TestCase):
         with open(path) as stream:
             return stream.read()
 
+    def assert_fixed_form_call_continuations(self, source, call_name):
+        """Require every continued line of a generated fixed-form call."""
+
+        continued = False
+        call_count = 0
+        for line_number, line in enumerate(source.splitlines(), 1):
+            statement = line[6:] if len(line) > 6 else ''
+            if not continued and ('CALL %s(' % call_name) in statement:
+                call_count += 1
+                continued = ')' not in statement
+                continue
+            if not continued:
+                continue
+            self.assertGreaterEqual(len(line), 6, msg='line %d' % line_number)
+            self.assertEqual(
+                line[5], '$',
+                msg='missing fixed-form continuation on line %d' %
+                    line_number)
+            continued = ')' not in statement
+        self.assertFalse(continued, msg='unterminated call to %s' % call_name)
+        self.assertGreater(call_count, 0, msg='missing call to %s' % call_name)
+
     def assert_local_widths(self, matrix_element, expected_nodes):
         expected_widths = {
             6: 'FNLO_DECAY_DUMMY_WIDTH_RATIO()*mdl_MT',
@@ -2176,6 +2198,9 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn(
                 'SPIN_DENSITY_FAST_VIRTUAL_INSERTION',
                 multiplicative_source)
+            self.assert_fixed_form_call_continuations(
+                multiplicative_source,
+                'RECORD_SPIN_DENSITY_INSERTION')
             self.assertFalse([
                 (line_number, len(line))
                 for line_number, line in enumerate(
