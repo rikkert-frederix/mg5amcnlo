@@ -3235,16 +3235,6 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
 
         source = []
         info_list = matrix_element.get_fks_info_list()
-        correlation_legs = []
-        for info in info_list:
-            fks_info = info['fks_info']
-            if 'ij_massless' in info:
-                massless = info['ij_massless']
-            else:
-                ij = fks_info['ij']
-                massless = matrix_element.born_me[
-                    'processes'][0]['legs'][ij - 1]['massless']
-            correlation_legs.append(fks_info['ij'] if massless else 0)
         source.extend([
             'INTEGER FUNCTION SDM_BRANCH_COMPONENT_COUNT()',
             'IMPLICIT NONE',
@@ -3300,251 +3290,8 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             'ENDIF',
             'SDM_CONTRIBUTION_COMPONENT_POSITION=',
             '     $ SDM_CONTRIBUTION_POSITION(CONTRIBUTION)',
-            'END',
-            '',
-            'INTEGER FUNCTION SDM_FKS_CORRELATION_LEG(CONFIGURATION)',
-            'IMPLICIT NONE',
-            'INTEGER CONFIGURATION',
-            'INTEGER CORRELATION_LEGS(%d)' % max(1, len(correlation_legs)),
-            'DATA CORRELATION_LEGS /%s/' % ','.join(
-                map(str, correlation_legs or [0])),
-            'IF (CONFIGURATION.LT.1.OR.CONFIGURATION.GT.%d) THEN' %
-            max(1, len(correlation_legs)),
-            "  WRITE(*,*) 'Invalid density correlation configuration',",
-            '     $ CONFIGURATION',
-            '  STOP 1',
-            'ENDIF',
-            'SDM_FKS_CORRELATION_LEG=CORRELATION_LEGS(CONFIGURATION)',
-            'END',
-            '',
-            'INTEGER FUNCTION SDM_LOCAL_CORRELATION_LEG(CONTRIBUTION,',
-            '     $ GLOBAL_LEG)',
-            'IMPLICIT NONE',
-            'INTEGER CONTRIBUTION,GLOBAL_LEG',
-            'SDM_LOCAL_CORRELATION_LEG=0',
-            'SELECT CASE (CONTRIBUTION)'])
-        for variant in born_variants:
-            provider = variant.get(
-                'provider', plan['components'][
-                    variant['active_component']]['born'])
-            correlation_map = density_exporter.correlation_leg_map(
-                plan, provider, variant['context'], variant['context_kind'])
-            source.extend([
-                'CASE (%d)' % variant['contribution_id'],
-                '  IF (GLOBAL_LEG.GT.0) THEN',
-                '    IF (GLOBAL_LEG.GT.%d) THEN' % len(correlation_map),
-                "      WRITE(*,*) 'Invalid global density correlation leg',",
-                '     $ GLOBAL_LEG',
-                '      STOP 1',
-                '    ENDIF',
-                '    SELECT CASE (GLOBAL_LEG)'])
-            for global_leg, local_leg in enumerate(correlation_map, 1):
-                source.extend([
-                    '    CASE (%d)' % global_leg,
-                    '      SDM_LOCAL_CORRELATION_LEG=%d' % local_leg])
-            source.extend(['    END SELECT', '  ENDIF'])
-        source.extend([
-            'CASE DEFAULT',
-            "  WRITE(*,*) 'Invalid density correlation contribution',",
-            '     $ CONTRIBUTION',
-            '  STOP 1',
-            'END SELECT',
-            'END',
-            ''])
-        source.extend([
-            'SUBROUTINE SDM_BORN_BLOCK_DENSITY(CONTRIBUTION,EVENT_SLOT,',
-            '     $ CORR_LEG,OPEN_SIZE,RHO)',
-            'IMPLICIT NONE',
-            "INCLUDE 'spin_density_branch_dimensions.inc'",
-            'INTEGER CONTRIBUTION,EVENT_SLOT,CORR_LEG,OPEN_SIZE',
-            'COMPLEX*16 RHO(2,SDM_MAX_OPEN_SIZE,SDM_MAX_OPEN_SIZE)',
-            'SELECT CASE (CONTRIBUTION)'])
-        for variant in born_variants:
-            contribution = variant['contribution_id']
-            source.extend([
-                'CASE (%d)' % contribution,
-                '  CALL SDM_BORN_BLOCK_DENSITY_%d(EVENT_SLOT,CORR_LEG,' %
-                contribution,
-                '     $ OPEN_SIZE,RHO)'])
-        source.extend([
-            'CASE DEFAULT',
-            "  WRITE(*,*) 'Invalid B-branch contribution',CONTRIBUTION",
-            '  STOP 1',
-            'END SELECT',
             'END'])
-        for variant in born_variants:
-            contribution = variant['contribution_id']
-            provider = variant.get(
-                'provider', plan['components'][
-                    variant['active_component']]['born'])
-            nexternal, _ = provider['matrix_element'].get_nexternal_ninitial()
-            open_size = provider['open_size']
-            source.extend([
-                '',
-                'SUBROUTINE SDM_BORN_BLOCK_DENSITY_%d(EVENT_SLOT,' %
-                contribution,
-                '     $ CORR_LEG,OPEN_SIZE,RHO)',
-                'IMPLICIT NONE',
-                "INCLUDE 'spin_density_branch_dimensions.inc'",
-                'INTEGER EVENT_SLOT,CORR_LEG,OPEN_SIZE',
-                'REAL*8 P(0:3,%d)' % nexternal,
-                'COMPLEX*16 LOCAL_RHO(2,%d,%d)' % (
-                    open_size, open_size),
-                'COMPLEX*16 RHO(2,SDM_MAX_OPEN_SIZE,SDM_MAX_OPEN_SIZE)',
-                'CALL GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,%d,%d,P)' % (
-                    variant['active_component'], nexternal),
-                'CALL %s(P,CORR_LEG,LOCAL_RHO)' % provider['fortran_name'],
-                'RHO=(0D0,0D0)',
-                'RHO(:,1:%d,1:%d)=LOCAL_RHO' % (open_size, open_size),
-                'OPEN_SIZE=%d' % open_size,
-                'END'])
-
         real_variants = plan.get('real_variants', [])
-        configurations_by_me = {}
-        for configuration, info in enumerate(info_list, 1):
-            configurations_by_me.setdefault(info['n_me'], []).append(
-                configuration)
-        source.extend([
-            '',
-            'SUBROUTINE SDM_REAL_BLOCK_DENSITY(CONFIGURATION,EVENT_SLOT,',
-            '     $ OPEN_SIZE,RHO)',
-            'IMPLICIT NONE',
-            "INCLUDE 'spin_density_branch_dimensions.inc'",
-            'INTEGER CONFIGURATION,EVENT_SLOT,OPEN_SIZE',
-            'COMPLEX*16 RHO(2,SDM_MAX_OPEN_SIZE,SDM_MAX_OPEN_SIZE)',
-            'SELECT CASE (CONFIGURATION)'])
-        for matrix_index, variant in enumerate(real_variants, 1):
-            configurations = configurations_by_me.get(matrix_index, [])
-            if not configurations:
-                continue
-            source.extend([
-                'CASE (%s)' % ','.join(map(str, configurations)),
-                '  CALL SDM_REAL_BLOCK_DENSITY_%d(EVENT_SLOT,' % matrix_index,
-                '     $ OPEN_SIZE,RHO)'])
-        source.extend([
-            'CASE DEFAULT',
-            "  WRITE(*,*) 'Invalid R-branch configuration',CONFIGURATION",
-            '  STOP 1',
-            'END SELECT',
-            'END'])
-        for matrix_index, variant in enumerate(real_variants, 1):
-            provider = variant['provider']
-            nexternal, _ = provider['matrix_element'].get_nexternal_ninitial()
-            open_size = provider['open_size']
-            source.extend([
-                '',
-                'SUBROUTINE SDM_REAL_BLOCK_DENSITY_%d(EVENT_SLOT,' %
-                matrix_index,
-                '     $ OPEN_SIZE,RHO)',
-                'IMPLICIT NONE',
-                "INCLUDE 'spin_density_branch_dimensions.inc'",
-                'INTEGER EVENT_SLOT,OPEN_SIZE',
-                'REAL*8 P(0:3,%d)' % nexternal,
-                'COMPLEX*16 LOCAL_RHO(2,%d,%d)' % (
-                    open_size, open_size),
-                'COMPLEX*16 RHO(2,SDM_MAX_OPEN_SIZE,SDM_MAX_OPEN_SIZE)',
-                'CALL GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,%d,%d,P)' % (
-                    variant['active_component'], nexternal),
-                'CALL %s(P,0,LOCAL_RHO)' % provider['fortran_name'],
-                'RHO=(0D0,0D0)',
-                'RHO(:,1:%d,1:%d)=LOCAL_RHO' % (open_size, open_size),
-                'OPEN_SIZE=%d' % open_size,
-                'END'])
-
-        color_variants = plan.get('color_variants', [])
-        source.extend([
-            '',
-            'SUBROUTINE SDM_COLOR_BLOCK_DENSITY_PAIR(CONTRIBUTION,',
-            '     $ FIRST,SECOND,EVENT_SLOT,OPEN_SIZE,RHO)',
-            'IMPLICIT NONE',
-            "INCLUDE 'spin_density_branch_dimensions.inc'",
-            'INTEGER CONTRIBUTION,FIRST,SECOND,EVENT_SLOT,OPEN_SIZE',
-            'COMPLEX*16 RHO(SDM_MAX_OPEN_SIZE,SDM_MAX_OPEN_SIZE)'])
-        for index, color_link in enumerate(matrix_element.color_links, 1):
-            first, second = color_link['link']
-            prefix = 'IF' if index == 1 else 'ELSE IF'
-            if first == second:
-                condition = 'FIRST.EQ.%d.AND.SECOND.EQ.%d' % (
-                    first, second)
-            else:
-                condition = ('(FIRST.EQ.%d.AND.SECOND.EQ.%d).OR.'
-                             '(FIRST.EQ.%d.AND.SECOND.EQ.%d)') % (
-                                 first, second, second, first)
-            source.extend([
-                '%s (%s) THEN' % (prefix, condition),
-                '  CALL SDM_COLOR_BLOCK_DENSITY(CONTRIBUTION,%d,' % index,
-                '     $ EVENT_SLOT,OPEN_SIZE,RHO)'])
-        if matrix_element.color_links:
-            source.extend([
-                'ELSE',
-                "  WRITE(*,*) 'Invalid B-branch color pair',FIRST,SECOND",
-                '  STOP 1',
-                'ENDIF'])
-        else:
-            source.extend([
-                "WRITE(*,*) 'A process without color links requested one'",
-                'STOP 1'])
-        source.append('END')
-        source.extend([
-            '',
-            'SUBROUTINE SDM_COLOR_BLOCK_DENSITY(CONTRIBUTION,LINK,',
-            '     $ EVENT_SLOT,OPEN_SIZE,RHO)',
-            'IMPLICIT NONE',
-            "INCLUDE 'spin_density_branch_dimensions.inc'",
-            'INTEGER CONTRIBUTION,LINK,EVENT_SLOT,OPEN_SIZE',
-            'COMPLEX*16 RHO(SDM_MAX_OPEN_SIZE,SDM_MAX_OPEN_SIZE)',
-            'RHO=(0D0,0D0)',
-            'SELECT CASE (CONTRIBUTION)'])
-        color_by_contribution = {}
-        for variant in color_variants:
-            color_by_contribution.setdefault(
-                variant.get('contribution_id', 1), []).append(variant)
-        for contribution, variants in sorted(color_by_contribution.items()):
-            source.extend(['CASE (%d)' % contribution, '  SELECT CASE (LINK)'])
-            for variant in variants:
-                link = variant['generated_index']
-                source.extend([
-                    '  CASE (%d)' % link,
-                    '    CALL SDM_COLOR_BLOCK_DENSITY_%d_%d(EVENT_SLOT,' % (
-                        contribution, link),
-                    '     $ OPEN_SIZE,RHO)'])
-            source.extend([
-                '  CASE DEFAULT',
-                "    WRITE(*,*) 'Invalid B-branch color link',LINK",
-                '    STOP 1',
-                '  END SELECT'])
-        source.extend([
-            'CASE DEFAULT',
-            "  WRITE(*,*) 'Invalid B-branch color contribution',",
-            '     $ CONTRIBUTION',
-            '  STOP 1',
-            'END SELECT',
-            'END'])
-        for variant in color_variants:
-            contribution = variant.get('contribution_id', 1)
-            link = variant['generated_index']
-            provider = variant['provider']
-            nexternal, _ = provider['matrix_element'].get_nexternal_ninitial()
-            open_size = provider['open_size']
-            source.extend([
-                '',
-                'SUBROUTINE SDM_COLOR_BLOCK_DENSITY_%d_%d(EVENT_SLOT,' % (
-                    contribution, link),
-                '     $ OPEN_SIZE,RHO)',
-                'IMPLICIT NONE',
-                "INCLUDE 'spin_density_branch_dimensions.inc'",
-                'INTEGER EVENT_SLOT,OPEN_SIZE',
-                'REAL*8 P(0:3,%d)' % nexternal,
-                'COMPLEX*16 LOCAL_RHO(%d,%d)' % (open_size, open_size),
-                'COMPLEX*16 RHO(SDM_MAX_OPEN_SIZE,SDM_MAX_OPEN_SIZE)',
-                'CALL GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,%d,%d,P)' % (
-                    variant['active_component'], nexternal),
-                'CALL %s(P,LOCAL_RHO)' % variant['fortran_name'],
-                'RHO=(0D0,0D0)',
-                'RHO(1:%d,1:%d)=LOCAL_RHO' % (open_size, open_size),
-                'OPEN_SIZE=%d' % open_size,
-                'END'])
-
         virtual_variants = plan.get('virtual_variants', [])
         virtual_variants_with_contribution = [
             (variant, variant.get('contribution_id', index))
@@ -4037,50 +3784,6 @@ C     Legacy processes obtain their channel weights from SBORN itself.
       SDM_CONTRIBUTION_COMPONENT_POSITION=1
       END
 
-      INTEGER FUNCTION SDM_FKS_CORRELATION_LEG(I)
-      IMPLICIT NONE
-      INTEGER I
-      SDM_FKS_CORRELATION_LEG=0
-      END
-
-      INTEGER FUNCTION SDM_LOCAL_CORRELATION_LEG(I,J)
-      IMPLICIT NONE
-      INTEGER I,J
-      SDM_LOCAL_CORRELATION_LEG=0
-      END
-
-      SUBROUTINE SDM_BORN_BLOCK_DENSITY(I,J,K,L,RHO)
-      IMPLICIT NONE
-      INTEGER I,J,K,L
-      COMPLEX*16 RHO(*)
-      WRITE(*,*) 'Block density called for a legacy process'
-      STOP 1
-      END
-
-      SUBROUTINE SDM_REAL_BLOCK_DENSITY(I,J,K,RHO)
-      IMPLICIT NONE
-      INTEGER I,J,K
-      COMPLEX*16 RHO(*)
-      WRITE(*,*) 'Block density called for a legacy process'
-      STOP 1
-      END
-
-      SUBROUTINE SDM_COLOR_BLOCK_DENSITY(I,J,K,L,RHO)
-      IMPLICIT NONE
-      INTEGER I,J,K,L
-      COMPLEX*16 RHO(*)
-      WRITE(*,*) 'Block density called for a legacy process'
-      STOP 1
-      END
-
-      SUBROUTINE SDM_COLOR_BLOCK_DENSITY_PAIR(I,J,K,L,M,RHO)
-      IMPLICIT NONE
-      INTEGER I,J,K,L,M
-      COMPLEX*16 RHO(*)
-      WRITE(*,*) 'Block density called for a legacy process'
-      STOP 1
-      END
-
       SUBROUTINE SDM_VIRTUAL_BLOCK_DENSITY(I,J,A,K,RHO,B,L)
       IMPLICIT NONE
       INTEGER I,J,K,L
@@ -4142,6 +3845,94 @@ C     Legacy processes obtain their channel weights from SBORN itself.
             'ENDIF',
             '%s=VALUES(IORDER)' % function_name,
             'END'])
+
+
+    @staticmethod
+    def _spin_density_cache_sections(
+            result_name, result_declaration, density_name,
+            density_declaration, publisher, contribution, extra_key=None):
+        """Build a scale- and phase-space-safe provider cache.
+
+        Each generated provider owns one saved cache entry.  Keeping the
+        common key and publication sequence here prevents the Born, real and
+        colour wrappers from drifting apart.
+        """
+
+        uses = [
+            'USE FACTORIZED_PHASE_SPACE, ONLY:',
+            '     $ FACTORIZED_PHASE_SPACE_REVISION',
+            'USE FKS_MODEL_STATE_MODULE, ONLY: STRONG_COUPLING',
+            'USE RUN_STATE, ONLY: MUR2_CURRENT,QES2_CURRENT',
+            'USE SPIN_DENSITY_FKS_MATRICES, ONLY:',
+            '     $ SPIN_DENSITY_FKS_COLLECTION_ENABLED,',
+            '     $ %s' % publisher]
+        declarations = [
+            'INTEGER*8 SDM_REVISION,SDM_CACHED_REVISION',
+            'INTEGER SDM_CACHED_EVENT_SLOT',
+            'REAL*8 SDM_CACHED_G,SDM_CACHED_MUR2,SDM_CACHED_QES2',
+            'LOGICAL SDM_CACHE_VALID,SDM_CACHE_HIT',
+            result_declaration,
+            density_declaration]
+        if extra_key is not None:
+            declarations.append('INTEGER %s' % extra_key[1])
+        declarations.extend([
+            'SAVE SDM_CACHE_VALID,SDM_CACHED_REVISION,',
+            '     $ SDM_CACHED_EVENT_SLOT,SDM_CACHED_RESULT,',
+            '     $ SDM_CACHED_RHO,SDM_CACHED_G,SDM_CACHED_MUR2,',
+            '     $ SDM_CACHED_QES2%s' % (
+                ',' + extra_key[1] if extra_key is not None else ''),
+            'DATA SDM_CACHE_VALID /.FALSE./',
+            'DATA SDM_CACHED_REVISION /-1/,'])
+        if extra_key is None:
+            declarations.append('     $ SDM_CACHED_EVENT_SLOT /-1/')
+        else:
+            declarations.extend([
+                '     $ SDM_CACHED_EVENT_SLOT /-1/,',
+                '     $ %s /-1/' % extra_key[1]])
+
+        conditions = [
+            'SDM_CACHED_REVISION.EQ.SDM_REVISION',
+            'SDM_CACHED_EVENT_SLOT.EQ.EVENT_SLOT']
+        if extra_key is not None:
+            conditions.append('%s.EQ.%s' % (extra_key[1], extra_key[0]))
+        conditions.extend([
+            'SDM_CACHED_G.EQ.STRONG_COUPLING',
+            'SDM_CACHED_MUR2.EQ.MUR2_CURRENT',
+            'SDM_CACHED_QES2.EQ.QES2_CURRENT'])
+        lookup = [
+            'SDM_REVISION=FACTORIZED_PHASE_SPACE_REVISION()',
+            'SDM_CACHE_HIT=.FALSE.',
+            'IF (SDM_CACHE_VALID) THEN']
+        for index, condition in enumerate(conditions):
+            prefix = '  SDM_CACHE_HIT=' if index == 0 else '     $ '
+            suffix = '.AND.' if index + 1 < len(conditions) else ''
+            lookup.append(prefix + condition + suffix)
+        lookup.extend([
+            'ENDIF',
+            'IF (SDM_CACHE_HIT) THEN',
+            '  %s=SDM_CACHED_RESULT' % result_name,
+            '  %s=SDM_CACHED_RHO' % density_name,
+            'ELSE'])
+
+        store_and_publish = [
+            '  SDM_CACHED_RESULT=%s' % result_name,
+            '  SDM_CACHED_RHO=%s' % density_name,
+            '  SDM_CACHED_REVISION=SDM_REVISION',
+            '  SDM_CACHED_EVENT_SLOT=EVENT_SLOT']
+        if extra_key is not None:
+            store_and_publish.append(
+                '  %s=%s' % (extra_key[1], extra_key[0]))
+        store_and_publish.extend([
+            '  SDM_CACHED_G=STRONG_COUPLING',
+            '  SDM_CACHED_MUR2=MUR2_CURRENT',
+            '  SDM_CACHED_QES2=QES2_CURRENT',
+            '  SDM_CACHE_VALID=.TRUE.',
+            'ENDIF',
+            'IF (SPIN_DENSITY_FKS_COLLECTION_ENABLED()) THEN',
+            '  CALL %s(%d,' % (publisher, contribution),
+            '     $ %s)' % density_name,
+            'ENDIF'])
+        return uses, declarations, lookup, store_and_publish
 
 
     def write_spin_density_born(self, writer, fksborn, fortran_model,
@@ -4311,79 +4102,38 @@ C     Legacy processes obtain their channel weights from SBORN itself.
             correlation_map = density_exporter.correlation_leg_map(
                 plan, correlation_provider, variant['context'],
                 variant['context_kind'])
+            cache_uses, cache_declarations, cache_lookup, cache_store = \
+                self._spin_density_cache_sections(
+                    'SDM_RESULT', 'COMPLEX*16 SDM_CACHED_RESULT(2)',
+                    'SDM_INSERTION_RHO',
+                    'COMPLEX*16 SDM_CACHED_RHO(2,%d,%d)' % (
+                        correlation_provider['open_size'],
+                        correlation_provider['open_size']),
+                    'SET_SPIN_DENSITY_BORN_MATRIX', contribution,
+                    ('SDM_LOCAL_CORR', 'SDM_CACHED_CORR_LEG'))
             core.extend([
                 '',
                 'SUBROUTINE SDM_BORN_CONTRIBUTION_%d(EVENT_SLOT,' %
                 contribution,
                 '     $ GLU_IJ,SDM_RESULT)',
-                'USE SPIN_DENSITY_MATRIX_RESULTS',
-                'USE FACTORIZED_PHASE_SPACE, ONLY:',
-                '     $ FACTORIZED_PHASE_SPACE_GENERATION',
-                'USE FKS_MODEL_STATE_MODULE, ONLY: STRONG_COUPLING',
-                'USE RUN_STATE, ONLY: MUR2_CURRENT,QES2_CURRENT',
-                'USE SPIN_DENSITY_FKS_MATRICES, ONLY:',
-                '     $ SPIN_DENSITY_FKS_COLLECTION_ENABLED,',
-                '     $ SET_SPIN_DENSITY_BORN_MATRIX',
+                'USE SPIN_DENSITY_MATRIX_RESULTS'])
+            core.extend(cache_uses)
+            core.extend([
                 'IMPLICIT NONE',
                 'INTEGER EVENT_SLOT,GLU_IJ,SDM_LOCAL_CORR',
                 'INTEGER SDM_CORR_MAP(%d)' % len(correlation_map),
                 'DATA SDM_CORR_MAP /%s/' % ','.join(
                     map(str, correlation_map))])
             core.extend(declarations)
+            core.extend(cache_declarations)
             core.extend([
-                'INTEGER*8 SDM_GENERATION,SDM_CACHED_GENERATION',
-                'INTEGER SDM_CACHED_EVENT_SLOT,SDM_CACHED_CORR_LEG',
-                'REAL*8 SDM_CACHED_G,SDM_CACHED_MUR2,SDM_CACHED_QES2',
-                'LOGICAL SDM_CACHE_VALID',
-                'COMPLEX*16 SDM_CACHED_RESULT(2)',
-                'COMPLEX*16 SDM_CACHED_RHO(2,%d,%d)' % (
-                    correlation_provider['open_size'],
-                    correlation_provider['open_size']),
-                'SAVE SDM_CACHE_VALID,SDM_CACHED_GENERATION,',
-                '     $ SDM_CACHED_EVENT_SLOT,SDM_CACHED_CORR_LEG,',
-                '     $ SDM_CACHED_RESULT,SDM_CACHED_RHO,',
-                '     $ SDM_CACHED_G,SDM_CACHED_MUR2,SDM_CACHED_QES2',
-                'DATA SDM_CACHE_VALID /.FALSE./',
-                'DATA SDM_CACHED_GENERATION /-1/,',
-                '     $ SDM_CACHED_EVENT_SLOT /-1/,',
-                '     $ SDM_CACHED_CORR_LEG /-1/',
                 'SDM_LOCAL_CORR=GLU_IJ',
                 'IF (SDM_LOCAL_CORR.GT.0) '
-                'SDM_LOCAL_CORR=SDM_CORR_MAP(SDM_LOCAL_CORR)',
-                'SDM_GENERATION=FACTORIZED_PHASE_SPACE_GENERATION()',
-                'IF (SDM_CACHE_VALID.AND.',
-                '     $ SDM_CACHED_GENERATION.EQ.SDM_GENERATION.AND.',
-                '     $ SDM_CACHED_EVENT_SLOT.EQ.EVENT_SLOT.AND.',
-                '     $ SDM_CACHED_CORR_LEG.EQ.SDM_LOCAL_CORR.AND.',
-                '     $ SDM_CACHED_G.EQ.STRONG_COUPLING.AND.',
-                '     $ SDM_CACHED_MUR2.EQ.MUR2_CURRENT.AND.',
-                '     $ SDM_CACHED_QES2.EQ.QES2_CURRENT) THEN',
-                '  SDM_RESULT=SDM_CACHED_RESULT',
-                '  SDM_INSERTION_RHO=SDM_CACHED_RHO',
-                '  IF (SPIN_DENSITY_FKS_COLLECTION_ENABLED()) THEN',
-                '    CALL SET_SPIN_DENSITY_BORN_MATRIX(%d,' %
-                contribution,
-                '     $ SDM_INSERTION_RHO)',
-                '  ENDIF',
-                '  RETURN',
-                'ENDIF'])
+                'SDM_LOCAL_CORR=SDM_CORR_MAP(SDM_LOCAL_CORR)'])
+            core.extend(cache_lookup)
             core.extend(code)
-            core.extend([
-                'SDM_CACHED_RESULT=SDM_RESULT',
-                'SDM_CACHED_RHO=SDM_INSERTION_RHO',
-                'SDM_CACHED_GENERATION=SDM_GENERATION',
-                'SDM_CACHED_EVENT_SLOT=EVENT_SLOT',
-                'SDM_CACHED_CORR_LEG=SDM_LOCAL_CORR',
-                'SDM_CACHED_G=STRONG_COUPLING',
-                'SDM_CACHED_MUR2=MUR2_CURRENT',
-                'SDM_CACHED_QES2=QES2_CURRENT',
-                'SDM_CACHE_VALID=.TRUE.',
-                'IF (SPIN_DENSITY_FKS_COLLECTION_ENABLED()) THEN',
-                '  CALL SET_SPIN_DENSITY_BORN_MATRIX(%d,' %
-                contribution,
-                '     $ SDM_INSERTION_RHO)',
-                'ENDIF',
-                'END'])
+            core.extend(cache_store)
+            core.append('END')
         writer.writelines(wrapper + '\n\n' + '\n'.join(core))
         return 0, ncolor, 1, 1
 
@@ -4442,6 +4192,13 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
         prefix = str(real_index + 1)
         contribution = variant.get('contribution_id', 1)
         open_size = provider['open_size']
+        cache_uses, cache_declarations, cache_lookup, cache_store = \
+            self._spin_density_cache_sections(
+                'SDM_RESULT', 'COMPLEX*16 SDM_CACHED_RESULT(2)',
+                'SDM_INSERTION_RHO',
+                'COMPLEX*16 SDM_CACHED_RHO(2,%d,%d)' % (
+                    open_size, open_size),
+                'SET_SPIN_DENSITY_REAL_MATRIX', contribution)
         replacement = {
             'info_lines': self.get_mg5_info_lines(),
             'process_lines': self.get_process_info_lines(reference),
@@ -4473,65 +4230,18 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
             'SUBROUTINE SMATRIX%s_FACTORIZED_SPLITORDERS(EVENT_SLOT,' %
             prefix,
             '     $ ANS)',
-            'USE SPIN_DENSITY_MATRIX_RESULTS',
-            'USE FACTORIZED_PHASE_SPACE, ONLY:',
-            '     $ FACTORIZED_PHASE_SPACE_GENERATION',
-            'USE FKS_MODEL_STATE_MODULE, ONLY: STRONG_COUPLING',
-            'USE RUN_STATE, ONLY: MUR2_CURRENT,QES2_CURRENT',
-            'USE SPIN_DENSITY_FKS_MATRICES, ONLY:',
-            '     $ SPIN_DENSITY_FKS_COLLECTION_ENABLED,',
-            '     $ SET_SPIN_DENSITY_REAL_MATRIX',
+            'USE SPIN_DENSITY_MATRIX_RESULTS']
+        core.extend(cache_uses)
+        core.extend([
             'IMPLICIT NONE',
             'INTEGER EVENT_SLOT',
-            'REAL*8 ANS(0:1)']
+            'REAL*8 ANS(0:1)'])
         core.extend(declarations)
-        core.extend([
-            'INTEGER*8 SDM_GENERATION,SDM_CACHED_GENERATION',
-            'INTEGER SDM_CACHED_EVENT_SLOT',
-            'REAL*8 SDM_CACHED_G,SDM_CACHED_MUR2,SDM_CACHED_QES2',
-            'LOGICAL SDM_CACHE_VALID',
-            'COMPLEX*16 SDM_CACHED_RESULT(2)',
-            'COMPLEX*16 SDM_CACHED_RHO(2,%d,%d)' % (
-                open_size, open_size),
-            'SAVE SDM_CACHE_VALID,SDM_CACHED_GENERATION,',
-            '     $ SDM_CACHED_EVENT_SLOT,SDM_CACHED_RESULT,',
-            '     $ SDM_CACHED_RHO,SDM_CACHED_G,SDM_CACHED_MUR2,',
-            '     $ SDM_CACHED_QES2',
-            'DATA SDM_CACHE_VALID /.FALSE./',
-            'DATA SDM_CACHED_GENERATION /-1/,',
-            '     $ SDM_CACHED_EVENT_SLOT /-1/',
-            'SDM_GENERATION=FACTORIZED_PHASE_SPACE_GENERATION()',
-            'IF (SDM_CACHE_VALID.AND.',
-            '     $ SDM_CACHED_GENERATION.EQ.SDM_GENERATION.AND.',
-            '     $ SDM_CACHED_EVENT_SLOT.EQ.EVENT_SLOT.AND.',
-            '     $ SDM_CACHED_G.EQ.STRONG_COUPLING.AND.',
-            '     $ SDM_CACHED_MUR2.EQ.MUR2_CURRENT.AND.',
-            '     $ SDM_CACHED_QES2.EQ.QES2_CURRENT) THEN',
-            '  SDM_RESULT=SDM_CACHED_RESULT',
-            '  SDM_INSERTION_RHO=SDM_CACHED_RHO',
-            '  IF (SPIN_DENSITY_FKS_COLLECTION_ENABLED()) THEN',
-            '    CALL SET_SPIN_DENSITY_REAL_MATRIX(%d,' % contribution,
-            '     $ SDM_INSERTION_RHO)',
-            '  ENDIF',
-            '  ANS=0D0',
-            '  ANS(1)=DBLE(SDM_RESULT(1))',
-            '  ANS(0)=ANS(1)',
-            '  RETURN',
-            'ENDIF'])
+        core.extend(cache_declarations)
+        core.extend(cache_lookup)
         core.extend(code)
+        core.extend(cache_store)
         core.extend([
-            'SDM_CACHED_RESULT=SDM_RESULT',
-            'SDM_CACHED_RHO=SDM_INSERTION_RHO',
-            'SDM_CACHED_GENERATION=SDM_GENERATION',
-            'SDM_CACHED_EVENT_SLOT=EVENT_SLOT',
-            'SDM_CACHED_G=STRONG_COUPLING',
-            'SDM_CACHED_MUR2=MUR2_CURRENT',
-            'SDM_CACHED_QES2=QES2_CURRENT',
-            'SDM_CACHE_VALID=.TRUE.',
-            'IF (SPIN_DENSITY_FKS_COLLECTION_ENABLED()) THEN',
-            '  CALL SET_SPIN_DENSITY_REAL_MATRIX(%d,' % contribution,
-            '     $ SDM_INSERTION_RHO)',
-            'ENDIF',
             'ANS=0D0',
             'ANS(1)=DBLE(SDM_RESULT(1))',
             'ANS(0)=ANS(1)',
@@ -4848,68 +4558,31 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
             identifier = variant.get('contribution_id', 1)
             declarations, code = density_exporter.color_contraction_lines(
                 plan, variant, event_slot='EVENT_SLOT')
+            open_size = variant['provider']['open_size']
+            cache_uses, cache_declarations, cache_lookup, cache_store = \
+                self._spin_density_cache_sections(
+                    'SDM_COLOR_RESULT',
+                    'COMPLEX*16 SDM_CACHED_RESULT',
+                    'SDM_COLOR_RHO',
+                    'COMPLEX*16 SDM_CACHED_RHO(%d,%d)' % (
+                        open_size, open_size),
+                    'SET_SPIN_DENSITY_COLOR_MATRIX', identifier)
             core.extend([
                 '',
                 'SUBROUTINE SDM_COLOR_CONTRIBUTION_%d_%d(EVENT_SLOT,' % (
                     identifier, ilink + 1),
                 '     $ SDM_COLOR_RESULT)',
-                'USE SPIN_DENSITY_MATRIX_RESULTS',
-                'USE FACTORIZED_PHASE_SPACE, ONLY:',
-                '     $ FACTORIZED_PHASE_SPACE_GENERATION',
-                'USE FKS_MODEL_STATE_MODULE, ONLY: STRONG_COUPLING',
-                'USE RUN_STATE, ONLY: MUR2_CURRENT,QES2_CURRENT',
-                'USE SPIN_DENSITY_FKS_MATRICES, ONLY:',
-                '     $ SPIN_DENSITY_FKS_COLLECTION_ENABLED,',
-                '     $ SET_SPIN_DENSITY_COLOR_MATRIX',
+                'USE SPIN_DENSITY_MATRIX_RESULTS'])
+            core.extend(cache_uses)
+            core.extend([
                 'IMPLICIT NONE',
                 'INTEGER EVENT_SLOT'])
             core.extend(declarations)
-            open_size = variant['provider']['open_size']
-            core.extend([
-                'INTEGER*8 SDM_GENERATION,SDM_CACHED_GENERATION',
-                'INTEGER SDM_CACHED_EVENT_SLOT',
-                'REAL*8 SDM_CACHED_G,SDM_CACHED_MUR2,SDM_CACHED_QES2',
-                'LOGICAL SDM_CACHE_VALID',
-                'COMPLEX*16 SDM_CACHED_RESULT',
-                'COMPLEX*16 SDM_CACHED_RHO(%d,%d)' % (
-                    open_size, open_size),
-                'SAVE SDM_CACHE_VALID,SDM_CACHED_GENERATION,',
-                '     $ SDM_CACHED_EVENT_SLOT,SDM_CACHED_RESULT,',
-                '     $ SDM_CACHED_RHO,SDM_CACHED_G,SDM_CACHED_MUR2,',
-                '     $ SDM_CACHED_QES2',
-                'DATA SDM_CACHE_VALID /.FALSE./',
-                'DATA SDM_CACHED_GENERATION /-1/,',
-                '     $ SDM_CACHED_EVENT_SLOT /-1/',
-                'SDM_GENERATION=FACTORIZED_PHASE_SPACE_GENERATION()',
-                'IF (SDM_CACHE_VALID.AND.',
-                '     $ SDM_CACHED_GENERATION.EQ.SDM_GENERATION.AND.',
-                '     $ SDM_CACHED_EVENT_SLOT.EQ.EVENT_SLOT.AND.',
-                '     $ SDM_CACHED_G.EQ.STRONG_COUPLING.AND.',
-                '     $ SDM_CACHED_MUR2.EQ.MUR2_CURRENT.AND.',
-                '     $ SDM_CACHED_QES2.EQ.QES2_CURRENT) THEN',
-                '  SDM_COLOR_RESULT=SDM_CACHED_RESULT',
-                '  SDM_COLOR_RHO=SDM_CACHED_RHO',
-                '  IF (SPIN_DENSITY_FKS_COLLECTION_ENABLED()) THEN',
-                '    CALL SET_SPIN_DENSITY_COLOR_MATRIX(%d,' % identifier,
-                '     $ SDM_COLOR_RHO)',
-                '  ENDIF',
-                '  RETURN',
-                'ENDIF'])
+            core.extend(cache_declarations)
+            core.extend(cache_lookup)
             core.extend(code)
-            core.extend([
-                'SDM_CACHED_RESULT=SDM_COLOR_RESULT',
-                'SDM_CACHED_RHO=SDM_COLOR_RHO',
-                'SDM_CACHED_GENERATION=SDM_GENERATION',
-                'SDM_CACHED_EVENT_SLOT=EVENT_SLOT',
-                'SDM_CACHED_G=STRONG_COUPLING',
-                'SDM_CACHED_MUR2=MUR2_CURRENT',
-                'SDM_CACHED_QES2=QES2_CURRENT',
-                'SDM_CACHE_VALID=.TRUE.',
-                'IF (SPIN_DENSITY_FKS_COLLECTION_ENABLED()) THEN',
-                '  CALL SET_SPIN_DENSITY_COLOR_MATRIX(%d,' % identifier,
-                '     $ SDM_COLOR_RHO)',
-                'ENDIF',
-                'END'])
+            core.extend(cache_store)
+            core.append('END')
         writer.writelines(wrapper + '\n\n' + '\n'.join(core))
         return 0, max(1, len(variants[0]['link']['orig_basis']))
 

@@ -33,6 +33,7 @@ module multiplicative_nlo_decay
   public :: store_multiplicative_snapshot
   public :: capture_multiplicative_snapshot
   public :: set_multiplicative_real_configuration
+  public :: multiplicative_leaf_has_snapshots
   public :: restore_multiplicative_leaf
   public :: add_multiplicative_block_density
   public :: complete_multiplicative_zero_branches
@@ -324,6 +325,20 @@ contains
            restore_global=component == global_component)
     end do
   end subroutine restore_multiplicative_leaf
+
+
+  logical function multiplicative_leaf_has_snapshots(workspace)
+    type(multiplicative_nlo_workspace), intent(in) :: workspace
+    integer :: branch, component
+
+    call validate_workspace_layout(workspace)
+    multiplicative_leaf_has_snapshots = .false.
+    do component = 1, workspace%component_count
+      branch = workspace%branch_by_component(component)
+      if (.not. workspace%has_snapshot(branch, component)) return
+    end do
+    multiplicative_leaf_has_snapshots = .true.
+  end function multiplicative_leaf_has_snapshots
 
 
   subroutine add_multiplicative_block_density( &

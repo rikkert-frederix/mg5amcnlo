@@ -29,9 +29,6 @@ module spin_density_fks_matrices
   public :: reset_spin_density_fks_matrices
   public :: set_spin_density_fks_collection
   public :: spin_density_fks_collection_enabled
-  public :: load_spin_density_born_matrix
-  public :: load_spin_density_real_matrix
-  public :: load_spin_density_color_matrix
   public :: load_spin_density_virtual_matrix
   public :: set_spin_density_born_matrix
   public :: set_spin_density_real_matrix
@@ -78,13 +75,6 @@ module spin_density_fks_matrices
       integer, intent(in) :: contribution
     end function sdm_contribution_component_position
 
-    integer function sdm_fks_correlation_leg(configuration)
-      integer, intent(in) :: configuration
-    end function sdm_fks_correlation_leg
-
-    integer function sdm_local_correlation_leg(contribution, global_leg)
-      integer, intent(in) :: contribution, global_leg
-    end function sdm_local_correlation_leg
   end interface
 
 contains
@@ -145,27 +135,6 @@ contains
   end subroutine clear_spin_density_fks_matrices
 
 
-  subroutine load_spin_density_born_matrix( &
-       contribution, configuration, event_slot)
-    integer, intent(in) :: contribution, configuration, event_slot
-    integer :: global_leg, local_leg
-
-    call ensure_spin_density_fks_matrices()
-    born_density = (0d0, 0d0)
-    born_matrix_is_available = .false.
-    real_matrix_is_available = .false.
-    global_leg = sdm_fks_correlation_leg(configuration)
-    local_leg = sdm_local_correlation_leg(contribution, global_leg)
-    call sdm_born_block_density( &
-         contribution, event_slot, local_leg, active_open_size, &
-         born_density)
-    active_component_position = &
-         sdm_contribution_component_position(contribution)
-    call validate_loaded_density('Born')
-    born_matrix_is_available = .true.
-  end subroutine load_spin_density_born_matrix
-
-
   subroutine set_spin_density_born_matrix(contribution, density)
     integer, intent(in) :: contribution
     complex(kind=8), intent(in) :: density(:, :, :)
@@ -191,22 +160,6 @@ contains
   end subroutine reset_spin_density_born_matrix
 
 
-  subroutine load_spin_density_real_matrix(configuration, event_slot, &
-                                           contribution)
-    integer, intent(in) :: configuration, event_slot, contribution
-
-    call ensure_spin_density_fks_matrices()
-    real_density = (0d0, 0d0)
-    real_matrix_is_available = .false.
-    call sdm_real_block_density( &
-         configuration, event_slot, active_open_size, real_density)
-    active_component_position = &
-         sdm_contribution_component_position(contribution)
-    call validate_loaded_density('real')
-    real_matrix_is_available = .true.
-  end subroutine load_spin_density_real_matrix
-
-
   subroutine set_spin_density_real_matrix(contribution, density)
     integer, intent(in) :: contribution
     complex(kind=8), intent(in) :: density(:, :, :)
@@ -228,23 +181,6 @@ contains
     real_density = (0d0, 0d0)
     real_matrix_is_available = .false.
   end subroutine reset_spin_density_real_matrix
-
-
-  subroutine load_spin_density_color_matrix( &
-       contribution, first, second, event_slot)
-    integer, intent(in) :: contribution, first, second, event_slot
-
-    call ensure_spin_density_fks_matrices()
-    color_density = (0d0, 0d0)
-    color_matrix_is_available = .false.
-    call sdm_color_block_density_pair( &
-         contribution, first, second, event_slot, active_open_size, &
-         color_density)
-    active_component_position = &
-         sdm_contribution_component_position(contribution)
-    call validate_loaded_density('color')
-    color_matrix_is_available = .true.
-  end subroutine load_spin_density_color_matrix
 
 
   subroutine set_spin_density_color_matrix(contribution, density)

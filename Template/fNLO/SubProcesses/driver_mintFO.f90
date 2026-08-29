@@ -64,6 +64,7 @@ module driver_mintfo_module
        set_multiplicative_weight_count, reset_multiplicative_leaf_iterator, &
        next_multiplicative_leaf, capture_multiplicative_snapshot, &
        set_multiplicative_real_configuration, restore_multiplicative_leaf, &
+       multiplicative_leaf_has_snapshots, &
        complete_multiplicative_zero_branches, &
        contract_multiplicative_leaf
   use multiplicative_event_materialization, only: &
@@ -594,7 +595,7 @@ contains
     integer :: ibody, ifks, leaf_capacity, particle_count
     integer :: production_position, radiation_block, weight
     integer(kind=8) :: leaf_mask, leaves_seen
-    logical :: available, leaf_has_snapshots, pass_leaf
+    logical :: available, leaf_is_materialized, pass_leaf
     logical :: production_contribution
     real :: plot_time_before, plot_time_after
 
@@ -798,24 +799,11 @@ contains
       do
         call next_multiplicative_leaf(workspace, leaf_mask, available)
         if (.not. available) exit
-        leaf_has_snapshots = .true.
-        do component = 1, workspace%component_count
-          if (.not. workspace%has_snapshot( &
-               workspace%branch_by_component(component), component)) then
-            leaf_has_snapshots = .false.
-            exit
-          end if
-        end do
-        if (.not. leaf_has_snapshots) cycle
-        call restore_multiplicative_leaf(workspace, soft_counterevent)
-        call materialize_multiplicative_leaf( &
-             workspace, soft_counterevent, leaf_momenta, statuses, pdgs, &
-             particle_from_decay, particle_count)
-        pass_leaf = passcuts_multiplicative( &
-             leaf_momenta, particle_count, statuses, pdgs, &
-             particle_from_decay, reweight, &
-             production_boost( &
-             workspace%branch_by_component(production_position)))
+        call test_multiplicative_leaf_cuts( &
+             workspace, production_position, production_boost, &
+             leaf_momenta, statuses, pdgs, particle_from_decay, &
+             particle_count, reweight, leaf_is_materialized, pass_leaf)
+        if (.not. leaf_is_materialized) cycle
         if (pass_leaf) then
           pass_cuts_check = .true.
           exit
@@ -856,24 +844,11 @@ contains
       call next_multiplicative_leaf(workspace, leaf_mask, available)
       if (.not. available) exit
       leaves_seen = leaves_seen + 1_8
-      leaf_has_snapshots = .true.
-      do component = 1, workspace%component_count
-        if (.not. workspace%has_snapshot( &
-             workspace%branch_by_component(component), component)) then
-          leaf_has_snapshots = .false.
-          exit
-        end if
-      end do
-      if (.not. leaf_has_snapshots) cycle
-      call restore_multiplicative_leaf(workspace, soft_counterevent)
-      call materialize_multiplicative_leaf( &
-           workspace, soft_counterevent, leaf_momenta, statuses, pdgs, &
-           particle_from_decay, particle_count)
-      pass_leaf = passcuts_multiplicative( &
-           leaf_momenta, particle_count, statuses, pdgs, &
-           particle_from_decay, reweight, &
-           production_boost( &
-           workspace%branch_by_component(production_position)))
+      call test_multiplicative_leaf_cuts( &
+           workspace, production_position, production_boost, &
+           leaf_momenta, statuses, pdgs, particle_from_decay, &
+           particle_count, reweight, leaf_is_materialized, pass_leaf)
+      if (.not. leaf_is_materialized) cycle
       if (.not. pass_leaf) cycle
       pass_cuts_check = .true.
 
@@ -937,6 +912,40 @@ contains
     deallocate(leaf_momenta, statuses, pdgs)
     deallocate(particle_from_decay)
   end function sigint_multiplicative_impl
+
+
+  subroutine test_multiplicative_leaf_cuts( &
+       workspace, production_position, production_boost, leaf_momenta, &
+       statuses, pdgs, particle_from_decay, particle_count, reweight, &
+       materialized, passes)
+    implicit none
+    type(multiplicative_nlo_workspace), intent(in) :: workspace
+    integer, intent(in) :: production_position
+    double precision, intent(in) :: production_boost(0:1)
+    double precision, intent(out) :: leaf_momenta(0:, :)
+    integer, intent(out) :: statuses(:), pdgs(:), particle_count
+    logical, intent(out) :: particle_from_decay(:)
+    double precision, intent(out) :: reweight
+    logical, intent(out) :: materialized, passes
+    integer :: production_branch
+
+    materialized = multiplicative_leaf_has_snapshots(workspace)
+    passes = .false.
+    reweight = 0d0
+    particle_count = 0
+    if (.not. materialized) return
+
+    call restore_multiplicative_leaf(workspace, soft_counterevent)
+    call materialize_multiplicative_leaf( &
+         workspace, soft_counterevent, leaf_momenta, statuses, pdgs, &
+         particle_from_decay, particle_count)
+    production_branch = &
+         workspace%branch_by_component(production_position)
+    passes = passcuts_multiplicative( &
+         leaf_momenta, particle_count, statuses, pdgs, &
+         particle_from_decay, reweight, &
+         production_boost(production_branch))
+  end subroutine test_multiplicative_leaf_cuts
 
 
   integer function multiplicative_mc_dimension( &

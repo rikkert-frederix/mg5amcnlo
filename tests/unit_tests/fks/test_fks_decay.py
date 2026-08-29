@@ -1557,7 +1557,7 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn(
                 'call next_multiplicative_leaf', driver_source.lower())
             self.assertIn(
-                'pass_leaf = passcuts_multiplicative',
+                'passes = passcuts_multiplicative',
                 driver_source.lower())
             self.assertIn(
                 'call outfun_multiplicative_impl', driver_source.lower())
@@ -1586,10 +1586,10 @@ class TestFKSDecayChains(unittest.TestCase):
             leaf_loop = multiplicative_driver.split(
                 'leaves_seen = 0_8', 1)[1]
             self.assertLess(
-                leaf_loop.index('pass_leaf = passcuts_multiplicative'),
+                leaf_loop.index('call test_multiplicative_leaf_cuts'),
                 leaf_loop.index('call contract_multiplicative_leaf'))
             self.assertEqual(
-                leaf_loop.count('call materialize_multiplicative_leaf'), 1)
+                driver_source.count('call materialize_multiplicative_leaf'), 1)
             self.assertEqual(
                 driver_source.lower().count(
                     'call capture_multiplicative_snapshot'), 2)
@@ -1660,9 +1660,11 @@ class TestFKSDecayChains(unittest.TestCase):
                 'SDM_BLOCK_AVAILABLE' not in source
                 for source in real_sources))
             self.assertTrue(all(
-                'FACTORIZED_PHASE_SPACE_GENERATION' in source and
+                'FACTORIZED_PHASE_SPACE_REVISION' in source and
                 'SET_SPIN_DENSITY_REAL_MATRIX' in source and
-                'SDM_CACHED_GENERATION' in source and
+                'IF (SDM_CACHE_VALID) THEN' in source and
+                'IF (SDM_CACHE_VALID.AND.' not in source and
+                'SDM_CACHED_REVISION' in source and
                 'SDM_CACHED_G' in source and
                 'SDM_CACHED_MUR2' in source and
                 'SDM_CACHED_QES2' in source
@@ -1672,7 +1674,9 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn('SDM_CACHED_AMP2', born_source)
             self.assertIn('ALL(SDM_CACHED_P.EQ.P)', born_source)
             self.assertIn('SET_SPIN_DENSITY_BORN_MATRIX', born_source)
-            self.assertIn('SDM_CACHED_GENERATION', born_source)
+            self.assertIn('IF (SDM_CACHE_VALID) THEN', born_source)
+            self.assertNotIn('IF (SDM_CACHE_VALID.AND.', born_source)
+            self.assertIn('SDM_CACHED_REVISION', born_source)
             self.assertIn('SDM_CACHED_G', born_source)
             self.assertIn('SDM_CACHED_MUR2', born_source)
             self.assertIn('SDM_CACHED_QES2', born_source)
@@ -1685,7 +1689,9 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertTrue(color_sources)
             self.assertTrue(all(
                 'SET_SPIN_DENSITY_COLOR_MATRIX' in source and
-                'SDM_CACHED_GENERATION' in source and
+                'IF (SDM_CACHE_VALID) THEN' in source and
+                'IF (SDM_CACHE_VALID.AND.' not in source and
+                'SDM_CACHED_REVISION' in source and
                 'SDM_CACHED_G' in source and
                 'SDM_CACHED_MUR2' in source and
                 'SDM_CACHED_QES2' in source
@@ -1723,12 +1729,12 @@ class TestFKSDecayChains(unittest.TestCase):
                 accessor_source = stream.read()
             flat_accessors = ' '.join(
                 accessor_source.replace('$', ' ').split()).replace(' ,', ',')
-            self.assertIn('SUBROUTINE SDM_BORN_BLOCK_DENSITY(',
-                          flat_accessors)
-            self.assertIn('SUBROUTINE SDM_REAL_BLOCK_DENSITY(',
-                          flat_accessors)
-            self.assertIn('SUBROUTINE SDM_COLOR_BLOCK_DENSITY(',
-                          flat_accessors)
+            self.assertNotIn('SUBROUTINE SDM_BORN_BLOCK_DENSITY(',
+                             flat_accessors)
+            self.assertNotIn('SUBROUTINE SDM_REAL_BLOCK_DENSITY(',
+                             flat_accessors)
+            self.assertNotIn('SUBROUTINE SDM_COLOR_BLOCK_DENSITY(',
+                             flat_accessors)
             self.assertIn('CALL GET_FACTORIZED_BLOCK_MOMENTA(',
                           flat_accessors)
             self.assertIn('CALL FETCH_CACHED_LO_DENSITY(',
@@ -1752,6 +1758,9 @@ class TestFKSDecayChains(unittest.TestCase):
                 workspace_source = stream.read().lower()
             self.assertIn(
                 'type, public :: multiplicative_nlo_workspace',
+                workspace_source)
+            self.assertIn(
+                'logical function multiplicative_leaf_has_snapshots',
                 workspace_source)
             self.assertIn('next_multiplicative_leaf', workspace_source)
             self.assertIn('restore_multiplicative_leaf', workspace_source)
