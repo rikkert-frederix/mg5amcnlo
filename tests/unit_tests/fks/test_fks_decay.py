@@ -344,6 +344,16 @@ class TestFKSDecayChains(unittest.TestCase):
                 self.assertIn('DCONJG(JAMP_HEL(J,HP))',
                               provider_source)
                 self.assertNotIn('DBLE(VALUE)', provider_source)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'spin_density_virtual_capabilities.f')) as stream:
+                capabilities = stream.read()
+            self.assertIn(
+                'SDM_VIRTUAL_USES_ANALYTIC_PROVIDER=.FALSE.',
+                capabilities)
+            self.assertNotIn(
+                'SDM_VIRTUAL_USES_ANALYTIC_PROVIDER=.TRUE.',
+                capabilities)
 
     def test_nested_spin_density_components_open_parent_and_child(self):
         command = self.generate(
@@ -1960,7 +1970,7 @@ class TestFKSDecayChains(unittest.TestCase):
                 contractions.replace('$', ' ').split())
             for contribution, parent in [(2, 6), (3, -6)]:
                 self.assertIn(
-                    'TDV_MADLOOP_VALIDATION_REQUIRED(%d)' % contribution,
+                    'TDV_MADLOOP_REQUIRED(%d,' % contribution,
                     flat_contractions)
                 self.assertIn(
                     'CALL TDV_VALIDATE_AGAINST_MADLOOP(%d,' % contribution,
@@ -2035,11 +2045,30 @@ class TestFKSDecayChains(unittest.TestCase):
                 'subsequent phase-space points skip madloop.',
                 top_dispatch)
             with open(os.path.join(
-                    subprocess_dir, 'fks_singular.f90')) as stream:
-                singular_source = ' '.join(stream.read().lower().split())
+                    subprocess_dir,
+                    'spin_density_virtual_capabilities.f')) as stream:
+                capabilities = ' '.join(
+                    stream.read().replace('$', ' ').split())
             self.assertIn(
-                'if (full_top_decay_virtual) '
+                'LOGICAL FUNCTION SDM_VIRTUAL_USES_ANALYTIC_PROVIDER',
+                capabilities)
+            for contribution in [2, 3]:
+                self.assertIn(
+                    'CASE (%d) '
+                    'SDM_VIRTUAL_USES_ANALYTIC_PROVIDER=.TRUE.' %
+                    contribution,
+                    capabilities)
+            self.assertEqual(capabilities.count(
+                'SDM_VIRTUAL_USES_ANALYTIC_PROVIDER=.TRUE.'), 2)
+            with open(os.path.join(
+                    subprocess_dir, 'fks_singular.f90')) as stream:
+                singular_source = ' '.join(
+                    stream.read().lower().replace('&', ' ').split())
+            self.assertIn(
+                'if (sdm_virtual_uses_analytic_provider( '
+                'active_nlo_contribution())) '
                 'virtual_sampling_fraction = 1d0', singular_source)
+            self.assertNotIn('contribution_parent_pdg', singular_source)
             for card_path in [
                     os.path.join(process_dir, 'Cards',
                                  'MadLoopParams.dat'),

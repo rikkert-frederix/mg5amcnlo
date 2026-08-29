@@ -7,31 +7,35 @@ module top_decay_virtual_dispatch
   private
 
   integer, parameter, public :: tdv_required_validation_points = 3
+  integer, parameter :: top_pdg = 6
+  integer, parameter :: top_spin_size = 2
+  integer, parameter :: top_w_spin_size = 6
+  integer, parameter :: decay_momentum_count = 3
   double precision, parameter :: validation_tolerance = 1d-8
-  logical, save :: validation_initialized = .false.
-  integer, allocatable, save :: validation_count(:)
-  double precision, allocatable, save :: validation_momenta(:, :, :, :)
+  integer, allocatable, save :: validated_point_count(:)
+  double precision, allocatable, save :: validated_momenta(:, :, :, :)
 
   public :: tdv_evaluate_two_body_top
   public :: tdv_evaluate_two_body_top_w
-  public :: tdv_two_body_analytic_supported
-  public :: tdv_madloop_validation_required
+  public :: tdv_madloop_required
   public :: tdv_validate_against_madloop
 
 contains
 
   subroutine tdv_evaluate_two_body_top(parent_pdg, pt, pb, pw, mt, mb, &
-       mw, mur, alphas, gc11, rho)
+       mw, mur, alphas, gc11, rho, analytic_available)
     integer, intent(in) :: parent_pdg
     double precision, intent(in) :: pt(0:3), pb(0:3), pw(0:3)
     double precision, intent(in) :: mt, mb, mw, mur, alphas
     complex(kind=8), intent(in) :: gc11
-    complex(kind=8), intent(out) :: rho(3, 2, 2)
+    complex(kind=8), intent(out) :: rho(3, top_spin_size, top_spin_size)
+    logical, intent(out) :: analytic_available
     double precision :: parity_pt(0:3), parity_pb(0:3), parity_pw(0:3)
-    complex(kind=8) :: top_rho(3, 2, 2)
+    complex(kind=8) :: top_rho(3, top_spin_size, top_spin_size)
 
     call check_parent(parent_pdg)
-    if (parent_pdg == 6) then
+    analytic_available = .true.
+    if (parent_pdg == top_pdg) then
       call tdv_virtual_rho_top(pt, pb, pw, mt, mb, mw, mur, alphas, &
            gc11, rho)
       return
@@ -45,8 +49,7 @@ contains
     ! Charge conjugation maps the antitop density to a parity-reflected
     ! top density.  Match the spinor phase convention used by the generated
     ! MadLoop insertion before returning it to the common contraction code.
-    if (sum(pt(1:3)**2) <= &
-        64d0*epsilon(1d0)*max(pt(0)**2, 1d0)) then
+    if (effectively_at_rest(pt)) then
       rho(:, 1, 1) = top_rho(:, 2, 2)
       rho(:, 1, 2) = top_rho(:, 2, 1)
       rho(:, 2, 1) = top_rho(:, 1, 2)
@@ -58,24 +61,26 @@ contains
 
 
   subroutine tdv_evaluate_two_body_top_w(parent_pdg, pt, pb, pw, mt, &
-       mb, mw, mur, alphas, gc11, rho)
+       mb, mw, mur, alphas, gc11, rho, analytic_available)
     integer, intent(in) :: parent_pdg
     double precision, intent(in) :: pt(0:3), pb(0:3), pw(0:3)
     double precision, intent(in) :: mt, mb, mw, mur, alphas
     complex(kind=8), intent(in) :: gc11
-    complex(kind=8), intent(out) :: rho(3, 6, 6)
+    complex(kind=8), intent(out) :: rho(3, top_w_spin_size, top_w_spin_size)
+    logical, intent(out) :: analytic_available
     double precision :: parity_pt(0:3), parity_pb(0:3), parity_pw(0:3)
-    complex(kind=8) :: top_rho(3, 6, 6)
+    complex(kind=8) :: top_rho(3, top_w_spin_size, top_w_spin_size)
 
     call check_parent(parent_pdg)
-    if (parent_pdg == 6) then
+    analytic_available = joint_density_supported(parent_pdg, pt)
+    if (.not. analytic_available) then
+      rho = (0d0, 0d0)
+      return
+    end if
+    if (parent_pdg == top_pdg) then
       call tdv_virtual_rho_top_w(pt, pb, pw, mt, mb, mw, mur, alphas, &
            gc11, rho)
       return
-    end if
-    if (.not. tdv_two_body_analytic_supported(parent_pdg, pt, 6)) then
-      call fail_dispatch('an exactly-resting antitop has an unsupported ' // &
-           'joint top-W helicity basis')
     end if
 
     call parity_reflect(pt, parity_pt)
@@ -87,39 +92,36 @@ contains
   end subroutine tdv_evaluate_two_body_top_w
 
 
-  logical function tdv_two_body_analytic_supported(parent_pdg, pt, &
-       open_size)
-    integer, intent(in) :: parent_pdg, open_size
+  pure logical function joint_density_supported(parent_pdg, pt)
+    integer, intent(in) :: parent_pdg
     double precision, intent(in) :: pt(0:3)
-    double precision :: spatial_scale
 
-    call check_parent(parent_pdg)
-    if (open_size /= 2 .and. open_size /= 6) then
-      tdv_two_body_analytic_supported = .false.
+    joint_density_supported = .not. (parent_pdg == -top_pdg .and. &
+         effectively_at_rest(pt))
+  end function joint_density_supported
+
+
+  logical function tdv_madloop_required(contribution, analytic_available)
+    integer, intent(in) :: contribution
+    logical, intent(in) :: analytic_available
+
+    if (.not. analytic_available) then
+      tdv_madloop_required = .true.
       return
     end if
-    spatial_scale = sum(pt(1:3)**2)
-    tdv_two_body_analytic_supported = .not. (parent_pdg == -6 .and. &
-         open_size == 6 .and. spatial_scale <= &
-         64d0*epsilon(1d0)*max(pt(0)**2, 1d0))
-  end function tdv_two_body_analytic_supported
-
-
-  logical function tdv_madloop_validation_required(contribution)
-    integer, intent(in) :: contribution
-
     call ensure_validation_state()
     call check_contribution(contribution)
-    tdv_madloop_validation_required = &
-         validation_count(contribution) < tdv_required_validation_points
-  end function tdv_madloop_validation_required
+    tdv_madloop_required = validated_point_count(contribution) < &
+         tdv_required_validation_points
+  end function tdv_madloop_required
 
 
   subroutine tdv_validate_against_madloop(contribution, momenta, &
        analytic_density, madloop_density, madloop_precision, &
        madloop_return_code)
     integer, intent(in) :: contribution, madloop_return_code
-    double precision, intent(in) :: momenta(0:3, 3), madloop_precision
+    double precision, intent(in) :: momenta(0:3, decay_momentum_count)
+    double precision, intent(in) :: madloop_precision
     complex(kind=8), intent(in) :: analytic_density(:, :, :)
     complex(kind=8), intent(in) :: madloop_density(:, :, :)
     double precision :: difference, relative_difference, scale
@@ -163,18 +165,18 @@ contains
     end if
 
     distinct = .true.
-    do point = 1, validation_count(contribution)
+    do point = 1, validated_point_count(contribution)
       if (same_momenta(momenta, &
-          validation_momenta(:, :, point, contribution))) then
+          validated_momenta(:, :, point, contribution))) then
         distinct = .false.
         exit
       end if
     end do
     if (.not. distinct) return
 
-    point = validation_count(contribution) + 1
-    validation_momenta(:, :, point, contribution) = momenta
-    validation_count(contribution) = point
+    point = validated_point_count(contribution) + 1
+    validated_momenta(:, :, point, contribution) = momenta
+    validated_point_count(contribution) = point
     write (*,'(A,I0,A,I0,A,I0,A,ES12.4)') &
          'INFO: analytic top-decay virtual validation ', point, '/', &
          tdv_required_validation_points, ' for contribution ', &
@@ -191,22 +193,21 @@ contains
   subroutine ensure_validation_state()
     integer :: contribution_count
 
-    if (validation_initialized) return
+    if (allocated(validated_point_count)) return
     contribution_count = nlo_contribution_count()
     if (contribution_count < 1) then
       call fail_dispatch('the NLO contribution count is invalid')
     end if
-    allocate(validation_count(contribution_count))
-    allocate(validation_momenta(0:3, 3, tdv_required_validation_points, &
-                                contribution_count))
-    validation_count = 0
-    validation_momenta = 0d0
-    validation_initialized = .true.
+    allocate(validated_point_count(contribution_count))
+    allocate(validated_momenta(0:3, decay_momentum_count, &
+         tdv_required_validation_points, contribution_count))
+    validated_point_count = 0
   end subroutine ensure_validation_state
 
 
   logical function same_momenta(first, second)
-    double precision, intent(in) :: first(0:3, 3), second(0:3, 3)
+    double precision, intent(in) :: first(0:3, decay_momentum_count)
+    double precision, intent(in) :: second(0:3, decay_momentum_count)
     double precision :: scale
 
     scale = max(maxval(abs(first)), maxval(abs(second)), 1d0)
@@ -221,6 +222,14 @@ contains
     density_is_finite = all(ieee_is_finite(real(density, kind=8))) .and. &
          all(ieee_is_finite(aimag(density)))
   end function density_is_finite
+
+
+  pure logical function effectively_at_rest(momentum)
+    double precision, intent(in) :: momentum(0:3)
+
+    effectively_at_rest = sum(momentum(1:3)**2) <= &
+         64d0*epsilon(1d0)*max(momentum(0)**2, 1d0)
+  end function effectively_at_rest
 
 
   subroutine transform_antitop_density(pt, top_density, antitop_density)
@@ -272,7 +281,7 @@ contains
   subroutine check_parent(parent_pdg)
     integer, intent(in) :: parent_pdg
 
-    if (abs(parent_pdg) /= 6) then
+    if (abs(parent_pdg) /= top_pdg) then
       call fail_dispatch('the analytic provider received a non-top parent')
     end if
   end subroutine check_parent
@@ -281,7 +290,8 @@ contains
   subroutine check_contribution(contribution)
     integer, intent(in) :: contribution
 
-    if (contribution < 1 .or. contribution > size(validation_count)) then
+    if (contribution < 1 .or. &
+        contribution > size(validated_point_count)) then
       call fail_dispatch('the validation contribution is out of range')
     end if
   end subroutine check_contribution

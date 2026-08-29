@@ -3097,6 +3097,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         density_exporter = export_spin_density.SpinDensityExporter(
             self, fortran_model)
         density_exporter.prepare_plan(plan)
+        self.write_spin_density_virtual_capabilities(matrix_element)
         providers = [component['born'] for _, component in sorted(
             plan['components'].items())]
         providers.extend(variant['provider']
@@ -3126,6 +3127,36 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         # ordinary factorized decay outputs keep a complete link interface.
         self.write_spin_density_branch_contraction(
             matrix_element, density_exporter)
+
+
+    @staticmethod
+    def write_spin_density_virtual_capabilities(matrix_element):
+        """Expose which virtual contributions use an analytic provider."""
+
+        analytic_contributions = sorted(set(
+            variant.get('contribution_id', index)
+            for index, variant in enumerate(
+                matrix_element.spin_density_plan.get(
+                    'virtual_variants', []), 1)
+            if variant.get('analytic_top_decay') is not None))
+        source = [
+            'LOGICAL FUNCTION SDM_VIRTUAL_USES_ANALYTIC_PROVIDER(',
+            '     $ CONTRIBUTION)',
+            'IMPLICIT NONE',
+            'INTEGER CONTRIBUTION',
+            'SELECT CASE (CONTRIBUTION)']
+        for contribution in analytic_contributions:
+            source.extend([
+                'CASE (%d)' % contribution,
+                '  SDM_VIRTUAL_USES_ANALYTIC_PROVIDER=.TRUE.'])
+        source.extend([
+            'CASE DEFAULT',
+            '  SDM_VIRTUAL_USES_ANALYTIC_PROVIDER=.FALSE.',
+            'END SELECT',
+            'END'])
+        writers.FortranWriter(
+            'spin_density_virtual_capabilities.f').writelines(
+                '\n'.join(source))
 
 
     @staticmethod
@@ -4046,6 +4077,12 @@ C     Legacy processes obtain their channel weights from SBORN itself.
       STOP 1
       END
 
+      LOGICAL FUNCTION SDM_VIRTUAL_USES_ANALYTIC_PROVIDER(I)
+      IMPLICIT NONE
+      INTEGER I
+      SDM_VIRTUAL_USES_ANALYTIC_PROVIDER=.FALSE.
+      END
+
 
       SUBROUTINE SDM_MULTIPLICATIVE_CONTRACTION(BRANCHES,CHOICE,
      $ WEIGHT_COUNT,RESULT)
@@ -4505,8 +4542,7 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
                 'USE TOP_DECAY_VIRTUAL_DISPATCH, ONLY:',
                 '     $ TDV_EVALUATE_TWO_BODY_TOP,',
                 '     $ TDV_EVALUATE_TWO_BODY_TOP_W,',
-                '     $ TDV_TWO_BODY_ANALYTIC_SUPPORTED,',
-                '     $ TDV_MADLOOP_VALIDATION_REQUIRED,',
+                '     $ TDV_MADLOOP_REQUIRED,',
                 '     $ TDV_VALIDATE_AGAINST_MADLOOP'])
         source.extend([
             'IMPLICIT NONE',
