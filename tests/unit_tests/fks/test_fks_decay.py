@@ -21,9 +21,11 @@ sys.path.insert(0, os.path.join(root_path, '..', '..'))
 import tests.unit_tests as unittest
 
 from madgraph import InvalidCmd, MG5DIR
+from madgraph.core import base_objects
 from madgraph.fks import fks_common
 from madgraph.fks import fks_decay
 from madgraph.fks import fks_helas_objects
+from madgraph.iolibs import export_spin_density
 from madgraph.interface.master_interface import MasterCmd
 from madgraph.various import banner
 
@@ -1601,7 +1603,11 @@ class TestFKSDecayChains(unittest.TestCase):
                 singular_source = ' '.join(
                     stream.read().lower().split())
             self.assertIn(
-                'call sborn_factorized_channel_weights(', singular_source)
+                'call sborn_factorized_channel_weights( & p_born)',
+                singular_source)
+            self.assertNotIn(
+                'call sborn_factorized_channel_weights( '
+                'stored_event_momenta', singular_source)
             self.assertIn(
                 'eik*iden_comp*g**2', singular_source)
             self.assertIn(
@@ -2095,6 +2101,101 @@ class TestFKSDecayChains(unittest.TestCase):
                     counts = next(
                         line for line in stream if line.startswith('COUNTS '))
                 self.assertEqual(int(counts.split()[3]), generated_links)
+
+    def test_three_body_top_decay_analytic_role_mapping(self):
+        command = MasterCmd()
+        command.exec_cmd(
+            'import model loop_sm', printcmd=False, precmd=True)
+
+        def process(parent, daughters):
+            legs = [base_objects.Leg({
+                'id': parent, 'number': 1, 'state': False})]
+            legs.extend(base_objects.Leg({
+                'id': pdg, 'number': number, 'state': True})
+                for pdg, number in daughters)
+            return base_objects.Process({
+                'model': command._curr_model,
+                'legs': base_objects.LegList(legs)})
+
+        top_layout = export_spin_density.SpinDensityExporter.\
+            _top_decay_process_layout(process(
+                6, [(12, 2), (5, 3), (-11, 4)]))
+        self.assertEqual(top_layout, {
+            'mode': 'three_body',
+            'parent_pdg': 6,
+            'parent_leg': 1,
+            'bottom_leg': 3,
+            'charged_lepton_leg': 4,
+            'neutrino_leg': 2})
+
+        antitop_layout = export_spin_density.SpinDensityExporter.\
+            _top_decay_process_layout(process(
+                -6, [(11, 2), (-12, 3), (-5, 4)]))
+        self.assertEqual(antitop_layout, {
+            'mode': 'three_body',
+            'parent_pdg': -6,
+            'parent_leg': 1,
+            'bottom_leg': 4,
+            'charged_lepton_leg': 2,
+            'neutrino_leg': 3})
+
+    def test_full_nlo_bundle_exports_three_body_top_virtuals(self):
+        command = self.generate(
+            'u u~ > t t~ [QCD], '
+            '(t > ve b e+ QED=2 [QCD]), '
+            '(t~ > e- b~ ve~ QED=2 [QCD])')
+        command.exec_cmd(
+            'set loop_optimized_output False',
+            printcmd=False, precmd=True)
+
+        with tempfile.TemporaryDirectory() as output_dir:
+            process_dir = os.path.join(output_dir, 'PROC')
+            command.exec_cmd(
+                'output fNLO %s' % process_dir,
+                printcmd=False, precmd=True)
+            subprocess_root = os.path.join(process_dir, 'SubProcesses')
+            subprocesses = [
+                os.path.join(subprocess_root, name)
+                for name in os.listdir(subprocess_root)
+                if name.startswith('P') and
+                os.path.isdir(os.path.join(subprocess_root, name))]
+            self.assertEqual(len(subprocesses), 1)
+            subprocess_dir = subprocesses[0]
+            with open(os.path.join(
+                    subprocess_dir,
+                    'spin_density_virtual_contributions.f')) as stream:
+                contractions = ' '.join(
+                    stream.read().replace('$', ' ').split())
+
+            self.assertEqual(
+                contractions.count(
+                    'CALL TDV_EVALUATE_THREE_BODY_TOP'), 2)
+            for contribution, parent in [(2, 6), (3, -6)]:
+                self.assertIn(
+                    'CALL TDV_EVALUATE_THREE_BODY_TOP(%d,' % parent,
+                    contractions)
+                self.assertIn(
+                    'CALL TDV_VALIDATE_AGAINST_MADLOOP(%d,' % contribution,
+                    contractions)
+            self.assertIn('REAL*8 TDV_VALIDATION_P(0:3,4)', contractions)
+            self.assertIn('MDL_MT,MDL_MB,MDL_MW,MDL_WW,MU_R',
+                          contractions)
+
+            top_contraction = contractions.split(
+                'SUBROUTINE SDM_VIRTUAL_CONTRIBUTION_2', 1)[1].split(
+                    'SUBROUTINE SDM_VIRTUAL_CONTRIBUTION_3', 1)[0]
+            for analytic_leg, generated_leg in [
+                    (1, 1), (2, 2), (3, 4), (4, 3)]:
+                self.assertIn(
+                    'TDV_VALIDATION_P(:,%d)=SDM_INSERTION_P(:,%d)' %
+                    (analytic_leg, generated_leg), top_contraction)
+
+            antitop_contraction = contractions.split(
+                'SUBROUTINE SDM_VIRTUAL_CONTRIBUTION_3', 1)[1]
+            for leg in range(1, 5):
+                self.assertIn(
+                    'TDV_VALIDATION_P(:,%d)=SDM_INSERTION_P(:,%d)' %
+                    (leg, leg), antitop_contraction)
 
     def test_nlo_decay_generation_restrictions(self):
         command = self.generate(

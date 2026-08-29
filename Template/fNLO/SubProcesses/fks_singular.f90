@@ -373,7 +373,7 @@ contains
            active_nlo_contribution(), event_slot, weight)
       if (multi_channel) then
         call sborn_factorized_channel_weights( &
-             stored_event_momenta(0, 1, event_slot))
+             p_born)
       end if
       if (has_nlo_contribution_bundle() .and. &
           spin_density_fks_collection_enabled()) then

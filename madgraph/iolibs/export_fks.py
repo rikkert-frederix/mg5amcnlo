@@ -4542,6 +4542,7 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
                 'USE TOP_DECAY_VIRTUAL_DISPATCH, ONLY:',
                 '     $ TDV_EVALUATE_TWO_BODY_TOP,',
                 '     $ TDV_EVALUATE_TWO_BODY_TOP_W,',
+                '     $ TDV_EVALUATE_THREE_BODY_TOP,',
                 '     $ TDV_MADLOOP_REQUIRED,',
                 '     $ TDV_VALIDATE_AGAINST_MADLOOP'])
         source.extend([

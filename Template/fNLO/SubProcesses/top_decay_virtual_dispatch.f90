@@ -1,7 +1,7 @@
 module top_decay_virtual_dispatch
   use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
   use top_decay_virtual_cdr, only: tdv_virtual_rho_top, &
-       tdv_virtual_rho_top_w
+       tdv_virtual_rho_top_w, tdv_virtual_rho_top_3body
   use nlo_contribution_bundle, only: nlo_contribution_count
   implicit none
   private
@@ -10,13 +10,14 @@ module top_decay_virtual_dispatch
   integer, parameter :: top_pdg = 6
   integer, parameter :: top_spin_size = 2
   integer, parameter :: top_w_spin_size = 6
-  integer, parameter :: decay_momentum_count = 3
+  integer, parameter :: decay_momentum_count = 4
   double precision, parameter :: validation_tolerance = 1d-8
   integer, allocatable, save :: validated_point_count(:)
   double precision, allocatable, save :: validated_momenta(:, :, :, :)
 
   public :: tdv_evaluate_two_body_top
   public :: tdv_evaluate_two_body_top_w
+  public :: tdv_evaluate_three_body_top
   public :: tdv_madloop_required
   public :: tdv_validate_against_madloop
 
@@ -46,17 +47,7 @@ contains
     call parity_reflect(pw, parity_pw)
     call tdv_virtual_rho_top(parity_pt, parity_pb, parity_pw, mt, mb, &
          mw, mur, alphas, gc11, top_rho)
-    ! Charge conjugation maps the antitop density to a parity-reflected
-    ! top density.  Match the spinor phase convention used by the generated
-    ! MadLoop insertion before returning it to the common contraction code.
-    if (effectively_at_rest(pt)) then
-      rho(:, 1, 1) = top_rho(:, 2, 2)
-      rho(:, 1, 2) = top_rho(:, 2, 1)
-      rho(:, 2, 1) = top_rho(:, 1, 2)
-      rho(:, 2, 2) = top_rho(:, 1, 1)
-    else
-      call transform_antitop_density(pt, top_rho, rho)
-    end if
+    call transform_top_only_antitop_density(pt, top_rho, rho)
   end subroutine tdv_evaluate_two_body_top
 
 
@@ -90,6 +81,72 @@ contains
          mw, mur, alphas, gc11, top_rho)
     call transform_antitop_density(pt, top_rho, rho)
   end subroutine tdv_evaluate_two_body_top_w
+
+
+  subroutine tdv_evaluate_three_body_top(parent_pdg, pt, pb, pl, pnu, &
+       mt, mb, mw, ww, mur, alphas, gc11, rho, analytic_available)
+    integer, intent(in) :: parent_pdg
+    double precision, intent(in) :: pt(0:3), pb(0:3), pl(0:3), pnu(0:3)
+    double precision, intent(in) :: mt, mb, mw, ww, mur, alphas
+    complex(kind=8), intent(in) :: gc11
+    complex(kind=8), intent(out) :: rho(3, top_spin_size, top_spin_size)
+    logical, intent(out) :: analytic_available
+    double precision :: parity_pt(0:3), parity_pb(0:3)
+    double precision :: parity_pl(0:3), parity_pnu(0:3)
+    double precision :: q(0:3), q2, pole_distance, width_factor
+    complex(kind=8) :: top_rho(3, top_spin_size, top_spin_size)
+
+    call check_parent(parent_pdg)
+    q = pl + pnu
+    q2 = q(0)**2 - sum(q(1:3)**2)
+    pole_distance = q2 - mw**2
+    analytic_available = three_body_kinematics_supported( &
+         pt, pb, pl, pnu, mt, mb, mw, q2, pole_distance)
+    if (.not. analytic_available) then
+      rho = (0d0, 0d0)
+      return
+    end if
+
+    if (parent_pdg == top_pdg) then
+      call tdv_virtual_rho_top_3body(pt, pb, pl, pnu, mt, mb, mw, mur, &
+           alphas, gc11, rho)
+    else
+      call parity_reflect(pt, parity_pt)
+      call parity_reflect(pb, parity_pb)
+      call parity_reflect(pl, parity_pl)
+      call parity_reflect(pnu, parity_pnu)
+      call tdv_virtual_rho_top_3body(parity_pt, parity_pb, parity_pl, &
+           parity_pnu, mt, mb, mw, mur, alphas, gc11, top_rho)
+      call transform_top_only_antitop_density(pt, top_rho, rho)
+    end if
+
+    ! The packaged kernel has a zero-width W propagator.  For the fixed-width
+    ! propagator used by the generated tree and loop amplitudes, only its
+    ! common modulus squared changes because the massless leptonic current is
+    ! transverse.  Points too close to the zero-width pole use MadLoop above.
+    width_factor = pole_distance**2/(pole_distance**2 + (mw*ww)**2)
+    rho = width_factor*rho
+    if (.not. density_is_finite(rho)) then
+      analytic_available = .false.
+      rho = (0d0, 0d0)
+    end if
+  end subroutine tdv_evaluate_three_body_top
+
+
+  logical function three_body_kinematics_supported( &
+       pt, pb, pl, pnu, mt, mb, mw, q2, pole_distance)
+    double precision, intent(in) :: pt(0:3), pb(0:3), pl(0:3), pnu(0:3)
+    double precision, intent(in) :: mt, mb, mw, q2, pole_distance
+    double precision :: scale
+
+    scale = max(mt**2, mw**2, 1d0)
+    three_body_kinematics_supported = &
+         all(ieee_is_finite(pt)) .and. all(ieee_is_finite(pb)) .and. &
+         all(ieee_is_finite(pl)) .and. all(ieee_is_finite(pnu)) .and. &
+         ieee_is_finite(q2) .and. ieee_is_finite(pole_distance) .and. &
+         q2 > 0d0 .and. q2 < (mt-mb)**2 .and. &
+         abs(pole_distance) > 1d-8*scale
+  end function three_body_kinematics_supported
 
 
   pure logical function joint_density_supported(parent_pdg, pt)
@@ -230,6 +287,28 @@ contains
     effectively_at_rest = sum(momentum(1:3)**2) <= &
          64d0*epsilon(1d0)*max(momentum(0)**2, 1d0)
   end function effectively_at_rest
+
+
+  subroutine transform_top_only_antitop_density(pt, top_density, &
+       antitop_density)
+    double precision, intent(in) :: pt(0:3)
+    complex(kind=8), intent(in) :: top_density(3, top_spin_size, &
+         top_spin_size)
+    complex(kind=8), intent(out) :: antitop_density(3, top_spin_size, &
+         top_spin_size)
+
+    ! Charge conjugation maps the antitop density to a parity-reflected top
+    ! density.  Match the spinor phase convention used by the generated
+    ! MadLoop insertion before returning it to the common contraction code.
+    if (effectively_at_rest(pt)) then
+      antitop_density(:, 1, 1) = top_density(:, 2, 2)
+      antitop_density(:, 1, 2) = top_density(:, 2, 1)
+      antitop_density(:, 2, 1) = top_density(:, 1, 2)
+      antitop_density(:, 2, 2) = top_density(:, 1, 1)
+    else
+      call transform_antitop_density(pt, top_density, antitop_density)
+    end if
+  end subroutine transform_top_only_antitop_density
 
 
   subroutine transform_antitop_density(pt, top_density, antitop_density)

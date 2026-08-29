@@ -120,7 +120,7 @@ class SpinDensityExporter(object):
 
     @staticmethod
     def _analytic_top_decay_info(variant):
-        """Return the supported t -> b W two-body layout, if present."""
+        """Return a supported analytic top-decay layout, if present."""
 
         processes = variant['matrix_element'].get('processes')
         if not processes:
@@ -131,46 +131,76 @@ class SpinDensityExporter(object):
                 any(layout != layouts[0] for layout in layouts[1:])):
             return None
 
-        parent_pdg, parent_leg, bottom_leg, vector_leg = layouts[0]
+        layout = layouts[0]
+        parent_leg = layout['parent_leg']
         open_legs = frozenset(variant['open_legs'])
-        open_sizes = {
-            frozenset([parent_leg]): 2,
-            frozenset([parent_leg, vector_leg]): 6}
+        if layout['mode'] == 'two_body':
+            open_sizes = {
+                frozenset([parent_leg]): 2,
+                frozenset([parent_leg, layout['vector_leg']]): 6}
+        else:
+            open_sizes = {frozenset([parent_leg]): 2}
         expected_open_size = open_sizes.get(open_legs)
         if (expected_open_size is None or
                 variant['open_size'] != expected_open_size):
             return None
-        return {
-            'parent_pdg': parent_pdg,
-            'parent_leg': parent_leg,
-            'bottom_leg': bottom_leg,
-            'vector_leg': vector_leg,
-            'open_size': expected_open_size}
+        result = dict(layout)
+        result['open_size'] = expected_open_size
+        return result
 
     @staticmethod
     def _top_decay_process_layout(process):
-        """Return canonical leg numbers for one loop_sm t -> b W process."""
+        """Map one supported loop_sm top decay to canonical particle roles."""
 
         model = process.get('model')
-        if model is None or model.get('name') != 'loop_sm':
+        if (model is None or model.get('name') not in
+                ('loop_sm', 'loop_sm-no_b_mass')):
             return None
         legs = sorted(process.get('legs'),
                       key=lambda leg: leg.get('number'))
         incoming = [leg for leg in legs if not leg.get('state')]
         outgoing = [leg for leg in legs if leg.get('state')]
-        if (len(incoming) != 1 or abs(incoming[0].get('id')) != 6 or
-                len(outgoing) != 2):
-            return None
-        daughters = dict((abs(leg.get('id')), leg) for leg in outgoing)
-        if set(daughters) != set([5, 24]):
+        if len(incoming) != 1 or abs(incoming[0].get('id')) != 6:
             return None
         parent = incoming[0]
         parent_sign = 1 if parent.get('id') > 0 else -1
-        if (daughters[5].get('id') != parent_sign*5 or
-                daughters[24].get('id') != parent_sign*24):
+        bottom = [leg for leg in outgoing
+                  if leg.get('id') == parent_sign*5]
+        if len(bottom) != 1:
             return None
-        return (parent.get('id'), parent.get('number'),
-                daughters[5].get('number'), daughters[24].get('number'))
+
+        if len(outgoing) == 2:
+            vector = [leg for leg in outgoing
+                      if leg.get('id') == parent_sign*24]
+            if len(vector) != 1:
+                return None
+            return {
+                'mode': 'two_body',
+                'parent_pdg': parent.get('id'),
+                'parent_leg': parent.get('number'),
+                'bottom_leg': bottom[0].get('number'),
+                'vector_leg': vector[0].get('number')}
+
+        if len(outgoing) != 3:
+            return None
+        charged = [leg for leg in outgoing
+                   if abs(leg.get('id')) in (11, 13) and
+                   leg.get('id') == -parent_sign*abs(leg.get('id'))]
+        if len(charged) != 1:
+            return None
+        charged_pdg = abs(charged[0].get('id'))
+        neutrino = [leg for leg in outgoing
+                    if abs(leg.get('id')) == charged_pdg + 1 and
+                    leg.get('id') == parent_sign*abs(leg.get('id'))]
+        if len(neutrino) != 1:
+            return None
+        return {
+            'mode': 'three_body',
+            'parent_pdg': parent.get('id'),
+            'parent_leg': parent.get('number'),
+            'bottom_leg': bottom[0].get('number'),
+            'charged_lepton_leg': charged[0].get('number'),
+            'neutrino_leg': neutrino[0].get('number')}
 
     @staticmethod
     def _analytic_top_decay_declarations(layout):
@@ -180,7 +210,7 @@ class SpinDensityExporter(object):
         return [
             "INCLUDE 'coupl.inc'",
             'LOGICAL TDV_ANALYTIC_AVAILABLE,TDV_NEEDS_MADLOOP',
-            'REAL*8 TDV_VALIDATION_P(0:3,3)',
+            'REAL*8 TDV_VALIDATION_P(0:3,4)',
             'COMPLEX*16 TDV_ANALYTIC_RHO(3,%d,%d)' % (
                 open_size, open_size)]
 
@@ -188,23 +218,40 @@ class SpinDensityExporter(object):
     def _analytic_top_decay_lines(variant, layout, precision_asked):
         """Return the validate-then-switch analytic virtual dispatch."""
 
-        open_size = layout['open_size']
-        evaluator = ('TDV_EVALUATE_TWO_BODY_TOP' if open_size == 2
-                     else 'TDV_EVALUATE_TWO_BODY_TOP_W')
         contribution = variant.get('contribution_id', 1)
-        return [
+        lines = [
+            'TDV_VALIDATION_P=0D0',
             'TDV_VALIDATION_P(:,1)=SDM_INSERTION_P(:,%d)' %
             layout['parent_leg'],
             'TDV_VALIDATION_P(:,2)=SDM_INSERTION_P(:,%d)' %
-            layout['bottom_leg'],
-            'TDV_VALIDATION_P(:,3)=SDM_INSERTION_P(:,%d)' %
-            layout['vector_leg'],
-            'CALL %s(%d,TDV_VALIDATION_P(:,1),' % (
-                evaluator, layout['parent_pdg']),
-            '     $ TDV_VALIDATION_P(:,2),TDV_VALIDATION_P(:,3),',
-            '     $ MDL_MT,MDL_MB,MDL_MW,MU_R,',
-            '     $ G**2/(4D0*3.1415926535897932385D0),GC_11,',
-            '     $ TDV_ANALYTIC_RHO,TDV_ANALYTIC_AVAILABLE)',
+            layout['bottom_leg']]
+        if layout['mode'] == 'three_body':
+            lines.extend([
+                'TDV_VALIDATION_P(:,3)=SDM_INSERTION_P(:,%d)' %
+                layout['charged_lepton_leg'],
+                'TDV_VALIDATION_P(:,4)=SDM_INSERTION_P(:,%d)' %
+                layout['neutrino_leg'],
+                'CALL TDV_EVALUATE_THREE_BODY_TOP(%d,' %
+                layout['parent_pdg'],
+                '     $ TDV_VALIDATION_P(:,1),TDV_VALIDATION_P(:,2),',
+                '     $ TDV_VALIDATION_P(:,3),TDV_VALIDATION_P(:,4),',
+                '     $ MDL_MT,MDL_MB,MDL_MW,MDL_WW,MU_R,',
+                '     $ G**2/(4D0*3.1415926535897932385D0),GC_11,',
+                '     $ TDV_ANALYTIC_RHO,TDV_ANALYTIC_AVAILABLE)'])
+        else:
+            evaluator = ('TDV_EVALUATE_TWO_BODY_TOP'
+                         if layout['open_size'] == 2
+                         else 'TDV_EVALUATE_TWO_BODY_TOP_W')
+            lines.extend([
+                'TDV_VALIDATION_P(:,3)=SDM_INSERTION_P(:,%d)' %
+                layout['vector_leg'],
+                'CALL %s(%d,TDV_VALIDATION_P(:,1),' % (
+                    evaluator, layout['parent_pdg']),
+                '     $ TDV_VALIDATION_P(:,2),TDV_VALIDATION_P(:,3),',
+                '     $ MDL_MT,MDL_MB,MDL_MW,MU_R,',
+                '     $ G**2/(4D0*3.1415926535897932385D0),GC_11,',
+                '     $ TDV_ANALYTIC_RHO,TDV_ANALYTIC_AVAILABLE)'])
+        lines.extend([
             'TDV_NEEDS_MADLOOP=TDV_MADLOOP_REQUIRED(%d,' % contribution,
             '     $ TDV_ANALYTIC_AVAILABLE)',
             'IF (TDV_NEEDS_MADLOOP) THEN',
@@ -220,7 +267,8 @@ class SpinDensityExporter(object):
             '  SDM_INSERTION_RHO=TDV_ANALYTIC_RHO',
             '  SDM_PRECISION=0D0',
             '  SDM_RET_CODE=0',
-            'ENDIF']
+            'ENDIF'])
+        return lines
 
     @staticmethod
     def _color_matrix_lines(matrix_element):
