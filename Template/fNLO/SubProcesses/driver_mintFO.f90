@@ -55,7 +55,8 @@ module driver_mintfo_module
        restore_multiplicative_phase_space_assembly
   use multiplicative_density_terms, only: block_nlo_distribution, &
        multiplicative_density_tuple, density_tuple_schedule, &
-       initialize_density_tuple_schedule, decode_scheduled_density_tuple
+       initialize_density_tuple_schedule, decode_scheduled_density_tuple, &
+       coalesce_block_kinematic_families
   use multiplicative_block_distribution, only: &
        build_multiplicative_block_nlo_distribution, &
        build_multiplicative_lo_only_distribution
@@ -66,27 +67,41 @@ module driver_mintfo_module
   use multiplicative_production_channels, only: &
        multiplicative_production_channel_partition
   use multiplicative_runtime, only: multiplicative_event_evaluation, &
-       real_multiplicative_weight
-  use multiplicative_tuple_executor, only: execute_multiplicative_tuple
+       real_multiplicative_weight, evaluate_multiplicative_basis_projection
+  use multiplicative_tuple_executor, only: prepare_multiplicative_tuple, &
+       evaluate_prepared_multiplicative_tuple_density
   use multiplicative_reweighter, only: multiplicative_partonic_reweight, &
        reweight_multiplicative_scale_point
   use multiplicative_density_contraction, only: &
-       multiplicative_density_basis
+       multiplicative_density_basis, &
+       configure_multiplicative_scale_evaluation
   use spin_density_matrix_results, only: &
        spin_density_cache_statistics, &
        reset_spin_density_cache_statistics, &
-       fetch_spin_density_cache_statistics
+       fetch_spin_density_cache_statistics, &
+       record_exact_family_candidate, &
+       record_exact_family_cut_rejection, &
+       record_exact_family_acceptance, &
+       record_scale_reweight_evaluation, &
+       record_scale_luminosity_evaluation, &
+       record_scale_luminosity_cache_hit, &
+       record_pdf_member_initialization, &
+       record_pdf_luminosity_evaluation, &
+       record_pdf_luminosity_cache_hit, &
+       record_histogram_family_fill
   use multiplicative_process_plan, only: &
        multiplicative_process_plan_type, acquire_multiplicative_process_plan
   use multiplicative_point_workspace, only: &
        multiplicative_point_workspace_type, &
-       acquire_multiplicative_point_workspace
+       acquire_multiplicative_point_workspace, &
+       prepare_multiplicative_family_batch
   use multiplicative_lambda_validation, only: &
        multiplicative_lambda_accumulator, &
-       accumulate_multiplicative_lambda_atom, &
+       accumulate_multiplicative_exact_family, &
+       accumulate_multiplicative_lambda_coefficient, &
        formal_lambda_lo_weight, formal_lambda_additive_weight, &
        formal_lambda_block_linear_correction, &
-       require_formal_lambda_closure, &
+       require_multiplicative_exact_weight_closure, &
        require_formal_lambda_linear_closure
   use setscales_module, only: set_alphas
   use split_orders, only: check_amp_split
@@ -329,6 +344,11 @@ contains
 
     call fetch_spin_density_cache_statistics(density_cache_statistics)
     write (*, '(a,3(1x,i0))') &
+         'Spin-density raw amplitudes (hits misses provider_calls):', &
+         density_cache_statistics%raw_amplitude_hits, &
+         density_cache_statistics%raw_amplitude_misses, &
+         density_cache_statistics%raw_amplitude_provider_evaluations
+    write (*, '(a,3(1x,i0))') &
          'Spin-density cache LO (hits misses provider_calls):', &
          density_cache_statistics%lo_hits, &
          density_cache_statistics%lo_misses, &
@@ -338,6 +358,29 @@ contains
          density_cache_statistics%insertion_hits, &
          density_cache_statistics%insertion_misses, &
          density_cache_statistics%insertion_provider_evaluations
+    write (*, '(a,4(1x,i0))') &
+         'Spin-density virtuals (MadLoop calls direct fallback tomography):', &
+         density_cache_statistics%virtual_madloop_evaluations, &
+         density_cache_statistics%virtual_direct_reconstructions, &
+         density_cache_statistics%virtual_direct_fallbacks, &
+         density_cache_statistics%virtual_tomography_reconstructions
+    write (*, '(a,3(1x,i0))') &
+         'Exact event families (candidates cut_rejected accepted):', &
+         density_cache_statistics%exact_family_candidates, &
+         density_cache_statistics%exact_family_cut_rejections, &
+         density_cache_statistics%exact_family_acceptances
+    write (*, '(a,4(1x,i0))') &
+         'Density/scale (contractions reweights luminosities reused):', &
+         density_cache_statistics%density_contractions, &
+         density_cache_statistics%scale_reweight_evaluations, &
+         density_cache_statistics%scale_luminosity_evaluations, &
+         density_cache_statistics%scale_luminosity_cache_hits
+    write (*, '(a,4(1x,i0))') &
+         'Reweight/analysis (PDF_init luminosities reused histogram_fills):', &
+         density_cache_statistics%pdf_member_initializations, &
+         density_cache_statistics%pdf_luminosity_evaluations, &
+         density_cache_statistics%pdf_luminosity_cache_hits, &
+         density_cache_statistics%histogram_family_fills
 
     if (ntot /= 0) then
       write (*, *) 'Satistics from MadLoop:'
@@ -741,6 +784,8 @@ contains
     double precision :: nbody_channel_partition
     double precision :: raw_lo_weight, formal_lo_value, formal_block_value
     double precision :: formal_lo_rescaling
+    double precision :: projected_weight, lo_family_weight
+    double precision :: family_radiation_weights(3)
     double precision :: virtual_sampling_fraction
     double precision, pointer :: validation_lo_widths(:)
     double precision, pointer :: validation_nlo_widths(:)
@@ -748,6 +793,7 @@ contains
     double precision, pointer :: radiation_grid_weights(:)
     double precision, pointer :: radiation_grid_groups(:, :)
     double precision, pointer :: linear_radiation_groups(:, :)
+    double precision, pointer :: family_single_weights(:)
     integer, pointer :: sampled_fks(:), sampled_integer(:)
     integer, pointer :: sampled_dimension(:)
     integer, pointer :: factor_indices(:)
@@ -763,11 +809,12 @@ contains
     integer :: picked, configuration, component_count, component_position
     integer :: position, block, tuple_index, tuple_count, sampled_count
     integer :: production_position, production_term_index
-    integer :: radiation_term_index, radiation_event_slot
     integer :: radiation_grid_group
     integer :: luminosity_configuration
-    integer :: weight_count, weight_index, dd, point, kr, kf
+    integer :: weight_count, weight_index, pdf_weight_start
+    integer :: dd, point, kr, kf
     integer :: pdf_set, pdf_member, species_count
+    integer :: family_index, previous_family
     logical :: available, pass, previous_tuple_available
     logical :: sample_virtual_residual
 
@@ -804,6 +851,7 @@ contains
     radiation_grid_weights => workspace%radiation_grid_weights
     radiation_grid_groups => workspace%radiation_grid_groups
     linear_radiation_groups => workspace%linear_radiation_groups
+    family_single_weights => workspace%family_single_weights
     component_owned => workspace%component_owned
     factor_indices => workspace%factor_indices
     plotted_weight => workspace%plotted_weight
@@ -928,12 +976,30 @@ contains
            'the production contribution has no density component')
     end if
 
+    ! Fold every signed primitive which shares the exact same block-local
+    ! momentum and luminosity into one kinematic family.  The remaining
+    ! Cartesian traversal is therefore over observable events, not over the
+    ! algebraic B/V/I/R/S/C/SC expansion inside those events.
+    do position = 1, component_count
+      call coalesce_block_kinematic_families(distributions(position))
+    end do
     call initialize_density_tuple_schedule(distributions, tuple_schedule)
     tuple_count = tuple_schedule%tuple_count
+    call prepare_multiplicative_family_batch( &
+         workspace, tuple_count, multiplicative_event_capacity(), &
+         weight_count)
+    pdf_weight_start = 1
+    if (do_rwgt_scale .or. do_rwgt_decay_scale) then
+      do dd = 1, dyn_scale(0)
+        pdf_weight_start = pdf_weight_start + &
+             fnlo_scale_point_count(dd)
+      end do
+    end if
     previous_event_slots = soft_counterevent
     previous_tuple_available = .false.
     total_weight = 0d0
     do tuple_index = 1, tuple_count
+      call record_exact_family_candidate()
       call decode_scheduled_density_tuple( &
            distributions, tuple_schedule, tuple_index, tuple)
       production_term_index = tuple%term_indices(production_position)
@@ -944,24 +1010,33 @@ contains
         call fail_driver( &
              'a production density term has no luminosity configuration')
       end if
-      call execute_multiplicative_tuple( &
-           distributions, tuple, previous_event_slots, &
-           previous_tuple_available, vegas_wgt, &
-           PrecisionVirtualAtRunTime, density_basis, &
-           virtual_sampling_fraction, sample_virtual_residual, &
-           evaluation, logarithmic_mu2_r, logarithmic_mu2_f, &
+      call prepare_multiplicative_tuple( &
+           tuple, previous_event_slots, previous_tuple_available, &
+           vegas_wgt, evaluation, logarithmic_mu2_r, logarithmic_mu2_f, &
            coupling_rescaling, production_mu2_r, production_mu2_f, pass)
       if (.not. pass) cycle
       central_production_mu2_f = production_mu2_f
       if (.not. evaluation%available) cycle
       q2fact = production_mu2_f
-      luminosity = dlum_configuration( &
-           luminosity_configuration, evaluation%bjorken_x)
       pass = passcuts_multiplicative( &
            evaluation%momenta, evaluation%pdgs, &
            evaluation%origin_blocks, evaluation%y_to_lab, reweight)
-      if (.not. pass) cycle
+      if (.not. pass) then
+        call record_exact_family_cut_rejection()
+        cycle
+      end if
       pass_cuts_check = .true.
+      call evaluate_prepared_multiplicative_tuple_density( &
+           distributions, tuple, PrecisionVirtualAtRunTime, &
+           density_basis, virtual_sampling_fraction, &
+           sample_virtual_residual, evaluation, logarithmic_mu2_r, &
+           logarithmic_mu2_f, coupling_rescaling)
+      if (.not. evaluation%available) cycle
+      call record_exact_family_acceptance()
+      call configure_multiplicative_scale_evaluation( &
+           density_basis, pdf_weight_start - 1)
+      luminosity = dlum_configuration( &
+           luminosity_configuration, evaluation%bjorken_x)
       ! Generated DLUM providers already apply the GeV^-2-to-pb conversion
       ! for two incoming beams, exactly as in the additive weight path.
       tuple_weight = real_multiplicative_weight( &
@@ -969,6 +1044,125 @@ contains
            production_channel_partition
       tuple_weight = tuple_weight*reweight
       total_weight = total_weight + tuple_weight
+      call accumulate_multiplicative_exact_family( &
+           lambda_validation, tuple_weight)
+
+      workspace%family_count = workspace%family_count + 1
+      family_index = workspace%family_count
+      if (family_index > workspace%family_capacity) then
+        call fail_driver('the accepted event-family batch overflowed')
+      end if
+      workspace%family_momenta(:, :, family_index) = &
+           evaluation%momenta
+      workspace%family_y_to_lab(family_index) = evaluation%y_to_lab
+      workspace%family_bjorken_x(:, family_index) = &
+           evaluation%bjorken_x
+      workspace%family_mu2_f(family_index) = &
+           central_production_mu2_f
+      workspace%family_pdgs(:, family_index) = evaluation%pdgs
+      workspace%family_origin_blocks(:, family_index) = &
+           evaluation%origin_blocks
+      workspace%family_luminosity_configuration(family_index) = &
+           luminosity_configuration
+      workspace%family_production_event_slot(family_index) = &
+           tuple%event_slots(0)
+      workspace%family_luminosity_owner(family_index) = family_index
+      ! Decay-radiation families commonly share the exact same incoming
+      ! momentum, factorization scale and luminosity configuration.  Record
+      ! the first accepted owner now; every PDF member can then reuse that
+      ! owner's luminosity without another provider call.  Exact floating
+      ! equality is intentional: approximate points are distinct families.
+      do previous_family = family_index - 1, 1, -1
+        if (workspace%family_production_event_slot(previous_family) /= &
+            workspace%family_production_event_slot(family_index)) cycle
+        if (workspace%family_luminosity_configuration(previous_family) /= &
+            luminosity_configuration) cycle
+        if (workspace%family_mu2_f(previous_family) /= &
+            workspace%family_mu2_f(family_index)) cycle
+        if (any(workspace%family_bjorken_x(:, previous_family) /= &
+            workspace%family_bjorken_x(:, family_index))) cycle
+        workspace%family_luminosity_owner(family_index) = &
+             workspace%family_luminosity_owner(previous_family)
+        exit
+      end do
+      workspace%family_pdf_partonic_factor(family_index) = &
+           dble(evaluation%partonic_weight)* &
+           production_channel_partition*reweight
+
+      ! The complete multiplicative family was contracted once above.  Its
+      ! strict additive projection needs only the degree-zero coefficient
+      ! and one degree-one coefficient per block; higher products are never
+      ! enumerated.  These contractions reuse the already-loaded matrices.
+      validation_block_orders = 0
+      call evaluate_multiplicative_basis_projection( &
+           density_basis, logarithmic_mu2_r, logarithmic_mu2_f, &
+           coupling_rescaling, evaluation%kinematic_weight, &
+           validation_block_orders, variation_reweight, &
+           virtual_sampling_fraction, sample_virtual_residual)
+      lo_family_weight = 0d0
+      if (variation_reweight%available) then
+        lo_family_weight = real_multiplicative_weight( &
+             variation_reweight%partonic_weight)*luminosity* &
+             production_channel_partition*reweight
+      end if
+      raw_lo_weight = raw_lo_weight + lo_family_weight
+      call accumulate_multiplicative_lambda_coefficient( &
+           lambda_validation, validation_block_orders, lo_family_weight)
+
+      family_single_weights = 0d0
+      do position = 1, component_count
+        validation_block_orders = 0
+        validation_block_orders(position) = 1
+        call evaluate_multiplicative_basis_projection( &
+             density_basis, logarithmic_mu2_r, logarithmic_mu2_f, &
+             coupling_rescaling, evaluation%kinematic_weight, &
+             validation_block_orders, variation_reweight, &
+             virtual_sampling_fraction, sample_virtual_residual)
+        projected_weight = 0d0
+        if (variation_reweight%available) then
+          projected_weight = real_multiplicative_weight( &
+               variation_reweight%partonic_weight)*luminosity* &
+               production_channel_partition*reweight
+        end if
+        family_single_weights(position) = projected_weight
+        call accumulate_multiplicative_lambda_coefficient( &
+             lambda_validation, validation_block_orders, projected_weight)
+      end do
+
+      do contribution = 1, contribution_count
+        position = contribution_positions(contribution)
+        if (position < 1 .or. position > component_count) then
+          call fail_driver( &
+               'an NLO contribution has no radiation-grid component')
+        end if
+        validation_block_orders = 0
+        validation_block_orders(position) = 1
+        family_radiation_weights = 0d0
+        do radiation_grid_group = 2, 3
+          call evaluate_multiplicative_basis_projection( &
+               density_basis, logarithmic_mu2_r, logarithmic_mu2_f, &
+               coupling_rescaling, evaluation%kinematic_weight, &
+               validation_block_orders, variation_reweight, &
+               virtual_sampling_fraction, sample_virtual_residual, &
+               position, radiation_grid_group)
+          if (variation_reweight%available) then
+            family_radiation_weights(radiation_grid_group) = &
+                 real_multiplicative_weight( &
+                 variation_reweight%partonic_weight)*luminosity* &
+                 production_channel_partition*reweight
+          end if
+        end do
+        family_radiation_weights(1) = lo_family_weight + &
+             family_single_weights(position) - &
+             sum(family_radiation_weights(2:3))
+        radiation_grid_groups(contribution, :) = &
+             radiation_grid_groups(contribution, :) + &
+             family_radiation_weights
+        linear_radiation_groups(contribution, 2:3) = &
+             linear_radiation_groups(contribution, 2:3) + &
+             family_radiation_weights(2:3)
+      end do
+
       plotted_weight = 0d0
       plotted_weight(1) = tuple_weight
 
@@ -987,12 +1181,27 @@ contains
                  virtual_sampling_fraction, sample_virtual_residual, &
                  variation_reweight, logarithmic_mu2_r, logarithmic_mu2_f, &
                  coupling_rescaling, production_mu2_r, production_mu2_f)
+            call record_scale_reweight_evaluation()
             weight_index = weight_index + 1
             if (.not. variation_reweight%available) cycle
             q2fact = production_mu2_f
-            luminosity = dlum_configuration( &
-                 luminosity_configuration, &
-                 evaluation%bjorken_x)
+            previous_family = &
+                 workspace%family_luminosity_owner(family_index)
+            workspace%family_scale_mu2_f(weight_index, family_index) = &
+                 production_mu2_f
+            if (previous_family /= family_index .and. &
+                workspace%family_scale_mu2_f( &
+                     weight_index, previous_family) == production_mu2_f) then
+              luminosity = workspace%family_scale_luminosity( &
+                   weight_index, previous_family)
+              call record_scale_luminosity_cache_hit()
+            else
+              luminosity = dlum_configuration( &
+                   luminosity_configuration, evaluation%bjorken_x)
+              call record_scale_luminosity_evaluation()
+            end if
+            workspace%family_scale_luminosity( &
+                 weight_index, family_index) = luminosity
             width_rescaling = &
                  decay_width_denominator_rescaling(factor_indices)
             plotted_weight(weight_index) = &
@@ -1003,88 +1212,70 @@ contains
         end do
       end if
 
-      if (do_rwgt_pdf) then
-        do pdf_set = 1, lhaPDFid(0)
-          do pdf_member = 0, nmemPDF(pdf_set)
-            call InitPDFm(pdf_set, pdf_member)
-            weight_index = weight_index + 1
-            q2fact = central_production_mu2_f
-            luminosity = dlum_configuration( &
-                 luminosity_configuration, &
-                 evaluation%bjorken_x)
-            plotted_weight(weight_index) = &
-                 dble(evaluation%partonic_weight)*luminosity* &
-                 production_channel_partition*reweight
-          end do
-        end do
-        call InitPDFm(1, 0)
+      if (weight_index /= pdf_weight_start) then
+        call fail_driver('the multiplicative scale-weight layout is invalid')
       end if
-      if (weight_index /= weight_count) then
-        call fail_driver('the multiplicative plot-weight layout is invalid')
-      end if
-      call outfun_multiplicative_impl( &
-           evaluation%momenta, evaluation%y_to_lab, plotted_weight, &
-           evaluation%pdgs, evaluation%origin_blocks)
-      call extract_validation_block_orders( &
-           tuple, distributions, evaluation%nlo_order, &
-           validation_block_orders)
-      if (evaluation%nlo_order == 0) &
-           raw_lo_weight = raw_lo_weight + tuple_weight
-      do contribution = 1, contribution_count
-        position = contribution_positions(contribution)
-        if (position < 1 .or. position > component_count) then
-          call fail_driver( &
-               'an NLO contribution has no radiation-grid component')
-        end if
-        ! A block-local radiation grid learns the complete physical NLO
-        ! distribution of that block with every spectator at LO.  The common
-        ! all-LO tuple is therefore included in every block grid, together
-        ! with the lambda-linear correction owned by that block.  R/S and
-        ! C/SC generally live at different mapped momenta, so every atom is
-        ! first evaluated and combined with the LO spectator blocks on its
-        ! own momenta.  Only those final measured weights are paired here.
-        ! This keeps the local FKS cancellation inside each positive grid
-        ! proxy without allowing unrelated Born/virtual cancellations to
-        ! make the proxy accidentally tiny.  Taking ABS atom by atom would
-        ! instead train on the non-integrable 1/xi pieces that FKS
-        ! subtraction is specifically meant to cancel.
-        ! Products in which another block is NLO remain in TOTAL_WEIGHT but
-        ! must not distort this one block's importance map with unrelated
-        ! higher-order tails.
-        if (evaluation%nlo_order == 0 .or. &
-            (validation_block_orders(position) == 1 .and. &
-             evaluation%nlo_order == 1)) then
-          radiation_term_index = tuple%term_indices(position)
-          radiation_event_slot = distributions(position)% &
-               terms(radiation_term_index)%event_slot
-          radiation_grid_group = 1
-          if (radiation_event_slot == real_event .or. &
-              (radiation_event_slot == soft_counterevent .and. &
-               distributions(position)%terms(radiation_term_index)% &
-               sign < 0)) then
-            radiation_grid_group = 2
-          else if (radiation_event_slot == collinear_counterevent .or. &
-                   radiation_event_slot == &
-                   soft_collinear_counterevent) then
-            radiation_grid_group = 3
-          end if
-          radiation_grid_groups(contribution, radiation_grid_group) = &
-               radiation_grid_groups(contribution, &
-                                      radiation_grid_group) + tuple_weight
-          if (evaluation%nlo_order == 1) then
-            linear_radiation_groups(contribution, radiation_grid_group) = &
-                 linear_radiation_groups(contribution, &
-                                         radiation_grid_group) + tuple_weight
-          end if
-        end if
-      end do
-      call accumulate_multiplicative_lambda_atom( &
-           lambda_validation, validation_block_orders, tuple_weight)
+      workspace%family_plot_weights(:, family_index) = plotted_weight
     end do
 
-    call require_formal_lambda_closure( &
-         lambda_validation, total_weight, validation_lo_widths, &
-         validation_nlo_widths)
+    ! Keep each PDF member active while luminosities for every accepted exact
+    ! event family are evaluated.  The old ordering initialized the same
+    ! member once per family, which dominated runs with large error sets.
+    weight_index = pdf_weight_start
+    if (do_rwgt_pdf .and. workspace%family_count > 0) then
+      do pdf_set = 1, lhaPDFid(0)
+        do pdf_member = 0, nmemPDF(pdf_set)
+          call InitPDFm(pdf_set, pdf_member)
+          call record_pdf_member_initialization()
+          weight_index = weight_index + 1
+          workspace%family_pdf_luminosity(1:workspace%family_count) = 0d0
+          do family_index = 1, workspace%family_count
+            previous_family = &
+                 workspace%family_luminosity_owner(family_index)
+            if (previous_family < 1 .or. &
+                previous_family > family_index) then
+              call fail_driver('an event-family luminosity owner is invalid')
+            end if
+            if (previous_family == family_index) then
+              q2fact = workspace%family_mu2_f(family_index)
+              luminosity = dlum_configuration( &
+                   workspace%family_luminosity_configuration(family_index), &
+                   workspace%family_bjorken_x(:, family_index))
+              workspace%family_pdf_luminosity(family_index) = luminosity
+              call record_pdf_luminosity_evaluation()
+            else
+              luminosity = &
+                   workspace%family_pdf_luminosity(previous_family)
+              workspace%family_pdf_luminosity(family_index) = luminosity
+              call record_pdf_luminosity_cache_hit()
+            end if
+            workspace%family_plot_weights(weight_index, family_index) = &
+                 workspace%family_pdf_partonic_factor(family_index)* &
+                 luminosity
+          end do
+        end do
+      end do
+      call InitPDFm(1, 0)
+    else if (do_rwgt_pdf) then
+      do pdf_set = 1, lhaPDFid(0)
+        weight_index = weight_index + nmemPDF(pdf_set) + 1
+      end do
+    end if
+    if (weight_index /= weight_count) then
+      call fail_driver('the multiplicative plot-weight layout is invalid')
+    end if
+    do family_index = 1, workspace%family_count
+      call record_histogram_family_fill()
+      call outfun_multiplicative_impl( &
+           workspace%family_momenta(:, :, family_index), &
+           workspace%family_y_to_lab(family_index), &
+           workspace%family_plot_weights(:, family_index), &
+           workspace%family_pdgs(:, family_index), &
+           workspace%family_origin_blocks(:, family_index))
+    end do
+
+    call require_multiplicative_exact_weight_closure( &
+         lambda_validation, total_weight)
     call require_formal_lambda_linear_closure( &
          lambda_validation, validation_width_blocks, &
          validation_lo_widths, validation_nlo_widths)
@@ -1155,36 +1346,6 @@ contains
              grid_weight*sampled_volume(selected))
       end do
     end subroutine fill_multiplicative_discrete_grids
-
-
-    subroutine extract_validation_block_orders( &
-         selected_tuple, selected_distributions, evaluated_order, &
-         block_orders)
-      type(multiplicative_density_tuple), intent(in) :: selected_tuple
-      type(block_nlo_distribution), intent(in) :: selected_distributions(:)
-      integer, intent(in) :: evaluated_order
-      integer, intent(out) :: block_orders(:)
-      integer :: component, term
-
-      if (size(block_orders) /= size(selected_distributions) .or. &
-          selected_tuple%distribution_count /= &
-          size(selected_distributions)) then
-        call fail_driver('the validation block layout is inconsistent')
-      end if
-      do component = 1, size(selected_distributions)
-        term = selected_tuple%term_indices(component)
-        if (term < 1 .or. &
-            term > selected_distributions(component)%term_count) then
-          call fail_driver('a validation tuple term is out of range')
-        end if
-        block_orders(component) = &
-             selected_distributions(component)%terms(term)%nlo_order
-      end do
-      if (sum(block_orders) /= selected_tuple%nlo_order .or. &
-          sum(block_orders) /= evaluated_order) then
-        call fail_driver('the validation NLO order does not close')
-      end if
-    end subroutine extract_validation_block_orders
 
 
     integer function multiplicative_plot_weight_count()

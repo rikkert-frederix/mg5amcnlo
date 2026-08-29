@@ -61,12 +61,30 @@ module spin_density_matrix_results
   end type spin_density_insertion_cache
 
   type, public :: spin_density_cache_statistics
+    integer(kind=8) :: raw_amplitude_hits = 0_8
+    integer(kind=8) :: raw_amplitude_misses = 0_8
+    integer(kind=8) :: raw_amplitude_provider_evaluations = 0_8
     integer(kind=8) :: lo_hits = 0_8
     integer(kind=8) :: lo_misses = 0_8
     integer(kind=8) :: insertion_hits = 0_8
     integer(kind=8) :: insertion_misses = 0_8
     integer(kind=8) :: lo_provider_evaluations = 0_8
     integer(kind=8) :: insertion_provider_evaluations = 0_8
+    integer(kind=8) :: virtual_madloop_evaluations = 0_8
+    integer(kind=8) :: virtual_direct_reconstructions = 0_8
+    integer(kind=8) :: virtual_direct_fallbacks = 0_8
+    integer(kind=8) :: virtual_tomography_reconstructions = 0_8
+    integer(kind=8) :: exact_family_candidates = 0_8
+    integer(kind=8) :: exact_family_cut_rejections = 0_8
+    integer(kind=8) :: exact_family_acceptances = 0_8
+    integer(kind=8) :: density_contractions = 0_8
+    integer(kind=8) :: scale_reweight_evaluations = 0_8
+    integer(kind=8) :: scale_luminosity_evaluations = 0_8
+    integer(kind=8) :: scale_luminosity_cache_hits = 0_8
+    integer(kind=8) :: pdf_member_initializations = 0_8
+    integer(kind=8) :: pdf_luminosity_evaluations = 0_8
+    integer(kind=8) :: pdf_luminosity_cache_hits = 0_8
+    integer(kind=8) :: histogram_family_fills = 0_8
   end type spin_density_cache_statistics
 
   type(spin_density_cache_entry), allocatable, save :: lo_cache(:, :)
@@ -78,6 +96,21 @@ module spin_density_matrix_results
   public :: reset_spin_density_caches
   public :: reset_spin_density_cache_statistics
   public :: fetch_spin_density_cache_statistics
+  public :: record_raw_amplitude_cache_hit
+  public :: record_raw_amplitude_cache_miss
+  public :: record_direct_virtual_reconstruction
+  public :: record_virtual_tomography_reconstruction
+  public :: record_exact_family_candidate
+  public :: record_exact_family_cut_rejection
+  public :: record_exact_family_acceptance
+  public :: record_density_contraction
+  public :: record_scale_reweight_evaluation
+  public :: record_scale_luminosity_evaluation
+  public :: record_scale_luminosity_cache_hit
+  public :: record_pdf_member_initialization
+  public :: record_pdf_luminosity_evaluation
+  public :: record_pdf_luminosity_cache_hit
+  public :: record_histogram_family_fill
   public :: load_cached_lo_density, record_lo_density
   public :: load_cached_spin_density_insertion
   public :: record_spin_density_insertion
@@ -87,6 +120,119 @@ module spin_density_matrix_results
   public :: spin_density_product_order
 
 contains
+
+  subroutine record_raw_amplitude_cache_hit()
+    cache_statistics%raw_amplitude_hits = &
+         cache_statistics%raw_amplitude_hits + 1_8
+  end subroutine record_raw_amplitude_cache_hit
+
+
+  subroutine record_raw_amplitude_cache_miss()
+    cache_statistics%raw_amplitude_misses = &
+         cache_statistics%raw_amplitude_misses + 1_8
+    cache_statistics%raw_amplitude_provider_evaluations = &
+         cache_statistics%raw_amplitude_provider_evaluations + 1_8
+  end subroutine record_raw_amplitude_cache_miss
+
+
+  subroutine record_direct_virtual_reconstruction(success, evaluations)
+    logical, intent(in) :: success
+    integer, intent(in) :: evaluations
+
+    if (evaluations < 1) then
+      call fail_spin_density_results( &
+           'a direct virtual reconstruction recorded no evaluations')
+    end if
+    cache_statistics%virtual_madloop_evaluations = &
+         cache_statistics%virtual_madloop_evaluations + int(evaluations, 8)
+    if (success) then
+      cache_statistics%virtual_direct_reconstructions = &
+           cache_statistics%virtual_direct_reconstructions + 1_8
+    else
+      cache_statistics%virtual_direct_fallbacks = &
+           cache_statistics%virtual_direct_fallbacks + 1_8
+    end if
+  end subroutine record_direct_virtual_reconstruction
+
+
+  subroutine record_virtual_tomography_reconstruction(evaluations)
+    integer, intent(in) :: evaluations
+
+    if (evaluations < 1) then
+      call fail_spin_density_results( &
+           'a virtual tomography recorded no evaluations')
+    end if
+    cache_statistics%virtual_madloop_evaluations = &
+         cache_statistics%virtual_madloop_evaluations + int(evaluations, 8)
+    cache_statistics%virtual_tomography_reconstructions = &
+         cache_statistics%virtual_tomography_reconstructions + 1_8
+  end subroutine record_virtual_tomography_reconstruction
+
+
+  subroutine record_exact_family_candidate()
+    cache_statistics%exact_family_candidates = &
+         cache_statistics%exact_family_candidates + 1_8
+  end subroutine record_exact_family_candidate
+
+
+  subroutine record_exact_family_cut_rejection()
+    cache_statistics%exact_family_cut_rejections = &
+         cache_statistics%exact_family_cut_rejections + 1_8
+  end subroutine record_exact_family_cut_rejection
+
+
+  subroutine record_exact_family_acceptance()
+    cache_statistics%exact_family_acceptances = &
+         cache_statistics%exact_family_acceptances + 1_8
+  end subroutine record_exact_family_acceptance
+
+
+  subroutine record_density_contraction()
+    cache_statistics%density_contractions = &
+         cache_statistics%density_contractions + 1_8
+  end subroutine record_density_contraction
+
+
+  subroutine record_scale_reweight_evaluation()
+    cache_statistics%scale_reweight_evaluations = &
+         cache_statistics%scale_reweight_evaluations + 1_8
+  end subroutine record_scale_reweight_evaluation
+
+
+  subroutine record_scale_luminosity_evaluation()
+    cache_statistics%scale_luminosity_evaluations = &
+         cache_statistics%scale_luminosity_evaluations + 1_8
+  end subroutine record_scale_luminosity_evaluation
+
+
+  subroutine record_scale_luminosity_cache_hit()
+    cache_statistics%scale_luminosity_cache_hits = &
+         cache_statistics%scale_luminosity_cache_hits + 1_8
+  end subroutine record_scale_luminosity_cache_hit
+
+
+  subroutine record_pdf_member_initialization()
+    cache_statistics%pdf_member_initializations = &
+         cache_statistics%pdf_member_initializations + 1_8
+  end subroutine record_pdf_member_initialization
+
+
+  subroutine record_pdf_luminosity_evaluation()
+    cache_statistics%pdf_luminosity_evaluations = &
+         cache_statistics%pdf_luminosity_evaluations + 1_8
+  end subroutine record_pdf_luminosity_evaluation
+
+
+  subroutine record_pdf_luminosity_cache_hit()
+    cache_statistics%pdf_luminosity_cache_hits = &
+         cache_statistics%pdf_luminosity_cache_hits + 1_8
+  end subroutine record_pdf_luminosity_cache_hit
+
+
+  subroutine record_histogram_family_fill()
+    cache_statistics%histogram_family_fills = &
+         cache_statistics%histogram_family_fills + 1_8
+  end subroutine record_histogram_family_fill
 
   subroutine reset_spin_density_cache_statistics()
     cache_statistics = spin_density_cache_statistics()
@@ -279,7 +425,7 @@ contains
            'a block result received more than one insertion')
     end if
     if (kind <= spin_density_no_insertion .or. &
-        kind > spin_density_color_insertion) then
+        kind > spin_density_fast_virtual_insertion) then
       call fail_spin_density_results('an insertion kind is invalid')
     end if
     if (order < 0 .or. order > 1) then
@@ -475,7 +621,7 @@ contains
     integer, intent(in) :: kind, identifier, correlation_leg
 
     if (kind <= spin_density_no_insertion .or. &
-        kind > spin_density_color_insertion) then
+        kind > spin_density_fast_virtual_insertion) then
       call fail_spin_density_results('an insertion kind is invalid')
     end if
     if (identifier < 0) then

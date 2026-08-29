@@ -42,6 +42,7 @@ module spin_density_matrix_results
   implicit none
   integer, parameter :: spin_density_no_insertion = 0
   integer, parameter :: spin_density_color_insertion = 4
+  integer, parameter :: spin_density_fast_virtual_insertion = 5
 end module spin_density_matrix_results
 ''')
         program_path = os.path.join(directory, name + '.f90')

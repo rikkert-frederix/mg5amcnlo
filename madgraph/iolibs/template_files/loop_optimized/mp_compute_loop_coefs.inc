@@ -568,7 +568,17 @@ C precision variable) to the AMPL multiple precision array.
 ## if(not LoopInduced) {
       ITEMP = %(proc_prefix)sML5SQSOINDEX(%(proc_prefix)sML5SOINDEX_FOR_LOOP_AMP(I),%(proc_prefix)sML5SOINDEX_FOR_BORN_AMP(J))
       DO K=1,3
+## if(SpinDensityOverride) {
+        IF (SDM_OVERRIDE_BORN) THEN
+          TEMP2(K) = 2.0e0_16*HEL_MULT*REAL(CFTOT*AMPL(K,I)*
+     $      CONJG(SDM_BORN_AMP(J)),KIND=16)
+        ELSE
+          TEMP2(K) = 2.0e0_16*HEL_MULT*REAL(CFTOT*AMPL(K,I)*
+     $      CONJG(AMP(J)),KIND=16)
+        ENDIF
+## } else {
         TEMP2(K) = 2.0e0_16*HEL_MULT*REAL(CFTOT*AMPL(K,I)*CONJG(AMP(J)),KIND=16)
+## }
       ENDDO
 ## } else {
       ITEMP = %(proc_prefix)sML5SQSOINDEX(%(proc_prefix)sML5SOINDEX_FOR_LOOP_AMP(I),%(proc_prefix)sML5SOINDEX_FOR_LOOP_AMP(J))
@@ -586,7 +596,17 @@ C It is however a good cross-check.
 ## if(not LoopInduced) {
       ITEMP = %(proc_prefix)sML5SQSOINDEX(%(proc_prefix)sML5SOINDEX_FOR_LOOP_AMP(I),%(proc_prefix)sML5SOINDEX_FOR_BORN_AMP(J))
       DO K=1,3
+## if(SpinDensityOverride) {
+        IF (DP_SDM_OVERRIDE_BORN) THEN
+          DP_TEMP2(K) = 2.0d0*HEL_MULT*REAL(DP_CFTOT*DP_AMPL(K,I)*
+     $      DCONJG(DP_SDM_BORN_AMP(J)),KIND=8)
+        ELSE
+          DP_TEMP2(K) = 2.0d0*HEL_MULT*REAL(DP_CFTOT*DP_AMPL(K,I)*
+     $      DCONJG(DP_AMP(J)),KIND=8)
+        ENDIF
+## } else {
         DP_TEMP2(K) = 2.0d0*HEL_MULT*REAL(DP_CFTOT*DP_AMPL(K,I)*CONJG(DP_AMP(J)),KIND=8)
+## }
       ENDDO
 ## } else {
       ITEMP = %(proc_prefix)sML5SQSOINDEX(%(proc_prefix)sML5SOINDEX_FOR_LOOP_AMP(I),%(proc_prefix)sML5SOINDEX_FOR_LOOP_AMP(J))

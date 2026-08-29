@@ -758,6 +758,7 @@ contains
     double precision t, z, ap(2), E_j_fks, E_i_fks, Q(2), cphi_mother, sphi_mother, pi(0:3), pj(0:3), wgt_born
     complex(kind=kind(0d0)) W1(6), W2(6), W3(6), W4(6), Wij_angle, Wij_recta
     complex(kind=kind(0d0)) azifact, spin_kernel
+    logical :: recording_density
 
 ! Colour representations of i_fks, j_fks and the FKS mother
 
@@ -800,18 +801,23 @@ contains
     E_i_fks = p(0, selected_i_fks)
     z = 1d0 - E_i_fks/(E_i_fks + E_j_fks)
     t = z*partonic_shat/4d0
-    call evaluate_born_matrix(soft_counterevent, wgt_born)
     call AP_reduced(j_type, i_type, t, z, g, ap)
     call Qterms_reduced_timelike(j_type, i_type, t, z, g, Q)
     wgt = 0d0
     iord = qcd_pos
-    wgt1(1) = ans_cnt(1, iord)
-    wgt1(2) = ans_cnt(2, iord)
+    recording_density = density_operator_is_recording()
+    if (recording_density) then
+      wgt1 = (0d0, 0d0)
+    else
+      call evaluate_born_matrix(soft_counterevent, wgt_born)
+      wgt1(1) = ans_cnt(1, iord)
+      wgt1(2) = ans_cnt(2, iord)
+    end if
     imother_fks = min(selected_i_fks, selected_j_fks)
     spin_kernel = (0d0, 0d0)
     if (abs(j_type) .eq. 3 .and. i_type .eq. 8) then
       Q(1) = 0d0
-      wgt1(2) = 0d0
+      if (.not. recording_density) wgt1(2) = 0d0
     elseif (m_type .eq. 8) then
 ! Insert <ij>/(/ij/) which is not included by sborn()
       if (1d0 - y_ij_fks .lt. vtiny) then
@@ -838,10 +844,12 @@ contains
                         sphi_mother)
       spin_kernel = -(cphi_mother - ximag*sphi_mother)**2* &
            azifact*Q(1)*iden_comp
-      wgt1(2) = -(cphi_mother - ximag*sphi_mother)**2*wgt1(2)*azifact
-      amp_split_cnt(1:amp_split_size, 2, iord) = &
-        -(cphi_mother - ximag*sphi_mother)**2 &
-        *amp_split_cnt(1:amp_split_size, 2, iord)*azifact
+      if (.not. recording_density) then
+        wgt1(2) = -(cphi_mother - ximag*sphi_mother)**2*wgt1(2)*azifact
+        amp_split_cnt(1:amp_split_size, 2, iord) = &
+          -(cphi_mother - ximag*sphi_mother)**2 &
+          *amp_split_cnt(1:amp_split_size, 2, iord)*azifact
+      end if
     else
       write (*, *) 'FATAL ERROR in sborncol_fsr', i_type, j_type, &
                    selected_i_fks, selected_j_fks
@@ -860,6 +868,9 @@ contains
              spin_density_born_insertion, active_nlo_contribution(), 2, &
              imother_fks, density_coefficients, .true.)
       end if
+      wgt = 0d0
+      amp_split(1:amp_split_size) = 0d0
+      return
     end if
     wgt = wgt + dble(wgt1(1)*ap(1) + wgt1(2)*Q(1))
     amp_split_local(1:amp_split_size) = &
@@ -884,6 +895,7 @@ contains
     double precision t, z, ap(2), Q(2), cphi_mother, sphi_mother, pi(0:3), pj(0:3), wgt_born
     complex(kind=kind(0d0)) W1(6), W2(6), W3(6), W4(6), Wij_angle, Wij_recta
     complex(kind=kind(0d0)) azifact, spin_kernel
+    logical :: recording_density
 
     double precision zero, vtiny
     parameter(zero=0d0)
@@ -918,10 +930,18 @@ contains
     call Qterms_reduced_spacelike(m_type, i_type, t, z, g, Q)
     wgt = 0d0
     iord = qcd_pos
-    call evaluate_born_matrix(soft_counterevent, wgt_born)
-    wgt1(1:2) = ans_cnt(1:2, iord)
-    amp_split_cnt_local(1:amp_split_size, 1, iord) = amp_split_cnt(1:amp_split_size, 1, iord)
-    amp_split_cnt_local(1:amp_split_size, 2, iord) = amp_split_cnt(1:amp_split_size, 2, iord)
+    recording_density = density_operator_is_recording()
+    amp_split_cnt_local = (0d0, 0d0)
+    if (recording_density) then
+      wgt1 = (0d0, 0d0)
+    else
+      call evaluate_born_matrix(soft_counterevent, wgt_born)
+      wgt1(1:2) = ans_cnt(1:2, iord)
+      amp_split_cnt_local(1:amp_split_size, 1, iord) = &
+           amp_split_cnt(1:amp_split_size, 1, iord)
+      amp_split_cnt_local(1:amp_split_size, 2, iord) = &
+           amp_split_cnt(1:amp_split_size, 2, iord)
+    end if
     spin_kernel = (0d0, 0d0)
     if (abs(m_type) .eq. 3) then
       Q(1) = 0d0
@@ -979,6 +999,9 @@ contains
              spin_density_born_insertion, active_nlo_contribution(), 2, &
              j_fks, density_coefficients, .true.)
       end if
+      wgt = 0d0
+      amp_split(1:amp_split_size) = 0d0
+      return
     end if
     wgt = wgt + dble(wgt1(1)*ap(1) + wgt1(2)*Q(1))
     amp_split_local(1:amp_split_size) = &
@@ -1383,6 +1406,7 @@ contains
     double precision subtraction_shat
     complex(kind=8) :: density_coefficients( &
          density_scale_coefficient_count)
+    logical :: recording_density
 
     amp_split_collrem_xi(1:amp_split_size) = 0d0
     amp_split_collrem_lxi(1:amp_split_size) = 0d0
@@ -1434,12 +1458,17 @@ contains
 
     collrem_xi = 0.d0
     collrem_lxi = 0.d0
-    calculatedborn = .false.
     iord = qcd_pos
     iap = 1
-    call evaluate_born_matrix(soft_counterevent, wgt_born)
-    wgt1(1) = ans_cnt(1, iord)
-    wgt1(2) = ans_cnt(2, iord)
+    recording_density = density_operator_is_recording()
+    if (.not. recording_density) then
+      calculatedborn = .false.
+      call evaluate_born_matrix(soft_counterevent, wgt_born)
+      wgt1(1) = ans_cnt(1, iord)
+      wgt1(2) = ans_cnt(2, iord)
+    else
+      wgt1 = (0d0, 0d0)
+    end if
 
     collrem_xi_tmp = ap(iap)*log( &
                        subtraction_shat*delta_used/ &
@@ -1451,29 +1480,36 @@ contains
 ! has to be inserted here
     xnorm = 1.d0/z*iden_comp
 
-    collrem_xi = collrem_xi + oo2pi*dble(wgt1(1))*collrem_xi_tmp*xnorm
-    collrem_lxi = collrem_lxi + oo2pi*dble(wgt1(1))*collrem_lxi_tmp*xnorm
+    if (.not. recording_density) then
+      collrem_xi = collrem_xi + &
+           oo2pi*dble(wgt1(1))*collrem_xi_tmp*xnorm
+      collrem_lxi = collrem_lxi + &
+           oo2pi*dble(wgt1(1))*collrem_lxi_tmp*xnorm
 
-    amp_split_collrem_xi(1:amp_split_size) = &
-      amp_split_collrem_xi(1:amp_split_size) + &
-      dble(amp_split_cnt(1:amp_split_size, 1, iord))*oo2pi &
-      *collrem_xi_tmp*xnorm
-    amp_split_collrem_lxi(1:amp_split_size) = &
-      amp_split_collrem_lxi(1:amp_split_size) + &
-      dble(amp_split_cnt(1:amp_split_size, 1, iord))*oo2pi &
-      *collrem_lxi_tmp*xnorm
+      amp_split_collrem_xi(1:amp_split_size) = &
+        amp_split_collrem_xi(1:amp_split_size) + &
+        dble(amp_split_cnt(1:amp_split_size, 1, iord))*oo2pi &
+        *collrem_xi_tmp*xnorm
+      amp_split_collrem_lxi(1:amp_split_size) = &
+        amp_split_collrem_lxi(1:amp_split_size) + &
+        dble(amp_split_cnt(1:amp_split_size, 1, iord))*oo2pi &
+        *collrem_lxi_tmp*xnorm
+    end if
 
     prefact_xi = ap(iap)*log( &
                    subtraction_shat*delta_used/(2*QES2)) - &
                  apprime(iap)
-    amp_split_wgtdegrem_xi(1:amp_split_size) = &
-      amp_split_wgtdegrem_xi(1:amp_split_size) + &
-      oo2pi*dble(amp_split_cnt(1:amp_split_size, 1, iord)) &
-      *prefact_xi*xnorm
-    amp_split_wgtdegrem_lxi(1:amp_split_size) = amp_split_collrem_lxi(1:amp_split_size)
-    amp_split_wgtdegrem_muF(1:amp_split_size) = &
-      amp_split_wgtdegrem_muF(1:amp_split_size) - &
-      oo2pi*dble(amp_split_cnt(1:amp_split_size, 1, iord))*ap(iap)*xnorm
+    if (.not. recording_density) then
+      amp_split_wgtdegrem_xi(1:amp_split_size) = &
+        amp_split_wgtdegrem_xi(1:amp_split_size) + &
+        oo2pi*dble(amp_split_cnt(1:amp_split_size, 1, iord)) &
+        *prefact_xi*xnorm
+      amp_split_wgtdegrem_lxi(1:amp_split_size) = &
+           amp_split_collrem_lxi(1:amp_split_size)
+      amp_split_wgtdegrem_muF(1:amp_split_size) = &
+        amp_split_wgtdegrem_muF(1:amp_split_size) - &
+        oo2pi*dble(amp_split_cnt(1:amp_split_size, 1, iord))*ap(iap)*xnorm
+    end if
     if (density_operator_is_recording()) then
       density_coefficients = (0d0, 0d0)
       density_coefficients(1) = cmplx( &
@@ -1506,7 +1542,7 @@ contains
              recorded_muf_index = recorded_density_operator_count()
       end if
     end if
-    calculatedborn = .false.
+    if (.not. recording_density) calculatedborn = .false.
 
     return
   end subroutine sreal_deg

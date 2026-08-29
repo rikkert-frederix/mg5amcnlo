@@ -23,6 +23,8 @@ module multiplicative_lambda_validation
 
   public :: initialize_multiplicative_lambda_accumulator
   public :: accumulate_multiplicative_lambda_atom
+  public :: accumulate_multiplicative_exact_family
+  public :: accumulate_multiplicative_lambda_coefficient
   public :: formal_lambda_global_weight
   public :: formal_lambda_lo_weight
   public :: formal_lambda_linear_correction
@@ -31,6 +33,7 @@ module multiplicative_lambda_validation
   public :: formal_lambda_block_mixed_coefficient
   public :: require_formal_lambda_closure
   public :: require_formal_lambda_linear_closure
+  public :: require_multiplicative_exact_weight_closure
 
 contains
 
@@ -76,6 +79,31 @@ contains
     type(multiplicative_lambda_accumulator), intent(inout) :: accumulator
     integer, intent(in) :: block_orders(:)
     double precision, intent(in) :: weight
+    call accumulate_multiplicative_exact_family(accumulator, weight)
+    call accumulate_multiplicative_lambda_coefficient( &
+         accumulator, block_orders, weight)
+  end subroutine accumulate_multiplicative_lambda_atom
+
+
+  subroutine accumulate_multiplicative_exact_family(accumulator, weight)
+    type(multiplicative_lambda_accumulator), intent(inout) :: accumulator
+    double precision, intent(in) :: weight
+
+    call require_accumulator_shape(accumulator)
+    if (.not. ieee_is_finite(weight)) then
+      call fail_lambda_validation( &
+           'an accumulated exact family is not finite')
+    end if
+    accumulator%exact_weight = accumulator%exact_weight + weight
+    accumulator%absolute_weight = accumulator%absolute_weight + abs(weight)
+  end subroutine accumulate_multiplicative_exact_family
+
+
+  subroutine accumulate_multiplicative_lambda_coefficient( &
+       accumulator, block_orders, weight)
+    type(multiplicative_lambda_accumulator), intent(inout) :: accumulator
+    integer, intent(in) :: block_orders(:)
+    double precision, intent(in) :: weight
     integer :: block, first_block, second_block, order
 
     call require_accumulator_shape(accumulator)
@@ -92,8 +120,6 @@ contains
     end if
 
     order = sum(block_orders)
-    accumulator%exact_weight = accumulator%exact_weight + weight
-    accumulator%absolute_weight = accumulator%absolute_weight + abs(weight)
     accumulator%order_coefficients(order) = &
          accumulator%order_coefficients(order) + weight
 
@@ -121,7 +147,7 @@ contains
       accumulator%pair_coefficients(second_block, first_block) = &
            accumulator%pair_coefficients(first_block, second_block)
     end if
-  end subroutine accumulate_multiplicative_lambda_atom
+  end subroutine accumulate_multiplicative_lambda_coefficient
 
 
   double precision function formal_lambda_global_weight( &
@@ -313,6 +339,29 @@ contains
            'the block-linear coefficients do not reproduce the derivative')
     end if
   end subroutine require_formal_lambda_linear_closure
+
+
+  subroutine require_multiplicative_exact_weight_closure( &
+       accumulator, exact_weight, tolerance)
+    type(multiplicative_lambda_accumulator), intent(in) :: accumulator
+    double precision, intent(in) :: exact_weight
+    double precision, intent(in), optional :: tolerance
+    double precision :: allowed, relative_tolerance, scale
+
+    call require_accumulator_shape(accumulator)
+    relative_tolerance = 1d-11
+    if (present(tolerance)) relative_tolerance = tolerance
+    if (.not. ieee_is_finite(relative_tolerance) .or. &
+        relative_tolerance < 0d0) then
+      call fail_lambda_validation('the closure tolerance is invalid')
+    end if
+    scale = max(abs(exact_weight), accumulator%absolute_weight)
+    allowed = relative_tolerance*scale
+    if (abs(accumulator%exact_weight - exact_weight) > allowed) then
+      call fail_lambda_validation( &
+           'the aggregated exact family weight does not close')
+    end if
+  end subroutine require_multiplicative_exact_weight_closure
 
 
   double precision function formal_lambda_width_reweight( &

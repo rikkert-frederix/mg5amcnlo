@@ -2,6 +2,7 @@ module density_operator_recorder
   use multiplicative_density_terms, only: block_distribution_term, &
        density_primitive_descriptor, density_scale_coefficient_count, &
        finalize_block_distribution_term
+  use fnlo_process_common, only: soft_counterevent, real_event
   implicit none
   private
 
@@ -165,6 +166,7 @@ contains
     integer, intent(in), optional :: luminosity_configuration
 
     integer :: primitive, retained
+    integer :: radiation_group
 
     call require_recording()
     if (abs(sign) /= 1) then
@@ -190,12 +192,21 @@ contains
     term%nlo_order = recorded_nlo_order
     term%primitive_count = retained
     allocate(term%primitives(retained))
+    radiation_group = 1
+    if (recorded_event_slot == real_event .or. &
+        (recorded_event_slot == soft_counterevent .and. sign < 0)) then
+      radiation_group = 2
+    else if (recorded_event_slot > soft_counterevent .and. &
+             recorded_event_slot < real_event) then
+      radiation_group = 3
+    end if
     retained = 0
     do primitive = 1, recorded_primitive_count
       if (.not. any(recorded_primitives(primitive)%scale_coefficients /= &
                     (0d0, 0d0))) cycle
       retained = retained + 1
       term%primitives(retained) = recorded_primitives(primitive)
+      term%primitives(retained)%radiation_group = radiation_group
     end do
     call finalize_block_distribution_term(term)
     call clear_recording()

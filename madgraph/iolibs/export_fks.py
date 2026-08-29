@@ -3547,7 +3547,8 @@ end module multiplicative_generated_metadata
                 override_provider=variant.get('provider'),
                 correlation_component=correlation_component,
                 correlation_leg='SDM_LOCAL_CORR',
-                event_slot='EVENT_SLOT')
+                event_slot='EVENT_SLOT',
+                insertion_identifier=contribution)
             correlation_map = density_exporter.correlation_leg_map(
                 plan, correlation_provider, variant['context'],
                 variant['context_kind'])
@@ -3622,7 +3623,8 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
         declarations, code = density_exporter.contraction_lines(
             plan, variant['context'], variant['context_kind'],
             active_component=variant['active_component'],
-            override_provider=provider, event_slot='EVENT_SLOT')
+            override_provider=provider, event_slot='EVENT_SLOT',
+            insertion_identifier=real_index + 1)
         nexternal, _ = reference.get_nexternal_ninitial()
         prefix = str(real_index + 1)
         replacement = {
@@ -3962,7 +3964,8 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
         for variant in variants:
             identifier = variant.get('contribution_id', 1)
             declarations, code = density_exporter.color_contraction_lines(
-                plan, variant, event_slot='EVENT_SLOT')
+                plan, variant, event_slot='EVENT_SLOT',
+                insertion_identifier=ilink + 1)
             core.extend([
                 '',
                 'SUBROUTINE SDM_COLOR_CONTRIBUTION_%d_%d(EVENT_SLOT,' % (
@@ -7267,7 +7270,18 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
         # Extract number of external particles
         (nexternal, ninitial) = matrix_element.get_nexternal_ninitial()
 
-        calls=self.write_loop_matrix_element_v4(None,matrix_element,fortran_model)
+        previous_color_flows = self.compute_color_flows
+        if getattr(self, '_fnlo_spin_density_override', False):
+            # Amplitude reduction retains the renormalized complex loop colour
+            # flows.  A density provider can therefore construct every
+            # open-spin interference after one checked evaluation per
+            # helicity, without repeated Born-functional projections.
+            self.compute_color_flows = True
+        try:
+            calls = self.write_loop_matrix_element_v4(
+                None, matrix_element, fortran_model)
+        finally:
+            self.compute_color_flows = previous_color_flows
         
         # We need a link to coefs.inc from DHELAS
         ln(pjoin(self.dir_path, 'Source', 'DHELAS', 'coef_specs.inc'),

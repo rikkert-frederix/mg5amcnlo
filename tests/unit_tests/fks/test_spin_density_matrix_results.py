@@ -128,6 +128,45 @@ program test_insertion_cache
   if (statistics%insertion_hits /= 1_8 .or. &
       statistics%insertion_misses /= 5_8) stop 19
   if (statistics%insertion_provider_evaluations /= 2_8) stop 20
+
+  revisions(1,0) = 20_8
+  call initialize_spin_density_block(stored, 0, 1, 2)
+  call record_spin_density_insertion( &
+       stored, spin_density_fast_virtual_insertion, 1, 9, 0, 1d-5, &
+       0d0, 0, density)
+  if (stored%insertion_kind /= spin_density_fast_virtual_insertion) stop 22
+  call record_raw_amplitude_cache_miss()
+  call record_raw_amplitude_cache_hit()
+  call fetch_spin_density_cache_statistics(statistics)
+  if (statistics%raw_amplitude_hits /= 1_8 .or. &
+      statistics%raw_amplitude_misses /= 1_8 .or. &
+      statistics%raw_amplitude_provider_evaluations /= 1_8) stop 23
+  call record_direct_virtual_reconstruction(.true., 2)
+  call record_direct_virtual_reconstruction(.false., 8)
+  call record_virtual_tomography_reconstruction(7)
+  call fetch_spin_density_cache_statistics(statistics)
+  if (statistics%virtual_madloop_evaluations /= 17_8 .or. &
+      statistics%virtual_direct_reconstructions /= 1_8 .or. &
+      statistics%virtual_direct_fallbacks /= 1_8 .or. &
+      statistics%virtual_tomography_reconstructions /= 1_8) stop 24
+  call record_exact_family_candidate()
+  call record_exact_family_cut_rejection()
+  call record_exact_family_candidate()
+  call record_exact_family_acceptance()
+  call record_density_contraction()
+  call record_scale_reweight_evaluation()
+  call record_pdf_member_initialization()
+  call record_pdf_luminosity_evaluation()
+  call record_histogram_family_fill()
+  call fetch_spin_density_cache_statistics(statistics)
+  if (statistics%exact_family_candidates /= 2_8 .or. &
+      statistics%exact_family_cut_rejections /= 1_8 .or. &
+      statistics%exact_family_acceptances /= 1_8 .or. &
+      statistics%density_contractions /= 1_8 .or. &
+      statistics%scale_reweight_evaluations /= 1_8 .or. &
+      statistics%pdf_member_initializations /= 1_8 .or. &
+      statistics%pdf_luminosity_evaluations /= 1_8 .or. &
+      statistics%histogram_family_fills /= 1_8) stop 25
 end program test_insertion_cache
 '''
         with tempfile.TemporaryDirectory() as directory:

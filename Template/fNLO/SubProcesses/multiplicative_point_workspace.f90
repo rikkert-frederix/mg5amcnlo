@@ -33,14 +33,38 @@ module multiplicative_point_workspace
     integer, allocatable :: factor_indices(:)
     double precision, allocatable :: plotted_weight(:)
     integer, allocatable :: validation_block_orders(:)
+    double precision, allocatable :: family_single_weights(:)
     integer, allocatable :: channel_event_slots(:)
     integer, allocatable :: previous_event_slots(:)
     integer, allocatable :: decay_block_factor_indices(:)
+    ! Accepted exact event families are staged until every partonic density
+    ! and scale polynomial has been evaluated.  PDF members can then be
+    ! initialized outside the family loop and each member is reused for the
+    ! complete batch before analyses are called.
+    integer :: family_count = 0
+    integer :: family_capacity = 0
+    integer :: family_event_capacity = 0
+    integer :: family_plot_weight_count = 0
+    double precision, allocatable :: family_momenta(:, :, :)
+    double precision, allocatable :: family_y_to_lab(:)
+    double precision, allocatable :: family_bjorken_x(:, :)
+    double precision, allocatable :: family_mu2_f(:)
+    double precision, allocatable :: family_pdf_partonic_factor(:)
+    double precision, allocatable :: family_pdf_luminosity(:)
+    double precision, allocatable :: family_scale_mu2_f(:, :)
+    double precision, allocatable :: family_scale_luminosity(:, :)
+    double precision, allocatable :: family_plot_weights(:, :)
+    integer, allocatable :: family_pdgs(:, :)
+    integer, allocatable :: family_origin_blocks(:, :)
+    integer, allocatable :: family_luminosity_configuration(:)
+    integer, allocatable :: family_production_event_slot(:)
+    integer, allocatable :: family_luminosity_owner(:)
   end type multiplicative_point_workspace_type
 
   type(multiplicative_point_workspace_type), target, save :: point_workspace
 
   public :: acquire_multiplicative_point_workspace
+  public :: prepare_multiplicative_family_batch
 
 contains
 
@@ -80,6 +104,8 @@ contains
          point_workspace%component_owned, plan%component_count)
     call ensure_integer_vector( &
          point_workspace%validation_block_orders, plan%component_count)
+    call ensure_real_vector( &
+         point_workspace%family_single_weights, plan%component_count)
     call ensure_integer_vector( &
          point_workspace%factor_indices, decay_factor_count)
     call ensure_real_vector( &
@@ -105,6 +131,7 @@ contains
     point_workspace%factor_indices = 1
     point_workspace%plotted_weight = 0d0
     point_workspace%validation_block_orders = 0
+    point_workspace%family_single_weights = 0d0
     point_workspace%channel_event_slots = 0
     point_workspace%previous_event_slots = 0
     point_workspace%decay_block_factor_indices = 1
@@ -112,6 +139,90 @@ contains
          point_workspace%lambda_validation, plan%component_count)
     workspace => point_workspace
   end subroutine acquire_multiplicative_point_workspace
+
+
+  subroutine prepare_multiplicative_family_batch( &
+       workspace, family_capacity, event_capacity, plot_weight_count)
+    type(multiplicative_point_workspace_type), intent(inout) :: workspace
+    integer, intent(in) :: family_capacity, event_capacity
+    integer, intent(in) :: plot_weight_count
+    logical :: resize
+
+    if (family_capacity < 1 .or. event_capacity < 1 .or. &
+        plot_weight_count < 1) then
+      call fail_point_workspace('an event-family batch has invalid capacity')
+    end if
+    resize = workspace%family_capacity /= family_capacity .or. &
+         workspace%family_event_capacity /= event_capacity .or. &
+         workspace%family_plot_weight_count /= plot_weight_count
+    if (resize) then
+      if (allocated(workspace%family_momenta)) &
+           deallocate(workspace%family_momenta)
+      if (allocated(workspace%family_y_to_lab)) &
+           deallocate(workspace%family_y_to_lab)
+      if (allocated(workspace%family_bjorken_x)) &
+           deallocate(workspace%family_bjorken_x)
+      if (allocated(workspace%family_mu2_f)) &
+           deallocate(workspace%family_mu2_f)
+      if (allocated(workspace%family_pdf_partonic_factor)) &
+           deallocate(workspace%family_pdf_partonic_factor)
+      if (allocated(workspace%family_pdf_luminosity)) &
+           deallocate(workspace%family_pdf_luminosity)
+      if (allocated(workspace%family_scale_mu2_f)) &
+           deallocate(workspace%family_scale_mu2_f)
+      if (allocated(workspace%family_scale_luminosity)) &
+           deallocate(workspace%family_scale_luminosity)
+      if (allocated(workspace%family_plot_weights)) &
+           deallocate(workspace%family_plot_weights)
+      if (allocated(workspace%family_pdgs)) &
+           deallocate(workspace%family_pdgs)
+      if (allocated(workspace%family_origin_blocks)) &
+           deallocate(workspace%family_origin_blocks)
+      if (allocated(workspace%family_luminosity_configuration)) &
+           deallocate(workspace%family_luminosity_configuration)
+      if (allocated(workspace%family_production_event_slot)) &
+           deallocate(workspace%family_production_event_slot)
+      if (allocated(workspace%family_luminosity_owner)) &
+           deallocate(workspace%family_luminosity_owner)
+      allocate(workspace%family_momenta( &
+           0:3, event_capacity, family_capacity))
+      allocate(workspace%family_y_to_lab(family_capacity))
+      allocate(workspace%family_bjorken_x(2, family_capacity))
+      allocate(workspace%family_mu2_f(family_capacity))
+      allocate(workspace%family_pdf_partonic_factor(family_capacity))
+      allocate(workspace%family_pdf_luminosity(family_capacity))
+      allocate(workspace%family_scale_mu2_f( &
+           plot_weight_count, family_capacity))
+      allocate(workspace%family_scale_luminosity( &
+           plot_weight_count, family_capacity))
+      allocate(workspace%family_plot_weights( &
+           plot_weight_count, family_capacity))
+      allocate(workspace%family_pdgs(event_capacity, family_capacity))
+      allocate(workspace%family_origin_blocks( &
+           event_capacity, family_capacity))
+      allocate(workspace%family_luminosity_configuration(family_capacity))
+      allocate(workspace%family_production_event_slot(family_capacity))
+      allocate(workspace%family_luminosity_owner(family_capacity))
+      workspace%family_capacity = family_capacity
+      workspace%family_event_capacity = event_capacity
+      workspace%family_plot_weight_count = plot_weight_count
+    end if
+    workspace%family_count = 0
+    workspace%family_momenta = 0d0
+    workspace%family_y_to_lab = 0d0
+    workspace%family_bjorken_x = -1d0
+    workspace%family_mu2_f = 0d0
+    workspace%family_pdf_partonic_factor = 0d0
+    workspace%family_pdf_luminosity = 0d0
+    workspace%family_scale_mu2_f = 0d0
+    workspace%family_scale_luminosity = 0d0
+    workspace%family_plot_weights = 0d0
+    workspace%family_pdgs = 0
+    workspace%family_origin_blocks = -1
+    workspace%family_luminosity_configuration = 0
+    workspace%family_production_event_slot = -1
+    workspace%family_luminosity_owner = 0
+  end subroutine prepare_multiplicative_family_batch
 
 
   subroutine ensure_integer_vector(values, count)

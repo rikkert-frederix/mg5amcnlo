@@ -387,6 +387,7 @@ fks_weights.o: process_dimensions.o fks_model_state.o fks_metadata.o \
 	decay_chain_metadata.o decay_chain_scales.o \
 	decay_chain_parameters.o fnlo_scale_variations.o \
 	nlo_decay_metadata.o nlo_contribution_bundle.o \
+	spin_density_matrix_results.o \
 	weight_lines.o mint_module.o FKSParams.o setscales.o \
 	splitorders_stuff.o chooser_functions.o madfks_plot.o \
 	$(LIBDIR)run_state.mod $(LIBDIR)timing_state.mod \

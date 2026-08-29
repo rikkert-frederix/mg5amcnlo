@@ -2,7 +2,7 @@ module multiplicative_density_terms
   use process_dimensions, only: nexternal, validate_process_dimensions
   use fnlo_process_common, only: soft_counterevent, real_event
   use spin_density_matrix_results, only: spin_density_no_insertion, &
-       spin_density_color_insertion
+       spin_density_fast_virtual_insertion
   implicit none
   private
 
@@ -19,6 +19,7 @@ module multiplicative_density_terms
     integer :: insertion_rank = 0
     integer :: correlation_leg = 0
     integer :: nlo_order = 0
+    integer :: radiation_group = 1
     logical :: laurent_poles_cancelled = .false.
     complex(kind=8) :: scale_coefficients( &
          density_scale_coefficient_count) = (0d0, 0d0)
@@ -49,6 +50,7 @@ module multiplicative_density_terms
     integer :: block = -1
     integer :: term_count = 0
     logical :: finalized = .false.
+    logical :: kinematic_families_coalesced = .false.
     type(block_distribution_term), allocatable :: terms(:)
   end type block_nlo_distribution
 
@@ -81,6 +83,7 @@ module multiplicative_density_terms
   public :: set_density_primitive
   public :: finalize_block_distribution_term
   public :: finalize_block_distribution
+  public :: coalesce_block_kinematic_families
   public :: density_cartesian_tuple_count
   public :: initialize_density_tuple_schedule
   public :: prepare_scheduled_density_tuple
@@ -133,6 +136,10 @@ contains
       call fail_density_terms('a block term was initialized twice')
     end if
 
+    ! Generated fNLO code is commonly compiled with -fno-automatic.  In
+    ! that mode this local derived type persists between calls, including
+    ! its allocatable component.
+    if (allocated(term%primitives)) deallocate(term%primitives)
     term%block = distribution%block
     term%event_slot = event_slot
     term%sign = sign
@@ -164,7 +171,7 @@ contains
       call fail_density_terms('a density-primitive index is out of range')
     end if
     if (insertion_kind < spin_density_no_insertion .or. &
-        insertion_kind > spin_density_color_insertion) then
+        insertion_kind > spin_density_fast_virtual_insertion) then
       call fail_density_terms('a density-primitive kind is invalid')
     end if
     if (insertion_identifier < 0 .or. insertion_rank < 0 .or. &
@@ -199,10 +206,12 @@ contains
 
   subroutine finalize_block_distribution_term(term)
     type(block_distribution_term), intent(inout) :: term
-    integer :: primitive, primitive_order
+    integer :: primitive, primitive_order, minimum_order, maximum_order
 
     call require_term_shape(term)
     primitive_order = -1
+    minimum_order = 1
+    maximum_order = 0
     do primitive = 1, term%primitive_count
       if (.not. term%primitives(primitive)%laurent_poles_cancelled) then
         call fail_density_terms( &
@@ -216,11 +225,19 @@ contains
         primitive_order = term%primitives(primitive)%nlo_order
       else if (primitive_order /= &
                term%primitives(primitive)%nlo_order) then
-        call fail_density_terms( &
-             'one momentum term mixes different perturbative orders')
+        primitive_order = -2
       end if
+      minimum_order = min(minimum_order, &
+           term%primitives(primitive)%nlo_order)
+      maximum_order = max(maximum_order, &
+           term%primitives(primitive)%nlo_order)
     end do
-    if (primitive_order /= term%nlo_order) then
+    if (term%nlo_order == -1) then
+      if (minimum_order == maximum_order) then
+        call fail_density_terms( &
+             'a mixed-order momentum family contains only one order')
+      end if
+    else if (primitive_order /= term%nlo_order) then
       call fail_density_terms( &
            'a block term disagrees with its density-primitive order')
     end if
@@ -244,6 +261,147 @@ contains
     end do
     distribution%finalized = .true.
   end subroutine finalize_block_distribution
+
+
+  subroutine coalesce_block_kinematic_families(distribution)
+    type(block_nlo_distribution), intent(inout) :: distribution
+    type(block_distribution_term), allocatable :: families(:)
+    integer, allocatable :: family_for_term(:), primitive_counts(:)
+    type(density_primitive_descriptor) :: candidate
+    integer :: term, previous, family, family_count, primitive, target
+    integer :: matching_primitive
+    integer :: minimum_order, maximum_order
+
+    call require_distribution_shape(distribution)
+    if (.not. distribution%finalized) then
+      call fail_density_terms( &
+           'an unfinished distribution cannot be coalesced')
+    end if
+    if (distribution%kinematic_families_coalesced) return
+    allocate(family_for_term(distribution%term_count))
+    allocate(primitive_counts(distribution%term_count))
+    family_for_term = 0
+    primitive_counts = 0
+    family_count = 0
+    do term = 1, distribution%term_count
+      family = 0
+      do previous = 1, term - 1
+        if (distribution%terms(previous)%event_slot == &
+            distribution%terms(term)%event_slot .and. &
+            distribution%terms(previous)%luminosity_configuration == &
+            distribution%terms(term)%luminosity_configuration) then
+          family = family_for_term(previous)
+          exit
+        end if
+      end do
+      if (family == 0) then
+        family_count = family_count + 1
+        family = family_count
+      end if
+      family_for_term(term) = family
+      primitive_counts(family) = primitive_counts(family) + &
+           distribution%terms(term)%primitive_count
+    end do
+
+    allocate(families(family_count))
+    do family = 1, family_count
+      do term = 1, distribution%term_count
+        if (family_for_term(term) /= family) cycle
+        families(family)%block = distribution%block
+        families(family)%event_slot = distribution%terms(term)%event_slot
+        families(family)%luminosity_configuration = &
+             distribution%terms(term)%luminosity_configuration
+        exit
+      end do
+      families(family)%sign = 1
+      families(family)%primitive_count = primitive_counts(family)
+      allocate(families(family)%primitives(primitive_counts(family)))
+      target = 0
+      minimum_order = 1
+      maximum_order = 0
+      do term = 1, distribution%term_count
+        if (family_for_term(term) /= family) cycle
+        do primitive = 1, distribution%terms(term)%primitive_count
+          candidate = distribution%terms(term)%primitives(primitive)
+          candidate%scale_coefficients = distribution%terms(term)%sign* &
+               candidate%scale_coefficients
+          matching_primitive = 0
+          do previous = 1, target
+            if (same_density_primitive_key( &
+                families(family)%primitives(previous), candidate)) then
+              matching_primitive = previous
+              exit
+            end if
+          end do
+          ! The contraction is linear in every block density.  Equal
+          ! provider descriptors can therefore be summed before loading the
+          ! matrix.  Keep an exactly cancelling pair separate: finalized
+          ! descriptors deliberately reject zero coefficient vectors, and
+          ! retaining the pair is both exact and harmless.
+          if (matching_primitive > 0 .and. any( &
+              families(family)%primitives(matching_primitive)% &
+              scale_coefficients + candidate%scale_coefficients /= &
+              (0d0, 0d0))) then
+            families(family)%primitives(matching_primitive)% &
+                 scale_coefficients = &
+                 families(family)%primitives(matching_primitive)% &
+                 scale_coefficients + candidate%scale_coefficients
+          else
+            target = target + 1
+            families(family)%primitives(target) = candidate
+          end if
+          minimum_order = min(minimum_order, &
+               candidate%nlo_order)
+          maximum_order = max(maximum_order, &
+               candidate%nlo_order)
+        end do
+      end do
+      call resize_family_primitives(families(family), target)
+      if (minimum_order == maximum_order) then
+        families(family)%nlo_order = minimum_order
+      else
+        families(family)%nlo_order = -1
+      end if
+      call finalize_block_distribution_term(families(family))
+    end do
+    call move_alloc(families, distribution%terms)
+    distribution%term_count = family_count
+    distribution%kinematic_families_coalesced = .true.
+    deallocate(family_for_term)
+    deallocate(primitive_counts)
+  end subroutine coalesce_block_kinematic_families
+
+
+  logical function same_density_primitive_key(left, right)
+    type(density_primitive_descriptor), intent(in) :: left, right
+
+    same_density_primitive_key = &
+         left%insertion_kind == right%insertion_kind .and. &
+         left%insertion_identifier == right%insertion_identifier .and. &
+         left%insertion_rank == right%insertion_rank .and. &
+         left%correlation_leg == right%correlation_leg .and. &
+         left%nlo_order == right%nlo_order .and. &
+         left%radiation_group == right%radiation_group .and. &
+         left%laurent_poles_cancelled .eqv. &
+         right%laurent_poles_cancelled
+  end function same_density_primitive_key
+
+
+  subroutine resize_family_primitives(term, primitive_count)
+    type(block_distribution_term), intent(inout) :: term
+    integer, intent(in) :: primitive_count
+    type(density_primitive_descriptor), allocatable :: compact(:)
+
+    if (primitive_count < 1 .or. primitive_count > term%primitive_count) then
+      call fail_density_terms( &
+           'a coalesced family has an invalid primitive count')
+    end if
+    if (primitive_count == term%primitive_count) return
+    allocate(compact(primitive_count))
+    compact = term%primitives(1:primitive_count)
+    call move_alloc(compact, term%primitives)
+    term%primitive_count = primitive_count
+  end subroutine resize_family_primitives
 
 
   integer function density_cartesian_tuple_count(distributions)
@@ -394,8 +552,14 @@ contains
       tuple%event_slots(distributions(distribution)%block) = &
            distributions(distribution)%terms(term)%event_slot
       tuple%sign = tuple%sign*distributions(distribution)%terms(term)%sign
-      tuple%nlo_order = tuple%nlo_order + &
-           distributions(distribution)%terms(term)%nlo_order
+      if (tuple%nlo_order >= 0) then
+        if (distributions(distribution)%terms(term)%nlo_order < 0) then
+          tuple%nlo_order = -1
+        else
+          tuple%nlo_order = tuple%nlo_order + &
+               distributions(distribution)%terms(term)%nlo_order
+        end if
+      end if
     end do
   end subroutine decode_scheduled_density_tuple
 

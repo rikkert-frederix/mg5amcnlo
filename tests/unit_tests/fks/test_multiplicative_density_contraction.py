@@ -42,6 +42,7 @@ module spin_density_matrix_results
   integer, parameter :: spin_density_no_insertion = 0
   integer, parameter :: spin_density_virtual_insertion = 3
   integer, parameter :: spin_density_color_insertion = 4
+  integer, parameter :: spin_density_fast_virtual_insertion = 5
 end module spin_density_matrix_results
 
 module multiplicative_kinematics
@@ -204,13 +205,20 @@ program test_density_contraction
   call evaluate_multiplicative_density_basis( &
        basis, varied_logs_r, varied_logs_f, direct_result, &
        coupling_rescaling)
+  call configure_multiplicative_scale_evaluation(basis, 7)
+  if (basis%scale_polynomial_enabled) stop 16
+  evaluate_calls = 0
   call evaluate_multiplicative_scale_polynomial( &
        basis, varied_logs_r, varied_logs_f, result, coupling_rescaling)
-  if (abs(result - direct_result) > 1d-12) stop 16
-  if (basis%scale_monomial_count /= 9 .or. evaluate_calls /= 10) stop 17
+  if (abs(result - direct_result) > 1d-12 .or. evaluate_calls /= 1) stop 17
+  call configure_multiplicative_scale_evaluation(basis, 10)
+  if (.not. basis%scale_polynomial_enabled) stop 18
   call evaluate_multiplicative_scale_polynomial( &
        basis, varied_logs_r, varied_logs_f, result, coupling_rescaling)
-  if (evaluate_calls /= 10) stop 18
+  if (basis%scale_monomial_count /= 9 .or. evaluate_calls /= 10) stop 19
+  call evaluate_multiplicative_scale_polynomial( &
+       basis, varied_logs_r, varied_logs_f, result, coupling_rescaling)
+  if (evaluate_calls /= 10) stop 20
 
 contains
 
@@ -270,6 +278,7 @@ module spin_density_matrix_results
   integer, parameter :: spin_density_no_insertion = 0
   integer, parameter :: spin_density_virtual_insertion = 3
   integer, parameter :: spin_density_color_insertion = 4
+  integer, parameter :: spin_density_fast_virtual_insertion = 5
 end module spin_density_matrix_results
 
 module multiplicative_kinematics

@@ -135,6 +135,8 @@ module bridge_state
   double precision :: bridge_mur = 0d0
   double precision :: bridge_g = 0d0
   double precision :: bridge_qes2 = 0d0
+  integer :: bridge_scale_updates = 0
+  integer :: bridge_loop_updates = 0
 end module bridge_state
 
 integer function sdm_multiplicative_block_count()
@@ -164,7 +166,13 @@ subroutine set_model_ren_scale_bridge(mur, g_value)
   double precision, intent(in) :: mur, g_value
   bridge_mur = mur
   bridge_g = g_value
+  bridge_scale_updates = bridge_scale_updates + 1
 end subroutine set_model_ren_scale_bridge
+
+subroutine update_model_loop_parameters_bridge()
+  use bridge_state
+  bridge_loop_updates = bridge_loop_updates + 1
+end subroutine update_model_loop_parameters_bridge
 
 subroutine set_model_qes_scale_bridge(qes_squared)
   use bridge_state
@@ -195,6 +203,9 @@ program test_scale_state
   if (maxval(abs(q2fact - 400d0)) > 1d-12) stop 5
   if (abs(bridge_mur - 20d0) > 1d-12 .or. &
       abs(bridge_qes2 - 400d0) > 1d-12) stop 6
+  if (bridge_scale_updates /= 1 .or. bridge_loop_updates /= 1) stop 61
+  call activate_multiplicative_block_reference(1)
+  if (bridge_scale_updates /= 1 .or. bridge_loop_updates /= 1) stop 62
   if (abs(multiplicative_block_scale_logarithm(1, 1600d0) - &
       log(4d0)) > 1d-12) stop 7
   value = multiplicative_block_coupling_rescaling(2, 1, 40d0)

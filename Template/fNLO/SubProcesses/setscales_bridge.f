@@ -9,6 +9,20 @@
       end
 
 
+      subroutine update_model_loop_parameters_bridge()
+      use fnlo_process_common, only: updateloop
+      implicit none
+
+c     UPDATE_AS_PARAM deliberately leaves the loop-only UV/R2 parameters
+c     untouched unless TO_UPDATELOOP is enabled.  Multiplicative density
+c     providers call MadLoop directly (without passing through BinothLHA),
+c     so activate those parameters explicitly after switching block scale.
+      updateloop=.true.
+      call update_as_param()
+      updateloop=.false.
+      end
+
+
       subroutine set_model_qes_scale_bridge(qes_squared)
       use fnlo_process_common, only: qes2
       implicit none

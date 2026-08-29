@@ -10,7 +10,7 @@ import unittest
 class MultiplicativeRuntimeTest(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which('gfortran'), 'gfortran is unavailable')
-    def test_event_is_materialized_only_after_density_contraction(self):
+    def test_event_is_materialized_before_density_contraction(self):
         repository = os.path.abspath(os.path.join(
             os.path.dirname(__file__), '..', '..', '..'))
         source = os.path.join(
@@ -34,6 +34,7 @@ module multiplicative_density_terms
   end type block_nlo_distribution
   type :: multiplicative_density_tuple
     integer :: distribution_count = 0
+    integer :: nlo_order = 0
     integer, allocatable :: term_indices(:)
     integer, allocatable :: event_slots(:)
   end type multiplicative_density_tuple
@@ -70,6 +71,7 @@ contains
     type(factorized_radiation_state), intent(out) :: value
     logical, intent(out) :: available
     if (stage /= 3) stop 82
+    stage = 4
     value%bjorken_x = (/0.2d0, 0.3d0/)
     value%y_to_lab = 0.4d0
     available = slot == 3 .and. block == 0
@@ -83,6 +85,7 @@ module multiplicative_density_contraction
   type :: multiplicative_density_basis
     logical :: prepared = .false.
     logical :: virtual_primitives_loaded = .false.
+    integer :: block_count = 1
     integer :: nlo_order = 0
     integer :: return_code = 0
     integer :: event_slots(0:4) = 0
@@ -98,8 +101,8 @@ contains
     type(multiplicative_density_basis), intent(inout) :: basis
     logical, intent(in), optional :: already_realized
     logical, intent(in), optional :: include_virtual
-    if (stage /= 0) stop 86
-    stage = 1
+    if (stage /= 4) stop 86
+    stage = 5
     basis%prepared = .true.
     basis%virtual_primitives_loaded = .true.
     if (present(include_virtual)) &
@@ -110,12 +113,15 @@ contains
     basis%event_slots = tuple%event_slots
   end subroutine prepare_multiplicative_density_basis
   subroutine evaluate_multiplicative_density_basis( &
-       basis, logs_r, logs_f, result, coupling_rescaling, include_virtual)
+       basis, logs_r, logs_f, result, coupling_rescaling, include_virtual, &
+       component_orders, radiation_position, radiation_group)
     type(multiplicative_density_basis), intent(inout) :: basis
     double precision, intent(in) :: logs_r(0:), logs_f(0:)
     complex(kind=8), intent(out) :: result
     double precision, intent(in), optional :: coupling_rescaling(0:,0:)
     logical, intent(in), optional :: include_virtual
+    integer, intent(in), optional :: component_orders(:)
+    integer, intent(in), optional :: radiation_position, radiation_group
     result = (5d0, 0d0)
     if (present(include_virtual)) then
       if (.not. include_virtual) result = (3d0, 0d0)
@@ -139,6 +145,13 @@ module multiplicative_kinematics
   use runtime_order_state
   implicit none
 contains
+  subroutine realize_factorized_event_tuple(slots, pass)
+    integer, intent(in) :: slots(0:)
+    logical, intent(out) :: pass
+    if (stage /= 0) stop 83
+    stage = 1
+    pass = slots(0) == 3
+  end subroutine realize_factorized_event_tuple
   subroutine materialize_factorized_event_tuple( &
        slots, capacity, count, momenta, pdgs, pass, origins)
     integer, intent(in) :: slots(0:), capacity
@@ -175,6 +188,7 @@ program test_runtime
   logs = 0d0
   rescaling = 1d0
   tuple%distribution_count = 1
+  tuple%nlo_order = 2
   allocate(tuple%term_indices(1), tuple%event_slots(0:4))
   tuple%term_indices = 1
   tuple%event_slots = 0
@@ -182,7 +196,7 @@ program test_runtime
   call evaluate_multiplicative_event_selection( &
        distributions, tuple, logs, logs, rescaling, 7d0, 1d-6, &
        evaluation, .false., basis, 1d0, .true.)
-  if (.not. evaluation%available .or. stage /= 3) stop 1
+  if (.not. evaluation%available .or. stage /= 5) stop 1
   if (abs(dble(evaluation%partonic_weight) - 210d0) > 1d-12) stop 2
   if (evaluation%visible_count /= 6 .or. evaluation%nlo_order /= 2) stop 3
   if (evaluation%return_code /= 210) stop 5

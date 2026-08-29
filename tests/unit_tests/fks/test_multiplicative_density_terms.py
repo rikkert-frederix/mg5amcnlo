@@ -40,6 +40,7 @@ module spin_density_matrix_results
   implicit none
   integer, parameter :: spin_density_no_insertion = 0
   integer, parameter :: spin_density_color_insertion = 4
+  integer, parameter :: spin_density_fast_virtual_insertion = 5
 end module spin_density_matrix_results
 ''')
         program_path = os.path.join(directory, name + '.f90')
@@ -47,8 +48,9 @@ end module spin_density_matrix_results
             stream.write(program)
         executable = os.path.join(directory, name)
         subprocess.check_call([
-            self.compiler, '-std=f2008', '-J', directory, '-I', directory,
-            stub, self.source, program_path, '-o', executable])
+            self.compiler, '-std=f2008', '-fno-automatic', '-J', directory,
+            '-I', directory, stub, self.source, program_path, '-o',
+            executable])
         return executable
 
     @unittest.skipUnless(shutil.which('gfortran'), 'gfortran is unavailable')
@@ -134,6 +136,86 @@ end program test_raw_laurent_rejection
                 stderr=subprocess.STDOUT, universal_newlines=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('raw Laurent-pole density', result.stdout)
+
+    @unittest.skipUnless(shutil.which('gfortran'), 'gfortran is unavailable')
+    def test_exact_kinematic_families_fold_signs_and_orders(self):
+        program = r'''
+program test_family_coalescing
+  use multiplicative_density_terms
+  implicit none
+  type(block_nlo_distribution) :: distribution
+  type(multiplicative_density_tuple) :: tuple
+  type(density_tuple_schedule) :: schedule
+  complex(kind=8) :: coefficients(3)
+
+  call initialize_block_distribution(distribution, 0, 3)
+  coefficients = (0d0, 0d0)
+  coefficients(1) = (2d0, 0d0)
+  call fill_term(1, 0, 7, 1, 0, 1, coefficients)
+  coefficients(1) = (3d0, 0d0)
+  call fill_term(2, 0, 7, -1, 1, 2, coefficients)
+  coefficients(1) = (5d0, 0d0)
+  call fill_term(3, 3, 7, 1, 1, 3, coefficients)
+  call finalize_block_distribution(distribution)
+
+  call coalesce_block_kinematic_families(distribution)
+  if (.not. distribution%kinematic_families_coalesced) stop 11
+  if (distribution%term_count /= 2) stop 12
+  if (distribution%terms(1)%event_slot /= 0 .or. &
+      distribution%terms(1)%luminosity_configuration /= 7) stop 13
+  if (distribution%terms(1)%sign /= 1 .or. &
+      distribution%terms(1)%nlo_order /= -1 .or. &
+      distribution%terms(1)%primitive_count /= 2) stop 14
+  if (abs(distribution%terms(1)%primitives(1)% &
+      scale_coefficients(1) - (2d0, 0d0)) > 1d-12) stop 15
+  if (abs(distribution%terms(1)%primitives(2)% &
+      scale_coefficients(1) + (3d0, 0d0)) > 1d-12) stop 16
+  if (distribution%terms(1)%primitives(1)%radiation_group /= 1 .or. &
+      distribution%terms(1)%primitives(2)%radiation_group /= 2) stop 17
+  if (distribution%terms(2)%event_slot /= 3 .or. &
+      distribution%terms(2)%nlo_order /= 1) stop 18
+  if (density_cartesian_tuple_count((/distribution/)) /= 2) stop 19
+  call initialize_density_tuple_schedule((/distribution/), schedule)
+  call decode_scheduled_density_tuple( &
+       (/distribution/), schedule, 1, tuple)
+  if (tuple%nlo_order /= -1) stop 20
+
+  ! Re-entering the coalescer must be safe with the production compiler's
+  ! -fno-automatic flag, and identical descriptors in one radiation group
+  ! must load just one matrix with the sum of their coefficients.
+  call initialize_block_distribution(distribution, 0, 2)
+  coefficients = (0d0, 0d0)
+  coefficients(1) = (7d0, 0d0)
+  call fill_term(1, 0, 4, 1, 1, 2, coefficients)
+  coefficients(1) = (11d0, 0d0)
+  call fill_term(2, 0, 4, -1, 1, 2, coefficients)
+  call finalize_block_distribution(distribution)
+  call coalesce_block_kinematic_families(distribution)
+  if (distribution%term_count /= 1) stop 21
+  if (distribution%terms(1)%primitive_count /= 1) stop 22
+  if (abs(distribution%terms(1)%primitives(1)% &
+      scale_coefficients(1) + (4d0, 0d0)) > 1d-12) stop 23
+
+contains
+
+  subroutine fill_term(index, slot, luminosity, sign, order, group, values)
+    integer, intent(in) :: index, slot, luminosity, sign, order, group
+    complex(kind=8), intent(in) :: values(3)
+
+    call initialize_block_distribution_term( &
+         distribution, index, slot, sign, order, 1)
+    distribution%terms(index)%luminosity_configuration = luminosity
+    call set_density_primitive( &
+         distribution%terms(index), 1, 0, 0, 0, 0, order, values, .true.)
+    distribution%terms(index)%primitives(1)%radiation_group = group
+    call finalize_block_distribution_term(distribution%terms(index))
+  end subroutine fill_term
+end program test_family_coalescing
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            executable = self.compile_program(
+                directory, 'families', program)
+            subprocess.check_call([executable])
 
 
 if __name__ == '__main__':

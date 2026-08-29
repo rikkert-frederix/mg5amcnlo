@@ -353,15 +353,14 @@ class TestFKSDecayChains(unittest.TestCase):
                 'CALL SDM_DECAY_1_BORN_MOMENTA(EVENT_SLOT,1,',
                 flat_born)
             self.assertIn('SUBROUTINE SBORN_FACTORIZED(', flat_born)
-            self.assertIn('STRICT_SPIN_DENSITY_PRODUCT(', flat_born)
+            self.assertIn('SDM_MESSAGE_1', flat_born)
+            self.assertNotIn('STRICT_SPIN_DENSITY_PRODUCT(', flat_born)
             self.assertIn('LOAD_CACHED_LO_DENSITY(', flat_born)
             self.assertIn('SET_SPIN_DENSITY_INSERTION(', flat_born)
             self.assertIn(
                 'CALL SDM_BORN_DIAGRAM_WEIGHTS(EVENT_SLOT,AMP2)',
                 flat_born)
-            self.assertIn(
-                'STRICT_SPIN_DENSITY_PRODUCT(SDM_BLOCKS,1,1,',
-                flat_born)
+            self.assertIn('SDM_BLOCKS(1)%INSERTION(1,', flat_born)
             self.assertNotIn(
                 'AMP2(1)=DBLE(ANS(1,1))', born_source.replace(' ', ''))
             self.assertNotIn('SDM_BLOCK_AVAILABLE', born_source)
@@ -1258,7 +1257,12 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn('SDM_OVERRIDE_BORN=.TRUE.', density_source)
             self.assertIn('(0D0,1D0)*BORN_AMPS', density_source)
             self.assertEqual(
-                density_source.count('SLOOPMATRIXHEL_THRES'), 3)
+                density_source.count('SLOOPMATRIXHEL_THRES'), 5)
+            self.assertIn('DIRECT_BASIS(3,NBORN)', density_source)
+            self.assertIn('_RAW_AMPLITUDES(P,DUMMY_JAMP,BORN_AMPS)',
+                          density_source)
+            self.assertIn('IF (DIRECT_OK) THEN', density_source)
+            self.assertIn('SDM_SET_FORCE_TOMOGRAPHY', density_source)
             self.assertIn('SDM_BYPASS_CHECK=.TRUE.', density_source)
             self.assertIn('IF (HP.EQ.H) CYCLE', density_source)
             self.assertIn('DCONJG(RAW_RHO(K,B,A))', density_source)
@@ -1306,6 +1310,72 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn(
                 'if (.not. nlo_decay_has_fast_virtual()) then',
                 pole_source)
+
+    def test_optimized_production_virtual_uses_direct_color_flows(self):
+        command = self.generate(
+            'u u~ > t t~ [QCD], (t > w+ b), (t~ > w- b~)')
+        command.exec_cmd(
+            'set loop_optimized_output True',
+            printcmd=False, precmd=True)
+
+        with tempfile.TemporaryDirectory() as output_dir:
+            process_dir = os.path.join(output_dir, 'PROC')
+            command.exec_cmd(
+                'output fNLO %s' % process_dir,
+                printcmd=False, precmd=True)
+            subprocess_root = os.path.join(process_dir, 'SubProcesses')
+            subprocess_dirs = [
+                os.path.join(subprocess_root, name)
+                for name in os.listdir(subprocess_root)
+                if name.startswith('P') and
+                os.path.isdir(os.path.join(subprocess_root, name))]
+            self.assertEqual(len(subprocess_dirs), 1)
+            subprocess_dir = subprocess_dirs[0]
+
+            with open(os.path.join(
+                    subprocess_dir,
+                    'spin_density_component_0_virtual.f')) as stream:
+                density_source = stream.read()
+            self.assertIn(
+                'SDM_GET_COLOR_FLOW_AMPLITUDES', density_source)
+            self.assertIn(
+                'SDM_COLOR_FLOW_INTERFERENCE', density_source)
+            self.assertIn(
+                'SDM_FORCE_FULL_HELICITY=.TRUE.', density_source)
+            self.assertIn(
+                'CALL RECORD_DIRECT_VIRTUAL_RECONSTRUCTION(',
+                density_source)
+            self.assertIn('SDM_EVALUATIONS=SDM_EVALUATIONS+1',
+                          density_source)
+            self.assertIn('SDM_EVALUATIONS=SDM_EVALUATIONS+2',
+                          density_source)
+            self.assertIn('IF (DIRECT_OK) THEN', density_source)
+            self.assertIn('SDM_SET_FORCE_TOMOGRAPHY', density_source)
+
+            virtual_dirs = [
+                os.path.join(subprocess_dir, name)
+                for name in os.listdir(subprocess_dir)
+                if name.startswith('V') and
+                os.path.isdir(os.path.join(subprocess_dir, name))]
+            self.assertEqual(len(virtual_dirs), 1)
+            with open(os.path.join(
+                    virtual_dirs[0], 'loop_matrix.f')) as stream:
+                loop_source = stream.read()
+            with open(os.path.join(
+                    virtual_dirs[0],
+                    'mp_compute_loop_coefs.f')) as stream:
+                mp_loop_source = stream.read()
+            with open(os.path.join(
+                    virtual_dirs[0],
+                    'compute_color_flows.f')) as stream:
+                color_source = stream.read()
+            self.assertIn('SDM_CAPTURE_COLOR_FLOWS', loop_source)
+            self.assertIn('SDM_FORCE_FULL_HELICITY', loop_source)
+            self.assertIn('IF (SDM_OVERRIDE_BORN) THEN', loop_source)
+            self.assertIn('IF (SDM_OVERRIDE_BORN) THEN', mp_loop_source)
+            self.assertIn('SDM_GET_COLOR_FLOW_AMPLITUDES', color_source)
+            self.assertIn('SDM_COLOR_FLOW_STABILITY_COMPATIBLE',
+                          color_source)
 
     def test_nlo_decay_factorized_fortran_matrix_elements_are_written(self):
         command = self.generate(
@@ -1363,9 +1433,18 @@ class TestFKSDecayChains(unittest.TestCase):
                 flat_real)
             self.assertIn('SUBROUTINE SBORN_FACTORIZED(', flat_born)
             self.assertIn('SUBROUTINE SMATRIX1_FACTORIZED(', flat_real)
-            self.assertIn('STRICT_SPIN_DENSITY_PRODUCT(', flat_real)
+            self.assertIn('SDM_MESSAGE_1', flat_real)
+            self.assertNotIn('STRICT_SPIN_DENSITY_PRODUCT(', flat_real)
             self.assertIn(
                 'SPIN_DENSITY_REAL_INSERTION,1', flat_real)
+            self.assertIn(
+                'LOAD_CACHED_SPIN_DENSITY_INSERTION(', flat_born)
+            self.assertIn(
+                'RECORD_SPIN_DENSITY_INSERTION(', flat_born)
+            self.assertIn(
+                'LOAD_CACHED_SPIN_DENSITY_INSERTION(', flat_real)
+            self.assertIn(
+                'RECORD_SPIN_DENSITY_INSERTION(', flat_real)
             self.assertNotIn('SDM_BLOCK_AVAILABLE', real_source)
             for filename in [
                     'spin_density_production_born.f',
@@ -1381,6 +1460,10 @@ class TestFKSDecayChains(unittest.TestCase):
                 self.assertIn('RHO(1,A,B)=RHO(1,A,B)+VALUE',
                               provider_source)
                 self.assertIn('DCONJG(JAMP_HEL(J,HP))',
+                              provider_source)
+                self.assertIn('_RAW_AMPLITUDES(P,JAMP_HEL,AMP_HEL)',
+                              provider_source)
+                self.assertIn('RECORD_RAW_AMPLITUDE_CACHE_HIT',
                               provider_source)
             with open(os.path.join(
                     subprocess_dir,
@@ -1849,29 +1932,20 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn(
                 'radiation_grid_weights(contribution) =',
                 driver_source)
-            normalized_driver = ' '.join(
-                driver_source.replace('&', ' ').split())
             self.assertIn(
-                'evaluation%nlo_order == 0', driver_source)
+                'coalesce_block_kinematic_families(', driver_source)
             self.assertIn(
-                'radiation_grid_group) + tuple_weight',
-                ' '.join(driver_source.split()))
+                'prepare_multiplicative_family_batch(', driver_source)
             self.assertIn(
                 'sum(abs(radiation_grid_groups(contribution, :)))',
                 ' '.join(driver_source.split()))
             self.assertIn(
-                'radiation_event_slot == real_event', driver_source)
+                'family_radiation_weights(1) = lo_family_weight +',
+                driver_source)
             self.assertIn(
-                'if (radiation_event_slot == real_event .or. '
-                '(radiation_event_slot == soft_counterevent .and. '
-                'distributions(position)%terms(radiation_term_index)% '
-                'sign < 0)) then radiation_grid_group = 2',
-                normalized_driver)
+                'validation_block_orders(position) = 1', driver_source)
             self.assertIn(
-                'soft_collinear_counterevent) then',
-                ' '.join(driver_source.split()))
-            self.assertIn(
-                'validation_block_orders(position) == 1', driver_source)
+                'evaluate_multiplicative_basis_projection(', driver_source)
             self.assertIn(
                 'bundle_nlo_component(contribution)', driver_source)
             self.assertIn(
@@ -1905,11 +1979,14 @@ class TestFKSDecayChains(unittest.TestCase):
                 '_MOMENTA(EVENT_SLOT,' in source
                 for source in real_sources))
             self.assertTrue(all(
-                'SET_SPIN_DENSITY_INSERTION' in source and
-                'STRICT_SPIN_DENSITY_PRODUCT' in source and
+                'LOAD_CACHED_SPIN_DENSITY_INSERTION' in source and
+                'RECORD_SPIN_DENSITY_INSERTION' in source and
+                'STRICT_SPIN_DENSITY_PRODUCT' not in source and
                 'SPIN_DENSITY_REAL_INSERTION,1' in
                 ' '.join(source.replace('$', ' ').split()).replace(' ,', ',')
                 for source in real_sources))
+            self.assertTrue(any(
+                'SDM_MESSAGE_' in source for source in real_sources))
             self.assertTrue(all(
                 'SDM_BLOCK_AVAILABLE' not in source
                 for source in real_sources))

@@ -29,6 +29,14 @@ module fks_weights_module
   use fnlo_scale_variations, only: fnlo_scale_point_count, &
        decode_fnlo_scale_point
   use madfks_plot_module, only: outfun_impl
+  use spin_density_matrix_results, only: &
+       record_scale_reweight_evaluation, &
+       record_scale_luminosity_evaluation, &
+       record_scale_luminosity_cache_hit, &
+       record_pdf_member_initialization, &
+       record_pdf_luminosity_evaluation, &
+       record_pdf_luminosity_cache_hit, &
+       record_histogram_family_fill
   use fks_model_state_module, only: g => strong_coupling, external_masses
   use fnlo_process_common, only: nfksprocess, soft_counterevent, &
                                  collinear_counterevent, &
@@ -131,34 +139,18 @@ contains
   end function pdg_equal
 
   logical function momenta_equal(p1, p2)
-! Returns .true. only if the momenta p1 and p2 are equal. To save time,
-! it only checks the 0th and 3rd components (energy and z-direction).
+! Returns .true. only if the complete momenta are exactly equal.  Additive
+! weight lines use this as an observable-event family key.  Approximate
+! equality (and especially checking only E and pz) can incorrectly combine
+! distinct azimuthal or transverse-momentum bins.
     implicit none
-    integer i, j
-    double precision p1(0:3, nexternal), p2(0:3, nexternal), vtiny
-    parameter(vtiny=1d-8)
-    momenta_equal = .true.
-    do i = 1, nexternal
-      do j = 0, 3, 3
-        if (p1(j, i) .eq. 0d0 .or. p2(j, i) .eq. 0d0) then
-          if (abs(p1(j, i) - p2(j, i)) .gt. vtiny) then
-            momenta_equal = .false.
-            return
-          end if
-        else
-          if (abs((p1(j, i) - p2(j, i))/max(abs(p1(j, i)), abs(p2(j, i)))) .gt. vtiny) then
-            momenta_equal = .false.
-            return
-          end if
-        end if
-      end do
-    end do
+    double precision p1(0:3, nexternal), p2(0:3, nexternal)
+    momenta_equal = all(p1 == p2)
   end function momenta_equal
 
   logical function momenta_equal_uborn(p1, p2, jfks1, ifks1, jfks2, ifks2)
 ! Returns .true. only if the momenta p1 and p2 are equal, but with the
-! momenta of i_fks and j_fks summed. To save time, it only checks the
-! 0th and 3rd components (energy and z-direction).
+! momenta of i_fks and j_fks summed.
     implicit none
     integer i, j, jfks1, ifks1, jfks2, ifks2
     double precision p1(0:3, nexternal), p2(0:3, nexternal), pb1(0:3, nexternal), pb2(0:3, nexternal)
@@ -168,8 +160,7 @@ contains
     end if
 ! Fill the underlying Born momenta pb1 and pb2
     do i = 1, nexternal
-      do j = 0, 3, 3 ! skip x and y components, since they are not used in
-! the 'momenta_equal' function
+      do j = 0, 3
         if (i .lt. ifks1) then
           pb1(j, i) = p1(j, i)
         elseif (i .eq. ifks1) then
@@ -634,11 +625,14 @@ contains
     use alfas_functions_module, only: alphas
     implicit none
     real :: tBefore, tAfter
-    integer i, kr, kf, iwgt_save, dd, point, point_count
+    integer i, j, kr, kf, iwgt_save, dd, point, point_count
+    integer :: scale_slot, scale_point_total, luminosity_owner
     integer :: factor_count
     integer, allocatable :: factor_indices(:)
     double precision xlum, pi, mu2_r, c_mu2_r, c_mu2_f
     double precision mu2_f, g, conv
+    double precision, allocatable :: luminosity_cache(:, :)
+    double precision, allocatable :: factorization_scale_cache(:, :)
     parameter(pi=3.1415926535897932385d0)
     parameter(conv=389379660d0) ! conversion to picobarns
     call cpu_time(tBefore)
@@ -646,17 +640,27 @@ contains
     factor_count = 0
     if (do_rwgt_decay_scale) factor_count = decay_scale_species_count()
     allocate(factor_indices(factor_count))
+    scale_point_total = 0
+    do dd = 1, dyn_scale(0)
+      scale_point_total = scale_point_total + fnlo_scale_point_count(dd)
+    end do
+    allocate(luminosity_cache(scale_point_total, icontr))
+    allocate(factorization_scale_cache(scale_point_total, icontr))
+    luminosity_cache = 0d0
+    factorization_scale_cache = -1d0
 ! currently we have 'iwgt' weights in the wgts() array.
     iwgt_save = iwgt
 ! loop over all the contributions in the weight lines module
     do i = 1, icontr
       iwgt = iwgt_save
+      scale_slot = 0
       nFKSprocess = nFKS(i)
 ! Loop over the dynamical_scale_choices
       do dd = 1, dyn_scale(0)
         call set_mu_central(i, dd, c_mu2_r, c_mu2_f)
         point_count = fnlo_scale_point_count(dd)
         do point = 1, point_count
+          scale_slot = scale_slot + 1
           call decode_fnlo_scale_point(&
                dd, point, kr, kf, factor_indices)
           mu2_r = c_mu2_r*scalevarR(kr)**2
@@ -664,22 +668,41 @@ contains
           g = sqrt(4d0*pi*alphas(sqrt(mu2_r)))
           q2fact(1) = mu2_f
           q2fact(2) = mu2_f
-          xlum = dlum(bjx(:, i))
-          if (separate_flavour_configs .and. ipr(i) .ne. 0) then
-            if (nincoming .eq. 2) then
-              xlum = subproc_pd(ipr(i))*conv
-            else
-              xlum = subproc_pd(ipr(i))
+          luminosity_owner = 0
+          do j = 1, i - 1
+            if (nFKS(j) /= nFKS(i) .or. ipr(j) /= ipr(i)) cycle
+            if (any(bjx(:, j) /= bjx(:, i))) cycle
+            if (factorization_scale_cache(scale_slot, j) /= mu2_f) cycle
+            luminosity_owner = j
+            exit
+          end do
+          if (luminosity_owner > 0) then
+            xlum = luminosity_cache(scale_slot, luminosity_owner)
+            call record_scale_luminosity_cache_hit()
+          else
+            xlum = dlum(bjx(:, i))
+            if (separate_flavour_configs .and. ipr(i) .ne. 0) then
+              if (nincoming .eq. 2) then
+                xlum = subproc_pd(ipr(i))*conv
+              else
+                xlum = subproc_pd(ipr(i))
+              end if
             end if
+            call record_scale_luminosity_evaluation()
           end if
+          luminosity_cache(scale_slot, i) = xlum
+          factorization_scale_cache(scale_slot, i) = mu2_f
           iwgt = iwgt + 1
           call weight_lines_allocated(&
                nexternal, max_contr, iwgt, max_iproc)
           wgts(iwgt, i) = xlum*evaluate_weight_line(&
                i, mu2_r, mu2_f, g, factor_indices)
+          call record_scale_reweight_evaluation()
         end do
       end do
     end do
+    deallocate(luminosity_cache)
+    deallocate(factorization_scale_cache)
     deallocate(factor_indices)
     call cpu_time(tAfter)
     tr_s = tr_s + (tAfter - tBefore)
@@ -695,14 +718,16 @@ contains
     use alfas_functions_module, only: alphas
     implicit none
     real :: tBefore, tAfter
-    integer n, i, nn
+    integer n, i, j, nn, luminosity_owner
     double precision xlum, pi, mu2_r, mu2_f, g, conv
     integer, allocatable :: central_factor_indices(:)
+    double precision, allocatable :: luminosity_cache(:)
     parameter(pi=3.1415926535897932385d0)
     parameter(conv=389379660d0) ! conversion to picobarns
     call cpu_time(tBefore)
     if (icontr .eq. 0) return
     allocate(central_factor_indices(0))
+    allocate(luminosity_cache(icontr))
     do nn = 1, lhaPDFid(0)
 ! Use as external loop the one over the PDF sets and as internal the one
 ! over the icontr. This reduces the number of calls to InitPDF and
@@ -711,21 +736,40 @@ contains
         iwgt = iwgt + 1
         call weight_lines_allocated(nexternal, max_contr, iwgt, max_iproc)
         call InitPDFm(nn, n)
+        call record_pdf_member_initialization()
+        luminosity_cache = 0d0
         do i = 1, icontr
           nFKSprocess = nFKS(i)
           mu2_r = scales2(2, i)
           mu2_f = scales2(3, i)
           q2fact(1) = mu2_f
           q2fact(2) = mu2_f
-! Compute the luminosity
-          xlum = dlum(bjx(:, i))
-          if (separate_flavour_configs .and. ipr(i) .ne. 0) then
-            if (nincoming .eq. 2) then
-              xlum = subproc_pd(ipr(i))*conv
-            else
-              xlum = subproc_pd(ipr(i))
+! Compute each exact production luminosity only once for this PDF member.
+! Several decay-radiation or subtraction lines have different observable
+! momenta but the same incoming configuration, Bjorken x and mu_F.
+          luminosity_owner = 0
+          do j = 1, i - 1
+            if (nFKS(j) /= nFKS(i) .or. ipr(j) /= ipr(i)) cycle
+            if (any(bjx(:, j) /= bjx(:, i))) cycle
+            if (scales2(3, j) /= mu2_f) cycle
+            luminosity_owner = j
+            exit
+          end do
+          if (luminosity_owner > 0) then
+            xlum = luminosity_cache(luminosity_owner)
+            call record_pdf_luminosity_cache_hit()
+          else
+            xlum = dlum(bjx(:, i))
+            if (separate_flavour_configs .and. ipr(i) .ne. 0) then
+              if (nincoming .eq. 2) then
+                xlum = subproc_pd(ipr(i))*conv
+              else
+                xlum = subproc_pd(ipr(i))
+              end if
             end if
+            call record_pdf_luminosity_evaluation()
           end if
+          luminosity_cache(i) = xlum
 ! Recompute the strong coupling: alpha_s in the PDF might change
           g = sqrt(4d0*pi*alphas(sqrt(mu2_r)))
 ! add the weights to the array
@@ -734,6 +778,7 @@ contains
         end do
       end do
     end do
+    deallocate(luminosity_cache)
     deallocate(central_factor_indices)
     call InitPDFm(1, 0)
     call cpu_time(tAfter)
@@ -849,6 +894,7 @@ contains
         end do
 ! call the analysis/histogramming routines
         orders_tag_plot = orderstag(i)
+        call record_histogram_family_fill()
         call outfun_impl(momenta(0, 1, i), y_bst(i), www, pdg(1, i), plot_id(i), &
                          external_masses)
       end if

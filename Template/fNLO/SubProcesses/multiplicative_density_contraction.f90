@@ -1,7 +1,7 @@
 module multiplicative_density_contraction
   use process_dimensions, only: nexternal
   use spin_density_matrix_results, only: spin_density_no_insertion, &
-       spin_density_virtual_insertion
+       spin_density_virtual_insertion, spin_density_fast_virtual_insertion
   use multiplicative_density_terms, only: block_nlo_distribution, &
        multiplicative_density_tuple, density_scale_coefficient_count
   use multiplicative_kinematics, only: realize_factorized_event_tuple
@@ -25,6 +25,8 @@ module multiplicative_density_contraction
     integer, allocatable :: component_event_slots(:)
     integer, allocatable :: primitive_counts(:)
     integer, allocatable :: component_nlo_orders(:)
+    integer, allocatable :: primitive_nlo_orders(:, :)
+    integer, allocatable :: primitive_radiation_groups(:, :)
     integer, allocatable :: insertion_kinds(:, :)
     integer, allocatable :: insertion_ids(:, :)
     integer, allocatable :: insertion_ranks(:, :)
@@ -39,6 +41,7 @@ module multiplicative_density_contraction
     complex(kind=8), allocatable :: novirtual_scale_polynomial(:)
     logical :: full_scale_polynomial_prepared = .false.
     logical :: novirtual_scale_polynomial_prepared = .false.
+    logical :: scale_polynomial_enabled = .true.
     logical, allocatable :: component_is_owned(:)
     double precision :: precision_found = 0d0
     integer :: return_code = 0
@@ -47,6 +50,7 @@ module multiplicative_density_contraction
   public :: prepare_multiplicative_density_basis
   public :: evaluate_multiplicative_density_basis
   public :: prepare_multiplicative_scale_polynomial
+  public :: configure_multiplicative_scale_evaluation
   public :: evaluate_multiplicative_scale_polynomial
 
   interface
@@ -148,10 +152,13 @@ contains
     basis%correlation_legs = 0
     basis%primitive_counts = 0
     basis%component_nlo_orders = 0
+    basis%primitive_nlo_orders = 0
+    basis%primitive_radiation_groups = 1
     basis%scale_coefficients = (0d0, 0d0)
     basis%coefficients = (0d0, 0d0)
     basis%full_scale_polynomial_prepared = .false.
     basis%novirtual_scale_polynomial_prepared = .false.
+    basis%scale_polynomial_enabled = .true.
 
     do position = 1, block_count
       physical_block = multiplicative_physical_blocks(position)
@@ -187,6 +194,10 @@ contains
                primitive%insertion_rank
           basis%correlation_legs(primitive_index, position) = &
                primitive%correlation_leg
+          basis%primitive_nlo_orders(primitive_index, position) = &
+               primitive%nlo_order
+          basis%primitive_radiation_groups(primitive_index, position) = &
+               primitive%radiation_group
           basis%scale_coefficients(:, primitive_index, position) = &
                primitive%scale_coefficients
         end associate
@@ -210,28 +221,62 @@ contains
 
   subroutine evaluate_multiplicative_density_basis( &
        basis, logarithmic_mu2_r, logarithmic_mu2_f, result, &
-       coupling_rescaling, include_virtual)
+       coupling_rescaling, include_virtual, component_orders, &
+       radiation_position, radiation_group)
     type(multiplicative_density_basis), intent(inout) :: basis
     double precision, intent(in) :: logarithmic_mu2_r(0:)
     double precision, intent(in) :: logarithmic_mu2_f(0:)
     complex(kind=8), intent(out) :: result
     double precision, intent(in), optional :: coupling_rescaling(0:, 0:)
     logical, intent(in), optional :: include_virtual
+    integer, intent(in), optional :: component_orders(:)
+    integer, intent(in), optional :: radiation_position, radiation_group
     double precision :: coupling_factor
     integer :: position, physical_block, primitive
     logical :: use_virtual_primitives
+    logical :: select_orders, select_radiation_group
+    integer :: selected_radiation_position, selected_radiation_group
 
     if (.not. basis%prepared) then
       call fail_density_contraction('an unprepared density basis was used')
     end if
     use_virtual_primitives = .true.
     if (present(include_virtual)) use_virtual_primitives = include_virtual
+    select_orders = present(component_orders)
+    if (select_orders) then
+      if (size(component_orders) /= basis%block_count .or. &
+          any(component_orders < 0) .or. any(component_orders > 1)) then
+        call fail_density_contraction( &
+             'a formal-order selector has the wrong shape')
+      end if
+    end if
+    select_radiation_group = present(radiation_position) .or. &
+         present(radiation_group)
+    if (select_radiation_group .and. &
+        .not. (present(radiation_position) .and. &
+               present(radiation_group))) then
+      call fail_density_contraction( &
+           'an incomplete radiation-group selector was supplied')
+    end if
+    selected_radiation_position = 0
+    selected_radiation_group = 0
+    if (select_radiation_group) then
+      selected_radiation_position = radiation_position
+      selected_radiation_group = radiation_group
+      if (selected_radiation_position < 1 .or. &
+          selected_radiation_position > basis%block_count .or. &
+          selected_radiation_group < 1 .or. &
+          selected_radiation_group > 3) then
+        call fail_density_contraction( &
+             'a radiation-group selector is invalid')
+      end if
+    end if
     if (use_virtual_primitives .and. &
         .not. basis%virtual_primitives_loaded) then
       do position = 1, basis%block_count
         do primitive = 1, basis%primitive_counts(position)
-          if (basis%insertion_kinds(primitive, position) == &
-              spin_density_virtual_insertion) then
+          if (is_virtual_insertion( &
+              basis%insertion_kinds(primitive, position))) then
             call fail_density_contraction( &
                  'a virtual primitive was not loaded in this basis')
           end if
@@ -254,15 +299,23 @@ contains
     basis%coefficients = (0d0, 0d0)
     do position = 1, basis%block_count
       physical_block = multiplicative_physical_blocks(position)
-      coupling_factor = 1d0
-      if (present(coupling_rescaling)) then
-        coupling_factor = coupling_rescaling( &
-             physical_block, basis%component_nlo_orders(position))
-      end if
       do primitive = 1, basis%primitive_counts(position)
-        if (.not. use_virtual_primitives .and. &
-            basis%insertion_kinds(primitive, position) == &
-            spin_density_virtual_insertion) cycle
+        if (.not. use_virtual_primitives .and. is_virtual_insertion( &
+            basis%insertion_kinds(primitive, position))) cycle
+        if (select_orders) then
+          if (basis%primitive_nlo_orders(primitive, position) /= &
+              component_orders(position)) cycle
+        end if
+        if (select_radiation_group .and. &
+            position == selected_radiation_position .and. &
+            basis%primitive_nlo_orders(primitive, position) == 1 .and. &
+            basis%primitive_radiation_groups(primitive, position) /= &
+            selected_radiation_group) cycle
+        coupling_factor = 1d0
+        if (present(coupling_rescaling)) then
+          coupling_factor = coupling_rescaling(physical_block, &
+               basis%primitive_nlo_orders(primitive, position))
+        end if
         basis%coefficients(primitive, position) = coupling_factor*( &
              basis%scale_coefficients(1, primitive, position) + &
              basis%scale_coefficients(2, primitive, position)* &
@@ -276,6 +329,30 @@ contains
          basis%coefficients, result)
     result = basis%sign*result
   end subroutine evaluate_multiplicative_density_basis
+
+
+  subroutine configure_multiplicative_scale_evaluation( &
+       basis, scale_point_count)
+    type(multiplicative_density_basis), intent(inout) :: basis
+    integer, intent(in) :: scale_point_count
+
+    if (.not. basis%prepared) then
+      call fail_density_contraction( &
+           'an unprepared density basis was configured for scale algebra')
+    end if
+    if (scale_point_count < 0) then
+      call fail_density_contraction('the scale-point count is negative')
+    end if
+    ! Building the multiblock coefficient polynomial costs one tree
+    ! contraction per nonzero logarithmic monomial.  Use it only when that
+    ! setup is cheaper than contracting every requested scale point directly.
+    ! Mixed LO/NLO same-kinematics families have primitive-dependent coupling
+    ! powers and always retain the exact direct path.
+    basis%scale_polynomial_enabled = &
+         .not. any(basis%component_nlo_orders < 0) .and. &
+         basis%scale_monomial_count > 0 .and. &
+         basis%scale_monomial_count < scale_point_count
+  end subroutine configure_multiplicative_scale_evaluation
 
 
   subroutine prepare_multiplicative_scale_polynomial( &
@@ -300,8 +377,8 @@ contains
         .not. basis%virtual_primitives_loaded) then
       do position = 1, basis%block_count
         do primitive = 1, basis%primitive_counts(position)
-          if (basis%insertion_kinds(primitive, position) == &
-              spin_density_virtual_insertion) then
+          if (is_virtual_insertion( &
+              basis%insertion_kinds(primitive, position))) then
             call fail_density_contraction( &
                  'a virtual scale polynomial was requested without its matrices')
           end if
@@ -322,9 +399,8 @@ contains
       do position = 1, basis%block_count
         mode = basis%scale_monomial_modes(position, monomial)
         do primitive = 1, basis%primitive_counts(position)
-          if (.not. use_virtual_primitives .and. &
-              basis%insertion_kinds(primitive, position) == &
-              spin_density_virtual_insertion) then
+          if (.not. use_virtual_primitives .and. is_virtual_insertion( &
+              basis%insertion_kinds(primitive, position))) then
             coefficient = (0d0, 0d0)
           else
             coefficient = basis%scale_coefficients( &
@@ -370,6 +446,18 @@ contains
 
     use_virtual_primitives = .true.
     if (present(include_virtual)) use_virtual_primitives = include_virtual
+    ! A same-kinematics family may contain both LO and NLO primitives in one
+    ! block.  Its coupling factor is then primitive-dependent and cannot be
+    ! pulled outside a precontracted monomial.  Direct contraction is exact
+    ! and is normally cheaper than the 3**B polynomial for standard scale
+    ! variation sets.
+    if (.not. basis%scale_polynomial_enabled .or. &
+        any(basis%component_nlo_orders < 0)) then
+      call evaluate_multiplicative_density_basis( &
+           basis, logarithmic_mu2_r, logarithmic_mu2_f, result, &
+           coupling_rescaling, use_virtual_primitives)
+      return
+    end if
     if (ubound(logarithmic_mu2_r, 1) < nexternal .or. &
         ubound(logarithmic_mu2_f, 1) < nexternal) then
       call fail_density_contraction( &
@@ -507,6 +595,10 @@ contains
            deallocate(basis%primitive_counts)
       if (allocated(basis%component_nlo_orders)) &
            deallocate(basis%component_nlo_orders)
+      if (allocated(basis%primitive_nlo_orders)) &
+           deallocate(basis%primitive_nlo_orders)
+      if (allocated(basis%primitive_radiation_groups)) &
+           deallocate(basis%primitive_radiation_groups)
       if (allocated(basis%insertion_kinds)) &
            deallocate(basis%insertion_kinds)
       if (allocated(basis%insertion_ids)) deallocate(basis%insertion_ids)
@@ -533,6 +625,10 @@ contains
       allocate(basis%component_event_slots(block_count))
       allocate(basis%primitive_counts(block_count))
       allocate(basis%component_nlo_orders(block_count))
+      allocate(basis%primitive_nlo_orders( &
+           maximum_primitives, block_count))
+      allocate(basis%primitive_radiation_groups( &
+           maximum_primitives, block_count))
       allocate(basis%insertion_kinds(maximum_primitives, block_count))
       allocate(basis%insertion_ids(maximum_primitives, block_count))
       allocate(basis%insertion_ranks(maximum_primitives, block_count))
@@ -569,4 +665,13 @@ contains
          'ERROR in multiplicative_density_contraction: '//trim(message)
     stop 1
   end subroutine fail_density_contraction
+
+
+  logical function is_virtual_insertion(insertion_kind)
+    integer, intent(in) :: insertion_kind
+
+    is_virtual_insertion = &
+         insertion_kind == spin_density_virtual_insertion .or. &
+         insertion_kind == spin_density_fast_virtual_insertion
+  end function is_virtual_insertion
 end module multiplicative_density_contraction

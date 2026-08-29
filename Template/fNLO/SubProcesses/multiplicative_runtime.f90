@@ -12,7 +12,7 @@ module multiplicative_runtime
        evaluate_multiplicative_density_basis, &
        evaluate_multiplicative_scale_polynomial
   use multiplicative_kinematics, only: &
-       materialize_factorized_event_tuple
+       realize_factorized_event_tuple, materialize_factorized_event_tuple
   implicit none
   private
 
@@ -41,10 +41,111 @@ module multiplicative_runtime
   end type multiplicative_partonic_reweight
 
   public :: evaluate_multiplicative_event_selection
+  public :: prepare_multiplicative_event_kinematics
+  public :: evaluate_multiplicative_event_density
   public :: evaluate_multiplicative_basis_reweight
+  public :: evaluate_multiplicative_basis_projection
   public :: real_multiplicative_weight
 
 contains
+
+  subroutine prepare_multiplicative_event_kinematics( &
+       tuple, vegas_weight, evaluation)
+    type(multiplicative_density_tuple), intent(in) :: tuple
+    double precision, intent(in) :: vegas_weight
+    type(multiplicative_event_evaluation), intent(inout) :: evaluation
+    type(factorized_radiation_state) :: production_radiation
+    double precision :: jacobian, phase_space_weight
+    integer :: capacity
+    logical :: pass, measure_available, radiation_available
+
+    if (vegas_weight < 0d0) then
+      call fail_multiplicative_runtime('the VEGAS weight is negative')
+    end if
+    capacity = multiplicative_event_capacity()
+    call prepare_event_evaluation(evaluation, capacity)
+    evaluation%event_slots = tuple%event_slots
+    evaluation%nlo_order = tuple%nlo_order
+
+    ! Cuts and observable-event identity need only the already-boosted local
+    ! momenta.  Materialize that visible event before loading any matrix
+    ! element so rejected fiducial points do not enter a provider.
+    call materialize_factorized_event_tuple( &
+         evaluation%event_slots, capacity, evaluation%visible_count, &
+         evaluation%momenta, evaluation%pdgs, pass, &
+         evaluation%origin_blocks)
+    if (.not. pass) return
+    call compose_factorized_tuple_measure( &
+         evaluation%event_slots, jacobian, phase_space_weight, &
+         measure_available)
+    if (.not. measure_available .or. jacobian <= 0d0 .or. &
+        phase_space_weight <= 0d0) return
+    call fetch_factorized_radiation_state( &
+         evaluation%event_slots(0), 0, production_radiation, &
+         radiation_available)
+    if (.not. radiation_available .or. &
+        any(production_radiation%bjorken_x <= 0d0)) then
+      call fail_multiplicative_runtime( &
+           'the selected production atom has no Bjorken fractions')
+    end if
+    evaluation%bjorken_x = production_radiation%bjorken_x
+    evaluation%y_to_lab = production_radiation%y_to_lab
+    evaluation%kinematic_weight = jacobian*phase_space_weight*vegas_weight
+    evaluation%available = .true.
+  end subroutine prepare_multiplicative_event_kinematics
+
+
+  subroutine evaluate_multiplicative_event_density( &
+       distributions, tuple, logarithmic_mu2_r, logarithmic_mu2_f, &
+       coupling_rescaling, precision_asked, evaluation, density_basis, &
+       virtual_sampling_fraction, virtual_sampled)
+    type(block_nlo_distribution), intent(in) :: distributions(:)
+    type(multiplicative_density_tuple), intent(in) :: tuple
+    double precision, intent(in) :: logarithmic_mu2_r(0:)
+    double precision, intent(in) :: logarithmic_mu2_f(0:)
+    double precision, intent(in) :: coupling_rescaling(0:, 0:)
+    double precision, intent(in) :: precision_asked
+    type(multiplicative_event_evaluation), intent(inout) :: evaluation
+    type(multiplicative_density_basis), intent(inout) :: density_basis
+    double precision, intent(in), optional :: virtual_sampling_fraction
+    logical, intent(in), optional :: virtual_sampled
+    complex(kind=8) :: density_result
+    logical :: load_virtual_primitives, sampled_virtual
+    double precision :: sampling_fraction
+
+    if (.not. evaluation%available) return
+    evaluation%available = .false.
+    evaluation%partonic_weight = (0d0, 0d0)
+    sampling_fraction = 1d0
+    if (present(virtual_sampling_fraction)) &
+         sampling_fraction = virtual_sampling_fraction
+    sampled_virtual = .true.
+    if (present(virtual_sampled)) sampled_virtual = virtual_sampled
+    call validate_virtual_sampling( &
+         sampling_fraction, sampled_virtual, present(virtual_sampled))
+    load_virtual_primitives = &
+         sampling_fraction >= 1d0 .or. sampled_virtual
+
+    call prepare_multiplicative_density_basis( &
+         distributions, tuple, precision_asked, density_basis, .true., &
+         load_virtual_primitives)
+    evaluation%nlo_order = density_basis%nlo_order
+    evaluation%event_slots = density_basis%event_slots
+    evaluation%precision_found = density_basis%precision_found
+    evaluation%return_code = density_basis%return_code
+    density_result = (0d0, 0d0)
+    if (density_basis%prepared) then
+      call evaluate_sampled_basis_density( &
+           density_basis, logarithmic_mu2_r, logarithmic_mu2_f, &
+           coupling_rescaling, sampling_fraction, sampled_virtual, &
+           density_result)
+    end if
+    if (.not. usable_multiplicative_density_result( &
+        density_result, evaluation%precision_found, &
+        evaluation%return_code)) return
+    evaluation%partonic_weight = density_result*evaluation%kinematic_weight
+    evaluation%available = .true.
+  end subroutine evaluate_multiplicative_event_density
 
   subroutine evaluate_multiplicative_event_selection( &
        distributions, tuple, logarithmic_mu2_r, logarithmic_mu2_f, &
@@ -62,20 +163,11 @@ contains
     type(multiplicative_density_basis), intent(inout) :: density_basis
     double precision, intent(in), optional :: virtual_sampling_fraction
     logical, intent(in), optional :: virtual_sampled
-    type(factorized_radiation_state) :: production_radiation
-    complex(kind=8) :: density_result
-    double precision :: jacobian, phase_space_weight
-    integer :: capacity
-    logical :: pass, measure_available, radiation_available
     logical :: use_realized_kinematics
-    logical :: load_virtual_primitives, sampled_virtual
+    logical :: sampled_virtual
+    logical :: pass
     double precision :: sampling_fraction
 
-    if (vegas_weight < 0d0) then
-      call fail_multiplicative_runtime('the VEGAS weight is negative')
-    end if
-    capacity = multiplicative_event_capacity()
-    call prepare_event_evaluation(evaluation, capacity)
     use_realized_kinematics = .false.
     if (present(already_realized)) then
       use_realized_kinematics = already_realized
@@ -87,63 +179,19 @@ contains
     if (present(virtual_sampled)) sampled_virtual = virtual_sampled
     call validate_virtual_sampling( &
          sampling_fraction, sampled_virtual, present(virtual_sampled))
-    load_virtual_primitives = &
-         sampling_fraction >= 1d0 .or. sampled_virtual
-
-    ! Density-basis preparation recursively boosts every selected block before
-    ! calling any provider.  It does not assemble the visible event.  R/S/C/SC
-    ! choices therefore remain distinct signed atoms while every matrix element
-    ! sees only its boosted block-local momenta.
-    call prepare_multiplicative_density_basis( &
-         distributions, tuple, precision_asked, density_basis, &
-         use_realized_kinematics, load_virtual_primitives)
-    evaluation%nlo_order = density_basis%nlo_order
-    evaluation%event_slots = density_basis%event_slots
-    evaluation%precision_found = density_basis%precision_found
-    evaluation%return_code = density_basis%return_code
-    density_result = (0d0, 0d0)
-    if (density_basis%prepared) then
-      call evaluate_sampled_basis_density( &
-           density_basis, logarithmic_mu2_r, logarithmic_mu2_f, &
-           coupling_rescaling, sampling_fraction, sampled_virtual, &
-           density_result)
+    ! The public one-shot API retains its old contract.  The integration
+    ! driver uses the two routines separately and applies cuts between them.
+    if (.not. use_realized_kinematics) then
+      call realize_factorized_event_tuple(tuple%event_slots, pass)
+      if (.not. pass) return
     end if
-    ! MadLoop return codes are diagnostic bit fields, not a Boolean success
-    ! flag.  Ordinary stable evaluations therefore generally have a nonzero
-    ! code.  Reject only an exceptional result, a reported precision worse
-    ! than the same five-percent ceiling used by the additive path, or a
-    ! non-finite density.  Treating every nonzero code as a failure silently
-    ! removed all virtual density matrices from multiplicative runs.
-    if (.not. usable_multiplicative_density_result( &
-        density_result, evaluation%precision_found, &
-        evaluation%return_code)) return
-
-    ! The global event is first made after the complete density contraction.
-    ! This is the object on which cuts and observables must subsequently act.
-    call materialize_factorized_event_tuple( &
-         evaluation%event_slots, capacity, evaluation%visible_count, &
-         evaluation%momenta, evaluation%pdgs, pass, &
-         evaluation%origin_blocks)
-    if (.not. pass) return
-    call compose_factorized_tuple_measure( &
-         evaluation%event_slots, jacobian, phase_space_weight, &
-         measure_available)
-    if (.not. measure_available .or. jacobian <= 0d0 .or. &
-        phase_space_weight <= 0d0) return
-
-    call fetch_factorized_radiation_state( &
-         evaluation%event_slots(0), 0, production_radiation, &
-         radiation_available)
-    if (.not. radiation_available .or. &
-        any(production_radiation%bjorken_x <= 0d0)) then
-      call fail_multiplicative_runtime( &
-           'the selected production atom has no Bjorken fractions')
-    end if
-    evaluation%bjorken_x = production_radiation%bjorken_x
-    evaluation%y_to_lab = production_radiation%y_to_lab
-    evaluation%kinematic_weight = jacobian*phase_space_weight*vegas_weight
-    evaluation%partonic_weight = density_result*evaluation%kinematic_weight
-    evaluation%available = .true.
+    call prepare_multiplicative_event_kinematics( &
+         tuple, vegas_weight, evaluation)
+    if (.not. evaluation%available) return
+    call evaluate_multiplicative_event_density( &
+         distributions, tuple, logarithmic_mu2_r, logarithmic_mu2_f, &
+         coupling_rescaling, precision_asked, evaluation, density_basis, &
+         sampling_fraction, sampled_virtual)
   end subroutine evaluate_multiplicative_event_selection
 
 
@@ -188,9 +236,60 @@ contains
   end subroutine evaluate_multiplicative_basis_reweight
 
 
+  subroutine evaluate_multiplicative_basis_projection( &
+       density_basis, logarithmic_mu2_r, logarithmic_mu2_f, &
+       coupling_rescaling, kinematic_weight, component_orders, reweight, &
+       virtual_sampling_fraction, virtual_sampled, radiation_position, &
+       radiation_group)
+    type(multiplicative_density_basis), intent(inout) :: density_basis
+    double precision, intent(in) :: logarithmic_mu2_r(0:)
+    double precision, intent(in) :: logarithmic_mu2_f(0:)
+    double precision, intent(in) :: coupling_rescaling(0:, 0:)
+    double precision, intent(in) :: kinematic_weight
+    integer, intent(in) :: component_orders(:)
+    type(multiplicative_partonic_reweight), intent(out) :: reweight
+    double precision, intent(in), optional :: virtual_sampling_fraction
+    logical, intent(in), optional :: virtual_sampled
+    integer, intent(in), optional :: radiation_position, radiation_group
+    complex(kind=8) :: density_result
+    double precision :: sampling_fraction
+    logical :: sampled_virtual
+
+    if (kinematic_weight <= 0d0 .or. &
+        .not. ieee_is_finite(kinematic_weight)) return
+    if (.not. density_basis%prepared) return
+    if (size(component_orders) /= density_basis%block_count .or. &
+        any(component_orders < 0) .or. any(component_orders > 1)) then
+      call fail_multiplicative_runtime( &
+           'a projected formal-order vector has the wrong shape')
+    end if
+    sampling_fraction = 1d0
+    if (present(virtual_sampling_fraction)) &
+         sampling_fraction = virtual_sampling_fraction
+    sampled_virtual = .true.
+    if (present(virtual_sampled)) sampled_virtual = virtual_sampled
+    call validate_virtual_sampling( &
+         sampling_fraction, sampled_virtual, present(virtual_sampled))
+    call evaluate_sampled_basis_density( &
+         density_basis, logarithmic_mu2_r, logarithmic_mu2_f, &
+         coupling_rescaling, sampling_fraction, sampled_virtual, &
+         density_result, component_orders, radiation_position, &
+         radiation_group)
+    reweight%nlo_order = sum(component_orders)
+    reweight%precision_found = density_basis%precision_found
+    reweight%return_code = density_basis%return_code
+    if (.not. usable_multiplicative_density_result( &
+        density_result, reweight%precision_found, &
+        reweight%return_code)) return
+    reweight%partonic_weight = density_result*kinematic_weight
+    reweight%available = .true.
+  end subroutine evaluate_multiplicative_basis_projection
+
+
   subroutine evaluate_sampled_basis_density( &
        density_basis, logarithmic_mu2_r, logarithmic_mu2_f, &
-       coupling_rescaling, sampling_fraction, sampled_virtual, result)
+       coupling_rescaling, sampling_fraction, sampled_virtual, result, &
+       component_orders, radiation_position, radiation_group)
     type(multiplicative_density_basis), intent(inout) :: density_basis
     double precision, intent(in) :: logarithmic_mu2_r(0:)
     double precision, intent(in) :: logarithmic_mu2_f(0:)
@@ -198,24 +297,30 @@ contains
     double precision, intent(in) :: sampling_fraction
     logical, intent(in) :: sampled_virtual
     complex(kind=8), intent(out) :: result
+    integer, intent(in), optional :: component_orders(:)
+    integer, intent(in), optional :: radiation_position, radiation_group
     complex(kind=8) :: full_result, no_virtual_result
 
     if (sampling_fraction >= 1d0) then
       call evaluate_multiplicative_density_basis( &
            density_basis, logarithmic_mu2_r, logarithmic_mu2_f, result, &
-           coupling_rescaling)
+           coupling_rescaling, component_orders=component_orders, &
+           radiation_position=radiation_position, &
+           radiation_group=radiation_group)
       return
     end if
     call evaluate_multiplicative_density_basis( &
          density_basis, logarithmic_mu2_r, logarithmic_mu2_f, &
-         no_virtual_result, coupling_rescaling, .false.)
+         no_virtual_result, coupling_rescaling, .false., &
+         component_orders, radiation_position, radiation_group)
     if (.not. sampled_virtual) then
       result = no_virtual_result
       return
     end if
     call evaluate_multiplicative_density_basis( &
          density_basis, logarithmic_mu2_r, logarithmic_mu2_f, &
-         full_result, coupling_rescaling, .true.)
+         full_result, coupling_rescaling, .true., component_orders, &
+         radiation_position, radiation_group)
     result = no_virtual_result + &
          (full_result - no_virtual_result)/sampling_fraction
   end subroutine evaluate_sampled_basis_density

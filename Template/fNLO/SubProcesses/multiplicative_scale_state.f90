@@ -44,6 +44,9 @@ module multiplicative_scale_state
     subroutine set_model_qes_scale_bridge(qes_squared)
       double precision, intent(in) :: qes_squared
     end subroutine set_model_qes_scale_bridge
+
+    subroutine update_model_loop_parameters_bridge()
+    end subroutine update_model_loop_parameters_bridge
   end interface
 
 contains
@@ -140,8 +143,16 @@ contains
   subroutine activate_multiplicative_block_reference(block)
     integer, intent(in) :: block
     double precision :: reference_scale
+    integer(kind=8) :: target_coupling_context
 
     call require_reference(block)
+    target_coupling_context = reference_generation* &
+         int(nexternal + 2, kind=8) + int(block + 1, kind=8)
+    ! A coalesced kinematic family can contain many primitives from the same
+    ! block.  Their immutable coupling reference is identical, so avoid
+    ! repeating UPDATE_AS_PARAM (including the loop-only UV/R2 refresh) for
+    ! every descriptor in that family.
+    if (active_coupling_context == target_coupling_context) return
     reference_scale = sqrt(reference_scale_squared(block))
 
     ! Every primitive in a block is generated at this immutable reference.
@@ -157,8 +168,8 @@ contains
     call set_model_qes_scale_bridge(reference_scale_squared(block))
     call set_model_ren_scale_bridge( &
          reference_scale, reference_coupling(block))
-    active_coupling_context = reference_generation* &
-         int(nexternal + 2, kind=8) + int(block + 1, kind=8)
+    call update_model_loop_parameters_bridge()
+    active_coupling_context = target_coupling_context
   end subroutine activate_multiplicative_block_reference
 
 

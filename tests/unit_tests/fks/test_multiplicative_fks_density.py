@@ -53,6 +53,7 @@ module spin_density_matrix_results
   integer, parameter :: spin_density_no_insertion = 0
   integer, parameter :: spin_density_real_insertion = 2
   integer, parameter :: spin_density_color_insertion = 4
+  integer, parameter :: spin_density_fast_virtual_insertion = 5
 end module spin_density_matrix_results
 
 module factorized_phase_space
@@ -222,6 +223,7 @@ module spin_density_matrix_results
   integer, parameter :: spin_density_no_insertion = 0
   integer, parameter :: spin_density_real_insertion = 2
   integer, parameter :: spin_density_color_insertion = 4
+  integer, parameter :: spin_density_fast_virtual_insertion = 5
 end module spin_density_matrix_results
 
 module factorized_phase_space
@@ -404,6 +406,7 @@ module spin_density_matrix_results
   integer, parameter :: spin_density_born_insertion = 1
   integer, parameter :: spin_density_real_insertion = 2
   integer, parameter :: spin_density_color_insertion = 4
+  integer, parameter :: spin_density_fast_virtual_insertion = 5
 end module spin_density_matrix_results
 
 module factorized_phase_space
