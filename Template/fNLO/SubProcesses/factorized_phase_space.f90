@@ -10,6 +10,16 @@ module factorized_phase_space
   integer(kind=8), allocatable, save :: block_momentum_revision(:, :)
   integer(kind=8), save :: next_block_momentum_revision = 0_8
 
+  ! Particle identities are part of a matrix-element block, just as much as
+  ! its four-vectors.  Keep them beside the boosted block cache.  The live
+  ! local layout may subsequently change to a real-emission context (an ISR
+  ! soft projection can even change an incoming flavour), while the reduced
+  ! Born block in slot zero must retain its own immutable layout.
+  integer, allocatable, save :: matrix_particle_count(:, :)
+  integer, allocatable, save :: matrix_pdg(:, :, :)
+  logical, allocatable, save :: matrix_particle_is_final(:, :, :)
+  logical, allocatable, save :: matrix_layout_is_valid(:, :)
+
   ! Embedding storage is deliberately distinct from the matrix-element
   ! block cache above.  In particular, a soft projection can have a
   ! real-context particle layout while the Born density matrix in slot zero
@@ -91,6 +101,10 @@ module factorized_phase_space
     integer, allocatable :: particle_count(:)
     logical, allocatable :: is_valid(:)
     integer(kind=8), allocatable :: momentum_revision(:)
+    integer, allocatable :: matrix_count(:)
+    integer, allocatable :: matrix_pdg(:, :)
+    logical, allocatable :: matrix_final(:, :)
+    logical, allocatable :: matrix_layout_valid(:)
     double precision, allocatable :: embedded(:, :, :)
     integer, allocatable :: embedded_count(:)
     logical, allocatable :: embedded_valid(:)
@@ -117,6 +131,7 @@ module factorized_phase_space
   public :: store_factorized_block_momenta
   public :: fetch_factorized_block_momenta
   public :: fetch_factorized_matrix_momenta
+  public :: fetch_factorized_ordered_matrix_momenta
   public :: factorized_block_momentum_revision
   public :: store_factorized_embedded_momenta
   public :: fetch_factorized_embedded_momenta
@@ -150,6 +165,10 @@ contains
     block_particle_count = 0
     block_is_valid = .false.
     block_momentum_revision = 0_8
+    matrix_particle_count = 0
+    matrix_pdg = 0
+    matrix_particle_is_final = .false.
+    matrix_layout_is_valid = .false.
     embedded_momenta = 0d0
     embedded_particle_count = 0
     embedded_is_valid = .false.
@@ -184,6 +203,12 @@ contains
     allocate(snapshot%particle_count(soft_counterevent:real_event))
     allocate(snapshot%is_valid(soft_counterevent:real_event))
     allocate(snapshot%momentum_revision(soft_counterevent:real_event))
+    allocate(snapshot%matrix_count(soft_counterevent:real_event))
+    allocate(snapshot%matrix_pdg(nexternal, &
+                                 soft_counterevent:real_event))
+    allocate(snapshot%matrix_final(nexternal, &
+                                   soft_counterevent:real_event))
+    allocate(snapshot%matrix_layout_valid(soft_counterevent:real_event))
     allocate(snapshot%embedded(0:3, nexternal, &
                                soft_counterevent:real_event))
     allocate(snapshot%embedded_count(soft_counterevent:real_event))
@@ -215,6 +240,10 @@ contains
     snapshot%particle_count = block_particle_count(block, :)
     snapshot%is_valid = block_is_valid(block, :)
     snapshot%momentum_revision = block_momentum_revision(block, :)
+    snapshot%matrix_count = matrix_particle_count(block, :)
+    snapshot%matrix_pdg = matrix_pdg(:, block, :)
+    snapshot%matrix_final = matrix_particle_is_final(:, block, :)
+    snapshot%matrix_layout_valid = matrix_layout_is_valid(block, :)
     snapshot%embedded = embedded_momenta(:, :, block, :)
     snapshot%embedded_count = embedded_particle_count(block, :)
     snapshot%embedded_valid = embedded_is_valid(block, :)
@@ -261,6 +290,10 @@ contains
     block_particle_count(block, :) = snapshot%particle_count
     block_is_valid(block, :) = snapshot%is_valid
     block_momentum_revision(block, :) = snapshot%momentum_revision
+    matrix_particle_count(block, :) = snapshot%matrix_count
+    matrix_pdg(:, block, :) = snapshot%matrix_pdg
+    matrix_particle_is_final(:, block, :) = snapshot%matrix_final
+    matrix_layout_is_valid(block, :) = snapshot%matrix_layout_valid
     embedded_momenta(:, :, block, :) = snapshot%embedded
     embedded_particle_count(block, :) = snapshot%embedded_count
     embedded_is_valid(block, :) = snapshot%embedded_valid
@@ -295,11 +328,34 @@ contains
       call fail_factorized_phase_space( &
            'a block momentum array has inconsistent bounds')
     end if
+
+    ! Tuple realization is deliberately repeated for every Cartesian NLO
+    ! atom, but many atoms differ only in a sibling block or in the density
+    ! insertion selected for an otherwise identical block.  Preserve the
+    ! momentum identity in that case.  Besides making the revision describe
+    ! the matrix-element input rather than the number of realization calls,
+    ! this lets all block-local Born/real/virtual densities share one cache.
+    ! The matrix layout is immutable once these momenta have been captured;
+    ! a subsequently installed real-context layout must not invalidate the
+    ! reduced-Born identity of an unchanged soft block.
+    if (block_is_valid(block, event_slot) .and. &
+        block_particle_count(block, event_slot) == particle_count) then
+      if (all(block_momenta(:, 1:particle_count, block, event_slot) == &
+              momenta(0:3, 1:particle_count))) return
+    end if
     block_momenta(:, :, block, event_slot) = 0d0
     block_momenta(:, 1:particle_count, block, event_slot) = &
          momenta(0:3, 1:particle_count)
     block_particle_count(block, event_slot) = particle_count
     block_is_valid(block, event_slot) = .true.
+    matrix_particle_count(block, event_slot) = 0
+    matrix_pdg(:, block, event_slot) = 0
+    matrix_particle_is_final(:, block, event_slot) = .false.
+    matrix_layout_is_valid(block, event_slot) = .false.
+    if (local_layout_is_valid(block, event_slot) .and. &
+        local_particle_count(block, event_slot) >= particle_count) then
+      call capture_matrix_layout(event_slot, block, particle_count)
+    end if
     next_block_momentum_revision = next_block_momentum_revision + 1_8
     if (next_block_momentum_revision <= 0_8) then
       ! A wrap is fantastically unlikely, but resetting all identities is
@@ -351,6 +407,88 @@ contains
       momenta = block_momenta(:, 1:particle_count, block, event_slot)
     end if
   end subroutine fetch_factorized_matrix_momenta
+
+
+  subroutine fetch_factorized_ordered_matrix_momenta( &
+       event_slot, block, particle_count, expected_pdgs, expected_final, &
+       momenta, available)
+    integer, intent(in) :: event_slot, block, particle_count
+    integer, intent(in) :: expected_pdgs(particle_count)
+    integer, intent(in) :: expected_final(particle_count)
+    double precision, intent(out) :: momenta(0:3, particle_count)
+    logical, intent(out) :: available
+
+    call ensure_storage()
+    call validate_indices(event_slot, block, particle_count)
+    momenta = 0d0
+    available = block_is_valid(block, event_slot)
+    if (.not. available) return
+    if (any(expected_final /= 0 .and. expected_final /= 1)) then
+      call fail_factorized_phase_space( &
+           'an ordered matrix-element layout has an invalid state')
+    end if
+
+    ! First try the event-specific identity.  Real atoms need precisely this
+    ! layout.  A reduced collinear/soft-collinear atom, however, can retain a
+    ! real-context local layout whose incoming flavour differs from its
+    ! underlying Born matrix element.  Spectator blocks likewise have no
+    ! event-specific identity at all.  In both cases retry with the immutable
+    ! underlying-Born identity while keeping every returned four-vector in
+    ! the requested, already-boosted event slot.
+    call match_ordered_matrix_layout( &
+         event_slot, block, particle_count, expected_pdgs, expected_final, &
+         event_slot, momenta, available)
+    if (available .or. event_slot == soft_counterevent) return
+    call match_ordered_matrix_layout( &
+         event_slot, block, particle_count, expected_pdgs, expected_final, &
+         soft_counterevent, momenta, available)
+  end subroutine fetch_factorized_ordered_matrix_momenta
+
+
+  subroutine match_ordered_matrix_layout( &
+       event_slot, block, particle_count, expected_pdgs, expected_final, &
+       layout_slot, momenta, available)
+    integer, intent(in) :: event_slot, block, particle_count, layout_slot
+    integer, intent(in) :: expected_pdgs(particle_count)
+    integer, intent(in) :: expected_final(particle_count)
+    double precision, intent(out) :: momenta(0:3, particle_count)
+    logical, intent(out) :: available
+    logical :: used(nexternal)
+    integer :: source_count, expected, source
+
+    momenta = 0d0
+    available = matrix_layout_is_valid(block, layout_slot)
+    if (.not. available) return
+    source_count = min(block_particle_count(block, event_slot), &
+                       matrix_particle_count(block, layout_slot))
+    if (source_count < particle_count) then
+      available = .false.
+      return
+    end if
+
+    ! Match by signed PDG and incoming/final state.  Stable first-match
+    ! ordering preserves repeated-particle identities and also converts
+    ! between user-process and FKS leg orderings such as t -> W b / t -> b W.
+    used = .false.
+    do expected = 1, particle_count
+      available = .false.
+      do source = 1, source_count
+        if (used(source)) cycle
+        if (matrix_pdg(source, block, layout_slot) /= &
+            expected_pdgs(expected)) cycle
+        if (matrix_particle_is_final(source, block, layout_slot) .neqv. &
+            (expected_final(expected) == 1)) cycle
+        momenta(:, expected) = block_momenta(:, source, block, event_slot)
+        used(source) = .true.
+        available = .true.
+        exit
+      end do
+      if (.not. available) then
+        momenta = 0d0
+        return
+      end if
+    end do
+  end subroutine match_ordered_matrix_layout
 
 
   integer(kind=8) function factorized_block_momentum_revision( &
@@ -547,7 +685,27 @@ contains
     local_target_id(1:particle_count, block, event_slot) = &
          target_ids(1:particle_count)
     local_layout_is_valid(block, event_slot) = .true.
+    if (block_is_valid(block, event_slot) .and. &
+        .not. matrix_layout_is_valid(block, event_slot) .and. &
+        block_particle_count(block, event_slot) <= particle_count) then
+      call capture_matrix_layout( &
+           event_slot, block, block_particle_count(block, event_slot))
+    end if
   end subroutine store_factorized_local_layout
+
+
+  subroutine capture_matrix_layout(event_slot, block, particle_count)
+    integer, intent(in) :: event_slot, block, particle_count
+
+    matrix_particle_count(block, event_slot) = particle_count
+    matrix_pdg(:, block, event_slot) = 0
+    matrix_particle_is_final(:, block, event_slot) = .false.
+    matrix_pdg(1:particle_count, block, event_slot) = &
+         local_pdg(1:particle_count, block, event_slot)
+    matrix_particle_is_final(1:particle_count, block, event_slot) = &
+         local_particle_is_final(1:particle_count, block, event_slot)
+    matrix_layout_is_valid(block, event_slot) = .true.
+  end subroutine capture_matrix_layout
 
 
   subroutine fetch_factorized_local_layout( &
@@ -811,6 +969,14 @@ contains
                             soft_counterevent:real_event))
     allocate(block_momentum_revision(0:nexternal, &
                                      soft_counterevent:real_event))
+    allocate(matrix_particle_count(0:nexternal, &
+                                   soft_counterevent:real_event))
+    allocate(matrix_pdg(nexternal, 0:nexternal, &
+                        soft_counterevent:real_event))
+    allocate(matrix_particle_is_final(nexternal, 0:nexternal, &
+                                      soft_counterevent:real_event))
+    allocate(matrix_layout_is_valid(0:nexternal, &
+                                    soft_counterevent:real_event))
     allocate(embedded_momenta(0:3, nexternal, 0:nexternal, &
                               soft_counterevent:real_event))
     allocate(embedded_particle_count(0:nexternal, &
@@ -853,6 +1019,10 @@ contains
     block_particle_count = 0
     block_is_valid = .false.
     block_momentum_revision = 0_8
+    matrix_particle_count = 0
+    matrix_pdg = 0
+    matrix_particle_is_final = .false.
+    matrix_layout_is_valid = .false.
     embedded_momenta = 0d0
     embedded_particle_count = 0
     embedded_is_valid = .false.
@@ -941,3 +1111,27 @@ subroutine get_factorized_block_momenta(event_slot, block, &
     stop 1
   end if
 end subroutine get_factorized_block_momenta
+
+
+subroutine get_factorized_block_momenta_ordered( &
+     event_slot, block, particle_count, expected_pdgs, expected_final, &
+     momenta)
+  use factorized_phase_space, only: &
+       fetch_factorized_ordered_matrix_momenta
+  implicit none
+  integer, intent(in) :: event_slot, block, particle_count
+  integer, intent(in) :: expected_pdgs(particle_count)
+  integer, intent(in) :: expected_final(particle_count)
+  double precision, intent(out) :: momenta(0:3, particle_count)
+  logical :: available
+
+  call fetch_factorized_ordered_matrix_momenta( &
+       event_slot, block, particle_count, expected_pdgs, expected_final, &
+       momenta, available)
+  if (.not. available) then
+    write (*, '(a,i0,a,i0)') &
+         'ERROR: ordered boosted momenta are unavailable for block ', &
+         block, ' in event slot ', event_slot
+    stop 1
+  end if
+end subroutine get_factorized_block_momenta_ordered

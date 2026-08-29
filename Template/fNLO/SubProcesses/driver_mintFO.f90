@@ -9,10 +9,13 @@ module driver_mintfo_module
                          iconfigs, accuracy, wgt_mult, new_point, pass_cuts_check, &
                          virt_wgt_mint, born_wgt_mint, mint, &
                          first_bundle_component_integral, &
+                         first_multiplicative_linear_integral, &
+                         first_multiplicative_group_integral, &
                          multiplicative_lo_integral, &
                          multiplicative_additive_integral
   use mint_module, only: ans_result => ans, unc_result => unc
-  use FKSParams, only: min_virt_fraction, virt_fraction, FKSParamReader
+  use FKSParams, only: min_virt_fraction, virt_fraction, &
+       PrecisionVirtualAtRunTime, FKSParamReader
   use weight_lines, only: icontr, deallocate_weight_lines
   use process_dimensions, only: nexternal, nincoming, fks_configs, &
                                 amp_split_size, lmaxconfigs, &
@@ -41,7 +44,8 @@ module driver_mintfo_module
        contribution_fks_channel_configuration, &
        multiplicative_mc_integer_dimension, &
        nlo_virtual_grid_count, bundle_component_count, &
-       bundle_component_label, bundle_species_is_nlo
+       bundle_component_label, bundle_species_is_nlo, &
+       bundle_nlo_component
   use decay_chain_parameters, only: uses_multiplicative_nlo_combination, &
        decay_width_denominator_rescaling, decay_scale_species_count, &
        decay_scale_species, decay_lo_width, decay_nlo_width
@@ -59,7 +63,9 @@ module driver_mintfo_module
   use multiplicative_kinematics, only: realize_factorized_event_tuple
   use multiplicative_scale_state, only: &
        initialize_multiplicative_scale_references, &
+       activate_multiplicative_block_reference, &
        build_multiplicative_scale_tables
+  use spin_density_matrix_results, only: reset_spin_density_caches
   use multiplicative_production_channels, only: &
        multiplicative_production_channel_partition
   use multiplicative_runtime, only: multiplicative_event_evaluation, &
@@ -69,6 +75,7 @@ module driver_mintfo_module
        initialize_multiplicative_lambda_accumulator, &
        accumulate_multiplicative_lambda_atom, &
        formal_lambda_lo_weight, formal_lambda_additive_weight, &
+       formal_lambda_block_linear_correction, &
        require_formal_lambda_closure, &
        require_formal_lambda_linear_closure
   use setscales_module, only: set_alphas
@@ -87,13 +94,16 @@ module driver_mintfo_module
   use fks_weights_module, only: include_pdf_and_alphas, reweight_scale, &
        reweight_pdf, get_wgt_no_nbody, fill_plots, fill_mint_function, &
        begin_bundle_virtual_tricks, finish_bundle_virtual_tricks
-  use fks_singular_module, only: fill_configurations_common, setfksfactor
+  use fks_singular_module, only: fill_configurations_common, setfksfactor, &
+       evaluate_born_matrix
   use madfks_plot_module, only: topout_impl, initplot_impl, &
        outfun_multiplicative_impl
   use fnlo_process_common, only: nfksprocess, soft_counterevent, &
                                  collinear_counterevent, &
+                                 soft_collinear_counterevent, &
                                  real_event, &
-                                 ybst_til_tolab, force_polecheck
+                                 ybst_til_tolab, force_polecheck, &
+                                 amp2, config_map, diagramsymmetryfactor
   implicit none
   private
 
@@ -153,6 +163,11 @@ module driver_mintfo_module
     double precision function dlum(bjorken_x)
       double precision, intent(in) :: bjorken_x(2)
     end function dlum
+
+    double precision function dlum_configuration(configuration, bjorken_x)
+      integer, intent(in) :: configuration
+      double precision, intent(in) :: bjorken_x(2)
+    end function dlum_configuration
 
     subroutine InitPDFm(set_index, member_index)
       integer, intent(in) :: set_index, member_index
@@ -218,6 +233,15 @@ contains
     call init_fks_metadata_bridge()
     call validate_process_and_born_dimensions()
     call validate_fks_metadata()
+    ! ``nfksprocess`` lives in a generated COMMON block and is not guaranteed
+    ! to have a defined value when a fresh MINT executable starts.  Several
+    ! initialization routines query the context-sensitive decay metadata
+    ! before the first integrand call.  Pin that context to the production
+    ! representative so fresh-grid and refine/restart jobs see the same decay
+    ! chain graph.
+    if (has_nlo_contribution_bundle()) then
+      nfksprocess = contribution_representative_fks(1)
+    end if
     call configure_event_capacity(multiplicative_event_capacity())
     force_polecheck = .false.
 
@@ -412,14 +436,15 @@ contains
 
 
   subroutine write_multiplicative_validation_results()
-    integer :: unit_number, ios
+    integer :: unit_number, ios, contribution, group, integral, position
+    double precision :: block_sum
 
     open(newunit=unit_number, file='multiplicative_validation_results.dat', &
          status='replace', action='write', iostat=ios)
     if (ios /= 0) then
       call fail_driver('cannot open multiplicative_validation_results.dat')
     end if
-    write(unit_number, '(a)') 'FORMAT 1'
+    write(unit_number, '(a)') 'FORMAT 2'
     write(unit_number, '(a,1x,es24.16,1x,es24.16)') &
          'EXACT', ans_result(2, 0), unc_result(2, 0)
     write(unit_number, '(a,1x,es24.16,1x,es24.16)') &
@@ -438,6 +463,39 @@ contains
     write(unit_number, '(a,1x,es24.16)') 'LINEAR_CORRECTION', &
          ans_result(multiplicative_additive_integral, 0) - &
          ans_result(multiplicative_lo_integral, 0)
+    write(unit_number, '(a,1x,i0)') &
+         'BLOCK_LINEAR_COUNT', nlo_contribution_count()
+    block_sum = 0d0
+    do contribution = 1, nlo_contribution_count()
+      integral = first_multiplicative_linear_integral + contribution - 1
+      position = sdm_contribution_component_position(contribution)
+      write(unit_number, &
+           '(a,1x,i0,1x,i0,1x,es24.16,1x,es24.16)') &
+           'BLOCK_LINEAR', contribution, &
+           sdm_multiplicative_physical_block(position), &
+           ans_result(integral, 0), unc_result(integral, 0)
+      block_sum = block_sum + ans_result(integral, 0)
+    end do
+    write(unit_number, '(a,1x,es24.16)') &
+         'BLOCK_LINEAR_SUM', block_sum
+    write(unit_number, '(a,1x,es24.16)') &
+         'BLOCK_LINEAR_CLOSURE', block_sum - &
+         (ans_result(multiplicative_additive_integral, 0) - &
+          ans_result(multiplicative_lo_integral, 0))
+    write(unit_number, '(a,1x,i0)') &
+         'BLOCK_LINEAR_GROUP_COUNT', 3*nlo_contribution_count()
+    do contribution = 1, nlo_contribution_count()
+      position = sdm_contribution_component_position(contribution)
+      do group = 1, 3
+        integral = first_multiplicative_group_integral + &
+             3*(contribution - 1) + group - 1
+        write(unit_number, &
+             '(a,1x,i0,1x,i0,1x,i0,1x,es24.16,1x,es24.16)') &
+             'BLOCK_LINEAR_GROUP', contribution, &
+             sdm_multiplicative_physical_block(position), group, &
+             ans_result(integral, 0), unc_result(integral, 0)
+      end do
+    end do
     write(unit_number, '(a)') 'END'
     close(unit_number)
   end subroutine write_multiplicative_validation_results
@@ -662,20 +720,33 @@ contains
     double precision :: production_mu2_r, production_mu2_f
     double precision :: luminosity, reweight, tuple_weight, total_weight
     double precision :: width_rescaling, production_channel_partition
+    double precision :: channel_born_weight
+    double precision :: nbody_channel_partition
+    double precision :: raw_lo_weight, formal_lo_value, formal_block_value
+    double precision :: formal_lo_rescaling
     double precision, allocatable :: validation_lo_widths(:)
     double precision, allocatable :: validation_nlo_widths(:)
     double precision, allocatable :: plotted_weight(:)
+    double precision, allocatable :: radiation_grid_weights(:)
+    double precision, allocatable :: radiation_grid_groups(:, :)
+    double precision, allocatable :: linear_radiation_groups(:, :)
     integer, allocatable :: sampled_fks(:), sampled_integer(:)
     integer, allocatable :: sampled_dimension(:)
     integer, allocatable :: factor_indices(:)
+    integer, allocatable :: contribution_positions(:)
     integer, allocatable :: validation_block_orders(:)
     integer, allocatable :: validation_width_blocks(:)
     double precision, allocatable :: sampled_volume(:)
     integer :: decay_block_factor_indices(0:nexternal)
+    integer :: channel_event_slots(0:nexternal)
     logical, allocatable :: component_owned(:)
     integer :: contribution_count, contribution, category, channel_count
     integer :: picked, configuration, component_count, component_position
     integer :: position, block, tuple_index, tuple_count, sampled_count
+    integer :: production_position, production_term_index
+    integer :: radiation_term_index, radiation_event_slot
+    integer :: radiation_grid_group
+    integer :: luminosity_configuration
     integer :: weight_count, weight_index, dd, point, kr, kf
     integer :: pdf_set, pdf_member, species_count
     logical :: available, pass
@@ -687,6 +758,11 @@ contains
            'MULTIPLICATIVE mode requires one unsplit RUN_MODE=all job')
     end if
     contribution_count = nlo_contribution_count()
+    ! The previous integrand call normally leaves the generated COMMON state
+    ! on its last decay contribution.  Width metadata below describe the full
+    ! chain and therefore require the production context, independently of
+    ! which MINT channel this point will subsequently sample.
+    call update_fks_dir_impl(contribution_representative_fks(1))
     component_count = sdm_multiplicative_block_count()
     if (contribution_count < 1 .or. component_count < contribution_count) then
       call fail_driver('the multiplicative block graph is incomplete')
@@ -713,10 +789,22 @@ contains
     if (allocated(component_owned)) deallocate(component_owned)
     if (allocated(factor_indices)) deallocate(factor_indices)
     if (allocated(plotted_weight)) deallocate(plotted_weight)
+    if (allocated(radiation_grid_weights)) &
+         deallocate(radiation_grid_weights)
+    if (allocated(radiation_grid_groups)) &
+         deallocate(radiation_grid_groups)
+    if (allocated(linear_radiation_groups)) &
+         deallocate(linear_radiation_groups)
+    if (allocated(contribution_positions)) &
+         deallocate(contribution_positions)
     allocate(sampled_fks(contribution_count))
     allocate(sampled_integer(contribution_count))
     allocate(sampled_dimension(contribution_count))
     allocate(sampled_volume(contribution_count))
+    allocate(radiation_grid_weights(contribution_count))
+    allocate(radiation_grid_groups(contribution_count, 3))
+    allocate(linear_radiation_groups(contribution_count, 3))
+    allocate(contribution_positions(contribution_count))
     allocate(distributions(component_count))
     allocate(component_owned(component_count))
     species_count = 0
@@ -725,10 +813,12 @@ contains
     weight_count = multiplicative_plot_weight_count()
     allocate(plotted_weight(weight_count))
     component_owned = .false.
+    radiation_grid_weights = 0d0
+    radiation_grid_groups = 0d0
+    linear_radiation_groups = 0d0
+    raw_lo_weight = 0d0
+    contribution_positions = 0
     sampled_count = 0
-    production_channel_partition = &
-         multiplicative_production_channel_partition( &
-         ini_fin_fks, nchans, ichan)
 
     do contribution = 1, contribution_count
       category = 0
@@ -754,7 +844,7 @@ contains
       call generate_momenta( &
            nndim, iconfig, jacobian, vegas_variables, momentum)
       if (p_born(0,1) < 0d0) then
-        call fill_multiplicative_discrete_grids(0d0)
+        call fill_multiplicative_discrete_grids()
         return
       end if
       if (contribution == 1) then
@@ -765,12 +855,46 @@ contains
     call restore_multiplicative_phase_space_assembly(assembly)
     call initialize_multiplicative_scale_references()
 
+    ! All terms in one production FKS family use one Born-level channel
+    ! partition.  Materialize the all-Born tuple first so that every matrix
+    ! element sees boosted block-local momenta, then let SBORN export the
+    ! production provider's positive per-diagram amplitude weights.
+    channel_event_slots = soft_counterevent
+    call update_fks_dir_impl(sampled_fks(1))
+    call realize_factorized_event_tuple(channel_event_slots, pass)
+    if (.not. pass) then
+      call fill_multiplicative_discrete_grids()
+      return
+    end if
+    call activate_multiplicative_block_reference(0)
+    call evaluate_born_matrix(soft_counterevent, channel_born_weight)
+    production_channel_partition = &
+         multiplicative_production_channel_partition( &
+         ini_fin_fks, iconfigs, nchans, ichan, amp2, &
+         config_map(:,0), diagramsymmetryfactor)
+    ! The channel-weight contraction evaluates every spectator block while
+    ! the production reference coupling is active.  Its AMP2 values have
+    ! now been consumed; discard the accompanying density caches so the
+    ! Cartesian contraction rebuilds each block at that block's reference.
+    call reset_spin_density_caches()
+
     do contribution = 1, contribution_count
       call update_fks_dir_impl(sampled_fks(contribution))
+      ! An n-body Born/virtual atom is common to every sampled FKS sector.
+      ! Its block measure inherited the inverse discrete-sector probability,
+      ! so cancel that probability here instead of summing several copies of
+      ! the same atom.  Real and local counterevent atoms remain genuine
+      ! sector sums and are deliberately left untouched.
+      nbody_channel_partition = sampled_volume(contribution)
+      ! Production is additionally present in both the initial- and
+      ! final-state outer channel families.
+      if (contribution == 1 .and. ini_fin_fks(ichan) /= 0) &
+           nbody_channel_partition = 0.5d0*nbody_channel_partition
       call build_multiplicative_block_nlo_distribution( &
-           contribution, distribution, available)
+           contribution, distribution, available, &
+           nbody_channel_partition)
       if (.not. available) then
-        call fill_multiplicative_discrete_grids(0d0)
+        call fill_multiplicative_discrete_grids()
         return
       end if
       component_position = &
@@ -783,6 +907,7 @@ contains
       end if
       distributions(component_position) = distribution
       component_owned(component_position) = .true.
+      contribution_positions(contribution) = component_position
     end do
     do position = 1, component_count
       if (component_owned(position)) cycle
@@ -792,11 +917,27 @@ contains
       component_owned(position) = .true.
     end do
 
+    production_position = contribution_positions(1)
+    if (production_position < 1 .or. &
+        production_position > component_count .or. &
+        distributions(production_position)%block /= 0) then
+      call fail_driver( &
+           'the production contribution has no density component')
+    end if
+
     tuple_count = density_cartesian_tuple_count(distributions)
     total_weight = 0d0
     do tuple_index = 1, tuple_count
       call decode_density_cartesian_tuple( &
            distributions, tuple_index, tuple)
+      production_term_index = tuple%term_indices(production_position)
+      luminosity_configuration = distributions(production_position)% &
+           terms(production_term_index)%luminosity_configuration
+      if (luminosity_configuration < 1 .or. &
+          luminosity_configuration > fks_configs) then
+        call fail_driver( &
+             'a production density term has no luminosity configuration')
+      end if
       call realize_factorized_event_tuple(tuple%event_slots, pass)
       if (.not. pass) cycle
       call build_multiplicative_scale_tables( &
@@ -804,7 +945,8 @@ contains
            coupling_rescaling, production_mu2_r, production_mu2_f)
       call evaluate_multiplicative_event_tuple( &
            distributions, tuple_index, logarithmic_mu2_r, &
-           logarithmic_mu2_f, coupling_rescaling, vegas_wgt, 1d-6, &
+           logarithmic_mu2_f, coupling_rescaling, vegas_wgt, &
+           PrecisionVirtualAtRunTime, &
            evaluation, .true.)
       if (.not. evaluation%available) cycle
       if (abs(aimag(evaluation%partonic_weight)) > &
@@ -813,9 +955,9 @@ contains
              'a multiplicative density contraction is not real')
       end if
 
-      call update_fks_dir_impl(sampled_fks(1))
       q2fact = production_mu2_f
-      luminosity = dlum(evaluation%bjorken_x)
+      luminosity = dlum_configuration( &
+           luminosity_configuration, evaluation%bjorken_x)
       pass = passcuts_multiplicative( &
            evaluation%momenta, evaluation%pdgs, &
            evaluation%origin_blocks, evaluation%y_to_lab, reweight)
@@ -845,14 +987,17 @@ contains
                  decay_block_factor_indices, dyn_scale(dd))
             call evaluate_multiplicative_event_tuple( &
                  distributions, tuple_index, logarithmic_mu2_r, &
-                 logarithmic_mu2_f, coupling_rescaling, vegas_wgt, 1d-6, &
+                 logarithmic_mu2_f, coupling_rescaling, vegas_wgt, &
+                 PrecisionVirtualAtRunTime, &
                  variation_evaluation, .true.)
             weight_index = weight_index + 1
             if (.not. variation_evaluation%available) cycle
             call require_real_multiplicative_weight( &
                  variation_evaluation%partonic_weight)
             q2fact = production_mu2_f
-            luminosity = dlum(variation_evaluation%bjorken_x)
+            luminosity = dlum_configuration( &
+                 luminosity_configuration, &
+                 variation_evaluation%bjorken_x)
             width_rescaling = &
                  decay_width_denominator_rescaling(factor_indices)
             plotted_weight(weight_index) = &
@@ -871,14 +1016,17 @@ contains
                  coupling_rescaling, production_mu2_r, production_mu2_f)
             call evaluate_multiplicative_event_tuple( &
                  distributions, tuple_index, logarithmic_mu2_r, &
-                 logarithmic_mu2_f, coupling_rescaling, vegas_wgt, 1d-6, &
+                 logarithmic_mu2_f, coupling_rescaling, vegas_wgt, &
+                 PrecisionVirtualAtRunTime, &
                  variation_evaluation, .true.)
             weight_index = weight_index + 1
             if (.not. variation_evaluation%available) cycle
             call require_real_multiplicative_weight( &
                  variation_evaluation%partonic_weight)
             q2fact = production_mu2_f
-            luminosity = dlum(variation_evaluation%bjorken_x)
+            luminosity = dlum_configuration( &
+                 luminosity_configuration, &
+                 variation_evaluation%bjorken_x)
             plotted_weight(weight_index) = &
                  dble(variation_evaluation%partonic_weight)*luminosity* &
                  production_channel_partition*reweight
@@ -895,6 +1043,56 @@ contains
       call extract_validation_block_orders( &
            tuple, distributions, evaluation%nlo_order, &
            validation_block_orders)
+      if (evaluation%nlo_order == 0) &
+           raw_lo_weight = raw_lo_weight + tuple_weight
+      do contribution = 1, contribution_count
+        position = contribution_positions(contribution)
+        if (position < 1 .or. position > component_count) then
+          call fail_driver( &
+               'an NLO contribution has no radiation-grid component')
+        end if
+        ! A block-local radiation grid learns the complete physical NLO
+        ! distribution of that block with every spectator at LO.  The common
+        ! all-LO tuple is therefore included in every block grid, together
+        ! with the lambda-linear correction owned by that block.  R/S and
+        ! C/SC generally live at different mapped momenta, so every atom is
+        ! first evaluated and combined with the LO spectator blocks on its
+        ! own momenta.  Only those final measured weights are paired here.
+        ! This keeps the local FKS cancellation inside each positive grid
+        ! proxy without allowing unrelated Born/virtual cancellations to
+        ! make the proxy accidentally tiny.  Taking ABS atom by atom would
+        ! instead train on the non-integrable 1/xi pieces that FKS
+        ! subtraction is specifically meant to cancel.
+        ! Products in which another block is NLO remain in TOTAL_WEIGHT but
+        ! must not distort this one block's importance map with unrelated
+        ! higher-order tails.
+        if (evaluation%nlo_order == 0 .or. &
+            (validation_block_orders(position) == 1 .and. &
+             evaluation%nlo_order == 1)) then
+          radiation_term_index = tuple%term_indices(position)
+          radiation_event_slot = distributions(position)% &
+               terms(radiation_term_index)%event_slot
+          radiation_grid_group = 1
+          if (radiation_event_slot == real_event .or. &
+              (radiation_event_slot == soft_counterevent .and. &
+               distributions(position)%terms(radiation_term_index)% &
+               sign < 0)) then
+            radiation_grid_group = 2
+          else if (radiation_event_slot == collinear_counterevent .or. &
+                   radiation_event_slot == &
+                   soft_collinear_counterevent) then
+            radiation_grid_group = 3
+          end if
+          radiation_grid_groups(contribution, radiation_grid_group) = &
+               radiation_grid_groups(contribution, &
+                                      radiation_grid_group) + tuple_weight
+          if (evaluation%nlo_order == 1) then
+            linear_radiation_groups(contribution, radiation_grid_group) = &
+                 linear_radiation_groups(contribution, &
+                                         radiation_grid_group) + tuple_weight
+          end if
+        end if
+      end do
       call accumulate_multiplicative_lambda_atom( &
            lambda_validation, validation_block_orders, tuple_weight)
     end do
@@ -907,25 +1105,69 @@ contains
          validation_lo_widths, validation_nlo_widths)
     f(1) = abs(total_weight)
     f(2) = total_weight
-    f(multiplicative_lo_integral) = formal_lambda_lo_weight( &
+    formal_lo_value = formal_lambda_lo_weight( &
          lambda_validation, validation_lo_widths, validation_nlo_widths)
+    f(multiplicative_lo_integral) = formal_lo_value
     f(multiplicative_additive_integral) = formal_lambda_additive_weight( &
          lambda_validation, validation_lo_widths, validation_nlo_widths)
-    call fill_multiplicative_discrete_grids(abs(total_weight))
+    do contribution = 1, contribution_count
+      position = contribution_positions(contribution)
+      f(first_multiplicative_linear_integral + contribution - 1) = &
+           formal_lambda_block_linear_correction( &
+           lambda_validation, position, validation_width_blocks, &
+           validation_lo_widths, validation_nlo_widths)
+      formal_block_value = &
+           f(first_multiplicative_linear_integral + contribution - 1)
+      formal_lo_rescaling = 0d0
+      if (raw_lo_weight /= 0d0) &
+           formal_lo_rescaling = formal_lo_value/raw_lo_weight
+      linear_radiation_groups(contribution, 2:3) = &
+           formal_lo_rescaling*linear_radiation_groups(contribution, 2:3)
+      ! The Born-like group owns the signed n-body NLO atom and the formal
+      ! derivative of this block's width denominator.  Defining it by
+      ! closure keeps all three diagnostics finite at Born zeros.
+      linear_radiation_groups(contribution, 1) = formal_block_value - &
+           sum(linear_radiation_groups(contribution, 2:3))
+      do radiation_grid_group = 1, 3
+        f(first_multiplicative_group_integral + &
+          3*(contribution - 1) + radiation_grid_group - 1) = &
+             linear_radiation_groups(contribution, radiation_grid_group)
+      end do
+    end do
+    do contribution = 1, contribution_count
+      radiation_grid_weights(contribution) = &
+           sum(abs(radiation_grid_groups(contribution, :)))
+      component_position = bundle_nlo_component(contribution)
+      f(first_bundle_component_integral + component_position - 1) = &
+           radiation_grid_weights(contribution)
+    end do
+    call fill_multiplicative_discrete_grids(radiation_grid_weights)
 
   contains
 
-    subroutine fill_multiplicative_discrete_grids(weight)
-      double precision, intent(in) :: weight
+    subroutine fill_multiplicative_discrete_grids(weights)
+      double precision, intent(in), optional :: weights(:)
+      double precision :: grid_weight
       integer :: selected
 
       ! A rejected block phase-space point can return before the later
       ! blocks have been sampled.  Only those grids whose dimension,
-      ! interval and volume are already defined may be filled.
+      ! interval and volume are already defined may be filled.  Each block's
+      ! discrete selector learns from the same positive, locally subtracted
+      ! training weight as that block's three continuous radiation grids,
+      ! rather than from unrelated large corrections in another block.
+      if (present(weights)) then
+        if (size(weights) < sampled_count) then
+          call fail_driver( &
+               'a radiation-grid weight vector has the wrong size')
+        end if
+      end if
       do selected = 1, sampled_count
+        grid_weight = 0d0
+        if (present(weights)) grid_weight = weights(selected)
         call fill_mc_integer( &
              sampled_dimension(selected), sampled_integer(selected), &
-             weight*sampled_volume(selected))
+             grid_weight*sampled_volume(selected))
       end do
     end subroutine fill_multiplicative_discrete_grids
 

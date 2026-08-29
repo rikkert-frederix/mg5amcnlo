@@ -83,19 +83,21 @@ contains
   end subroutine build_multiplicative_lo_only_density_term
 
   subroutine build_multiplicative_lo_density_term( &
-       contribution, term, available)
+       contribution, term, available, channel_partition)
     integer, intent(in) :: contribution
     type(block_distribution_term), intent(out) :: term
     logical, intent(out) :: available
+    double precision, intent(in), optional :: channel_partition
     call make_term(term, 0, 1, 0, 1d0)
     available = .true.
   end subroutine build_multiplicative_lo_density_term
 
   subroutine build_multiplicative_nbody_density_term( &
-       contribution, term, available)
+       contribution, term, available, channel_partition)
     integer, intent(in) :: contribution
     type(block_distribution_term), intent(out) :: term
     logical, intent(out) :: available
+    double precision, intent(in), optional :: channel_partition
     call make_term(term, 0, 1, 1, 2d0)
     available = .true.
   end subroutine build_multiplicative_nbody_density_term

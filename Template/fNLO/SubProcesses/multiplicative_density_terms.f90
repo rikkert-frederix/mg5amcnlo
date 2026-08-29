@@ -32,6 +32,12 @@ module multiplicative_density_terms
   type, public :: block_distribution_term
     integer :: block = -1
     integer :: event_slot = -1
+    ! The generated luminosity provider is configuration-specific.  This is
+    ! deliberately independent of EVENT_SLOT: an n-body Born/virtual atom
+    ! can be sampled through a qg real sector while still owning the
+    ! underlying gg luminosity.  Zero is reserved for terms (such as an
+    ! LO-only decay spectator) which can never determine incoming flavours.
+    integer :: luminosity_configuration = 0
     integer :: sign = 0
     integer :: nlo_order = 0
     integer :: primitive_count = 0

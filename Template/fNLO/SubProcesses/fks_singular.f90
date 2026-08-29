@@ -1167,9 +1167,12 @@ contains
         coefficients = (0d0, 0d0)
         ! Match SBORNSOFT's linked-Born convention.  The explicit outer
         ! subtraction sign is attached only when this same-momentum term is
-        ! finalized by the multiplicative distribution builder.
+        ! finalized by the multiplicative distribution builder.  Generated
+        ! colour-linked density providers contain the raw colour insertion;
+        ! SBORN_SF supplies the conventional extra g_s**2 outside that
+        ! provider, so the explicit operator path must supply it here too.
         coefficients(1) = cmplx( &
-             -2d0*link_multiplier*eik*iden_comp, 0d0, kind=8)
+             -2d0*g**2*link_multiplier*eik*iden_comp, 0d0, kind=8)
         call record_density_operator_primitive( &
              spin_density_color_insertion, generated_index, 1, 0, &
              coefficients, .true.)
@@ -1332,7 +1335,8 @@ contains
                kernel_shat, qes2, abrv, eik_ireg)
           coefficients = (0d0, 0d0)
           coefficients(1) = cmplx( &
-               -2d0*link_multiplier*eik_ireg*oneo8pi2, 0d0, kind=8)
+               -2d0*g**2*link_multiplier*eik_ireg*oneo8pi2, &
+               0d0, kind=8)
           if (any(coefficients /= (0d0, 0d0))) then
             call record_density_operator_primitive( &
                  spin_density_color_insertion, generated_index, 1, 0, &

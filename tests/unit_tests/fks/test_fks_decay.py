@@ -25,6 +25,7 @@ from madgraph.fks import fks_common
 from madgraph.fks import fks_decay
 from madgraph.fks import fks_helas_objects
 from madgraph.interface.master_interface import MasterCmd
+from madgraph.iolibs import export_spin_density
 
 
 class TestFKSDecayChains(unittest.TestCase):
@@ -82,6 +83,30 @@ class TestFKSDecayChains(unittest.TestCase):
             else:
                 self.assertEqual(wavefunction.get('width'), 'ZERO')
         self.assertEqual(found_nodes, set(expected_nodes))
+
+    def test_diagram_density_groups_match_legacy_amp2_ownership(self):
+        class FakeDiagram(dict):
+            def get_vertex_leg_numbers(self):
+                return self['vertices']
+
+        class FakeMatrixElement(dict):
+            pass
+
+        diagrams = [
+            FakeDiagram(vertices=[3], amplitudes=[
+                {'number': 1}, {'number': 2}]),
+            FakeDiagram(vertices=[4], amplitudes=[{'number': 3}]),
+            FakeDiagram(vertices=[3], amplitudes=[
+                {'number': 4}, {'number': 5}])]
+        matrix_element = FakeMatrixElement(diagrams=diagrams)
+
+        # AMP2 is indexed by diagram, not by the first HELAS amplitude.
+        # Multiple amplitudes in one diagram remain an incoherent sum, as in
+        # get_amp2_lines(matrix_element) without a topology config_map.
+        self.assertEqual(
+            export_spin_density.SpinDensityExporter.
+            _diagram_amplitude_groups(matrix_element),
+            [(1, (1, 2)), (3, (4, 5))])
 
     def test_fks_skeleton_is_unchanged_and_undecayed(self):
         plain = self.generate('u u~ > t t~ [real=QCD]')
@@ -287,15 +312,23 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn('CALL SDM_PRODUCTION_BORN', born_source)
             self.assertIn('CALL SDM_DECAY_1_BORN', born_source)
             self.assertIn(
-                'GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,0,4,',
+                'CALL SDM_PRODUCTION_BORN_MOMENTA(EVENT_SLOT,0,',
                 flat_born)
             self.assertIn(
-                'GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,1,3,',
+                'CALL SDM_DECAY_1_BORN_MOMENTA(EVENT_SLOT,1,',
                 flat_born)
             self.assertIn('SUBROUTINE SBORN_FACTORIZED(', flat_born)
             self.assertIn('STRICT_SPIN_DENSITY_PRODUCT(', flat_born)
             self.assertIn('LOAD_CACHED_LO_DENSITY(', flat_born)
             self.assertIn('SET_SPIN_DENSITY_INSERTION(', flat_born)
+            self.assertIn(
+                'CALL SDM_BORN_DIAGRAM_WEIGHTS(EVENT_SLOT,AMP2)',
+                flat_born)
+            self.assertIn(
+                'STRICT_SPIN_DENSITY_PRODUCT(SDM_BLOCKS,1,1,',
+                flat_born)
+            self.assertNotIn(
+                'AMP2(1)=DBLE(ANS(1,1))', born_source.replace(' ', ''))
             self.assertNotIn('SDM_BLOCK_AVAILABLE', born_source)
             self.assertNotIn('SDM_P_0(:,1)=P(:,1)', born_source)
             self.assertNotIn('SDM_P_1(:,1)=P(:,3)+P(:,4)', born_source)
@@ -345,7 +378,36 @@ class TestFKSDecayChains(unittest.TestCase):
                 self.assertIn('DO HP=1,NCOMB', provider_source)
                 self.assertIn('DCONJG(JAMP_HEL(J,HP))',
                               provider_source)
+                self.assertIn('SUBROUTINE SDM_', provider_source)
+                self.assertIn('_DIAGRAM_WEIGHTS(P,WEIGHTS)',
+                              provider_source)
+                self.assertIn('_DIAGRAM_DENSITIES(P,RHO)',
+                              provider_source)
+                self.assertIn(
+                    'DCONJG(AMPLITUDES(', provider_source)
+                self.assertIn(
+                    'GET_FACTORIZED_BLOCK_MOMENTA_ORDERED',
+                    provider_source)
                 self.assertNotIn('DBLE(VALUE)', provider_source)
+
+            with open(os.path.join(
+                    subprocess_dir,
+                    'spin_density_production_born.f')) as stream:
+                production_provider_source = stream.read()
+            self.assertIn(
+                'DATA EXPECTED_PDGS /2,-2,6,-6/',
+                production_provider_source)
+            self.assertIn(
+                'DATA EXPECTED_FINAL /0,0,1,1/',
+                production_provider_source)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'spin_density_decay_1_born.f')) as stream:
+                decay_provider_source = stream.read()
+            self.assertIn(
+                'DATA EXPECTED_PDGS /6,24,5/', decay_provider_source)
+            self.assertIn(
+                'DATA EXPECTED_FINAL /0,1,1/', decay_provider_source)
 
     def test_nested_spin_density_components_open_parent_and_child(self):
         command = self.generate(
@@ -386,9 +448,12 @@ class TestFKSDecayChains(unittest.TestCase):
             flat_born = ' '.join(
                 born_source.replace('$', ' ').split()).replace(' ,', ',')
             for component_id in sorted(plan['components']):
+                provider = plan['components'][component_id]['born']
+                fortran_name = 'SDM_' + provider['label'].upper()
                 self.assertIn(
-                    'GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,%d,' %
-                    component_id, flat_born)
+                    'CALL %s_MOMENTA(EVENT_SLOT,%d,' % (
+                        fortran_name, component_id),
+                    flat_born)
             self.assertNotIn('SDM_BLOCK_AVAILABLE', born_source)
 
     def test_two_decays_and_both_madloop_modes(self):
@@ -1001,7 +1066,10 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn('SDM_OVERRIDE_BORN=.TRUE.', density_source)
             self.assertIn('(0D0,1D0)*BORN_AMPS', density_source)
             self.assertEqual(
-                density_source.count('SLOOPMATRIXHEL_THRES'), 2)
+                density_source.count('SLOOPMATRIXHEL_THRES'), 3)
+            self.assertIn('SDM_BYPASS_CHECK=.TRUE.', density_source)
+            self.assertIn('IF (HP.EQ.H) CYCLE', density_source)
+            self.assertIn('DCONJG(RAW_RHO(K,B,A))', density_source)
             self.assertIn('DCMPLX(', density_source)
             with open(os.path.join(
                     subprocess_dir,
@@ -1062,16 +1130,16 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn('CALL SDM_PRODUCTION_BORN', real_source)
             self.assertIn('CALL SDM_DECAY_1_REAL_1', real_source)
             self.assertIn(
-                'GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,0,4,',
+                'CALL SDM_PRODUCTION_BORN_MOMENTA(EVENT_SLOT,0,',
                 flat_born)
             self.assertIn(
-                'GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,1,3,',
+                'CALL SDM_DECAY_1_BORN_MOMENTA(EVENT_SLOT,1,',
                 flat_born)
             self.assertIn(
-                'GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,0,4,',
+                'CALL SDM_PRODUCTION_BORN_MOMENTA(EVENT_SLOT,0,',
                 flat_real)
             self.assertIn(
-                'GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,1,4,',
+                'CALL SDM_DECAY_1_REAL_1_MOMENTA(EVENT_SLOT,1,',
                 flat_real)
             self.assertIn('SUBROUTINE SBORN_FACTORIZED(', flat_born)
             self.assertIn('SUBROUTINE SMATRIX1_FACTORIZED(', flat_real)
@@ -1249,6 +1317,11 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn('call sborn_sf_factorized(', singular)
             self.assertIn('call smatrix_real_factorized(', singular)
             self.assertIn('call binothlha_factorized(', singular)
+            self.assertIn(
+                '-2d0*g**2*link_multiplier*eik*iden_comp', singular)
+            self.assertIn(
+                '-2d0*g**2*link_multiplier*eik_ireg*oneo8pi2',
+                singular.replace('&', '').replace('\n', ' '))
             self.assertNotIn(
                 'evaluate_fks_sij(event_slot, p', singular)
             self.assertNotIn('subroutine sreal(event_slot, pp', singular)
@@ -1275,6 +1348,12 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertNotIn('\nDECAY_WIDTH 6 ', decay_card)
             self.assertTrue(os.path.islink(os.path.join(
                 subprocess_dir, 'decay_card.dat')))
+            with open(os.path.join(
+                    subprocess_root, 'proc_characteristics')) as stream:
+                process_characteristics = stream.read()
+            self.assertIn(
+                'factorized_resonance_pdgs = [6]',
+                process_characteristics)
 
     def test_nlo_decay_additional_and_nested_decay_trees(self):
         cases = [{
@@ -1502,6 +1581,9 @@ class TestFKSDecayChains(unittest.TestCase):
             with open(os.path.join(
                     subprocess_dir, 'driver_mintFO.f90')) as stream:
                 driver_source = stream.read()
+            with open(os.path.join(
+                    subprocess_dir, 'parton_lum_chooser.f')) as stream:
+                luminosity_source = stream.read()
             self.assertIn(
                 'ndim = factorized_integration_dimension(nndim)',
                 driver_source)
@@ -1521,8 +1603,66 @@ class TestFKSDecayChains(unittest.TestCase):
                 'component = bundle_nlo_component(radiation_block)',
                 mint_source)
             self.assertIn(
-                'grid_weight = abs(f(component_integral))',
+                'grid_weight = f(component_integral)',
                 mint_source)
+            self.assertIn(
+                'grid_weight = abs(f(multiplicative_lo_integral))',
+                mint_source)
+            self.assertIn(
+                'if (uses_multiplicative_nlo_combination()) then\n'
+                '        ! The absolute multiplicative integrand',
+                mint_source)
+            self.assertIn(
+                'ans(i, kchan)/unc(i, 0)**2',
+                mint_source)
+            self.assertIn(
+                'radiation_grid_weights(contribution) =',
+                driver_source)
+            normalized_driver = ' '.join(
+                driver_source.replace('&', ' ').split())
+            self.assertIn(
+                'evaluation%nlo_order == 0', driver_source)
+            self.assertIn(
+                'radiation_grid_group) + tuple_weight',
+                ' '.join(driver_source.split()))
+            self.assertIn(
+                'sum(abs(radiation_grid_groups(contribution, :)))',
+                ' '.join(driver_source.split()))
+            self.assertIn(
+                'radiation_event_slot == real_event', driver_source)
+            self.assertIn(
+                'if (radiation_event_slot == real_event .or. '
+                '(radiation_event_slot == soft_counterevent .and. '
+                'distributions(position)%terms(radiation_term_index)% '
+                'sign < 0)) then radiation_grid_group = 2',
+                normalized_driver)
+            self.assertIn(
+                'soft_collinear_counterevent) then',
+                ' '.join(driver_source.split()))
+            self.assertIn(
+                'validation_block_orders(position) == 1', driver_source)
+            self.assertIn(
+                'bundle_nlo_component(contribution)', driver_source)
+            self.assertIn(
+                'fill_multiplicative_discrete_grids('
+                'radiation_grid_weights)',
+                ' '.join(driver_source.split()))
+            self.assertIn(
+                'formal_lambda_block_linear_correction(',
+                driver_source)
+            self.assertIn(
+                "'BLOCK_LINEAR_CLOSURE'", driver_source)
+            self.assertIn(
+                'luminosity_configuration = distributions',
+                driver_source)
+            self.assertIn(
+                'luminosity = dlum_configuration(', driver_source)
+            self.assertIn(
+                'DOUBLE PRECISION FUNCTION DLUM_CONFIGURATION(',
+                luminosity_source.upper())
+            self.assertIn(
+                'IF (CONFIGURATION.EQ.1) THEN',
+                luminosity_source.upper())
             real_sources = []
             for filename in os.listdir(subprocess_dir):
                 if filename.startswith('matrix_') and filename.endswith('.f'):
@@ -1531,7 +1671,7 @@ class TestFKSDecayChains(unittest.TestCase):
                         real_sources.append(stream.read())
             self.assertTrue(real_sources)
             self.assertTrue(all(
-                'GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,' in source
+                '_MOMENTA(EVENT_SLOT,' in source
                 for source in real_sources))
             self.assertTrue(all(
                 'SET_SPIN_DENSITY_INSERTION' in source and
@@ -1554,6 +1694,12 @@ class TestFKSDecayChains(unittest.TestCase):
                 product_source.replace('$', ' ').split()).replace(' ,', ',')
             self.assertIn(
                 'MULTIPLICATIVE_SPIN_DENSITY_PRODUCT(SDM_BLOCKS,',
+                flat_product_source)
+            self.assertIn(
+                'LOAD_CACHED_SPIN_DENSITY_INSERTION(',
+                flat_product_source)
+            self.assertIn(
+                'RECORD_SPIN_DENSITY_INSERTION(',
                 flat_product_source)
             self.assertIn('SPIN_DENSITY_REAL_INSERTION', product_source)
             self.assertIn('SPIN_DENSITY_COLOR_INSERTION', product_source)
@@ -1887,16 +2033,61 @@ class TestFKSDecayChains(unittest.TestCase):
             with open(os.path.join(
                     subprocess_dir, 'makefile')) as stream:
                 makefile = stream.read()
-            self.assertIn('FNLO_CUTTOOLS_LIBRARY', makefile)
+            self.assertIn(
+                '$(libcuttools) $(libOLP)', makefile)
+            self.assertNotIn('FNLO_CUTTOOLS_LIBRARY', makefile)
             self.assertIn('FNLO_BUNDLE_VIRTUAL_DEPS', makefile)
             self.assertIn(
                 'test_soft_col_limits: $(TEST) mint_module.o '
                 '$(FNLO_BUNDLE_VIRTUAL_DEPS)', makefile)
             self.assertIn(
                 'gensym: $(SYM) $(FNLO_BUNDLE_VIRTUAL_DEPS)', makefile)
+            with open(os.path.join(
+                    subprocess_dir, 'driver_mintFO.f90')) as stream:
+                driver_source = ' '.join(stream.read().split()).lower()
+            production_select = driver_source.index(
+                'call update_fks_dir_impl(sampled_fks(1))')
+            tuple_boost = driver_source.index(
+                'call realize_factorized_event_tuple(channel_event_slots, '
+                'pass)')
+            channel_born = driver_source.index(
+                'call evaluate_born_matrix(soft_counterevent, '
+                'channel_born_weight)')
+            channel_reference = driver_source.index(
+                'call activate_multiplicative_block_reference(0)')
+            channel_cache_reset = driver_source.index(
+                'call reset_spin_density_caches()')
+            initial_production_select = driver_source.index(
+                'nfksprocess = contribution_representative_fks(1)')
+            event_capacity_setup = driver_source.index(
+                'call configure_event_capacity(')
+            self.assertLess(initial_production_select, event_capacity_setup)
+            integrand_production_select = driver_source.index(
+                'call update_fks_dir_impl('
+                'contribution_representative_fks(1))')
+            validation_width_setup = driver_source.index(
+                'call initialize_validation_widths(')
+            self.assertLess(
+                integrand_production_select, validation_width_setup)
+            self.assertIn('precisionvirtualatruntime,', driver_source)
+            self.assertNotIn(
+                'coupling_rescaling, vegas_wgt, 1d-6', driver_source)
+            self.assertLess(production_select, tuple_boost)
+            self.assertLess(tuple_boost, channel_born)
+            self.assertLess(tuple_boost, channel_reference)
+            self.assertLess(channel_reference, channel_born)
+            self.assertLess(channel_born, channel_cache_reset)
+            with open(os.path.join(
+                    subprocess_dir, 'write_ajob.f90')) as stream:
+                ajob_writer = stream.read().lower()
+            self.assertEqual(
+                ajob_writer.count('character(len=256) :: buffer'), 2)
             self.assertTrue(os.path.islink(os.path.join(
                 subprocess_dir,
                 'multiplicative_production_channels.f90')))
+            self.assertTrue(os.path.islink(os.path.join(
+                subprocess_dir,
+                'multiplicative_lambda_validation.f90')))
             self.assertTrue(os.path.isfile(os.path.join(
                 subprocess_dir, 'nlo_decay_info_2.dat')))
             self.assertTrue(os.path.isfile(os.path.join(

@@ -36,10 +36,11 @@ contains
   end subroutine build_multiplicative_lo_only_distribution
 
   subroutine build_multiplicative_block_nlo_distribution( &
-       contribution, distribution, available)
+       contribution, distribution, available, nbody_partition)
     integer, intent(in) :: contribution
     type(block_nlo_distribution), intent(out) :: distribution
     logical, intent(out) :: available
+    double precision, intent(in), optional :: nbody_partition
     type(block_distribution_term) :: candidates(maximum_block_terms)
     type(block_distribution_term) :: candidate
     logical :: candidate_available
@@ -54,11 +55,11 @@ contains
          contribution)
 
     call build_multiplicative_lo_density_term( &
-         contribution, candidate, candidate_available)
+         contribution, candidate, candidate_available, nbody_partition)
     if (candidate_available) call append_candidate(candidate)
 
     call build_multiplicative_nbody_density_term( &
-         contribution, candidate, candidate_available)
+         contribution, candidate, candidate_available, nbody_partition)
     if (candidate_available) call append_candidate(candidate)
 
     call build_multiplicative_real_density_term( &

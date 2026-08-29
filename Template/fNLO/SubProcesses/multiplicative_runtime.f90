@@ -1,4 +1,5 @@
 module multiplicative_runtime
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
   use process_dimensions, only: nexternal
   use factorized_phase_space, only: factorized_radiation_state, &
        fetch_factorized_radiation_state, compose_factorized_tuple_measure
@@ -73,7 +74,15 @@ contains
          evaluation%nlo_order, evaluation%event_slots, &
          evaluation%precision_found, evaluation%return_code, &
          coupling_rescaling, use_realized_kinematics)
-    if (evaluation%return_code /= 0) return
+    ! MadLoop return codes are diagnostic bit fields, not a Boolean success
+    ! flag.  Ordinary stable evaluations therefore generally have a nonzero
+    ! code.  Reject only an exceptional result, a reported precision worse
+    ! than the same five-percent ceiling used by the additive path, or a
+    ! non-finite density.  Treating every nonzero code as a failure silently
+    ! removed all virtual density matrices from multiplicative runs.
+    if (.not. usable_multiplicative_density_result( &
+        density_result, evaluation%precision_found, &
+        evaluation%return_code)) return
 
     ! The global event is first made after the complete density contraction.
     ! This is the object on which cuts and observables must subsequently act.
@@ -102,6 +111,23 @@ contains
          phase_space_weight*vegas_weight
     evaluation%available = .true.
   end subroutine evaluate_multiplicative_event_tuple
+
+
+  logical function usable_multiplicative_density_result( &
+       density, precision_found, return_code)
+    complex(kind=8), intent(in) :: density
+    double precision, intent(in) :: precision_found
+    integer, intent(in) :: return_code
+
+    usable_multiplicative_density_result = .false.
+    if (return_code < 0) return
+    if (return_code/100 == 4) return
+    if (.not. ieee_is_finite(precision_found) .or. &
+        precision_found > 5d-2) return
+    if (.not. ieee_is_finite(dble(density)) .or. &
+        .not. ieee_is_finite(aimag(density))) return
+    usable_multiplicative_density_result = .true.
+  end function usable_multiplicative_density_result
 
 
   subroutine fail_multiplicative_runtime(message)

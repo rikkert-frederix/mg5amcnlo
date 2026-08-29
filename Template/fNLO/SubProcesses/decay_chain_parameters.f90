@@ -584,12 +584,20 @@ contains
 
 
   integer function nlo_combination_mode()
+    if (.not. has_decay_chains() .and. .not. has_nlo_decay()) then
+      nlo_combination_mode = nlo_combination_additive
+      return
+    end if
     if (.not. initialized) call initialize_decay_chain_parameters()
     nlo_combination_mode = nlo_combination_mode_value
   end function nlo_combination_mode
 
 
   logical function uses_multiplicative_nlo_combination()
+    if (.not. has_decay_chains() .and. .not. has_nlo_decay()) then
+      uses_multiplicative_nlo_combination = .false.
+      return
+    end if
     if (.not. initialized) call initialize_decay_chain_parameters()
     uses_multiplicative_nlo_combination = &
          nlo_combination_mode_value == nlo_combination_multiplicative

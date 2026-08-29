@@ -70,6 +70,10 @@ module mint_module
   integer, parameter, public  :: max_bundle_components = fks_configs + 2
   integer, parameter, public  :: first_bundle_component_integral = &
        7 + 2*n_ave_virt
+  integer, parameter, public :: first_multiplicative_linear_integral = &
+       first_bundle_component_integral + max_bundle_components
+  integer, parameter, public :: first_multiplicative_group_integral = &
+       first_multiplicative_linear_integral + fks_configs
   ! The multiplicative path does not use the two legacy virtual-ratio
   ! diagnostics.  Reuse only those inert slots for formal-lambda validation;
   ! slots 3 and 6 participate in virtual-grid control and must remain zero.
@@ -79,7 +83,7 @@ module mint_module
   integer, parameter, public :: multiplicative_additive_integral = &
        5
   integer, parameter, public  :: nintegrals = &
-       6 + 2*n_ave_virt + max_bundle_components
+       6 + 2*n_ave_virt + max_bundle_components + 4*fks_configs
   integer, parameter, private :: nintervals_virt = 8! max number of intervals in the grids for the approx virtual
   integer, parameter, private :: min_inter = 4      ! minimal number of intervals
   integer, parameter, private :: min_it0 = 4        ! minimal number of iterations in the mint step 0 phase
@@ -92,7 +96,7 @@ module mint_module
   ! where 'n' is an integer smaller than or equal to min_it0.
   !
   ! The number of intergrals should be equal to
-  !     nintegrals=6+2*n_ave_virt+max_bundle_components
+  !     nintegrals=6+2*n_ave_virt+max_bundle_components+4*fks_configs
   !
 
 ! public variables
@@ -183,7 +187,14 @@ contains
     case (6)
       integral_title = 'Born         '
     case default
-      if (index >= first_bundle_component_integral) then
+      if (index >= first_multiplicative_group_integral) then
+        write (integral_title, '(a1,i2,a1,i1,8x)') &
+             'G', (index - first_multiplicative_group_integral)/3 + 1, &
+             '.', mod(index - first_multiplicative_group_integral, 3) + 1
+      else if (index >= first_multiplicative_linear_integral) then
+        write (integral_title, '(a1,i3,9x)') &
+             'L', index - first_multiplicative_linear_integral + 1
+      else if (index >= first_bundle_component_integral) then
         write (integral_title, '(a1,i3,9x)') &
              'C', index - first_bundle_component_integral + 1
       else if (mod(index, 2) == 1) then
@@ -556,7 +567,14 @@ contains
           if (i .ne. 1 .and. (etot(i, 0) .eq. 0d0 .or. unc(i, 0) .eq. 0d0)) then
             continue ! do not do anything
           else
-            ans(i, kchan) = (ans(i, kchan)/unc(i, 0) + vtot(i, kchan)/etot(i, 0))/(1d0/unc(i, 0) + 1d0/etot(i, 0))
+            ! Use one common inverse-variance weight for every channel so
+            ! their accumulated central values still add to the inclusive
+            ! result.  The previous 1/sigma weighting was inconsistent with
+            ! the inverse-variance uncertainty immediately below.
+            ans(i, kchan) = &
+                 (ans(i, kchan)/unc(i, 0)**2 + &
+                  vtot(i, kchan)/etot(i, 0)**2)/ &
+                 (1d0/unc(i, 0)**2 + 1d0/etot(i, 0)**2)
             unc(i, kchan) = 1d0/sqrt(1d0/unc(i, kchan)**2 + 1d0/etot(i, kchan)**2)
             chi2(i, kchan) = chi2(i, kchan) + (vtot(i, kchan) - ans(i, kchan))**2/etot(i, kchan)**2
           end if
@@ -790,6 +808,13 @@ contains
 ! accumulate the function in xacc(icell(kdim),kdim) to adjust the grid later
     do kdim = 1, ndim
       grid_weight = f(1)
+      if (uses_multiplicative_nlo_combination()) then
+        ! Shared production/decay Born variables define the common support
+        ! of every Cartesian term.  Train them on the positive all-LO
+        ! projection instead of rare higher-order products; each block's
+        ! NLO structure is handled by its dedicated radiation triple below.
+        grid_weight = abs(f(multiplicative_lo_integral))
+      end if
       if (has_nlo_contribution_bundle()) then
         radiation_block = factorized_radiation_block(ndim, kdim)
         if (radiation_block > 0) then
@@ -797,9 +822,14 @@ contains
           component_integral = first_bundle_component_integral + &
                component - 1
           ! Each production/decay radiation triple learns only from its own
-          ! NLO numerator.  Common Born dimensions continue to use the total
-          ! absolute integrand.
-          grid_weight = abs(f(component_integral))
+          ! positive, locally subtracted NLO training proxy.  The driver
+          ! evaluates distinct mapped atoms separately, then pairs the
+          ! signed R/S and C/SC measured weights with all other blocks fixed
+          ! at LO.  Born-like, real-soft, and collinear-soft-collinear groups
+          ! are made positive separately, preserving local FKS cancellation
+          ! without hiding one finite group behind another.  Common Born
+          ! dimensions continue to use the total absolute integrand.
+          grid_weight = f(component_integral)
         end if
       end if
       xacc(icell(kdim), kdim, ichan) = &
@@ -1413,7 +1443,17 @@ contains
       iconfig = iconfigs(ichan)
       vol_chan = 1d0
     elseif (nchans .gt. 1) then
-      if (ans_chan(0) .le. 0d0) then
+      if (uses_multiplicative_nlo_combination()) then
+        ! The absolute multiplicative integrand can be dominated by rare
+        ! loop--real products.  Probabilities learned from that integral
+        ! consequently starve otherwise important production maps and make
+        ! the lower-order projections extremely noisy.  Keep sampling the
+        ! independently adapted channel grids uniformly; the AMP-based
+        ! pointwise partition still performs the multi-channel enhancement.
+        ichan = int(ran2()*nchans) + 1
+        iconfig = iconfigs(ichan)
+        vol_chan = 1d0/dble(nchans)
+      elseif (ans_chan(0) .le. 0d0) then
 !     pick one at random (flat)
         ichan = int(ran2()*nchans) + 1
         iconfig = iconfigs(ichan)

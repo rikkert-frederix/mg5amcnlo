@@ -431,6 +431,14 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                     'Malformed FORCED_SPECIES record in %s' % metadata_path)
             species.update(pdgs)
 
+        # The resonances are external, on-shell legs of their independent
+        # production/decay blocks.  Record them so treatcards applies the
+        # same zero-width prescription used for ordinary coloured external
+        # particles.  Their physical widths remain in decay_card.dat and are
+        # used only for the narrow-width normalization.
+        self.proc_characteristic['factorized_resonance_pdgs'] = sorted(
+            species)
+
         param_card_path = pjoin(self.dir_path, 'Cards', 'param_card.dat')
         param_card = check_param_card.ParamCard(param_card_path)
         widths = {}
@@ -1402,6 +1410,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               'multiplicative_production_channels.f90',
                               'spin_density_matrix_results.f90',
                               'multiplicative_density_terms.f90',
+                              'multiplicative_lambda_validation.f90',
                               'density_operator_recorder.f90',
                               'multiplicative_fks_density.f90',
                               'multiplicative_nbody_density.f90',
@@ -3001,6 +3010,56 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                 end
                 """ % luminosity_argument
 
+        # A multiplicative Cartesian tuple need not own the incoming state
+        # of the auxiliary FKS directory through which its radiation
+        # variables were sampled.  Most importantly, Born/virtual atoms are
+        # common to all production sectors and retain the underlying Born
+        # luminosity even when sampled from a qg real sector.  Export an
+        # explicit dispatcher so the density term, rather than mutable
+        # NFKSProcess state, chooses its luminosity provider.
+        if (self.opt.get('fks_template') == 'fNLO' and
+                getattr(matrix_element, 'spin_density_plan', None) is not None):
+            text1 += \
+                """
+
+                double precision function dlum_configuration(
+     $               configuration,bjorken_x)
+                implicit none
+                integer configuration
+                double precision bjorken_x(2)
+                """
+            if matrix_element.real_processes:
+                for configuration, info in enumerate(
+                        matrix_element.get_fks_info_list(), 1):
+                    text1 += \
+                        """if (configuration.eq.%(configuration)d) then
+                        call dlum_%(n_me)d(
+     $                       dlum_configuration,bjorken_x)
+                        else""" % {
+                            'configuration': configuration,
+                            'n_me': info['n_me']}
+                text1 += \
+                    """
+                    write(*,*) 'ERROR: invalid explicit luminosity',
+     $                   configuration
+                    stop
+                    endif
+                    return
+                    end
+                    """
+            else:
+                text1 += \
+                    """
+                    if (configuration.ne.1) then
+                       write(*,*) 'ERROR: invalid explicit luminosity',
+     $                      configuration
+                       stop
+                    endif
+                    call dlum_0(dlum_configuration,bjorken_x)
+                    return
+                    end
+                    """
+
         if getattr(matrix_element, 'spin_density_plan', None) is not None:
             text += \
                 """
@@ -3182,6 +3241,65 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
       WRITE(*,*) 'Explicit density virtual called for a legacy process'
       STOP 1
       END
+
+      INTEGER FUNCTION SDM_MULTIPLICATIVE_BLOCK_COUNT()
+      IMPLICIT NONE
+      SDM_MULTIPLICATIVE_BLOCK_COUNT=0
+      END
+
+      INTEGER FUNCTION SDM_MULTIPLICATIVE_PHYSICAL_BLOCK(POSITION)
+      IMPLICIT NONE
+      INTEGER POSITION
+      WRITE(*,*) 'Multiplicative block requested for a legacy process'
+      STOP 1
+      END
+
+      INTEGER FUNCTION SDM_MULTIPLICATIVE_COMPONENT_POSITION(BLOCK)
+      IMPLICIT NONE
+      INTEGER BLOCK
+      WRITE(*,*) 'Multiplicative block requested for a legacy process'
+      STOP 1
+      END
+
+      INTEGER FUNCTION SDM_MULTIPLICATIVE_BLOCK_PDG(BLOCK)
+      IMPLICIT NONE
+      INTEGER BLOCK
+      WRITE(*,*) 'Multiplicative block requested for a legacy process'
+      STOP 1
+      END
+
+      INTEGER FUNCTION SDM_MULTIPLICATIVE_BORN_QCD_POWER(BLOCK)
+      IMPLICIT NONE
+      INTEGER BLOCK
+      WRITE(*,*) 'Multiplicative block requested for a legacy process'
+      STOP 1
+      END
+
+      INTEGER FUNCTION SDM_CONTRIBUTION_COMPONENT_POSITION(CONTRIBUTION)
+      IMPLICIT NONE
+      INTEGER CONTRIBUTION
+      WRITE(*,*) 'Multiplicative block requested for a legacy process'
+      STOP 1
+      END
+
+      INTEGER FUNCTION SDM_REAL_INSERTION_IDENTIFIER(CONFIGURATION)
+      IMPLICIT NONE
+      INTEGER CONFIGURATION
+      WRITE(*,*) 'Multiplicative real insertion requested for a legacy process'
+      STOP 1
+      END
+
+      SUBROUTINE SDM_MULTIPLICATIVE_CONTRACTION(EVENT_SLOTS,
+     $ INSERTION_KINDS,INSERTION_IDS,INSERTION_RANKS,
+     $ CORRELATION_LEGS,RESULT,PREC_ASKED,PREC_FOUND,RET_CODE)
+      IMPLICIT NONE
+      INTEGER EVENT_SLOTS(*),INSERTION_KINDS(*),INSERTION_IDS(*)
+      INTEGER INSERTION_RANKS(*),CORRELATION_LEGS(*),RET_CODE
+      DOUBLE PRECISION PREC_ASKED,PREC_FOUND
+      COMPLEX*16 RESULT
+      WRITE(*,*) 'Multiplicative contraction requested for a legacy process'
+      STOP 1
+      END
 """
         writers.FortranWriter(
             'spin_density_virtual_compatibility.f').writelines(source)
@@ -3235,6 +3353,15 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             'context_kind': plan['born_context_kind']}]
 
         ngraphs = matrix_element.get_number_of_amplitudes()
+        production_provider = plan['components'][0]['born']
+        production_matrix_element = production_provider['matrix_element']
+        production_ngraphs = \
+            production_matrix_element.get_number_of_amplitudes()
+        if production_ngraphs != ngraphs:
+            raise fks_common.FKSProcessError(
+                'The production density diagrams no longer match the Born '
+                'phase-space configuration map (%d != %d)' %
+                (production_ngraphs, ngraphs))
         ncolor = max(1, len(matrix_element.get('color_basis')))
         replacement = {
             'info_lines': self.get_mg5_info_lines(),
@@ -3294,6 +3421,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             'COMPLEX*16 SDM_RESULT(2)',
             'DOUBLE PRECISION AMP2(NGRAPHS),JAMP2(0:NCOLOR,0:1)',
             'COMMON /TO_AMPS_BORN/ AMP2,JAMP2',
+            'CALL SDM_BORN_DIAGRAM_WEIGHTS(EVENT_SLOT,AMP2)',
             'SELECT CASE (CONTRIBUTION)'] + [
                 'CASE (%d)' % variant['contribution_id'] + '\n' +
                 '  CALL SDM_BORN_CONTRIBUTION_%d(EVENT_SLOT,GLU_IJ,' %
@@ -3310,8 +3438,6 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             'ANS(2,1)=SDM_RESULT(2)',
             'ANS(1,0)=ANS(1,1)',
             'ANS(2,0)=ANS(2,1)',
-            'AMP2=0D0',
-            'IF (NGRAPHS.GT.0) AMP2(1)=DBLE(ANS(1,1))',
             'JAMP2=0D0',
             'JAMP2(0,0)=NCOLOR',
             'IF (NCOLOR.GT.0) JAMP2(1,1)=DBLE(ANS(1,1))',
@@ -3319,6 +3445,19 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             '',
             self._spin_density_order_function(
                 matrix_element, 'GETORDPOWFROMINDEX_B')])
+
+        diagram_declarations, diagram_code = \
+            density_exporter.diagram_weight_contraction_lines(
+                plan, ngraphs, event_slot='EVENT_SLOT')
+        core.extend([
+            '',
+            'SUBROUTINE SDM_BORN_DIAGRAM_WEIGHTS(EVENT_SLOT,SDM_WEIGHTS)',
+            'USE SPIN_DENSITY_MATRIX_RESULTS',
+            'IMPLICIT NONE',
+            'INTEGER EVENT_SLOT'])
+        core.extend(diagram_declarations)
+        core.extend(diagram_code)
+        core.append('END')
 
         for variant in born_variants:
             contribution = variant['contribution_id']

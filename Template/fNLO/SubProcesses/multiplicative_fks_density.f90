@@ -86,7 +86,7 @@ contains
     call record_density_operator_primitive( &
          spin_density_real_insertion, insertion_identifier, 1, 0, &
          coefficients, .true.)
-    call finish_density_operator_recording(term, 1)
+    call finish_density_operator_recording(term, 1, nfksprocess)
     available = .true.
   end subroutine build_multiplicative_real_density_term
 
@@ -152,7 +152,7 @@ contains
       return
     end if
     call scale_recorded_density_operator(coefficients)
-    call finish_density_operator_recording(term, -1)
+    call finish_density_operator_recording(term, -1, nfksprocess)
     available = .true.
   end subroutine build_multiplicative_soft_density_term
 
@@ -233,7 +233,7 @@ contains
       call cancel_density_operator_recording()
       return
     end if
-    call finish_density_operator_recording(term, -1)
+    call finish_density_operator_recording(term, -1, nfksprocess)
     available = .true.
   end subroutine build_multiplicative_collinear_density_term
 
@@ -252,6 +252,7 @@ contains
     double precision :: prefactor_deg_sxi, prefactor_deg_slxi
     double precision :: local_fsc, local_fdsc1, local_fdsc2
     double precision :: local_fdsc3, local_fdsc4, cutoff
+    double precision :: degenerate_measure
     double precision :: dummy_weight, dummy_xi, dummy_lxi, subtraction_shat
     integer :: block, core_first, core_last
     integer :: xi_index, lxi_index, muf_index
@@ -308,14 +309,21 @@ contains
     subtraction_shat = fks_subtraction_shat( &
          soft_collinear_counterevent)
     if (subtraction_shat <= 0d0) return
+    degenerate_measure = subtraction_shat/(32d0*acos(-1d0)**2)
     local_fsc = (prefactor_c + prefactor_coll + prefactor_cnt + &
          prefactor_cnt_coll)*fkssymmetryfactordeg
-    local_fdsc1 = prefactor_deg/ &
-         (subtraction_shat/(32d0*acos(-1d0)**2))* &
+    ! Every F_DSC line is a degenerate-remnant density and therefore owns
+    ! the same reduced-radiation measure.  The additive implementation
+    ! factors this denominator into each of F_DSC(1:4); keeping it on only
+    ! the first line destroys the ISR C/SC cancellation by O(shat/32 pi^2).
+    local_fdsc1 = prefactor_deg/degenerate_measure* &
          fkssymmetryfactordeg
-    local_fdsc2 = prefactor_deg_sxi*fkssymmetryfactordeg
-    local_fdsc3 = prefactor_deg_slxi*fkssymmetryfactordeg
-    local_fdsc4 = prefactor_deg_sxi*fkssymmetryfactordeg
+    local_fdsc2 = prefactor_deg_sxi/degenerate_measure* &
+         fkssymmetryfactordeg
+    local_fdsc3 = prefactor_deg_slxi/degenerate_measure* &
+         fkssymmetryfactordeg
+    local_fdsc4 = (prefactor_deg + prefactor_deg_sxi)/ &
+         degenerate_measure*fkssymmetryfactordeg
 
     call begin_density_operator_recording( &
          block, soft_collinear_counterevent, 1)
@@ -341,7 +349,7 @@ contains
       call cancel_density_operator_recording()
       return
     end if
-    call finish_density_operator_recording(term, 1)
+    call finish_density_operator_recording(term, 1, nfksprocess)
     available = .true.
   end subroutine build_multiplicative_soft_collinear_density_term
 

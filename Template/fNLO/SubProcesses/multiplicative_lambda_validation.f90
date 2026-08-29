@@ -278,7 +278,16 @@ contains
     end do
     global_coefficient = formal_lambda_linear_correction( &
          accumulator, lo_widths, nlo_widths)
-    scale = max(scale, abs(global_coefficient))
+    ! The global and block sums traverse the same signed atoms in different
+    ! orders.  Their physical result can be much smaller than the individual
+    ! single-block coefficients and their underlying signed atoms, so use
+    ! both as the round-off scale as well as the final result.  Otherwise a
+    ! legitimate FKS cancellation can make the nominal relative tolerance
+    ! smaller than double-precision summation noise.
+    scale = max(scale, abs(global_coefficient), &
+                abs(accumulator%order_coefficients(1)), &
+                sum(abs(accumulator%single_coefficients)), &
+                accumulator%absolute_weight)
     allowed = relative_tolerance*scale
     if (abs(block_sum - global_coefficient) > allowed) then
       call fail_lambda_validation( &

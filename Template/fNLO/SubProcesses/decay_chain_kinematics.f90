@@ -220,8 +220,14 @@ contains
 
     call require_enabled()
     context = context_for_fks(configuration)
-    call store_core_local_layout( &
-         context, event_slot, context_core_count(context))
+    ! Slot zero owns the immutable reduced-Born local block.  The soft
+    ! projection's real-context identities (including a potentially
+    ! different ISR flavour) belong to the kernel/embedding representation,
+    ! not to the block later selected by a multiplicative Born atom.
+    if (event_slot /= soft_counterevent) then
+      call store_core_local_layout( &
+           context, event_slot, context_core_count(context))
+    end if
     call embed_decay_context( &
          context, event_slot, core_momenta, &
          event_slot /= soft_counterevent, pass)
@@ -662,11 +668,11 @@ contains
     end if
     call store_factorized_kernel_momenta( &
          event_slot, 0, particle_count, momenta)
-    call store_factorized_local_momenta( &
-         event_slot, 0, particle_count, momenta)
-    call store_factorized_embedded_momenta( &
-         event_slot, 0, particle_count, momenta)
     if (event_slot /= soft_counterevent) then
+      call store_factorized_local_momenta( &
+           event_slot, 0, particle_count, momenta)
+      call store_factorized_embedded_momenta( &
+           event_slot, 0, particle_count, momenta)
       call store_factorized_block_momenta( &
            event_slot, 0, particle_count, momenta)
     end if

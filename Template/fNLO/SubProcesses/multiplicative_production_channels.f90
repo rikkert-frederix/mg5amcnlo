@@ -7,12 +7,17 @@ module multiplicative_production_channels
 contains
 
   double precision function multiplicative_production_channel_partition( &
-       categories, channel_count, active_channel)
-    integer, intent(in) :: categories(:)
+       categories, configurations, channel_count, active_channel, &
+       diagram_weights, configuration_map, symmetry_factor)
+    integer, intent(in) :: categories(:), configurations(:)
     integer, intent(in) :: channel_count, active_channel
-    integer :: channel, matching_count, active_category
+    double precision, intent(in) :: diagram_weights(:), symmetry_factor
+    integer, intent(in) :: configuration_map(0:)
+    double precision :: denominator, weight
+    integer :: active_category, active_configuration, configuration, graph
 
-    if (channel_count < 1 .or. channel_count > size(categories)) then
+    if (channel_count < 1 .or. channel_count > size(categories) .or. &
+        channel_count > size(configurations)) then
       call fail_multiplicative_production_channels( &
            'the production integration-channel count is invalid')
     end if
@@ -21,27 +26,56 @@ contains
            'the active production integration channel is invalid')
     end if
 
-    ! MINT samples one Born phase-space channel and supplies the inverse
-    ! sampling probability through VEGAS_WGT.  The FKS symmetry factors
-    ! already partition different initial/final radiation categories, so the
-    ! remaining channel partition must sum to one separately inside the
-    ! active category.  A flat partition is exact: every retained Born map
-    ! covers the complete production phase space and every density tuple is
-    ! evaluated with the full matrix element.  Diagram-dependent weights are
-    ! only a variance optimization and would unnecessarily couple the
-    ! otherwise independent production and decay density operators.
     active_category = categories(active_channel)
-    matching_count = 0
-    do channel = 1, channel_count
-      if (categories(channel) == active_category) &
-           matching_count = matching_count + 1
-    end do
-    if (matching_count < 1) then
+    active_configuration = configurations(active_channel)
+    if (active_category < 0 .or. active_category > 2) then
       call fail_multiplicative_production_channels( &
-           'the active production category has no integration channel')
+           'the active production FKS category is invalid')
     end if
-    multiplicative_production_channel_partition = &
-         1d0/dble(matching_count)
+    if (configuration_map(0) < 1 .or. &
+        configuration_map(0) > ubound(configuration_map, 1)) then
+      call fail_multiplicative_production_channels( &
+           'the Born configuration map is empty or inconsistent')
+    end if
+    if (active_configuration < 1 .or. &
+        active_configuration > configuration_map(0)) then
+      call fail_multiplicative_production_channels( &
+           'the active Born configuration is invalid')
+    end if
+    if (symmetry_factor < 0d0 .or. symmetry_factor /= symmetry_factor) then
+      call fail_multiplicative_production_channels( &
+           'the diagram symmetry factor is invalid')
+    end if
+
+    ! Each production map evaluates the complete density-matrix product.
+    ! Partition that common integrand with the same positive single-diagram
+    ! proxy used by the original fNLO multi-channel integrator.  The weights
+    ! are computed solely from the production Born amplitudes, summed over
+    ! helicities, so decay blocks remain independent.  CONFIGURATION_MAP can
+    ! contain the same graph more than once; SYMMETRY_FACTOR accounts for
+    ! equivalent maps omitted from the MINT channel list.
+    denominator = 0d0
+    do configuration = 1, configuration_map(0)
+      graph = configuration_map(configuration)
+      if (graph < 1 .or. graph > size(diagram_weights)) then
+        call fail_multiplicative_production_channels( &
+             'a Born configuration references an invalid diagram')
+      end if
+      weight = diagram_weights(graph)
+      if (weight < 0d0 .or. weight /= weight) then
+        call fail_multiplicative_production_channels( &
+             'a production diagram weight is invalid')
+      end if
+      denominator = denominator + weight
+    end do
+
+    graph = configuration_map(active_configuration)
+    if (denominator == 0d0) then
+      multiplicative_production_channel_partition = 0d0
+    else
+      multiplicative_production_channel_partition = &
+           symmetry_factor*diagram_weights(graph)/denominator
+    end if
   end function multiplicative_production_channel_partition
 
 

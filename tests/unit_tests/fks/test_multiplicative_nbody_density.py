@@ -99,6 +99,10 @@ contains
     integer, intent(in) :: contribution
     contribution_corrected_node = 2
   end function contribution_corrected_node
+  integer function contribution_representative_fks(contribution)
+    integer, intent(in) :: contribution
+    contribution_representative_fks = 7
+  end function contribution_representative_fks
 end module nlo_contribution_bundle
 '''
         fks_stub = r'''
@@ -142,36 +146,43 @@ program test_nbody_density
   double precision :: pi, prefactor
 
   pi = acos(-1d0)
-  prefactor = 0.4d0/(0.5d0*100d0/(16d0*pi**2))*11d0
+  ! The shared n-body atom is independent of the sampled FKS sector.  The
+  ! caller cancels that sector's sampling probability, so the additive
+  ! fkssymmetryfactorborn=11 stub must not enter this prefactor.
+  prefactor = 0.4d0/(0.5d0*100d0/(16d0*pi**2))
 
-  call build_multiplicative_lo_density_term(2, lo_term, available)
+  call build_multiplicative_lo_density_term( &
+       2, lo_term, available, 0.5d0)
   if (.not. available .or. .not. lo_term%finalized) stop 11
   if (lo_term%block /= 2 .or. lo_term%event_slot /= 0) stop 12
   if (lo_term%nlo_order /= 0 .or. lo_term%sign /= 1) stop 13
+  if (lo_term%luminosity_configuration /= 7) stop 35
   if (lo_term%primitive_count /= 1) stop 14
   if (lo_term%primitives(1)%insertion_kind /= 0) stop 15
   if (abs(dble(lo_term%primitives(1)%scale_coefficients(1)) - &
-          prefactor) > 1d-12) stop 16
+          0.5d0*prefactor) > 1d-12) stop 16
 
-  call build_multiplicative_nbody_density_term(2, nlo_term, available)
+  call build_multiplicative_nbody_density_term( &
+       2, nlo_term, available, 0.5d0)
   if (.not. available .or. .not. nlo_term%finalized) stop 21
   if (nlo_term%block /= 2 .or. nlo_term%event_slot /= 0) stop 22
   if (nlo_term%nlo_order /= 1 .or. nlo_term%sign /= 1) stop 23
+  if (nlo_term%luminosity_configuration /= 7) stop 36
   if (nlo_term%primitive_count /= 3) stop 24
   if (nlo_term%primitives(1)%insertion_kind /= 1) stop 25
   if (nlo_term%primitives(2)%insertion_kind /= 4) stop 26
   if (nlo_term%primitives(3)%insertion_kind /= 3) stop 27
   if (nlo_term%primitives(3)%insertion_rank /= 1) stop 28
   if (abs(dble(nlo_term%primitives(1)%scale_coefficients(1)) - &
-          2d0*prefactor) > 1d-12) stop 29
+          1d0*prefactor) > 1d-12) stop 29
   if (abs(dble(nlo_term%primitives(1)%scale_coefficients(2)) - &
-          3d0*prefactor) > 1d-12) stop 30
+          1.5d0*prefactor) > 1d-12) stop 30
   if (abs(dble(nlo_term%primitives(1)%scale_coefficients(3)) - &
-          5d0*prefactor) > 1d-12) stop 31
+          2.5d0*prefactor) > 1d-12) stop 31
   if (abs(dble(nlo_term%primitives(2)%scale_coefficients(1)) - &
-          7d0*prefactor) > 1d-12) stop 32
+          3.5d0*prefactor) > 1d-12) stop 32
   if (abs(dble(nlo_term%primitives(3)%scale_coefficients(1)) - &
-          prefactor) > 1d-12) stop 33
+          0.5d0*prefactor) > 1d-12) stop 33
   ! Neither the event Jacobian nor its phase-space weight belongs here.
   if (abs(dble(lo_term%primitives(1)%scale_coefficients(1)) - &
           prefactor*17d0*19d0) < 1d-6) stop 34

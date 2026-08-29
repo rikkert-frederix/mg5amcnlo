@@ -158,9 +158,11 @@ contains
   end subroutine scale_recorded_density_operator
 
 
-  subroutine finish_density_operator_recording(term, sign)
+  subroutine finish_density_operator_recording( &
+       term, sign, luminosity_configuration)
     type(block_distribution_term), intent(out) :: term
     integer, intent(in) :: sign
+    integer, intent(in), optional :: luminosity_configuration
 
     integer :: primitive, retained
 
@@ -177,6 +179,13 @@ contains
 
     term%block = recorded_block
     term%event_slot = recorded_event_slot
+    if (present(luminosity_configuration)) then
+      if (luminosity_configuration < 0) then
+        call fail_density_operator_recorder( &
+             'a recorded density term has an invalid luminosity owner')
+      end if
+      term%luminosity_configuration = luminosity_configuration
+    end if
     term%sign = sign
     term%nlo_order = recorded_nlo_order
     term%primitive_count = retained

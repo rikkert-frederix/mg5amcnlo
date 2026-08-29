@@ -104,7 +104,8 @@ contains
     if (already_realized) stop 85
     nlo_order = 2
     precision_found = precision_asked
-    return_code = 0
+    ! A normal MadLoop evaluation carries a nonzero diagnostic status code.
+    return_code = 210
   end subroutine contract_multiplicative_density_tuple
 end module multiplicative_density_contraction
 
@@ -147,6 +148,7 @@ program test_runtime
   if (.not. evaluation%available .or. stage /= 3) stop 1
   if (abs(dble(evaluation%partonic_weight) - 210d0) > 1d-12) stop 2
   if (evaluation%visible_count /= 6 .or. evaluation%nlo_order /= 2) stop 3
+  if (evaluation%return_code /= 210) stop 5
   if (maxval(abs(evaluation%bjorken_x - (/0.2d0, 0.3d0/))) > &
       1d-12) stop 4
 end program test_runtime

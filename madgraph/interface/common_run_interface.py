@@ -998,6 +998,10 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             if amcatnlo and not keepwidth:
                 # force particle in final states to have zero width
                 pids = self.get_pid_final_initial_states()
+                for pdg in self.proc_characteristics[
+                        'factorized_resonance_pdgs']:
+                    pids.add(str(pdg))
+                    pids.add(str(-pdg))
                 # check those which are charged under qcd
                 if pjoin(self.me_dir,'bin','internal','ufomodel') not in sys.path:
                     sys.path.insert(0,pjoin(self.me_dir,'bin','internal', 'ufomodel'))     

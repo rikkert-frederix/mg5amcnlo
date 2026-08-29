@@ -993,10 +993,15 @@ contains
     call store_factorized_kernel_momenta( &
          event_slot, nlo_decay_corrected_node(), &
          nlo_decay_local_count(context), local_rest)
-    call store_factorized_local_momenta( &
-         event_slot, nlo_decay_corrected_node(), &
-         nlo_decay_local_count(context), local_rest)
-    call store_nlo_corrected_local_layout(context, event_slot)
+    ! Keep the underlying-Born rest-frame block in slot zero.  Its soft FKS
+    ! projection still uses the real-context kernel and embedding below, but
+    ! must not replace the local block later selected by a Born/virtual atom.
+    if (event_slot /= soft_counterevent) then
+      call store_factorized_local_momenta( &
+           event_slot, nlo_decay_corrected_node(), &
+           nlo_decay_local_count(context), local_rest)
+      call store_nlo_corrected_local_layout(context, event_slot)
+    end if
     call embed_nlo_decay_fks_context( &
          context, event_slot, local_event, pass)
     if (.not. pass) return

@@ -37,16 +37,49 @@ module spin_density_matrix_results
     complex(kind=8), allocatable :: value(:, :, :)
   end type spin_density_cache_entry
 
+  type :: spin_density_insertion_cache_entry
+    integer :: kind = spin_density_no_insertion
+    integer :: order = 0
+    integer :: identifier = 0
+    integer :: correlation_leg = 0
+    integer :: open_size = 0
+    double precision :: precision_asked = 0d0
+    double precision :: precision_found = 0d0
+    integer :: return_code = 0
+    complex(kind=8), allocatable :: value(:, :, :)
+  end type spin_density_insertion_cache_entry
+
+  type :: spin_density_insertion_cache
+    integer(kind=8) :: momentum_revision = 0_8
+    type(spin_density_insertion_cache_entry), allocatable :: entries(:)
+  end type spin_density_insertion_cache
+
   type(spin_density_cache_entry), allocatable, save :: lo_cache(:, :)
+  type(spin_density_insertion_cache), allocatable, save :: &
+       insertion_cache(:, :)
 
   public :: initialize_spin_density_block
+  public :: reset_spin_density_caches
   public :: load_cached_lo_density, record_lo_density
+  public :: load_cached_spin_density_insertion
+  public :: record_spin_density_insertion
   public :: set_spin_density_insertion
   public :: strict_spin_density_product
   public :: multiplicative_spin_density_product
   public :: spin_density_product_order
 
 contains
+
+  subroutine reset_spin_density_caches()
+    ! A diagnostic or channel-partition contraction can evaluate several
+    ! blocks while one global model coupling is active.  Those matrices are
+    ! valid for that contraction, but they must not leak into the subsequent
+    ! block-factorized evaluation, where every block is evaluated at its own
+    ! immutable reference coupling.  Momentum revisions alone cannot
+    ! distinguish the two coupling contexts.
+    if (allocated(lo_cache)) deallocate(lo_cache)
+    if (allocated(insertion_cache)) deallocate(insertion_cache)
+  end subroutine reset_spin_density_caches
 
   subroutine initialize_spin_density_block(result, event_slot, block, &
                                              open_size)
@@ -114,6 +147,83 @@ contains
       entry%valid = .true.
     end associate
   end subroutine record_lo_density
+
+
+  subroutine load_cached_spin_density_insertion( &
+       result, kind, identifier, correlation_leg, precision_asked, &
+       available, precision_found, return_code)
+    type(spin_density_block_result), intent(inout) :: result
+    integer, intent(in) :: kind, identifier, correlation_leg
+    double precision, intent(in) :: precision_asked
+    logical, intent(out) :: available
+    double precision, intent(out) :: precision_found
+    integer, intent(out) :: return_code
+    integer(kind=8) :: revision
+    integer :: entry_index
+
+    call validate_result_identity(result)
+    call validate_insertion_key(kind, identifier, correlation_leg)
+    call prepare_insertion_cache(result, revision)
+    available = .false.
+    precision_found = 0d0
+    return_code = 0
+    associate(cache => insertion_cache(result%block, result%event_slot))
+      if (.not. allocated(cache%entries)) return
+      do entry_index = 1, size(cache%entries)
+        associate(entry => cache%entries(entry_index))
+          if (entry%kind /= kind .or. &
+              entry%identifier /= identifier .or. &
+              entry%correlation_leg /= correlation_leg .or. &
+              entry%open_size /= result%open_size .or. &
+              entry%precision_asked /= precision_asked) cycle
+          call set_spin_density_insertion( &
+               result, entry%kind, entry%order, entry%value)
+          precision_found = entry%precision_found
+          return_code = entry%return_code
+          available = .true.
+          return
+        end associate
+      end do
+    end associate
+  end subroutine load_cached_spin_density_insertion
+
+
+  subroutine record_spin_density_insertion( &
+       result, kind, order, identifier, correlation_leg, &
+       precision_asked, precision_found, return_code, density)
+    type(spin_density_block_result), intent(inout) :: result
+    integer, intent(in) :: kind, order, identifier, correlation_leg
+    double precision, intent(in) :: precision_asked, precision_found
+    integer, intent(in) :: return_code
+    complex(kind=8), intent(in) :: density(:, :, :)
+    type(spin_density_insertion_cache_entry), allocatable :: grown(:)
+    integer(kind=8) :: revision
+    integer :: entry_count
+
+    call validate_insertion_key(kind, identifier, correlation_leg)
+    call prepare_insertion_cache(result, revision)
+    call set_spin_density_insertion(result, kind, order, density)
+    associate(cache => insertion_cache(result%block, result%event_slot))
+      entry_count = 0
+      if (allocated(cache%entries)) entry_count = size(cache%entries)
+      allocate(grown(entry_count + 1))
+      if (entry_count > 0) grown(1:entry_count) = cache%entries
+      associate(entry => grown(entry_count + 1))
+        entry%kind = kind
+        entry%order = order
+        entry%identifier = identifier
+        entry%correlation_leg = correlation_leg
+        entry%open_size = result%open_size
+        entry%precision_asked = precision_asked
+        entry%precision_found = precision_found
+        entry%return_code = return_code
+        allocate(entry%value(size(density, 1), size(density, 2), &
+                             size(density, 3)))
+        entry%value = density
+      end associate
+      call move_alloc(grown, cache%entries)
+    end associate
+  end subroutine record_spin_density_insertion
 
 
   subroutine set_spin_density_insertion(result, kind, order, density)
@@ -286,9 +396,51 @@ contains
 
 
   subroutine ensure_cache()
-    if (allocated(lo_cache)) return
-    allocate(lo_cache(0:nexternal, soft_counterevent:real_event))
+    if (.not. allocated(lo_cache)) then
+      allocate(lo_cache(0:nexternal, soft_counterevent:real_event))
+    end if
+    if (.not. allocated(insertion_cache)) then
+      allocate(insertion_cache(0:nexternal, &
+                               soft_counterevent:real_event))
+    end if
   end subroutine ensure_cache
+
+
+  subroutine prepare_insertion_cache(result, revision)
+    type(spin_density_block_result), intent(in) :: result
+    integer(kind=8), intent(out) :: revision
+
+    call ensure_cache()
+    call validate_result_identity(result)
+    revision = factorized_block_momentum_revision( &
+         result%event_slot, result%block)
+    if (revision <= 0_8) then
+      call fail_spin_density_results( &
+           'cannot cache an insertion without boosted block momenta')
+    end if
+    associate(cache => insertion_cache(result%block, result%event_slot))
+      if (cache%momentum_revision /= revision) then
+        if (allocated(cache%entries)) deallocate(cache%entries)
+        cache%momentum_revision = revision
+      end if
+    end associate
+  end subroutine prepare_insertion_cache
+
+
+  subroutine validate_insertion_key(kind, identifier, correlation_leg)
+    integer, intent(in) :: kind, identifier, correlation_leg
+
+    if (kind <= spin_density_no_insertion .or. &
+        kind > spin_density_color_insertion) then
+      call fail_spin_density_results('an insertion kind is invalid')
+    end if
+    if (identifier < 0) then
+      call fail_spin_density_results('an insertion identifier is negative')
+    end if
+    if (correlation_leg < 0) then
+      call fail_spin_density_results('a correlation leg is negative')
+    end if
+  end subroutine validate_insertion_key
 
 
   subroutine validate_result_identity(result)

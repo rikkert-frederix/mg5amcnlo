@@ -16,7 +16,7 @@ contains
     integer, intent(in) :: lun
     character(len=30), intent(inout) :: fname
     integer, intent(inout) :: lname
-    character(len=120) :: buffer
+    character(len=256) :: buffer
 
     file_counter = file_counter + 1
     if (file_counter < 10) then
@@ -50,7 +50,7 @@ contains
   subroutine close_bash_file(lun)
     implicit none
     integer, intent(in) :: lun
-    character(len=120) :: buffer
+    character(len=256) :: buffer
 
     write(lun, '(a)') '; do'
     do

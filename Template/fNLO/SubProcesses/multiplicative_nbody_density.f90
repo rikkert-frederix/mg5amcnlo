@@ -6,9 +6,9 @@ module multiplicative_nbody_density
        record_nbody_integrated_density_operator
   use nlo_contribution_bundle, only: contribution_for_fks, &
        contribution_has_virtual, contribution_is_nlo_decay, &
-       contribution_corrected_node
+       contribution_corrected_node, contribution_representative_fks
   use fnlo_process_common, only: nfksprocess, soft_counterevent, real_event, &
-       fkssymmetryfactorborn, xibsvcut_used
+       xibsvcut_used
   use spin_density_matrix_results, only: spin_density_no_insertion, &
        spin_density_virtual_insertion
   use multiplicative_density_terms, only: block_distribution_term, &
@@ -48,22 +48,25 @@ contains
     call begin_density_operator_recording(block, soft_counterevent, 0)
     call record_density_operator_primitive( &
          spin_density_no_insertion, 0, 0, 0, coefficients, .true.)
-    call finish_density_operator_recording(term, 1)
+    call finish_density_operator_recording(term, 1, 0)
   end subroutine build_multiplicative_lo_only_density_term
 
   subroutine build_multiplicative_lo_density_term( &
-       contribution, term, available)
+       contribution, term, available, channel_partition)
     integer, intent(in) :: contribution
     type(block_distribution_term), intent(out) :: term
     logical, intent(out) :: available
+    double precision, intent(in), optional :: channel_partition
     complex(kind=8) :: coefficients(density_scale_coefficient_count)
-    double precision :: local_prefactor
+    double precision :: local_prefactor, partition
     integer :: block
 
     available = .false.
+    call resolve_channel_partition(channel_partition, partition)
     call validate_active_contribution(contribution, block)
     call nbody_local_prefactor(block, local_prefactor, available)
     if (.not. available) return
+    local_prefactor = local_prefactor*partition
 
     coefficients = (0d0, 0d0)
     coefficients(1) = cmplx(local_prefactor, 0d0, kind=8)
@@ -71,24 +74,28 @@ contains
          block, soft_counterevent, 0)
     call record_density_operator_primitive( &
          spin_density_no_insertion, 0, 0, 0, coefficients, .true.)
-    call finish_density_operator_recording(term, 1)
+    call finish_density_operator_recording( &
+         term, 1, contribution_representative_fks(contribution))
     available = .true.
   end subroutine build_multiplicative_lo_density_term
 
 
   subroutine build_multiplicative_nbody_density_term( &
-       contribution, term, available)
+       contribution, term, available, channel_partition)
     integer, intent(in) :: contribution
     type(block_distribution_term), intent(out) :: term
     logical, intent(out) :: available
+    double precision, intent(in), optional :: channel_partition
     complex(kind=8) :: coefficients(density_scale_coefficient_count)
-    double precision :: local_prefactor
+    double precision :: local_prefactor, partition
     integer :: block, born_qcd_power
 
     available = .false.
+    call resolve_channel_partition(channel_partition, partition)
     call validate_active_contribution(contribution, block)
     call nbody_local_prefactor(block, local_prefactor, available)
     if (.not. available) return
+    local_prefactor = local_prefactor*partition
     born_qcd_power = sdm_multiplicative_born_qcd_power(block)
     if (born_qcd_power < 0) then
       call fail_multiplicative_nbody_density( &
@@ -117,7 +124,8 @@ contains
     coefficients = (0d0, 0d0)
     coefficients(1) = cmplx(local_prefactor, 0d0, kind=8)
     call scale_recorded_density_operator(coefficients)
-    call finish_density_operator_recording(term, 1)
+    call finish_density_operator_recording( &
+         term, 1, contribution_representative_fks(contribution))
     available = .true.
   end subroutine build_multiplicative_nbody_density_term
 
@@ -159,15 +167,29 @@ contains
     ! incoming integration weight.  This is only the local FKS projection
     ! factor that makes the three n-body radiation variables integrate to
     ! unity, matching COMPUTE_PREFACTORS_NBODY with its measure removed.
-    ! The event measure also contains the inverse probability of the sampled
-    ! FKS sector.  It must remain on every term: together with the random
-    ! sector selection it produces the sum over sectors, while
-    ! FKSSYMMETRYFACTORBORN partitions the single Born contribution.
+    ! The caller separately cancels the inverse probability of the sampled
+    ! FKS sector for these sector-independent n-body atoms.  In particular,
+    ! do not apply FKSSYMMETRYFACTORBORN here: that factor selects soft-gluon
+    ! sectors in the additive sector sum, whereas every multiplicative draw
+    ! must carry the same single Born/virtual atom.
     prefactor = real_radiation%xi_norm/ &
-         (cutoff*subtraction_shat/(16d0*pi**2))* &
-         fkssymmetryfactorborn
+         (cutoff*subtraction_shat/(16d0*pi**2))
     available = prefactor > 0d0
   end subroutine nbody_local_prefactor
+
+
+  subroutine resolve_channel_partition(requested, partition)
+    double precision, intent(in), optional :: requested
+    double precision, intent(out) :: partition
+
+    partition = 1d0
+    if (present(requested)) partition = requested
+    if (partition <= 0d0 .or. partition > 1d0 .or. &
+        partition /= partition) then
+      call fail_multiplicative_nbody_density( &
+           'the n-body integration-channel partition is invalid')
+    end if
+  end subroutine resolve_channel_partition
 
 
   subroutine validate_active_contribution(contribution, block)

@@ -161,6 +161,7 @@ program test_real_density
   if (.not. term%finalized) stop 12
   if (term%block /= 2 .or. term%event_slot /= 3) stop 13
   if (term%sign /= 1 .or. term%nlo_order /= 1) stop 14
+  if (term%luminosity_configuration /= 5) stop 21
   if (term%primitive_count /= 1) stop 15
   if (term%primitives(1)%insertion_kind /= 2) stop 16
   if (term%primitives(1)%insertion_identifier /= 23) stop 17
@@ -571,10 +572,14 @@ program test_collinear_density
   pref_cnt_coll = 0.5d0/cutoff*log(0.8d0/cutoff)*log(0.25d0)
   fsc = (pref_c + pref_coll + pref_cnt + pref_cnt_coll)*11d0
   fdsc1 = (0.5d0/0.25d0)/(200d0/(32d0*pi**2))*11d0
-  fdsc2 = 0.5d0/cutoff*log(0.8d0/cutoff)*11d0
+  fdsc2 = (0.5d0/cutoff*log(0.8d0/cutoff))/ &
+          (200d0/(32d0*pi**2))*11d0
   fdsc3 = 0.5d0/cutoff*(log(0.8d0)**2 - &
-                        log(cutoff)**2)/2d0*11d0
-  fdsc4 = fdsc2
+                        log(cutoff)**2)/2d0/ &
+          (200d0/(32d0*pi**2))*11d0
+  fdsc4 = ((0.5d0/0.25d0) + &
+           0.5d0/cutoff*log(0.8d0/cutoff))/ &
+          (200d0/(32d0*pi**2))*11d0
   call assert_close(scterm%primitives(1)%scale_coefficients(1), &
                     -2d0*(fdsc1 + fdsc2), 41)
   call assert_close(scterm%primitives(2)%scale_coefficients(1), &
