@@ -1015,6 +1015,24 @@ class TestFKSDecayChains(unittest.TestCase):
                           production_source)
             self.assertIn('DCONJG(JAMP_HEL(J,HP))', production_source)
 
+            with open(os.path.join(subprocess_dir, 'born.f')) as stream:
+                born_source = stream.read().upper()
+            self.assertIn(
+                'IF (MULTI_CHANNEL) CALL SDM_BORN_CHANNEL_WEIGHTS(P,AMP2)',
+                born_source)
+            self.assertIn(
+                'SUBROUTINE SDM_BORN_CHANNEL_WEIGHTS(P,AMP2)',
+                born_source)
+            self.assertIn(
+                'SUBROUTINE SBORN_FACTORIZED_CHANNEL_WEIGHTS(P)',
+                born_source)
+            self.assertIn('AMP2S=AMP2B', born_source)
+            for diagram in range(1, 4):
+                self.assertIn(
+                    'AMP2(%d)=AMP2(%d)+AMPLITUDES(%d)*' %
+                    (diagram, diagram, diagram),
+                    born_source)
+
             with open(os.path.join(
                     subprocess_dir, 'nlo_decay_info.dat')) as stream:
                 metadata = stream.read()
@@ -1538,6 +1556,21 @@ class TestFKSDecayChains(unittest.TestCase):
                 driver_source)
             self.assertIn(
                 'f(component_integral) = central_weight', driver_source)
+            additive_driver = driver_source.split(
+                'double precision function sigint_impl', 1)[1].split(
+                    'end function sigint_impl', 1)[0]
+            multiplicative_driver = driver_source.split(
+                'double precision function sigint_multiplicative_impl',
+                1)[1].split(
+                    'end function sigint_multiplicative_impl', 1)[0]
+            self.assertEqual(
+                additive_driver.count('call include_multichannel_enhance('),
+                3)
+            for mode in [1, 2, 3]:
+                self.assertIn(
+                    'if (production_contribution) '
+                    'call include_multichannel_enhance(%d)' % mode,
+                    multiplicative_driver)
             self.assertEqual(
                 driver_source.lower().count(
                     'call capture_multiplicative_snapshot'), 2)
@@ -1557,6 +1590,8 @@ class TestFKSDecayChains(unittest.TestCase):
                     subprocess_dir, 'fks_singular.f90')) as stream:
                 singular_source = ' '.join(
                     stream.read().lower().split())
+            self.assertIn(
+                'call sborn_factorized_channel_weights(', singular_source)
             self.assertIn(
                 'eik*iden_comp*g**2', singular_source)
             self.assertIn(

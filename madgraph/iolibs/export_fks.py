@@ -3852,6 +3852,13 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
       STOP 1
       END
 
+      SUBROUTINE SBORN_FACTORIZED_CHANNEL_WEIGHTS(P)
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      DOUBLE PRECISION P(0:3,NEXTERNAL-1)
+C     Legacy processes obtain their channel weights from SBORN itself.
+      END
+
       SUBROUTINE SBORN_SF_FACTORIZED(CONTRIBUTION,EVENT_SLOT,
      $ M,N,WGT)
       IMPLICIT NONE
@@ -4123,6 +4130,13 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             "INCLUDE 'nexternal.inc'",
             'REAL*8 P(0:3,NEXTERNAL-1)',
             'COMPLEX*16 ANS(2,0:1)',
+            'INTEGER NGRAPHS,NCOLOR',
+            'PARAMETER (NGRAPHS=%d,NCOLOR=%d)' % (ngraphs, ncolor),
+            'DOUBLE PRECISION AMP2(NGRAPHS),JAMP2(0:NCOLOR,0:1)',
+            'COMMON /TO_AMPS_BORN/ AMP2,JAMP2',
+            'INTEGER ISUM_HEL',
+            'LOGICAL MULTI_CHANNEL',
+            'COMMON /TO_MATRIX/ ISUM_HEL,MULTI_CHANNEL',
             'INTEGER NFKSprocess,GLU_IJ,CONTRIBUTION',
             'COMMON /C_NFKSPROCESS/NFKSPROCESS'])
         core.extend(start_dict['ij_lines'].splitlines())
@@ -4133,6 +4147,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
              else 'CONTRIBUTION=1'),
             'CALL SDM_BORN_SPLITORDERS_EXPLICIT(CONTRIBUTION,0,',
             '     $ GLU_IJ,ANS)',
+            'IF (MULTI_CHANNEL) CALL SDM_BORN_CHANNEL_WEIGHTS(P,AMP2)',
             'END',
             '',
             'SUBROUTINE SBORN_FACTORIZED(CONTRIBUTION,EVENT_SLOT,',
@@ -4148,6 +4163,20 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             'CALL SDM_BORN_SPLITORDERS_EXPLICIT(CONTRIBUTION,',
             '     $ EVENT_SLOT,GLU_IJ,ANS)',
             'CALL SBORN_FINALIZE_SPLITORDERS(ANS,ANS_SUMMED)',
+            'END',
+            '',
+            'SUBROUTINE SBORN_FACTORIZED_CHANNEL_WEIGHTS(P)',
+            'IMPLICIT NONE',
+            "INCLUDE 'nexternal.inc'",
+            'REAL*8 P(0:3,NEXTERNAL-1)',
+            'INTEGER NGRAPHS,NCOLOR',
+            'PARAMETER (NGRAPHS=%d,NCOLOR=%d)' % (ngraphs, ncolor),
+            'DOUBLE PRECISION AMP2B(NGRAPHS),JAMP2B(0:NCOLOR,0:1)',
+            'DOUBLE PRECISION AMP2S(NGRAPHS),JAMP2S(0:NCOLOR)',
+            'COMMON /TO_AMPS_BORN/ AMP2B,JAMP2B',
+            'COMMON /TO_AMPS/ AMP2S,JAMP2S',
+            'CALL SDM_BORN_CHANNEL_WEIGHTS(P,AMP2B)',
+            'AMP2S=AMP2B',
             'END',
             '',
             'SUBROUTINE SDM_BORN_SPLITORDERS_EXPLICIT(CONTRIBUTION,',
@@ -4185,6 +4214,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             '',
             self._spin_density_order_function(
                 matrix_element, 'GETORDPOWFROMINDEX_B')])
+        core.extend(density_exporter.born_channel_lines(matrix_element))
 
         for variant in born_variants:
             contribution = variant['contribution_id']

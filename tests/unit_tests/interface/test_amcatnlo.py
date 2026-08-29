@@ -43,6 +43,36 @@ class MGerror(Exception): pass
 class TestMadEventCmd(unittest.TestCase):
     """ check if the ValidCmd works correctly """
 
+    def test_fnlo_multiteration_component_closure_is_statistical(self):
+        """Independent MINT iteration averages need only close statistically."""
+
+        interface = object.__new__(run_mecmd.aMCatNLOCmd)
+        interface.stop_for_runweb = True
+        interface.run_card = {'nevents': 0}
+        interface.get_randinit_seed = lambda: 0
+        with tempfile.TemporaryDirectory() as output_root:
+            interface.me_dir = output_root
+            os.mkdir(pjoin(output_root, 'SubProcesses'))
+            components = [
+                {'id': index, 'label': 'C%d' % index,
+                 'value': value, 'error': 2.0}
+                for index, value in enumerate(
+                    [25.0, 25.0, 25.0, 30.0], start=1)]
+            job = {
+                'p_dir': 'P0_test', 'channel': '1', 'p_label': 'P0',
+                'result': 100.0, 'error': 5.0,
+                'resultABS': 110.0, 'errorABS': 6.0,
+                'err_perc': 5.0, 'err_percABS': 6.0/110.0*100.0,
+                'wgt_frac': 1.0,
+                'contribution_results': {'components': components}}
+
+            result = interface.write_res_txt_file([job], 0)
+
+            self.assertAlmostEqual(result['contributions']['closure'], 5.0)
+            self.assertTrue(os.path.isfile(pjoin(
+                output_root, 'SubProcesses',
+                'contribution_results_0.txt')))
+
     def test_fixed_order_refinement_splits_exact_doubling(self):
         """A refinement exactly twice as long uses available workers."""
 
@@ -502,15 +532,16 @@ class TestMadEventCmd(unittest.TestCase):
 
         with open(pjoin(subprocess_dir, 'cuts.f90')) as stream:
             cuts = stream.read().lower()
-        mask_call = cuts.index(
-            'call apply_decay_cut_mask(pp,istatus,ipdg)')
-        cut_call = cuts.index('passcuts = passcuts_user(pp,istatus,ipdg)')
+        mask_call = cuts.index('if (.not.cut_decays) then')
+        cut_call = cuts.index(
+            'passcuts_with_metadata=passcuts_user(pp,istatus,ipdg)')
         self.assertLess(mask_call, cut_call)
         self.assertIn('if (cut_decays) return', cuts)
+        self.assertIn('if (.not.particle_from_decay(i)) cycle', cuts)
         self.assertIn('if (event_from_decay(i)) then', cuts)
         self.assertIn('istatus(i)=decay_cut_status', cuts)
         self.assertIn('ipdg(i)=decay_cut_pdg', cuts)
-        self.assertIn('passcuts_pdgs(p_reco,istatus)', cuts)
+        self.assertIn('passcuts_pdgs(p_reco,istatus,ipdg)', cuts)
         self.assertIn('if (istatus(i).ne.1) cycle', cuts)
 
         with open(pjoin(subprocess_dir, 'setcuts_bridge.f')) as stream:

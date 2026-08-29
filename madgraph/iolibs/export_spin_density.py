@@ -308,6 +308,79 @@ class SpinDensityExporter(object):
         lines.extend(['AMPLITUDES=AMP', 'END'])
         writer.writelines(lines)
 
+    def born_channel_lines(self, matrix_element):
+        """Return the HELAS provider for Born SDE channel weights.
+
+        The factorized density-matrix contraction supplies the physical Born
+        normalization, but single-diagram-enhanced multichannel integration
+        additionally needs one positive ``AMP2`` entry per generated Born
+        configuration.  These entries are ratios only, so evaluate the
+        ordinary flattened Born amplitudes and reproduce the standard MG
+        definition, summed over external helicities, without replacing the
+        factorized Born result.
+        """
+
+        helicities = [tuple(row)
+                      for row in matrix_element.get_helicity_matrix()]
+        ncomb = len(helicities)
+        ngraphs = matrix_element.get_number_of_amplitudes()
+        nwavefunctions = matrix_element.get_number_of_wavefunctions()
+        nexternal, _ = matrix_element.get_nexternal_ninitial()
+        helas_calls = self.fortran_model.get_matrix_element_calls(
+            matrix_element)
+        amp2_lines = self.exporter.get_amp2_lines(matrix_element, [])
+        wavefunction_size = 20 if (
+            not self.exporter.model or any(
+                particle.get('spin') in [4, 5]
+                for particle in self.exporter.model.get('particles')
+                if particle)) else 8
+
+        lines = [
+            '',
+            'SUBROUTINE SDM_BORN_CHANNEL_WEIGHTS(P,AMP2)',
+            'IMPLICIT NONE',
+            'INTEGER NEXTERNAL,NCOMB,NGRAPHS',
+            ('PARAMETER (NEXTERNAL=%d,NCOMB=%d,NGRAPHS=%d)') % (
+                nexternal, ncomb, ngraphs),
+            'REAL*8 P(0:3,NEXTERNAL)',
+            'DOUBLE PRECISION AMP2(NGRAPHS)',
+            'INTEGER NHEL(NEXTERNAL,NCOMB),H',
+            'COMPLEX*16 AMPLITUDES(NGRAPHS)',
+            'DATA NHEL /%s/' % ','.join(
+                str(value) for helicity in helicities
+                for value in helicity),
+            'AMP2=0D0',
+            'DO H=1,NCOMB',
+            '  CALL SDM_BORN_CHANNEL_AMPLITUDES(P,NHEL(1,H),',
+            '     $ AMPLITUDES)',
+        ]
+        lines.extend('  ' + line.replace('AMP(', 'AMPLITUDES(')
+                     for line in amp2_lines)
+        lines.extend([
+            'ENDDO',
+            'END',
+            '',
+            'SUBROUTINE SDM_BORN_CHANNEL_AMPLITUDES(P,NHEL,AMP)',
+            'IMPLICIT NONE',
+            'INTEGER NEXTERNAL,NGRAPHS,NWAVEFUNCS',
+            ('PARAMETER (NEXTERNAL=%d,NGRAPHS=%d,NWAVEFUNCS=%d)') % (
+                nexternal, ngraphs, nwavefunctions),
+            'REAL*8 P(0:3,NEXTERNAL)',
+            'INTEGER NHEL(NEXTERNAL),IC(NEXTERNAL)',
+            'COMPLEX*16 AMP(NGRAPHS)',
+            'COMPLEX*16 W(%d,NWAVEFUNCS)' % wavefunction_size,
+            'COMPLEX*16 IMAG1',
+            'DOUBLE PRECISION ZERO',
+            'PARAMETER (IMAG1=(0D0,1D0))',
+            'PARAMETER (ZERO=0D0)',
+            'DATA IC /%d*1/' % nexternal,
+            "INCLUDE 'coupl.inc'",
+            'AMP=(0D0,0D0)',
+        ])
+        lines.extend(helas_calls)
+        lines.append('END')
+        return lines
+
     def write_color_provider(self, writer, plan, variant):
         """Write a full complex density with one local colour insertion."""
 

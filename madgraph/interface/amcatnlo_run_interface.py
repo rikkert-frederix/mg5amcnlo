@@ -3385,9 +3385,18 @@ RESTART = %(mint_mode)s
             contribution_sum = sum(component['value']
                                    for component in aggregated)
             closure = contribution_sum - cross_sect_dict['xsect']
-            closure_tolerance = 1e-9 * max(
+            numerical_tolerance = 1e-9 * max(
                 1.0, abs(contribution_sum),
                 abs(cross_sect_dict['xsect']))
+            # MINT combines iterations independently for every returned
+            # integral.  The component estimators therefore close exactly
+            # within one iteration, but their separately variance-weighted
+            # multi-iteration averages only close statistically.
+            closure_error = math.sqrt(
+                cross_sect_dict['errt']**2 +
+                sum(component['error']**2 for component in aggregated))
+            closure_tolerance = max(
+                numerical_tolerance, 6.0*closure_error)
             if abs(closure) > closure_tolerance:
                 raise aMCatNLOError(
                     'Resolved bundled contributions do not close to the '

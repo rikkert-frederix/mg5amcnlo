@@ -371,6 +371,10 @@ contains
     if (uses_factorized_kernel_state()) then
       call sborn_factorized( &
            active_nlo_contribution(), event_slot, weight)
+      if (multi_channel) then
+        call sborn_factorized_channel_weights( &
+             stored_event_momenta(0, 1, event_slot))
+      end if
       if (has_nlo_contribution_bundle() .and. &
           spin_density_fks_collection_enabled()) then
         call load_spin_density_born_matrix( &

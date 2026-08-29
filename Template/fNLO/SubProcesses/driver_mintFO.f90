@@ -702,7 +702,11 @@ contains
       call compute_prefactors_nbody(vegas_wgt)
       call set_alphas( &
            event_momenta(0:3, 1:nexternal, soft_counterevent))
-      call include_multichannel_enhance(1)
+      ! The multiplicative contraction contains every physical block, so the
+      ! global Born SDE partition must be attached exactly once.  Put it on
+      ! production; applying it independently to the decay increments would
+      ! raise the channel weight to the number of corrected blocks.
+      if (production_contribution) call include_multichannel_enhance(1)
       call compute_born()
       call begin_bundle_virtual_tricks()
       call compute_nbody_noborn()
@@ -759,7 +763,7 @@ contains
       if (event_momenta(0, 1, soft_counterevent) > 0d0) then
         call set_alphas( &
              event_momenta(0:3, 1:nexternal, soft_counterevent))
-        call include_multichannel_enhance(3)
+        if (production_contribution) call include_multichannel_enhance(3)
         call compute_soft_counter_term()
         if (event_momenta(0, 1, soft_collinear_counterevent) > 0d0) then
           call compute_soft_collinear_ct_impl()
@@ -771,7 +775,7 @@ contains
         call compute_collinear_counter_term()
       end if
       call set_alphas(momentum)
-      call include_multichannel_enhance(2)
+      if (production_contribution) call include_multichannel_enhance(2)
       call compute_real_emission()
     end do
 
