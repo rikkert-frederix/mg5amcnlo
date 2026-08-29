@@ -1033,6 +1033,136 @@ class TestFKSDecayChains(unittest.TestCase):
         self.assertTrue(specification['massless_bottom'])
         self.assertTrue(matrix_element.nlo_decay_metadata['fast_virtual'])
 
+    def test_analytic_three_body_top_virtual_maps_particle_momenta(self):
+        command = MasterCmd()
+        command.exec_cmd(
+            'import model loop_sm-no_b_mass', printcmd=False, precmd=True)
+        command.exec_cmd(
+            'generate u u~ > t t~ [QCD], '
+            '(t > e+ ve b QED=2 [QCD]), '
+            '(t~ > e- ve~ b~ QED=2 [QCD])',
+            printcmd=False, precmd=True)
+        matrix_element = fks_helas_objects.FKSHelasMultiProcess(
+            command._fks_multi_proc,
+            loop_optimized=False)['matrix_elements'][0]
+
+        specifications = dict(
+            (variant['analytic_top_decay']['parent_pdg'],
+             variant['analytic_top_decay'])
+            for variant in matrix_element.spin_density_plan[
+                'virtual_variants']
+            if variant.get('analytic_top_decay'))
+        self.assertEqual(set(specifications), {6, -6})
+        self.assertEqual(specifications[6], {
+            'mode': 'TOP_3BODY',
+            'parent_pdg': 6,
+            'parent_position': 1,
+            'bottom_position': 4,
+            'massless_bottom': True,
+            'charged_lepton_pdg': -11,
+            'neutrino_pdg': 12,
+            'charged_lepton_position': 2,
+            'neutrino_position': 3})
+        self.assertEqual(specifications[-6], {
+            'mode': 'TOP_3BODY',
+            'parent_pdg': -6,
+            'parent_position': 1,
+            'bottom_position': 4,
+            'massless_bottom': True,
+            'charged_lepton_pdg': 11,
+            'neutrino_pdg': -12,
+            'charged_lepton_position': 2,
+            'neutrino_position': 3})
+        self.assertEqual(
+            [entry['fast_virtual'] for entry in
+             matrix_element.bundle_contributions],
+            [False, True, True])
+
+    def test_analytic_three_body_top_virtual_is_exported(self):
+        command = MasterCmd()
+        command.exec_cmd(
+            'import model loop_sm-no_b_mass', printcmd=False, precmd=True)
+        command.exec_cmd(
+            'generate u u~ > t t~ [QCD], '
+            '(t > e+ ve b QED=2 [QCD]), '
+            '(t~ > e- ve~ b~ QED=2 [QCD])',
+            printcmd=False, precmd=True)
+        command.exec_cmd(
+            'set loop_optimized_output False',
+            printcmd=False, precmd=True)
+
+        with tempfile.TemporaryDirectory() as output_dir:
+            process_dir = os.path.join(output_dir, 'PROC')
+            command.exec_cmd(
+                'output fNLO %s' % process_dir,
+                printcmd=False, precmd=True)
+            subprocess_root = os.path.join(process_dir, 'SubProcesses')
+            subprocesses = [
+                os.path.join(subprocess_root, name)
+                for name in os.listdir(subprocess_root)
+                if name.startswith('P') and
+                os.path.isdir(os.path.join(subprocess_root, name))]
+            self.assertEqual(len(subprocesses), 1)
+            subprocess_dir = subprocesses[0]
+            density_sources = []
+            for name in os.listdir(subprocess_dir):
+                if (name.startswith('spin_density_') and
+                        'virtual_contribution_' in name and
+                        name.endswith('.f')):
+                    with open(os.path.join(subprocess_dir, name)) as stream:
+                        source = stream.read()
+                    if 'USE TOP_DECAY_VIRTUAL_CDR' in source:
+                        density_sources.append(source)
+            self.assertEqual(len(density_sources), 2)
+            combined = '\n'.join(density_sources)
+            flattened = ' '.join(
+                combined.replace('$', ' ').split()).replace(' ,', ',')
+            expected_call = (
+                'CALL TDV_VIRTUAL_RHO_TOP_3BODY(P(0,1),P(0,4), '
+                'P(0,2),P(0,3), MDL_MT,SDM_MB,MDL_MW,MU_R,'
+                'SDM_ALPHAS,GC_11, SDM_RAW_RHO,MDL_WW)')
+            self.assertEqual(flattened.count(expected_call), 2)
+            self.assertEqual(
+                combined.count('SDM_CP_PHASE /1,-1/'), 2)
+            self.assertEqual(
+                combined.count('SDM_VALIDATION_POINTS=2'), 2)
+            self.assert_fixed_form_call_continuations(
+                combined, 'TDV_VIRTUAL_RHO_TOP_3BODY')
+            with open(os.path.join(
+                    subprocess_dir, 'top_decay_virtual_cdr.f90')) as stream:
+                analytic_source = stream.read().lower()
+            self.assertIn(
+                'denom = gc11/cmplx(q2-mw*mw, mw*ww, real64)',
+                analytic_source)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'virtual_contribution_chooser.f')) as stream:
+                chooser = ' '.join(
+                    stream.read().replace('$', ' ').split())
+            density_order_chooser = chooser.split(
+                'INTEGER FUNCTION SDM_GETORDPOWFROMINDEX_ML5', 1)[1]
+            for contribution in [2, 3]:
+                result_order_case = density_order_chooser.split(
+                    'CASE (%d) SELECT CASE (IAMP)' % contribution, 1)[1]
+                result_order_case = result_order_case.split(
+                    'CASE DEFAULT', 1)[0]
+                self.assertIn(
+                    'CASE (1) SDM_GETORDPOWFROMINDEX_ML5 = 6',
+                    result_order_case)
+                self.assertIn(
+                    'CASE (2) SDM_GETORDPOWFROMINDEX_ML5 = 8',
+                    result_order_case)
+            with open(os.path.join(
+                    subprocess_dir, 'fks_contributions.f90')) as stream:
+                contribution_source = stream.read().lower()
+            self.assertIn(
+                'active_contribution_has_fast_virtual() .or.',
+                contribution_source)
+            self.assertIn(
+                'nlo_decay_has_fast_virtual()', contribution_source)
+            self.assertIn(
+                'if (.not. fast_virtual) then', contribution_source)
+
     def test_nlo_decay_virtual_composes_in_optimized_representation(self):
         command = self.generate(
             'u u~ > t t~, '
@@ -1940,6 +2070,9 @@ class TestFKSDecayChains(unittest.TestCase):
             [(6, 8)])
         self.assertEqual(
             matrix_element.bundle_contributions[1]['virtual_orders'], [])
+        self.assertEqual(
+            matrix_element.bundle_contributions[1][
+                'virtual_result_orders'], [(6, 8)])
         analytic = next(
             variant['analytic_top_decay']
             for variant in
@@ -2143,8 +2276,22 @@ class TestFKSDecayChains(unittest.TestCase):
             with open(os.path.join(
                     subprocess_dir,
                     'virtual_contribution_chooser.f')) as stream:
+                chooser_source = stream.read()
                 chooser = ' '.join(
-                    stream.read().replace('$', ' ').split())
+                    chooser_source.replace('$', ' ').split())
+            density_order_chooser = chooser.split(
+                'INTEGER FUNCTION SDM_GETORDPOWFROMINDEX_ML5', 1)[1]
+            for contribution in [2, 3]:
+                result_order_case = density_order_chooser.split(
+                    'CASE (%d) SELECT CASE (IAMP)' % contribution, 1)[1]
+                result_order_case = result_order_case.split(
+                    'CASE DEFAULT', 1)[0]
+                self.assertIn(
+                    'CASE (1) SDM_GETORDPOWFROMINDEX_ML5 = 6',
+                    result_order_case)
+                self.assertIn(
+                    'CASE (2) SDM_GETORDPOWFROMINDEX_ML5 = 4',
+                    result_order_case)
             for contribution in [1, 2, 3]:
                 self.assertIn(
                     'CALL SDM_VIRTUAL_CONTRIBUTION_%d(0, ANS' %

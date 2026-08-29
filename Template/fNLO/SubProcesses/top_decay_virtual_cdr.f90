@@ -1,11 +1,12 @@
 module top_decay_virtual_cdr
   !! Analytic renormalized QCD one-loop x Born interference for t -> b W+
-  !! and t -> b l+ nu_l through a zero-width off-shell W.
+  !! and t -> b l+ nu_l through an off-shell W.
   !!
   !! CDR/HV (loop_sm lhv=1).  In the two-body process the top and W are
   !! stable on-shell external particles.  In the three-body process the top
-  !! is on shell and the internal W has an identically zero-width propagator.
-  !! No complex masses enter either calculation.
+  !! is on shell and the internal W can use the same fixed-width propagator as
+  !! the generated loop_sm amplitude.  No complex masses enter either
+  !! calculation.
   !!
   !! Laurent order follows MadLoop: (finite, 1/eps, 1/eps^2).  Specialized
   !! loop-mode IXXXXX/OXXXXX wavefunctions and MadGraph's VXXXXX preserve the
@@ -276,21 +277,26 @@ contains
   end subroutine tdv_virtual_scalar_prepared
 
 
-  subroutine tdv_virtual_rho_top_3body(pt, pb, pl, pnu, mt, mb, mw, mur, alphas, gc11, rho)
+  subroutine tdv_virtual_rho_top_3body(pt, pb, pl, pnu, mt, mb, mw, &
+                                      mur, alphas, gc11, rho, ww)
     !! One massless flavor t -> b l+ nu_l.  Top order is (-1,+1);
     !! bottom is traced immediately and the unique nonzero lepton helicities
-    !! are implicit.
+    !! are implicit.  The optional fixed W width defaults to zero for
+    !! compatibility with the standalone topdecay interface.
     real(real64), intent(in) :: pt(0:3), pb(0:3), pl(0:3), pnu(0:3)
     real(real64), intent(in) :: mt, mb, mw, mur, alphas
     complex(real64), intent(in) :: gc11
     complex(real64), intent(out) :: rho(3,2,2)
-    real(real64) :: coeff(3,6), asfac, q(0:3), q2, qmass
+    real(real64), intent(in), optional :: ww
+    real(real64) :: coeff(3,6), asfac, q(0:3), q2, qmass, wwidth
     real(real64) :: diagonal(3,2)
     complex(real64) :: ft(8,2), fb(8,2), fw(8)
     complex(real64) :: born(2), loop(3,2), off_diagonal(3)
     complex(real64) :: ptdot, pbdot
     integer :: it, ib, k
 
+    wwidth = 0.0_real64
+    if (present(ww)) wwidth = ww
     q = pl + pnu
     q2 = q(0)*q(0) - q(1)*q(1) - q(2)*q(2) - q(3)*q(3)
     qmass = sqrt(q2)
@@ -298,7 +304,7 @@ contains
     asfac = alphas*cf/(4.0_real64*pi)
     call incoming_spinor_pair(pt, mt, ft)
     call outgoing_spinors(pb, mb, fb)
-    call leptonic_w_current(pl, pnu, gc11, mw, q2, fw)
+    call leptonic_w_current(pl, pnu, gc11, mw, wwidth, q2, fw)
     pbdot = pb(0)*fw(5) - pb(1)*fw(6) - pb(2)*fw(7) - pb(3)*fw(8)
     diagonal = 0.0_real64
     off_diagonal = (0.0_real64, 0.0_real64)
@@ -344,16 +350,23 @@ contains
   end subroutine tdv_virtual_rho_top_3body
 
 
-  subroutine tdv_virtual_scalar_3body(pt, pb, pl, pnu, mt, mb, mw, mur, alphas, gc11, born_me, virtual)
-    !! Spin/color averaged MadLoop scalar for one massless lepton flavor.
+  subroutine tdv_virtual_scalar_3body(pt, pb, pl, pnu, mt, mb, mw, &
+                                     mur, alphas, gc11, born_me, virtual, ww)
+    !! Spin/color averaged MadLoop scalar for one massless lepton flavor.  The
+    !! optional fixed W width defaults to zero.
     real(real64), intent(in) :: pt(0:3), pb(0:3), pl(0:3), pnu(0:3)
     real(real64), intent(in) :: mt, mb, mw, mur, alphas
     complex(real64), intent(in) :: gc11
     real(real64), intent(out) :: born_me, virtual(3)
+    real(real64), intent(in), optional :: ww
     complex(real64) :: born(2,2), loop(3,2,2)
+    real(real64) :: wwidth
     integer :: it, k, nk
 
-    call helicity_amplitudes_3body(pt, pb, pl, pnu, mt, mb, mw, mur, alphas, gc11, born, loop)
+    wwidth = 0.0_real64
+    if (present(ww)) wwidth = ww
+    call helicity_amplitudes_3body(pt, pb, pl, pnu, mt, mb, mw, &
+                                  wwidth, mur, alphas, gc11, born, loop)
     nk = merge(3, 2, mb == 0.0_real64)
     born_me = 0.0_real64
     virtual = 0.0_real64
@@ -421,9 +434,10 @@ contains
   end subroutine helicity_amplitudes_prepared
 
 
-  subroutine helicity_amplitudes_3body(pt, pb, pl, pnu, mt, mb, mw, mur, alphas, gc11, born, loop)
+  subroutine helicity_amplitudes_3body(pt, pb, pl, pnu, mt, mb, mw, &
+                                      ww, mur, alphas, gc11, born, loop)
     real(real64), intent(in) :: pt(0:3), pb(0:3), pl(0:3), pnu(0:3)
-    real(real64), intent(in) :: mt, mb, mw, mur, alphas
+    real(real64), intent(in) :: mt, mb, mw, ww, mur, alphas
     complex(real64), intent(in) :: gc11
     complex(real64), intent(out) :: born(2,2), loop(3,2,2)
     real(real64) :: coeff(3,6), asfac, q(0:3), q2, qmass
@@ -440,7 +454,7 @@ contains
     asfac = alphas*cf/(4.0_real64*pi)
     call incoming_spinor_pair(pt, mt, ft)
     call outgoing_spinors(pb, mb, fb)
-    call leptonic_w_current(pl, pnu, gc11, mw, q2, fw)
+    call leptonic_w_current(pl, pnu, gc11, mw, ww, q2, fw)
 
     born = (0.0_real64, 0.0_real64)
     loop = (0.0_real64, 0.0_real64)
@@ -650,12 +664,12 @@ contains
   end subroutine vector_wavefunctions
 
 
-  subroutine leptonic_w_current(pl, pnu, gc11, mw, q2, fw)
-    !! ALOHA loop-mode FFV2_3 with W width fixed identically to zero.  The
-    !! q_mu*q_nu term vanishes analytically against the massless lepton current.
+  subroutine leptonic_w_current(pl, pnu, gc11, mw, ww, q2, fw)
+    !! ALOHA FFV2_3 with its fixed-width propagator.  The q_mu*q_nu term
+    !! vanishes analytically against the massless lepton current.
     real(real64), intent(in) :: pl(0:3), pnu(0:3)
     complex(real64), intent(in) :: gc11
-    real(real64), intent(in) :: mw, q2
+    real(real64), intent(in) :: mw, ww, q2
     complex(real64), intent(out) :: fw(8)
     real(real64) :: sl, sn
     complex(real64) :: l5, l6, n7, n8, denom
@@ -687,7 +701,7 @@ contains
     end if
 
     fw(1:4) = cmplx(pl+pnu, 0.0_real64, real64)
-    denom = gc11/(q2-mw*mw)
+    denom = gc11/cmplx(q2-mw*mw, mw*ww, real64)
     fw(5) = -ci*denom*( n7*l5 + n8*l6)
     fw(6) = -ci*denom*(-n8*l5 - n7*l6)
     fw(7) = -ci*denom*(-ci*n8*l5 + ci*n7*l6)

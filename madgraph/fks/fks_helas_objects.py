@@ -769,15 +769,22 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
                 fast_virtual = bool(
                     virtual_variants and
                     virtual_variants[0].get('analytic_top_decay'))
-                virtual_orders = []
-                if virtual is not None and not fast_virtual:
+                virtual_result_orders = []
+                if virtual is not None:
                     squared_orders, _ = virtual.get_split_orders_mapping()
-                    virtual_orders = [
+                    virtual_result_orders = [
                         tuple(order[0]) if (order and
                               isinstance(order[0], tuple)) else tuple(order)
                         for order in squared_orders]
-                    virtual_orders = self._global_virtual_orders(
-                        member_plan, active_component, virtual_orders)
+                    virtual_result_orders = self._global_virtual_orders(
+                        member_plan, active_component,
+                        virtual_result_orders)
+                # Fast analytic virtuals are evaluated at every point and
+                # therefore need no approximation grids.  They still need
+                # their global split order when BinothLHA stores the exact
+                # result in the common amplitude-order array.
+                virtual_orders = ([] if fast_virtual else
+                                  virtual_result_orders)
                 production.bundle_contributions.append({
                     'id': contribution_id,
                     'kind': ('PRODUCTION' if contribution_id == 1
@@ -790,6 +797,7 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
                     'optimized_virtual': bool(
                         virtual is not None and virtual.optimized_output),
                     'virtual_orders': virtual_orders,
+                    'virtual_result_orders': virtual_result_orders,
                     'parent_pdg': (0 if contribution_id == 1 else
                                    metadata['parent_pdg']),
                     'parent_occurrence': (0 if contribution_id == 1 else

@@ -1646,8 +1646,13 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                         '      CASE (%d)\n'
                         '        CONTINUE' % identifier)
                 amplitude_cases = []
-                for amplitude, orders in enumerate(
-                        contribution['virtual_orders'], 1):
+                # Approximation-grid ownership and result bookkeeping are
+                # deliberately distinct.  An analytic virtual owns no grid,
+                # but its exact result must still be routed to the complete
+                # decay chain's coupling-order slot.
+                result_orders = contribution.get(
+                    'virtual_result_orders', contribution['virtual_orders'])
+                for amplitude, orders in enumerate(result_orders, 1):
                     coupling_cases = [
                         '          CASE (%d)\n'
                         '            GETORDPOWFROMINDEX_ML5 = %d' %

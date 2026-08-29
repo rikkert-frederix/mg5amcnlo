@@ -129,7 +129,7 @@ class SpinDensityExporter(object):
 
     @staticmethod
     def _analytic_top_decay_wrapper_lines(variant):
-        """Return the checked analytic/MadLoop two-body decay dispatcher."""
+        """Return the checked analytic/MadLoop top-decay dispatcher."""
 
         specification = variant.get('analytic_top_decay')
         if not specification:
@@ -159,6 +159,18 @@ class SpinDensityExporter(object):
             # reversed.  These are the corresponding HELAS charge-
             # conjugation phases, up to one irrelevant common sign.
             charge_phases = (1, -1, -1, 1, 1, -1)
+        elif mode == 'TOP_3BODY':
+            open_size = 2
+            analytic_call = [
+                ('CALL TDV_VIRTUAL_RHO_TOP_3BODY(P(0,%d),P(0,%d),' % (
+                    specification['parent_position'],
+                    specification['bottom_position'])),
+                '     $ P(0,%d),P(0,%d),' % (
+                    specification['charged_lepton_position'],
+                    specification['neutrino_position']),
+                '     $ MDL_MT,SDM_MB,MDL_MW,MU_R,SDM_ALPHAS,GC_11,',
+                '     $ SDM_RAW_RHO,MDL_WW)']
+            charge_phases = (1, -1)
         else:
             raise MadGraph5Error(
                 'Unknown analytic top-decay open-spin mode %s' % mode)

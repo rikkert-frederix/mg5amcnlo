@@ -27,7 +27,11 @@ deterministic.
 For loop_sm and loop_sm-no_b_mass, virtual corrections to an on-shell
 t -> b W+ or t~ -> b~ W- block use the bundled analytic CDR spin-density
 matrix. This applies both when the W is external to the block and when its
-decay leaves its spin index open. Each generated provider first compares all
+decay leaves its spin index open. Direct three-body t -> b l+ vl and
+t~ -> b~ l- vl~ blocks are also supported for massless charged leptons. Their
+bottom, charged-lepton, and neutrino momenta are selected by PDG identity,
+independently of generated leg order, and their internal W uses the same
+fixed-width propagator as loop_sm. Each generated provider first compares all
 complex finite, single-pole, and double-pole density entries against MadLoop
 at two distinct boosted block-local phase-space points and stops on a
 discrepancy. It then uses the analytic result at every subsequent point.

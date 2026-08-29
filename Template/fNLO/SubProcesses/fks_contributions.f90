@@ -11,10 +11,12 @@ module fks_contributions_module
        fetch_factorized_radiation_state
   use decay_chain_metadata, only: has_decay_chains
   use decay_chain_kinematics, only: fks_leg_mass
-  use nlo_decay_metadata, only: has_nlo_decay, nlo_decay_corrected_node
+  use nlo_decay_metadata, only: has_nlo_decay, nlo_decay_corrected_node, &
+                                nlo_decay_has_fast_virtual
   use nlo_decay_kinematics, only: nlo_decay_fks_sister_mass
   use nlo_contribution_bundle, only: active_contribution_has_virtual, &
-       active_virtual_grid_index, active_contribution_is_production
+       active_contribution_has_fast_virtual, active_virtual_grid_index, &
+       active_contribution_is_production
   use fks_singular_module, only: evaluate_fks_sij, sreal, sreal_deg, &
                                  bornsoftvirtual, fks_subtraction_shat, &
                                  evaluate_born_matrix
@@ -225,6 +227,7 @@ contains
     real :: tBefore, tAfter
     integer orders(nsplitorders)
     integer iamp, virtual_grid
+    logical fast_virtual
 
     double precision wgt1, wgt2, wgt3, bsv_wgt, virt_wgt, born_wgt, g22, wgt4
     type(factorized_radiation_state) :: real_radiation, soft_radiation
@@ -258,6 +261,8 @@ contains
 ! Special for the soft-virtual needed for the virt-tricks. The
 ! *_wgt_mint variable should be directly passed to the mint-integrator
 ! and not be part of the plots nor computation of the cross section.
+    fast_virtual = active_contribution_has_fast_virtual() .or. &
+         nlo_decay_has_fast_virtual()
     if (active_contribution_has_virtual()) then
       virt_wgt_mint(0) = virt_wgt_mint(0) + virt_wgt*f_nb
       born_wgt_mint(0) = born_wgt_mint(0) + born_wgt*f_b
@@ -265,20 +270,22 @@ contains
     do iamp = 1, amp_split_size
       if (.not. active_contribution_has_virtual()) exit
       if (amp_split_virt(iamp) .eq. 0d0) cycle
-      virtual_grid = active_virtual_grid_index(iamp, amp_split_size)
-      if (virtual_grid == 0) then
-        write (*,*) 'ERROR: a virtual weight has no bundle grid'
-        stop 1
+      wgt1 = amp_split_virt(iamp)*f_nb
+      if (.not. fast_virtual) then
+        virtual_grid = active_virtual_grid_index(iamp, amp_split_size)
+        if (virtual_grid == 0) then
+          write (*,*) 'ERROR: a virtual weight has no bundle grid'
+          stop 1
+        end if
+        virt_wgt_mint(virtual_grid) = &
+             virt_wgt_mint(virtual_grid) + wgt1
+        born_wgt_mint(virtual_grid) = born_wgt_mint(virtual_grid) + &
+             amp_split_born_for_virt(iamp)*f_nb
       end if
       call amp_split_pos_to_orders(iamp, orders)
       QCD_power = orders(qcd_pos)
       orders_tag = get_orders_tag(orders)
       amp_pos = iamp
-      wgt1 = amp_split_virt(iamp)*f_nb
-      virt_wgt_mint(virtual_grid) = &
-           virt_wgt_mint(virtual_grid) + wgt1
-      born_wgt_mint(virtual_grid) = born_wgt_mint(virtual_grid) + &
-           amp_split_born_for_virt(iamp)*f_nb
       wgt1 = wgt1/g**(QCD_power)
       call add_wgt(soft_counterevent, virtual_contribution, wgt1, 0d0, 0d0)
     end do

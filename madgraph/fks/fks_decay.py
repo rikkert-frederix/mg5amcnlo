@@ -1424,13 +1424,15 @@ def _local_spin_density_provider(matrix_element, context, label):
 
 
 def _analytic_top_decay_virtual_spec(plan, variant):
-    """Describe a loop_sm two-body top decay supported analytically.
+    """Describe a loop_sm top decay supported analytically.
 
     The dedicated CDR kernel is deliberately selected conservatively.  Its
     normalization and helicity phases are those of the loop_sm ``tbW``
-    vertex, so an arbitrary model or a different direct decay must continue
-    to use the generated MadLoop provider.  The returned local leg positions
-    are one based, matching generated Fortran momentum arrays.
+    vertex.  It supports either the direct two-body decay or a three-body
+    decay through one massless charged-lepton current; arbitrary models and
+    other direct decays must continue to use the generated MadLoop provider.
+    Returned local leg positions are one based, matching generated Fortran
+    momentum arrays.
     """
 
     if variant.get('context_kind') != 'NLO_DECAY':
@@ -1457,15 +1459,14 @@ def _analytic_top_decay_virtual_spec(plan, variant):
     legs = sorted(process.get('legs'), key=lambda leg: leg.get('number'))
     initial = [leg for leg in legs if not leg.get('state')]
     final = [leg for leg in legs if leg.get('state')]
-    if len(initial) != 1 or len(final) != 2:
+    if len(initial) != 1 or len(final) not in (2, 3):
         return None
     expected_bottom = 5 if parent_pdg > 0 else -5
     expected_w = 24 if parent_pdg > 0 else -24
     if initial[0].get('id') != parent_pdg:
         return None
     bottom = [leg for leg in final if leg.get('id') == expected_bottom]
-    vector = [leg for leg in final if leg.get('id') == expected_w]
-    if len(bottom) != 1 or len(vector) != 1:
+    if len(bottom) != 1:
         return None
 
     top_particle = model.get_particle(parent_pdg)
@@ -1485,24 +1486,63 @@ def _analytic_top_decay_virtual_spec(plan, variant):
         return None
 
     open_nodes = tuple(provider['open_nodes'])
-    if open_nodes == (active,):
-        open_mode = 'TOP'
-    elif (len(open_nodes) == 2 and open_nodes[0] == active and
-          plan['topology']['nodes'][open_nodes[1] - 1]['pdg'] ==
-          expected_w):
-        open_mode = 'TOP_W'
-    else:
-        return None
-
     positions = dict((leg.get('number'), index + 1)
                      for index, leg in enumerate(legs))
-    return {
-        'mode': open_mode,
+    specification = {
         'parent_pdg': parent_pdg,
         'parent_position': positions[initial[0].get('number')],
         'bottom_position': positions[bottom[0].get('number')],
-        'vector_position': positions[vector[0].get('number')],
         'massless_bottom': bottom_mass == 'ZERO'}
+
+    if len(final) == 2:
+        vector = [leg for leg in final if leg.get('id') == expected_w]
+        if len(vector) != 1:
+            return None
+        if open_nodes == (active,):
+            specification['mode'] = 'TOP'
+        elif (len(open_nodes) == 2 and open_nodes[0] == active and
+              plan['topology']['nodes'][open_nodes[1] - 1]['pdg'] ==
+              expected_w):
+            specification['mode'] = 'TOP_W'
+        else:
+            return None
+        specification['vector_position'] = positions[
+            vector[0].get('number')]
+        return specification
+
+    if open_nodes != (active,):
+        return None
+    lepton_pairs = []
+    for charged_abs, neutrino_abs in ((11, 12), (13, 14), (15, 16)):
+        charged_pdg = -charged_abs if parent_pdg > 0 else charged_abs
+        neutrino_pdg = neutrino_abs if parent_pdg > 0 else -neutrino_abs
+        charged = [leg for leg in final if leg.get('id') == charged_pdg]
+        neutrino = [leg for leg in final if leg.get('id') == neutrino_pdg]
+        if len(charged) == 1 and len(neutrino) == 1:
+            lepton_pairs.append((charged[0], neutrino[0]))
+    if len(lepton_pairs) != 1:
+        return None
+    charged, neutrino = lepton_pairs[0]
+    if set(leg.get('number') for leg in final) != {
+            bottom[0].get('number'), charged.get('number'),
+            neutrino.get('number')}:
+        return None
+    charged_particle = model.get_particle(charged.get('id'))
+    neutrino_particle = model.get_particle(neutrino.get('id'))
+    if (charged_particle is None or neutrino_particle is None or
+            charged_particle.get('mass').upper() != 'ZERO' or
+            neutrino_particle.get('mass').upper() != 'ZERO'):
+        return None
+    vector_width = vector_particle.get('width').upper()
+    if vector_width not in ('WW', 'MDL_WW'):
+        return None
+    specification.update({
+        'mode': 'TOP_3BODY',
+        'charged_lepton_pdg': charged.get('id'),
+        'neutrino_pdg': neutrino.get('id'),
+        'charged_lepton_position': positions[charged.get('number')],
+        'neutrino_position': positions[neutrino.get('number')]})
+    return specification
 
 
 def _nlo_decay_spin_density_plan(composition, metadata, decay_born,
