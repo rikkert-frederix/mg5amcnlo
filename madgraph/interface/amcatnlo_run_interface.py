@@ -3065,6 +3065,7 @@ RESTART = %(mint_mode)s
     def append_the_results(self,jobs,integration_step):
         """Appends the results for each of the jobs in the job list"""
         error_found=False
+        multiplicative_bundle = self.fnlo_multiplicative_enabled()
         for job in jobs:
             try:
                 if integration_step >= 0 :
@@ -3097,7 +3098,7 @@ RESTART = %(mint_mode)s
             bundle_metadata = pjoin(
                 os.path.dirname(job['dirname']),
                 'nlo_contribution_info.dat')
-            if os.path.exists(bundle_metadata):
+            if os.path.exists(bundle_metadata) and not multiplicative_bundle:
                 try:
                     job['contribution_results'] = \
                         self.read_fnlo_contribution_results(
@@ -3124,6 +3125,34 @@ RESTART = %(mint_mode)s
                    'Please check the .log files inside the directories which failed:\n' +
                                 '\n'.join(error_log)+'\n')
 
+
+    @staticmethod
+    def read_fnlo_decay_combination(path):
+        """Read the optional NLO decay-combination mode from a decay card."""
+
+        if not os.path.isfile(path):
+            return 'ADDITIVE'
+        with open(path) as decay_card:
+            records = [line.split() for line in decay_card
+                       if line.strip() and not line.lstrip().startswith('#')
+                       and line.split()[0].upper() ==
+                       'NLO_DECAY_COMBINATION']
+        if not records:
+            return 'ADDITIVE'
+        if len(records) != 1 or len(records[0]) != 2:
+            raise aMCatNLOError(
+                'Malformed NLO_DECAY_COMBINATION record in %s' % path)
+        mode = records[0][1].upper()
+        if mode not in ['ADDITIVE', 'MULTIPLICATIVE']:
+            raise aMCatNLOError(
+                'Unknown NLO_DECAY_COMBINATION %s in %s' % (mode, path))
+        return mode
+
+    def fnlo_multiplicative_enabled(self):
+        """Return whether the current fNLO decay bundle is multiplicative."""
+
+        return self.read_fnlo_decay_combination(pjoin(
+            self.me_dir, 'Cards', 'decay_card.dat')) == 'MULTIPLICATIVE'
 
     @staticmethod
     def read_fnlo_contribution_results(path):

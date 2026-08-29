@@ -220,10 +220,10 @@ contains
 ! When doing hadron-hadron collision reduce the effect collision energy.
 ! Note that tests are always performed at fixed energy with Bjorken x=1.
       totmass = 0.0d0
-      do i = nincoming + 1, nexternal
-        if (is_a_j(i) .and. i .ne. nexternal) then
+      do i = nincoming + 1, nexternal - 1
+        if (is_a_j(i)) then
           totmass = totmass + max(ptj, generated_masses(i))
-        elseif ((is_a_lp(i) .or. is_a_lm(i)) .and. i .ne. nexternal) then
+        elseif (is_a_lp(i) .or. is_a_lm(i)) then
           totmass = totmass + max(mll/2d0, mll_sf/2d0, ptl, &
                                   generated_masses(i))
         elseif (is_a_ph(i)) then

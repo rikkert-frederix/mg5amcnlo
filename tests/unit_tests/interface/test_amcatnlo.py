@@ -43,6 +43,98 @@ class MGerror(Exception): pass
 class TestMadEventCmd(unittest.TestCase):
     """ check if the ValidCmd works correctly """
 
+    def test_fnlo_forced_width_pids(self):
+        """Forced decay resonances are discovered from subprocess metadata."""
+
+        interface = object.__new__(run_mecmd.common_run.CommonRunCmd)
+        interface.stop_for_runweb = True
+        with tempfile.TemporaryDirectory() as output_root:
+            interface.me_dir = output_root
+            subprocess_root = pjoin(output_root, 'SubProcesses')
+            os.makedirs(pjoin(subprocess_root, 'P0_a'))
+            os.makedirs(pjoin(subprocess_root, 'P1_b'))
+            with open(pjoin(subprocess_root, 'P0_a',
+                            'decay_chain_info.dat'), 'w') as stream:
+                stream.write('FORMAT 4\nFORCED_SPECIES 1 6\nEND\n')
+            with open(pjoin(subprocess_root, 'P1_b',
+                            'decay_chain_info.dat'), 'w') as stream:
+                stream.write('FORMAT 4\nFORCED_SPECIES 2 -6 24\nEND\n')
+
+            self.assertEqual(interface.get_fnlo_forced_width_pids(),
+                             {6, 24})
+
+            with open(pjoin(subprocess_root, 'P1_b',
+                            'decay_chain_info.dat'), 'w') as stream:
+                stream.write('FORMAT 4\nFORCED_SPECIES 2 6\nEND\n')
+            with self.assertRaisesRegex(
+                    madgraph.MadGraph5Error,
+                    'Malformed FORCED_SPECIES record'):
+                interface.get_fnlo_forced_width_pids()
+
+    def test_fnlo_decay_combination_mode(self):
+        """The result collector recognizes multiplicative decay bundles."""
+
+        with tempfile.TemporaryDirectory() as output_root:
+            decay_card = pjoin(output_root, 'decay_card.dat')
+            self.assertEqual(
+                run_mecmd.aMCatNLOCmd.read_fnlo_decay_combination(
+                    decay_card),
+                'ADDITIVE')
+            with open(decay_card, 'w') as stream:
+                stream.write(
+                    '# runtime mode\n'
+                    'NLO_DECAY_COMBINATION MULTIPLICATIVE\n')
+            self.assertEqual(
+                run_mecmd.aMCatNLOCmd.read_fnlo_decay_combination(
+                    decay_card),
+                'MULTIPLICATIVE')
+            with open(decay_card, 'w') as stream:
+                stream.write('NLO_DECAY_COMBINATION UNKNOWN\n')
+            with self.assertRaisesRegex(
+                    run_mecmd.aMCatNLOError,
+                    'Unknown NLO_DECAY_COMBINATION'):
+                run_mecmd.aMCatNLOCmd.read_fnlo_decay_combination(
+                    decay_card)
+
+    def test_fnlo_runtime_initialization_guards(self):
+        """First-use and empty-sample paths remain valid Fortran."""
+
+        subprocess_dir = pjoin(
+            madgraph.MG5DIR, 'Template', 'fNLO', 'SubProcesses')
+        with open(pjoin(
+                subprocess_dir,
+                'spin_density_fks_matrices.f90')) as stream:
+            matrix_source = stream.read().lower()
+        ensure_body = matrix_source.split(
+            'subroutine ensure_spin_density_fks_matrices()', 1)[1].split(
+                'end subroutine ensure_spin_density_fks_matrices', 1)[0]
+        reset_body = matrix_source.split(
+            'subroutine reset_spin_density_fks_matrices()', 1)[1].split(
+                'end subroutine reset_spin_density_fks_matrices', 1)[0]
+        self.assertIn('call clear_spin_density_fks_matrices()', ensure_body)
+        self.assertNotIn(
+            'call reset_spin_density_fks_matrices()', ensure_body)
+        self.assertIn('call ensure_spin_density_fks_matrices()', reset_body)
+        self.assertIn('call clear_spin_density_fks_matrices()', reset_body)
+
+        with open(pjoin(subprocess_dir, 'madfks_plot.f90')) as stream:
+            plot_source = stream.read().lower()
+        self.assertIn(
+            'if (.not. plot_initialized) call initplot_impl()',
+            plot_source)
+
+        with open(pjoin(
+                subprocess_dir, 'decay_chain_parameters.f90')) as stream:
+            parameter_source = stream.read().lower()
+        self.assertNotIn(
+            '.not. present(factor_index) .or.', parameter_source)
+
+        with open(pjoin(
+                subprocess_dir, 'test_soft_col_limits.f90')) as stream:
+            limit_source = stream.read().lower()
+        self.assertIn(
+            'do i = nincoming + 1, nexternal - 1', limit_source)
+
     def test_fnlo_output_format(self):
         """The fNLO token selects its template instead of becoming a path."""
 

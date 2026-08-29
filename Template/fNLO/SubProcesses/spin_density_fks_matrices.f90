@@ -109,15 +109,17 @@ contains
     allocate(integrated_density(3, maximum_open_size, maximum_open_size))
     call identify_density_amp_positions()
     initialized = .true.
-    call reset_spin_density_fks_matrices()
+    call clear_spin_density_fks_matrices()
   end subroutine ensure_spin_density_fks_matrices
 
 
   subroutine reset_spin_density_fks_matrices()
-    if (.not. initialized) then
-      call ensure_spin_density_fks_matrices()
-      return
-    end if
+    call ensure_spin_density_fks_matrices()
+    call clear_spin_density_fks_matrices()
+  end subroutine reset_spin_density_fks_matrices
+
+
+  subroutine clear_spin_density_fks_matrices()
     born_density = (0d0, 0d0)
     real_density = (0d0, 0d0)
     color_density = (0d0, 0d0)
@@ -134,7 +136,7 @@ contains
     reduced_matrix_is_available = .false.
     degenerate_matrix_is_available = .false.
     integrated_matrix_is_available = .false.
-  end subroutine reset_spin_density_fks_matrices
+  end subroutine clear_spin_density_fks_matrices
 
 
   subroutine load_spin_density_born_matrix( &

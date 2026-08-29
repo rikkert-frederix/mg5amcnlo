@@ -1000,6 +1000,10 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertEqual(
                 density_source.count('SLOOPMATRIXHEL_THRES'), 2)
             self.assertIn('DCMPLX(', density_source)
+            self.assertIn(
+                'VALUE=0.5D0*(RHO(K,A,B)+DCONJG(RHO(K,B,A)))',
+                density_source)
+            self.assertIn('RHO(K,B,A)=DCONJG(VALUE)', density_source)
             with open(os.path.join(
                     subprocess_dir,
                     'spin_density_production_born.f')) as stream:
@@ -1877,6 +1881,9 @@ class TestFKSDecayChains(unittest.TestCase):
                     density_source)
                 self.assertIn('COMPLEX*16 RHO(3,NOPEN,NOPEN)',
                               density_source)
+                self.assertIn(
+                    'VALUE=0.5D0*(RHO(K,A,B)+DCONJG(RHO(K,B,A)))',
+                    density_source)
             with open(os.path.join(
                     subprocess_dir, 'virtual_libraries.inc')) as stream:
                 libraries = stream.read()

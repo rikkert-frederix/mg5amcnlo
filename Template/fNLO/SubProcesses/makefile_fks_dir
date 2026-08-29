@@ -189,13 +189,13 @@ SYM= $(RUN) BinothLHADummy.o BinothLHADummy_bridge.o \
 %.o: $(ANADIR)/%.cc
 	$(CXX) $(CXXFLAGS) -c -I. -I$(ANADIR) $(FO_INCLUDEPATHS) $^
 
-gensym: $(SYM)
-	$(FC) $(LDFLAGS) -o gensym $(SYM) $(LINKLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(FJLIBS)
+gensym: $(SYM) $(FNLO_MADLOOP_LIBRARIES)
+	$(FC) $(LDFLAGS) -o gensym $(SYM) $(NLOLIBS) $(LINKLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(FJLIBS)
 	rm fks_singular.o
 	strip gensym
 
-test_soft_col_limits: $(TEST) mint_module.o
-	$(FC) $(LDFLAGS) -o test_soft_col_limits $(TEST) $(LINKLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(FJLIBS)
+test_soft_col_limits: $(TEST) mint_module.o $(FNLO_MADLOOP_LIBRARIES)
+	$(FC) $(LDFLAGS) -o test_soft_col_limits $(TEST) $(NLOLIBS) $(LINKLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(FJLIBS)
 	rm test_soft_col_limits.o
 	strip test_soft_col_limits
 
@@ -265,7 +265,8 @@ decay_chain_scales.o: process_dimensions.o decay_chain_metadata.o \
 	$(LIBDIR)alfas_functions_module.mod
 fks_diagnostics.o: process_dimensions.o fnlo_process_common.o
 fks_soft_kernels.o: process_dimensions.o $(LIBDIR)kin_functions_module.mod
-fks_channel_map.o: process_dimensions.o fks_metadata.o
+fks_channel_map.o: process_dimensions.o fks_metadata.o \
+	nlo_contribution_bundle.o
 fks_random.o: $(LIBDIR)ranmar_module.mod
 setscales.o: process_dimensions.o decay_chain_scales.o \
 	dummy_fct.o fastjet_wrapper.o $(LIBDIR)alfas_functions_module.mod \

@@ -481,10 +481,17 @@ contains
 
     if (.not. initialized) call initialize_decay_chain_parameters()
     width_index = find_pdg(pdg, width_pdgs)
-    if (width_index == 0 .or. .not. has_lo_width(width_index)) then
+    if (width_index == 0) then
       call fail_parameters('requested particle has no LO physical width')
     end if
-    if (.not. present(factor_index) .or. factor_index == 1) then
+    if (.not. has_lo_width(width_index)) then
+      call fail_parameters('requested particle has no LO physical width')
+    end if
+    if (.not. present(factor_index)) then
+      decay_lo_width = lo_width_values(width_index)
+      return
+    end if
+    if (factor_index == 1) then
       decay_lo_width = lo_width_values(width_index)
       return
     end if
@@ -507,10 +514,17 @@ contains
 
     if (.not. initialized) call initialize_decay_chain_parameters()
     width_index = find_pdg(pdg, width_pdgs)
-    if (width_index == 0 .or. .not. has_nlo_width(width_index)) then
+    if (width_index == 0) then
       call fail_parameters('requested particle has no NLO physical width')
     end if
-    if (.not. present(factor_index) .or. factor_index == 1) then
+    if (.not. has_nlo_width(width_index)) then
+      call fail_parameters('requested particle has no NLO physical width')
+    end if
+    if (.not. present(factor_index)) then
+      decay_nlo_width = nlo_width_values(width_index)
+      return
+    end if
+    if (factor_index == 1) then
       decay_nlo_width = nlo_width_values(width_index)
       return
     end if

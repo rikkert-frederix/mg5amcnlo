@@ -14,6 +14,7 @@ module madfks_plot_module
   private
 
   double precision, allocatable, save :: xsec_scale_points(:, :)
+  logical, save :: plot_initialized = .false.
 
   public :: initplot_impl, topout_impl, outfun_impl
   public :: outfun_multiplicative_impl
@@ -158,6 +159,7 @@ contains
     end if
 
     call analysis_begin(nwgt, weights_info)
+    plot_initialized = .true.
 
     ! Keep track of accumulated scale and PDF results.
     if (allocated(xsec_scale_points)) deallocate(xsec_scale_points)
@@ -183,6 +185,11 @@ contains
     integer :: kk, n, nn, point
     character(len=16) :: scale_mode
 
+    ! All sampled phase-space points can be rejected before the lazy
+    ! initialisation in compute_prefactors_nbody is reached.  Still create
+    ! the booked, zero-filled histograms before asking the analysis to write
+    ! its output.
+    if (.not. plot_initialized) call initplot_impl()
     xnorm = 1d0/float(ncalls0)
     call analysis_end()
 

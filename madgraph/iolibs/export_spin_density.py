@@ -418,7 +418,11 @@ class SpinDensityExporter(object):
         MadLoop normally retains only the real diagonal interference.  Its
         generated coefficient builder has an opt-in Born-amplitude override;
         evaluating that linear functional with B and i*B reconstructs the
-        complex off-diagonal loop--Born interference.
+        complex off-diagonal loop--Born interference.  The reconstructed
+        matrix is ``2 L_a B_b^*``.  Symmetrizing it before exposing the block
+        gives the physical Hermitian interference density
+        ``L_a B_b^* + B_a L_b^*`` needed when several corrected blocks are
+        multiplied.
         """
 
         self._prepare_virtual_variant(plan, variant, 1)
@@ -486,7 +490,7 @@ class SpinDensityExporter(object):
             'INTEGER H,HP,K,A,B,LOCAL_CODE',
             'REAL*8 RAW_REAL(0:3,0:1),RAW_IMAG(0:3,0:1)',
             'REAL*8 PREC_REAL(0:1),PREC_IMAG(0:1)',
-            'COMPLEX*16 BORN_AMPS(NBORN),DUMMY_JAMP(NCOLOR)',
+            'COMPLEX*16 BORN_AMPS(NBORN),DUMMY_JAMP(NCOLOR),VALUE',
             'LOGICAL SDM_OVERRIDE_BORN,MP_SDM_OVERRIDE_BORN',
             'COMPLEX*16 SDM_BORN_AMP(NBORN)',
             'COMPLEX*32 MP_SDM_BORN_AMP(NBORN)',
@@ -533,6 +537,15 @@ class SpinDensityExporter(object):
             'ENDDO',
             'SDM_OVERRIDE_BORN=.FALSE.',
             'MP_SDM_OVERRIDE_BORN=.FALSE.',
+            'DO K=1,3',
+            '  DO A=1,NOPEN',
+            '    DO B=A,NOPEN',
+            '      VALUE=0.5D0*(RHO(K,A,B)+DCONJG(RHO(K,B,A)))',
+            '      RHO(K,A,B)=VALUE',
+            '      RHO(K,B,A)=DCONJG(VALUE)',
+            '    ENDDO',
+            '  ENDDO',
+            'ENDDO',
             'END']
         writer.writelines(lines)
 

@@ -32,7 +32,7 @@ renormalization scale uses the undecayed production momenta (CORE, the
 default) or the fully decayed momenta (DECAYED). Production factorization and
 Ellis-Sexton scales always use the production momenta.
 
-For a full bundle, the final run directory contains
+For an additive full bundle, the final run directory contains
 contribution_results_0.txt and contribution_results_1.txt. The latter is the
 final integration result and resolves BORN, PRODUCTION_NLO, every labeled
 DECAY_NLO term, WIDTH_COUNTERTERM, their sum, the ordinary total, and a
@@ -40,6 +40,10 @@ closure check. Each component carries its own Monte-Carlo error. These errors
 are correlated because all components are evaluated on the same integration
 points, so they must not be combined in quadrature to reconstruct the total
 error.
+
+A multiplicative bundle has no additive component decomposition and therefore
+omits these contribution_results files. Its total and distributions are
+reported through the ordinary fixed-order result and histogram files.
 
 Decay-scale variations
 ----------------------

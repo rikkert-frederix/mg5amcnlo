@@ -998,6 +998,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             if amcatnlo and not keepwidth:
                 # force particle in final states to have zero width
                 pids = self.get_pid_final_initial_states()
+                forced_width_pids = self.get_fnlo_forced_width_pids()
                 # check those which are charged under qcd
                 if pjoin(self.me_dir,'bin','internal','ufomodel') not in sys.path:
                     sys.path.insert(0,pjoin(self.me_dir,'bin','internal', 'ufomodel'))     
@@ -1043,6 +1044,17 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                     no_width = [p for p in ufomodel.all_particles
                             if (str(p.pdg_code) in pids or str(-p.pdg_code) in pids)
                             and p.width != zero and p.color!=1]
+
+                # An fNLO decay chain treats every forced resonance as an
+                # on-shell external particle in one of its factorized matrix
+                # elements.  Its physical width remains in decay_card.dat for
+                # the narrow-width normalization, but it must not enter any
+                # of the block amplitudes: a finite propagator width there
+                # spoils their local soft factorization.
+                no_width.extend(
+                    p for p in ufomodel.all_particles
+                    if abs(p.pdg_code) in forced_width_pids
+                    and p.width != zero)
 
                 done = []
                 for part in no_width:
@@ -3481,6 +3493,37 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                 pids.update(set(particles))
 
         return pids
+
+    def get_fnlo_forced_width_pids(self):
+        """Return forced-resonance PDGs whose matrix-element width is zero.
+
+        The physical widths are deliberately not read from or changed in the
+        param card.  They are copied to ``decay_card.dat`` at export time and
+        remain the normalization inputs for the narrow-width approximation.
+        """
+
+        metadata_paths = glob.glob(pjoin(
+            self.me_dir, 'SubProcesses', 'P*', 'decay_chain_info.dat'))
+        forced_pids = set()
+        for metadata_path in metadata_paths:
+            with open(metadata_path) as metadata_file:
+                records = [line.split() for line in metadata_file
+                           if line.startswith('FORCED_SPECIES ')]
+            if len(records) != 1:
+                raise MadGraph5Error(
+                    'Expected one FORCED_SPECIES record in %s' %
+                    metadata_path)
+            try:
+                count = int(records[0][1])
+                pdgs = [abs(int(value)) for value in records[0][2:]]
+            except (IndexError, ValueError):
+                raise MadGraph5Error(
+                    'Malformed FORCED_SPECIES record in %s' % metadata_path)
+            if count != len(pdgs) or any(pdg == 0 for pdg in pdgs):
+                raise MadGraph5Error(
+                    'Malformed FORCED_SPECIES record in %s' % metadata_path)
+            forced_pids.update(pdgs)
+        return forced_pids
 
     ############################################################################
     def get_pdf_input_filename(self):
