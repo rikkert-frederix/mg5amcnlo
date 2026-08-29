@@ -42,6 +42,11 @@ def _fortran_double(value):
     return ('%.17e' % float(value)).replace('e', 'D')
 
 
+def _fortran_complex(value):
+    return 'DCMPLX(%s,%s)' % (
+        _fortran_double(value.real), _fortran_double(value.imag))
+
+
 class SpinDensityExporter(object):
     """Write independent tree providers and their tensor contractions."""
 
@@ -672,6 +677,123 @@ class SpinDensityExporter(object):
             'END'])
         writer.writelines(lines)
 
+    @staticmethod
+    def _born_color_projection(matrix_element):
+        """Return a minimal Born-diagram basis for every colour vector.
+
+        MadLoop's Born override is a linear functional of the diagram
+        amplitudes, but directions in the kernel of the tree colour map can
+        never contribute.  Select independent diagram columns and construct
+        the fixed transformation which projects an arbitrary Born amplitude
+        vector onto that smaller basis.
+        """
+
+        nborn = matrix_element.get_number_of_amplitudes()
+        color_amplitudes = matrix_element.get_color_amplitudes()
+        color_map = [
+            [0j for _ in range(nborn)]
+            for _ in color_amplitudes]
+        for row, entries in enumerate(color_amplitudes):
+            for coefficient, amplitude in entries:
+                value = (float(coefficient[0]) *
+                         float(coefficient[1]) *
+                         3.0 ** int(coefficient[3]))
+                if coefficient[2]:
+                    value *= 1j
+                color_map[row][amplitude - 1] += value
+
+        scale = max(
+            [abs(value) for row in color_map for value in row] or [0.0])
+        tolerance = max(1.0, scale) * 1.0e-12
+        work = [list(row) for row in color_map]
+        row_ids = list(range(len(work)))
+        pivot_columns = []
+        pivot_rows = []
+        rank = 0
+        for column in range(nborn):
+            if rank == len(work):
+                break
+            pivot = max(
+                range(rank, len(work)),
+                key=lambda row: abs(work[row][column]))
+            if abs(work[pivot][column]) <= tolerance:
+                continue
+            work[rank], work[pivot] = work[pivot], work[rank]
+            row_ids[rank], row_ids[pivot] = row_ids[pivot], row_ids[rank]
+            pivot_columns.append(column)
+            pivot_rows.append(row_ids[rank])
+            pivot_value = work[rank][column]
+            for row in range(rank + 1, len(work)):
+                factor = work[row][column] / pivot_value
+                if abs(factor) <= tolerance:
+                    continue
+                for remaining in range(column, nborn):
+                    work[row][remaining] -= factor * work[rank][remaining]
+            rank += 1
+        if rank == 0:
+            raise MadGraph5Error('A virtual density provider has no colour')
+
+        square = [
+            [color_map[row][column] for column in pivot_columns]
+            for row in pivot_rows]
+        inverse = SpinDensityExporter._invert_complex_matrix(
+            square, tolerance)
+        transform = [
+            [sum(inverse[basis][selected] *
+                 color_map[pivot_rows[selected]][born]
+                 for selected in range(rank))
+             for born in range(nborn)]
+            for basis in range(rank)]
+        transform = [
+            [0j if abs(value) <= tolerance else value for value in row]
+            for row in transform]
+
+        reconstruction_tolerance = 1.0e-9 * max(1.0, scale)
+        for row in range(len(color_map)):
+            for born in range(nborn):
+                reconstructed = sum(
+                    color_map[row][pivot_columns[basis]] *
+                    transform[basis][born]
+                    for basis in range(rank))
+                if abs(reconstructed - color_map[row][born]) > \
+                        reconstruction_tolerance:
+                    raise MadGraph5Error(
+                        'Could not reduce a virtual Born colour basis')
+        return [column + 1 for column in pivot_columns], transform
+
+    @staticmethod
+    def _invert_complex_matrix(matrix, tolerance):
+        """Invert a small dense complex matrix with pivoted elimination."""
+
+        size = len(matrix)
+        augmented = [
+            list(row) + [1.0 + 0j if row_index == column else 0j
+                         for column in range(size)]
+            for row_index, row in enumerate(matrix)]
+        for column in range(size):
+            pivot = max(
+                range(column, size),
+                key=lambda row: abs(augmented[row][column]))
+            if abs(augmented[pivot][column]) <= tolerance:
+                raise MadGraph5Error(
+                    'A virtual Born colour basis is singular')
+            augmented[column], augmented[pivot] = \
+                augmented[pivot], augmented[column]
+            pivot_value = augmented[column][column]
+            augmented[column] = [
+                value / pivot_value for value in augmented[column]]
+            for row in range(size):
+                if row == column:
+                    continue
+                factor = augmented[row][column]
+                if abs(factor) <= tolerance:
+                    continue
+                augmented[row] = [
+                    value - factor * basis_value
+                    for value, basis_value in zip(
+                        augmented[row], augmented[column])]
+        return [row[size:] for row in augmented]
+
     def write_virtual_provider(self, writer, plan, variant):
         """Write an amplitude-level one-loop density-matrix provider.
 
@@ -735,6 +857,31 @@ class SpinDensityExporter(object):
         normalization = standard_normalization / desired_normalization
         prefix = variant['loop_prefix'].upper()
 
+        basis_pivots, basis_transform = \
+            self._born_color_projection(tree_matrix_element)
+        basis_rank = len(basis_pivots)
+        direct_loop_calls = sum(
+            1 + (open_index[h] != open_index[hp])
+            for h in range(ncomb) for hp in range(ncomb)
+            if closed_index[h] == closed_index[hp])
+        basis_loop_calls = 2 * basis_rank * ncomb
+        use_color_basis = basis_loop_calls < direct_loop_calls
+
+        basis_declarations = []
+        basis_data = []
+        if use_color_basis:
+            basis_declarations = [
+                'INTEGER NRANK',
+                'PARAMETER (NRANK=%d)' % basis_rank,
+                'INTEGER R,J,BASIS_PIVOT(NRANK)',
+                'COMPLEX*16 BORN_BY_HEL(NBORN,NCOMB)',
+                'COMPLEX*16 BASIS_TRANSFORM(NRANK,NBORN)',
+                'COMPLEX*16 BASIS_COEFF(NRANK,NCOMB)',
+                'COMPLEX*16 BASIS_RESULT(3,NRANK)']
+            basis_data = [
+                'DATA BASIS_PIVOT /%s/' % ','.join(
+                    str(pivot) for pivot in basis_pivots)]
+
         lines = [
             'SUBROUTINE %s(P,RHO,PREC_ASKED,PRECISION,RET_CODE)' %
             variant['fortran_name'],
@@ -753,7 +900,9 @@ class SpinDensityExporter(object):
             'COMPLEX*16 BORN_AMPS(NBORN),DUMMY_JAMP(NCOLOR),VALUE',
             'LOGICAL SDM_OVERRIDE_BORN,MP_SDM_OVERRIDE_BORN',
             'COMPLEX*16 SDM_BORN_AMP(NBORN)',
-            'COMPLEX*32 MP_SDM_BORN_AMP(NBORN)',
+            'COMPLEX*32 MP_SDM_BORN_AMP(NBORN)']
+        lines.extend(basis_declarations)
+        lines.extend([
             'COMMON /%sSDM_BORN_OVERRIDE/' % prefix,
             '     $ SDM_BORN_AMP,SDM_OVERRIDE_BORN',
             'COMMON /%sMP_SDM_BORN_OVERRIDE/' % prefix,
@@ -762,47 +911,118 @@ class SpinDensityExporter(object):
                 str(value) for helicity in helicities
                 for value in helicity),
             'DATA OPEN_INDEX /%s/' % ','.join(map(str, open_index)),
-            'DATA CLOSED_INDEX /%s/' % ','.join(map(str, closed_index)),
+            'DATA CLOSED_INDEX /%s/' % ','.join(map(str, closed_index))])
+        lines.extend(basis_data)
+        lines.extend([
             'RHO=(0D0,0D0)',
             'PRECISION=0D0',
             'RET_CODE=0',
             'SDM_OVERRIDE_BORN=.TRUE.',
-            'MP_SDM_OVERRIDE_BORN=.TRUE.',
-            'DO H=1,NCOMB',
-            '  A=OPEN_INDEX(H)',
-            '  DO HP=1,NCOMB',
-            '    IF (CLOSED_INDEX(H).NE.CLOSED_INDEX(HP)) CYCLE',
-            '    B=OPEN_INDEX(HP)',
-            '    CALL %s_JAMP(P,NHEL(1,HP),DUMMY_JAMP,BORN_AMPS)' %
-            tree_provider['fortran_name'],
-            '    SDM_BORN_AMP=BORN_AMPS',
-            '    MP_SDM_BORN_AMP=BORN_AMPS',
-            '    CALL %sSLOOPMATRIXHEL_THRES(P,H,RAW_REAL,' % prefix,
-            '     $ PREC_ASKED,PREC_REAL,LOCAL_CODE)',
-            '    PRECISION=MAX(PRECISION,PREC_REAL(%d))' % result_index,
-            '    RET_CODE=MAX(RET_CODE,LOCAL_CODE)',
-            # Hermiticity removes the imaginary part of every diagonal
-            # density entry exactly.  Asking MadLoop to reconstruct that
-            # identically zero component makes its relative stability test
-            # compare pure roundoff and needlessly trigger a QP rescue.
-            '    IF (A.EQ.B) THEN',
-            '      RAW_IMAG=0D0',
-            '    ELSE',
-            '      SDM_BORN_AMP=(0D0,1D0)*BORN_AMPS',
-            '      MP_SDM_BORN_AMP=(0D0,1D0)*BORN_AMPS',
-            '      CALL %sSLOOPMATRIXHEL_THRES(P,H,RAW_IMAG,' % prefix,
-            '     $ PREC_ASKED,PREC_IMAG,LOCAL_CODE)',
-            '      PRECISION=MAX(PRECISION,PREC_IMAG(%d))' % result_index,
-            '      RET_CODE=MAX(RET_CODE,LOCAL_CODE)',
-            '    ENDIF',
-            '    DO K=1,3',
-            '      RHO(K,A,B)=RHO(K,A,B)+%s*DCMPLX(' %
-            _fortran_double(normalization),
-            '     $ RAW_REAL(K,%d),RAW_IMAG(K,%d))' % (
-                result_index, result_index),
-            '    ENDDO',
-            '  ENDDO',
-            'ENDDO',
+            'MP_SDM_OVERRIDE_BORN=.TRUE.'])
+
+        if use_color_basis:
+            lines.extend([
+                'BORN_BY_HEL=(0D0,0D0)',
+                'DO HP=1,NCOMB',
+                '  CALL %s_JAMP(P,NHEL(1,HP),DUMMY_JAMP,' %
+                tree_provider['fortran_name'],
+                '     $ BORN_BY_HEL(1,HP))',
+                'ENDDO',
+                'BASIS_TRANSFORM=(0D0,0D0)'])
+            for born in range(nborn):
+                for rank in range(basis_rank):
+                    value = basis_transform[rank][born]
+                    if abs(value) == 0.0:
+                        continue
+                    lines.append(
+                        'BASIS_TRANSFORM(%d,%d)=%s' % (
+                            rank + 1, born + 1, _fortran_complex(value)))
+            lines.extend([
+                'BASIS_COEFF=(0D0,0D0)',
+                'DO HP=1,NCOMB',
+                '  DO R=1,NRANK',
+                '    DO J=1,NBORN',
+                '      BASIS_COEFF(R,HP)=BASIS_COEFF(R,HP)+',
+                '     $ BASIS_TRANSFORM(R,J)*BORN_BY_HEL(J,HP)',
+                '    ENDDO',
+                '  ENDDO',
+                'ENDDO',
+                'DO H=1,NCOMB',
+                '  A=OPEN_INDEX(H)',
+                '  DO R=1,NRANK',
+                '    SDM_BORN_AMP=(0D0,0D0)',
+                '    MP_SDM_BORN_AMP=(0D0,0D0)',
+                '    SDM_BORN_AMP(BASIS_PIVOT(R))=(1D0,0D0)',
+                '    MP_SDM_BORN_AMP(BASIS_PIVOT(R))=(1D0,0D0)',
+                '    CALL %sSLOOPMATRIXHEL_THRES(P,H,RAW_REAL,' % prefix,
+                '     $ PREC_ASKED,PREC_REAL,LOCAL_CODE)',
+                '    PRECISION=MAX(PRECISION,PREC_REAL(%d))' % result_index,
+                '    RET_CODE=MAX(RET_CODE,LOCAL_CODE)',
+                '    SDM_BORN_AMP(BASIS_PIVOT(R))=(0D0,1D0)',
+                '    MP_SDM_BORN_AMP(BASIS_PIVOT(R))=(0D0,1D0)',
+                '    CALL %sSLOOPMATRIXHEL_THRES(P,H,RAW_IMAG,' % prefix,
+                '     $ PREC_ASKED,PREC_IMAG,LOCAL_CODE)',
+                '    PRECISION=MAX(PRECISION,PREC_IMAG(%d))' % result_index,
+                '    RET_CODE=MAX(RET_CODE,LOCAL_CODE)',
+                '    DO K=1,3',
+                '      BASIS_RESULT(K,R)=DCMPLX(',
+                '     $ RAW_REAL(K,%d),RAW_IMAG(K,%d))' % (
+                    result_index, result_index),
+                '    ENDDO',
+                '  ENDDO',
+                '  DO HP=1,NCOMB',
+                '    IF (CLOSED_INDEX(H).NE.CLOSED_INDEX(HP)) CYCLE',
+                '    B=OPEN_INDEX(HP)',
+                '    DO K=1,3',
+                '      VALUE=(0D0,0D0)',
+                '      DO R=1,NRANK',
+                '        VALUE=VALUE+DCONJG(BASIS_COEFF(R,HP))*',
+                '     $       BASIS_RESULT(K,R)',
+                '      ENDDO',
+                '      RHO(K,A,B)=RHO(K,A,B)+%s*VALUE' %
+                _fortran_double(normalization),
+                '    ENDDO',
+                '  ENDDO',
+                'ENDDO'])
+        else:
+            lines.extend([
+                'DO H=1,NCOMB',
+                '  A=OPEN_INDEX(H)',
+                '  DO HP=1,NCOMB',
+                '    IF (CLOSED_INDEX(H).NE.CLOSED_INDEX(HP)) CYCLE',
+                '    B=OPEN_INDEX(HP)',
+                '    CALL %s_JAMP(P,NHEL(1,HP),DUMMY_JAMP,BORN_AMPS)' %
+                tree_provider['fortran_name'],
+                '    SDM_BORN_AMP=BORN_AMPS',
+                '    MP_SDM_BORN_AMP=BORN_AMPS',
+                '    CALL %sSLOOPMATRIXHEL_THRES(P,H,RAW_REAL,' % prefix,
+                '     $ PREC_ASKED,PREC_REAL,LOCAL_CODE)',
+                '    PRECISION=MAX(PRECISION,PREC_REAL(%d))' % result_index,
+                '    RET_CODE=MAX(RET_CODE,LOCAL_CODE)',
+                # Hermiticity removes the imaginary part of every diagonal
+                # density entry exactly.  Asking MadLoop to reconstruct that
+                # identically zero component makes its relative stability
+                # test compare pure roundoff and needlessly trigger a QP
+                # rescue.
+                '    IF (A.EQ.B) THEN',
+                '      RAW_IMAG=0D0',
+                '    ELSE',
+                '      SDM_BORN_AMP=(0D0,1D0)*BORN_AMPS',
+                '      MP_SDM_BORN_AMP=(0D0,1D0)*BORN_AMPS',
+                '      CALL %sSLOOPMATRIXHEL_THRES(P,H,RAW_IMAG,' % prefix,
+                '     $ PREC_ASKED,PREC_IMAG,LOCAL_CODE)',
+                '      PRECISION=MAX(PRECISION,PREC_IMAG(%d))' % result_index,
+                '      RET_CODE=MAX(RET_CODE,LOCAL_CODE)',
+                '    ENDIF',
+                '    DO K=1,3',
+                '      RHO(K,A,B)=RHO(K,A,B)+%s*DCMPLX(' %
+                _fortran_double(normalization),
+                '     $ RAW_REAL(K,%d),RAW_IMAG(K,%d))' % (
+                    result_index, result_index),
+                '    ENDDO',
+                '  ENDDO',
+                'ENDDO'])
+        lines.extend([
             'SDM_OVERRIDE_BORN=.FALSE.',
             'MP_SDM_OVERRIDE_BORN=.FALSE.',
             'DO K=1,3',
@@ -814,7 +1034,7 @@ class SpinDensityExporter(object):
             '    ENDDO',
             '  ENDDO',
             'ENDDO',
-            'END']
+            'END'])
         writer.writelines(lines)
 
     @staticmethod

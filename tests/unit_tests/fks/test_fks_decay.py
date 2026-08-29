@@ -959,6 +959,13 @@ class TestFKSDecayChains(unittest.TestCase):
                 self.assertEqual(len(virtual.get_loop_diagrams()), 1)
                 production = plan['components'][0]['born']['matrix_element']
                 self.assertEqual(production.get_number_of_amplitudes(), 3)
+                projection = export_spin_density.SpinDensityExporter.\
+                    _born_color_projection
+                pivots, transform = projection(production)
+                self.assertEqual(pivots, [1, 2])
+                self.assertEqual(transform, [
+                    [1.0 + 0j, 0j, -1j],
+                    [0j, 1.0 + 0j, 1.0 + 0j]])
                 self.assertEqual(
                     plan['virtual_variants'][0]['active_component'], 1)
 
@@ -1009,11 +1016,13 @@ class TestFKSDecayChains(unittest.TestCase):
                 density_source = stream.read()
             self.assertIn('COMPLEX*16 RHO(3,NOPEN,NOPEN)', density_source)
             self.assertIn('SDM_OVERRIDE_BORN=.TRUE.', density_source)
-            self.assertIn('(0D0,1D0)*BORN_AMPS', density_source)
             self.assertEqual(
                 density_source.count('SLOOPMATRIXHEL_THRES'), 2)
-            self.assertIn('IF (A.EQ.B) THEN', density_source)
-            self.assertIn('RAW_IMAG=0D0', density_source)
+            self.assertIn('PARAMETER (NRANK=1)', density_source)
+            self.assertIn('DATA BASIS_PIVOT /1/', density_source)
+            self.assertIn(
+                'VALUE=VALUE+DCONJG(BASIS_COEFF(R,HP))*',
+                density_source)
             self.assertIn('DCMPLX(', density_source)
             self.assertIn(
                 'VALUE=0.5D0*(RHO(K,A,B)+DCONJG(RHO(K,B,A)))',
@@ -1089,7 +1098,14 @@ class TestFKSDecayChains(unittest.TestCase):
                 fks_info_source.replace('$', ' ').split()).replace(' ,', ',')
             self.assertIn('SUBROUTINE SBORN(P,ANS_SUMMED)', born_source)
             self.assertIn('SUBROUTINE SMATRIX1(P,ANS_SUMMED)', real_source)
-            self.assertNotIn('FNLO_DECAY_DUMMY_WIDTH_RATIO', born_source)
+            # The full-tree SDE channel helper needs regulated resonance
+            # propagators.  The factorized matrix element itself must remain
+            # independent of that phase-space-only dummy width.
+            self.assertIn('FNLO_DECAY_DUMMY_WIDTH_RATIO', born_source)
+            factorized_born = born_source.split(
+                'SUBROUTINE SDM_BORN_CONTRIBUTION_1', 1)[1]
+            self.assertNotIn(
+                'FNLO_DECAY_DUMMY_WIDTH_RATIO', factorized_born)
             self.assertNotIn('FNLO_DECAY_DUMMY_WIDTH_RATIO', real_source)
             self.assertIn('CALL SDM_PRODUCTION_BORN', born_source)
             self.assertIn('CALL SDM_DECAY_1_BORN', born_source)
