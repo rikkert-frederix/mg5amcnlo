@@ -65,6 +65,7 @@ module spin_density_matrix_results
 
   public :: initialize_spin_density_block
   public :: load_cached_lo_density, record_lo_density
+  public :: fetch_cached_lo_density
   public :: set_spin_density_insertion
   public :: selected_spin_density_product
   public :: strict_spin_density_product
@@ -142,6 +143,25 @@ contains
       entry%valid = .true.
     end associate
   end subroutine record_lo_density
+
+
+  subroutine fetch_cached_lo_density( &
+       event_slot, block, open_size, density, available)
+    integer, intent(in) :: event_slot, block, open_size
+    complex(kind=8), intent(out) :: density(1, open_size, open_size)
+    logical, intent(out) :: available
+    integer(kind=8) :: revision
+
+    call ensure_cache()
+    call validate_identity(event_slot, block, open_size)
+    revision = factorized_block_momentum_revision(event_slot, block)
+    available = revision > 0_8 .and. &
+         lo_cache(block, event_slot)%valid .and. &
+         lo_cache(block, event_slot)%momentum_revision == revision .and. &
+         lo_cache(block, event_slot)%open_size == open_size
+    density = (0d0, 0d0)
+    if (available) density = lo_cache(block, event_slot)%value
+  end subroutine fetch_cached_lo_density
 
 
   subroutine set_spin_density_insertion(result, kind, order, density)

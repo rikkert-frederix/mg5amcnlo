@@ -33,6 +33,12 @@ module spin_density_fks_matrices
   public :: load_spin_density_real_matrix
   public :: load_spin_density_color_matrix
   public :: load_spin_density_virtual_matrix
+  public :: set_spin_density_born_matrix
+  public :: set_spin_density_real_matrix
+  public :: set_spin_density_color_matrix
+  public :: reset_spin_density_born_matrix
+  public :: reset_spin_density_real_matrix
+  public :: reset_spin_density_color_matrix
   public :: set_spin_density_virtual_matrix
   public :: reset_spin_density_virtual_matrix
   public :: reduce_spin_density_virtual_matrix
@@ -160,6 +166,31 @@ contains
   end subroutine load_spin_density_born_matrix
 
 
+  subroutine set_spin_density_born_matrix(contribution, density)
+    integer, intent(in) :: contribution
+    complex(kind=8), intent(in) :: density(:, :, :)
+
+    call ensure_spin_density_fks_matrices()
+    call validate_supplied_density('Born', density, 2)
+    born_density = (0d0, 0d0)
+    active_open_size = size(density, 2)
+    active_component_position = &
+         sdm_contribution_component_position(contribution)
+    born_density(:, 1:active_open_size, 1:active_open_size) = density
+    call validate_loaded_density('Born')
+    born_matrix_is_available = .true.
+    real_matrix_is_available = .false.
+  end subroutine set_spin_density_born_matrix
+
+
+  subroutine reset_spin_density_born_matrix()
+    call ensure_spin_density_fks_matrices()
+    born_density = (0d0, 0d0)
+    born_matrix_is_available = .false.
+    real_matrix_is_available = .false.
+  end subroutine reset_spin_density_born_matrix
+
+
   subroutine load_spin_density_real_matrix(configuration, event_slot, &
                                            contribution)
     integer, intent(in) :: configuration, event_slot, contribution
@@ -174,6 +205,29 @@ contains
     call validate_loaded_density('real')
     real_matrix_is_available = .true.
   end subroutine load_spin_density_real_matrix
+
+
+  subroutine set_spin_density_real_matrix(contribution, density)
+    integer, intent(in) :: contribution
+    complex(kind=8), intent(in) :: density(:, :, :)
+
+    call ensure_spin_density_fks_matrices()
+    call validate_supplied_density('real', density, 2)
+    real_density = (0d0, 0d0)
+    active_open_size = size(density, 2)
+    active_component_position = &
+         sdm_contribution_component_position(contribution)
+    real_density(:, 1:active_open_size, 1:active_open_size) = density
+    call validate_loaded_density('real')
+    real_matrix_is_available = .true.
+  end subroutine set_spin_density_real_matrix
+
+
+  subroutine reset_spin_density_real_matrix()
+    call ensure_spin_density_fks_matrices()
+    real_density = (0d0, 0d0)
+    real_matrix_is_available = .false.
+  end subroutine reset_spin_density_real_matrix
 
 
   subroutine load_spin_density_color_matrix( &
@@ -191,6 +245,34 @@ contains
     call validate_loaded_density('color')
     color_matrix_is_available = .true.
   end subroutine load_spin_density_color_matrix
+
+
+  subroutine set_spin_density_color_matrix(contribution, density)
+    integer, intent(in) :: contribution
+    complex(kind=8), intent(in) :: density(:, :)
+
+    call ensure_spin_density_fks_matrices()
+    if (size(density, 1) /= size(density, 2) .or. &
+        size(density, 1) < 1 .or. &
+        size(density, 1) > maximum_open_size) then
+      call fail_spin_density_fks( &
+           'a supplied color density has the wrong shape')
+    end if
+    color_density = (0d0, 0d0)
+    active_open_size = size(density, 1)
+    active_component_position = &
+         sdm_contribution_component_position(contribution)
+    color_density(1:active_open_size, 1:active_open_size) = density
+    call validate_loaded_density('color')
+    color_matrix_is_available = .true.
+  end subroutine set_spin_density_color_matrix
+
+
+  subroutine reset_spin_density_color_matrix()
+    call ensure_spin_density_fks_matrices()
+    color_density = (0d0, 0d0)
+    color_matrix_is_available = .false.
+  end subroutine reset_spin_density_color_matrix
 
 
   subroutine load_spin_density_virtual_matrix( &
@@ -564,6 +646,21 @@ contains
     end if
     target = source(1:rank_count, 1:active_open_size, 1:active_open_size)
   end subroutine copy_ranked_density
+
+
+  subroutine validate_supplied_density(label, density, rank_count)
+    character(len=*), intent(in) :: label
+    complex(kind=8), intent(in) :: density(:, :, :)
+    integer, intent(in) :: rank_count
+
+    if (size(density, 1) /= rank_count .or. &
+        size(density, 2) /= size(density, 3) .or. &
+        size(density, 2) < 1 .or. &
+        size(density, 2) > maximum_open_size) then
+      call fail_spin_density_fks( &
+           'a supplied '//trim(label)//' density has the wrong shape')
+    end if
+  end subroutine validate_supplied_density
 
 
   subroutine validate_loaded_density(label)

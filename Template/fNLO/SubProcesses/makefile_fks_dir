@@ -358,7 +358,9 @@ virtual_contribution_chooser.o: nlo_contribution_bundle.o
 born.o $(patsubst %.f,%.o,$(wildcard b_sf_???.f)) \
 $(patsubst %.f,%.o,$(wildcard matrix_*.f)) \
 $(patsubst %.f,%.o,$(wildcard spin_density_*.f)): \
-	nlo_contribution_bundle.o spin_density_matrix_results.o \
+	nlo_contribution_bundle.o factorized_phase_space.o \
+	fks_model_state.o spin_density_matrix_results.o \
+	spin_density_fks_matrices.o $(LIBDIR)run_state.mod \
 	top_decay_virtual_dispatch.o
 setcuts.o: process_dimensions.o fks_metadata.o decay_chain_metadata.o \
 	decay_chain_kinematics.o nlo_decay_metadata.o nlo_decay_kinematics.o \

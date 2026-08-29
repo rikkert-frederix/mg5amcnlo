@@ -1583,6 +1583,13 @@ class TestFKSDecayChains(unittest.TestCase):
                     'if (production_contribution) '
                     'call include_multichannel_enhance(%d)' % mode,
                     multiplicative_driver)
+            leaf_loop = multiplicative_driver.split(
+                'leaves_seen = 0_8', 1)[1]
+            self.assertLess(
+                leaf_loop.index('pass_leaf = passcuts_multiplicative'),
+                leaf_loop.index('call contract_multiplicative_leaf'))
+            self.assertEqual(
+                leaf_loop.count('call materialize_multiplicative_leaf'), 1)
             self.assertEqual(
                 driver_source.lower().count(
                     'call capture_multiplicative_snapshot'), 2)
@@ -1614,6 +1621,13 @@ class TestFKSDecayChains(unittest.TestCase):
                 'link_multiplier*eik*iden_comp*g**2', singular_source)
             self.assertIn(
                 'link_multiplier*eikireg*oneo8pi2*g**2', singular_source)
+            for matrix_kind in ['born', 'real', 'color']:
+                self.assertIn(
+                    'call reset_spin_density_%s_matrix()' % matrix_kind,
+                    singular_source)
+                self.assertNotIn(
+                    'call load_spin_density_%s_matrix' % matrix_kind,
+                    singular_source)
             with open(os.path.join(
                     subprocess_dir, 'mint_module.f90')) as stream:
                 mint_source = stream.read()
@@ -1645,6 +1659,37 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertTrue(all(
                 'SDM_BLOCK_AVAILABLE' not in source
                 for source in real_sources))
+            self.assertTrue(all(
+                'FACTORIZED_PHASE_SPACE_GENERATION' in source and
+                'SET_SPIN_DENSITY_REAL_MATRIX' in source and
+                'SDM_CACHED_GENERATION' in source and
+                'SDM_CACHED_G' in source and
+                'SDM_CACHED_MUR2' in source and
+                'SDM_CACHED_QES2' in source
+                for source in real_sources))
+            with open(os.path.join(subprocess_dir, 'born.f')) as stream:
+                born_source = stream.read()
+            self.assertIn('SDM_CACHED_AMP2', born_source)
+            self.assertIn('ALL(SDM_CACHED_P.EQ.P)', born_source)
+            self.assertIn('SET_SPIN_DENSITY_BORN_MATRIX', born_source)
+            self.assertIn('SDM_CACHED_GENERATION', born_source)
+            self.assertIn('SDM_CACHED_G', born_source)
+            self.assertIn('SDM_CACHED_MUR2', born_source)
+            self.assertIn('SDM_CACHED_QES2', born_source)
+            color_sources = []
+            for filename in os.listdir(subprocess_dir):
+                if filename.startswith('b_sf_') and filename.endswith('.f'):
+                    with open(os.path.join(
+                            subprocess_dir, filename)) as stream:
+                        color_sources.append(stream.read())
+            self.assertTrue(color_sources)
+            self.assertTrue(all(
+                'SET_SPIN_DENSITY_COLOR_MATRIX' in source and
+                'SDM_CACHED_GENERATION' in source and
+                'SDM_CACHED_G' in source and
+                'SDM_CACHED_MUR2' in source and
+                'SDM_CACHED_QES2' in source
+                for source in color_sources))
             contraction_path = os.path.join(
                 subprocess_dir,
                 'spin_density_multiplicative_contraction.f')
@@ -1685,6 +1730,8 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn('SUBROUTINE SDM_COLOR_BLOCK_DENSITY(',
                           flat_accessors)
             self.assertIn('CALL GET_FACTORIZED_BLOCK_MOMENTA(',
+                          flat_accessors)
+            self.assertIn('CALL FETCH_CACHED_LO_DENSITY(',
                           flat_accessors)
             component_accessors = flat_accessors.split(
                 'SUBROUTINE SDM_COMPONENT_BORN_DENSITY(', 1)[1]

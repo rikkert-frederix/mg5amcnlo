@@ -9,6 +9,7 @@ module factorized_phase_space
   logical, allocatable, save :: block_is_valid(:, :)
   integer(kind=8), allocatable, save :: block_momentum_revision(:, :)
   integer(kind=8), save :: next_block_momentum_revision = 0_8
+  integer(kind=8), save :: current_phase_space_generation = 0_8
 
   ! Embedding storage is deliberately distinct from the matrix-element
   ! block cache above.  In particular, a soft projection can have a
@@ -94,6 +95,7 @@ module factorized_phase_space
   public :: store_factorized_block_momenta
   public :: fetch_factorized_block_momenta
   public :: factorized_block_momentum_revision
+  public :: factorized_phase_space_generation
   public :: store_factorized_embedded_momenta
   public :: fetch_factorized_embedded_momenta
   public :: store_factorized_kernel_momenta
@@ -121,6 +123,9 @@ contains
 
   subroutine reset_factorized_phase_space()
     call ensure_storage()
+    current_phase_space_generation = current_phase_space_generation + 1_8
+    if (current_phase_space_generation <= 0_8) &
+         current_phase_space_generation = 1_8
     block_momenta = 0d0
     block_particle_count = 0
     block_is_valid = .false.
@@ -142,6 +147,11 @@ contains
   end subroutine reset_factorized_phase_space
 
 
+  integer(kind=8) function factorized_phase_space_generation()
+    factorized_phase_space_generation = current_phase_space_generation
+  end function factorized_phase_space_generation
+
+
   subroutine store_factorized_block_momenta(event_slot, block, &
                                              particle_count, momenta)
     integer, intent(in) :: event_slot, block, particle_count
@@ -159,12 +169,15 @@ contains
     block_particle_count(block, event_slot) = particle_count
     block_is_valid(block, event_slot) = .true.
     next_block_momentum_revision = next_block_momentum_revision + 1_8
+    current_phase_space_generation = current_phase_space_generation + 1_8
     if (next_block_momentum_revision <= 0_8) then
       ! A wrap is fantastically unlikely, but resetting all identities is
       ! safer than allowing a stale density-matrix cache entry to match.
       next_block_momentum_revision = 1_8
       block_momentum_revision = 0_8
     end if
+    if (current_phase_space_generation <= 0_8) &
+         current_phase_space_generation = 1_8
     block_momentum_revision(block, event_slot) = &
          next_block_momentum_revision
   end subroutine store_factorized_block_momenta

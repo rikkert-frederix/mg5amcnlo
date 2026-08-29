@@ -779,44 +779,10 @@ contains
       call compute_real_emission()
     end do
 
-    ! MINT's cut-acceptance counter describes the sampled kinematics, not
-    ! whether a matrix element happens to vanish.  In particular, an exact
-    ! zero FKS sector must still be recognized as passing inclusive cuts so
-    ! that MINT can classify it as a zero channel instead of repeatedly
-    ! increasing the number of phase-space points.  Test every materialized
-    ! B/R leaf before the density weights are inspected; leaves whose exact
-    ! zero branch has no snapshot are intentionally skipped.
     leaf_capacity = multiplicative_leaf_particle_capacity()
     allocate(leaf_momenta(0:3, leaf_capacity))
     allocate(statuses(leaf_capacity), pdgs(leaf_capacity))
     allocate(particle_from_decay(leaf_capacity))
-    call reset_multiplicative_leaf_iterator(workspace)
-    do
-      call next_multiplicative_leaf(workspace, leaf_mask, available)
-      if (.not. available) exit
-      leaf_has_snapshots = .true.
-      do component = 1, workspace%component_count
-        if (.not. workspace%has_snapshot( &
-             workspace%branch_by_component(component), component)) then
-          leaf_has_snapshots = .false.
-          exit
-        end if
-      end do
-      if (.not. leaf_has_snapshots) cycle
-      call restore_multiplicative_leaf(workspace, soft_counterevent)
-      call materialize_multiplicative_leaf( &
-           workspace, soft_counterevent, leaf_momenta, statuses, pdgs, &
-           particle_from_decay, particle_count)
-      pass_leaf = passcuts_multiplicative( &
-           leaf_momenta, particle_count, statuses, pdgs, &
-           particle_from_decay, reweight, &
-           production_boost( &
-           workspace%branch_by_component(production_position)))
-      if (pass_leaf) then
-        pass_cuts_check = .true.
-        exit
-      end if
-    end do
 
     call include_pdf_and_alphas()
     if (doreweight) then
@@ -826,6 +792,35 @@ contains
     if (icontr < 1) then
       ! A sampled factorized map can reject every local event.  This is an
       ! ordinary zero integrand point, not an incomplete branch workspace.
+      ! Still classify its cut acceptance from the materialized leaves so
+      ! MINT can distinguish a zero channel from inefficient phase space.
+      call reset_multiplicative_leaf_iterator(workspace)
+      do
+        call next_multiplicative_leaf(workspace, leaf_mask, available)
+        if (.not. available) exit
+        leaf_has_snapshots = .true.
+        do component = 1, workspace%component_count
+          if (.not. workspace%has_snapshot( &
+               workspace%branch_by_component(component), component)) then
+            leaf_has_snapshots = .false.
+            exit
+          end if
+        end do
+        if (.not. leaf_has_snapshots) cycle
+        call restore_multiplicative_leaf(workspace, soft_counterevent)
+        call materialize_multiplicative_leaf( &
+             workspace, soft_counterevent, leaf_momenta, statuses, pdgs, &
+             particle_from_decay, particle_count)
+        pass_leaf = passcuts_multiplicative( &
+             leaf_momenta, particle_count, statuses, pdgs, &
+             particle_from_decay, reweight, &
+             production_boost( &
+             workspace%branch_by_component(production_position)))
+        if (pass_leaf) then
+          pass_cuts_check = .true.
+          exit
+        end if
+      end do
       do contribution = 1, contribution_count
         production_contribution = &
              .not. contribution_is_nlo_decay(contribution)
@@ -861,20 +856,15 @@ contains
       call next_multiplicative_leaf(workspace, leaf_mask, available)
       if (.not. available) exit
       leaves_seen = leaves_seen + 1_8
-      call contract_multiplicative_leaf(workspace, contracted_weights)
-      if (all(abs(contracted_weights) == 0d0)) cycle
-
-      do weight = 1, iwgt
-        imaginary_tolerance = 1d-8*max( &
-             1d0, abs(real(contracted_weights(weight), kind=8)))
-        if (abs(aimag(contracted_weights(weight))) > &
-            imaginary_tolerance) then
-          call fail_driver( &
-               'a multiplicative spin-density contraction is not real')
+      leaf_has_snapshots = .true.
+      do component = 1, workspace%component_count
+        if (.not. workspace%has_snapshot( &
+             workspace%branch_by_component(component), component)) then
+          leaf_has_snapshots = .false.
+          exit
         end if
-        leaf_weights(weight) = real(contracted_weights(weight), kind=8)
       end do
-
+      if (.not. leaf_has_snapshots) cycle
       call restore_multiplicative_leaf(workspace, soft_counterevent)
       call materialize_multiplicative_leaf( &
            workspace, soft_counterevent, leaf_momenta, statuses, pdgs, &
@@ -886,6 +876,22 @@ contains
            workspace%branch_by_component(production_position)))
       if (.not. pass_leaf) cycle
       pass_cuts_check = .true.
+
+      ! Cuts are independent of the matrix-element value.  Applying them
+      ! before the spin contraction avoids both a second materialization and
+      ! contractions for rejected leaves while preserving IR-safe analysis.
+      call contract_multiplicative_leaf(workspace, contracted_weights)
+      if (all(abs(contracted_weights) == 0d0)) cycle
+      do weight = 1, iwgt
+        imaginary_tolerance = 1d-8*max( &
+             1d0, abs(real(contracted_weights(weight), kind=8)))
+        if (abs(aimag(contracted_weights(weight))) > &
+            imaginary_tolerance) then
+          call fail_driver( &
+               'a multiplicative spin-density contraction is not real')
+        end if
+        leaf_weights(weight) = real(contracted_weights(weight), kind=8)
+      end do
       leaf_weights = leaf_weights*reweight
       total_weights = total_weights + leaf_weights
 

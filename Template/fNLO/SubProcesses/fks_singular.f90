@@ -44,8 +44,12 @@ module fks_singular_module
                                     external_masses, validate_fks_model_state
   use spin_density_fks_matrices, only: &
        spin_density_fks_collection_enabled, &
-       load_spin_density_born_matrix, load_spin_density_real_matrix, &
-       load_spin_density_color_matrix, &
+       reset_spin_density_born_matrix, &
+       reset_spin_density_real_matrix, &
+       reset_spin_density_color_matrix, &
+       spin_density_born_matrix_available, &
+       spin_density_real_matrix_available, &
+       spin_density_color_matrix_available, &
        reset_spin_density_reduced_matrix, &
        set_spin_density_reduced_from_real, &
        set_spin_density_reduced_from_born, &
@@ -369,6 +373,9 @@ contains
       legacy_momenta = p_born
     end if
     if (uses_factorized_kernel_state()) then
+      if (has_nlo_contribution_bundle() .and. &
+          spin_density_fks_collection_enabled()) &
+        call reset_spin_density_born_matrix()
       call sborn_factorized( &
            active_nlo_contribution(), event_slot, weight)
       if (multi_channel) then
@@ -377,8 +384,10 @@ contains
       end if
       if (has_nlo_contribution_bundle() .and. &
           spin_density_fks_collection_enabled()) then
-        call load_spin_density_born_matrix( &
-             active_nlo_contribution(), nfksprocess, event_slot)
+        if (.not. spin_density_born_matrix_available()) then
+          call fail_fks_singular_state( &
+               'the generated Born did not publish its block density')
+        end if
       end if
     else
       call sborn(legacy_momenta, weight)
@@ -401,12 +410,17 @@ contains
       legacy_momenta = p_born
     end if
     if (uses_factorized_kernel_state()) then
+      if (has_nlo_contribution_bundle() .and. &
+          spin_density_fks_collection_enabled()) &
+        call reset_spin_density_color_matrix()
       call sborn_sf_factorized(active_nlo_contribution(), event_slot, &
                                first, second, weight)
       if (has_nlo_contribution_bundle() .and. &
           spin_density_fks_collection_enabled()) then
-        call load_spin_density_color_matrix( &
-             active_nlo_contribution(), first, second, event_slot)
+        if (.not. spin_density_color_matrix_available()) then
+          call fail_fks_singular_state( &
+               'the generated color Born did not publish its block density')
+        end if
       end if
     else
       call sborn_sf(legacy_momenta, first, second, weight)
@@ -429,11 +443,16 @@ contains
       legacy_momenta = stored_event_momenta(:, :, event_slot)
     end if
     if (uses_factorized_kernel_state()) then
+      if (has_nlo_contribution_bundle() .and. &
+          spin_density_fks_collection_enabled()) &
+        call reset_spin_density_real_matrix()
       call smatrix_real_factorized(nfksprocess, event_slot, weight)
       if (has_nlo_contribution_bundle() .and. &
           spin_density_fks_collection_enabled()) then
-        call load_spin_density_real_matrix( &
-             nfksprocess, event_slot, active_nlo_contribution())
+        if (.not. spin_density_real_matrix_available()) then
+          call fail_fks_singular_state( &
+               'the generated real did not publish its block density')
+        end if
       end if
     else
       call smatrix_real(legacy_momenta, weight)
