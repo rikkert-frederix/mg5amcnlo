@@ -101,10 +101,6 @@ module fks_contributions_module
       integer, intent(in) :: position
     end function sdm_branch_component_id
 
-    logical function sdm_component_is_corrected(position)
-      integer, intent(in) :: position
-    end function sdm_component_is_corrected
-
   end interface
 
 contains
@@ -240,7 +236,9 @@ contains
       amp_pos = iamp
       wgt1 = amp_split(iamp)*f_b/g**(qcd_power)
       if (spin_density_fks_collection_enabled() .and. &
-          iamp == spin_density_born_amp_position()) then
+          iamp == spin_density_born_amp_position() .and. &
+          (.not. multiplicative_nlo_enabled() .or. &
+           active_contribution_is_production())) then
         open_size = spin_density_active_open_size()
         component = spin_density_active_component_position()
         local_qcd_power = active_block_qcd_squared_order(QCD_power)
@@ -260,14 +258,14 @@ contains
       end if
     end do
 
-    call record_uncorrected_born_densities()
+    call record_spectator_born_densities()
     call cpu_time(tAfter)
     tBorn = tBorn + (tAfter - tBefore)
     return
   end subroutine compute_born
 
 
-  subroutine record_uncorrected_born_densities()
+  subroutine record_spectator_born_densities()
     integer :: component, component_count, open_size, maximum_open_size
     integer :: qcd_power, scale_pdg, block
     double precision :: jacobian, phase_space_weight, measure
@@ -287,7 +285,10 @@ contains
     end if
     allocate(raw_density(2, maximum_open_size, maximum_open_size))
     do component = 1, component_count
-      if (sdm_component_is_corrected(component)) cycle
+      ! Production defines the common global Born embedding.  Record every
+      ! other block here, including NLO-corrected decays; their own FKS
+      ! contributions subsequently add only the local NLO increment.
+      if (component == spin_density_active_component_position()) cycle
       raw_density = (0d0, 0d0)
       call sdm_component_born_density( &
            component, soft_counterevent, open_size, qcd_power, &
@@ -328,7 +329,7 @@ contains
       deallocate(density_coefficients)
     end do
     deallocate(raw_density)
-  end subroutine record_uncorrected_born_densities
+  end subroutine record_spectator_born_densities
 
 
   subroutine compute_decay_width_counterterm

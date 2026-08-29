@@ -348,6 +348,8 @@ contains
 
   subroutine set_spin_density_reduced_from_born(ordinary, correlated)
     complex(kind=8), intent(in) :: ordinary, correlated
+    complex(kind=8) :: value
+    integer :: row, column
 
     call ensure_spin_density_fks_matrices()
     if (.not. born_matrix_is_available) then
@@ -357,6 +359,17 @@ contains
     reduced_density(1:active_open_size, 1:active_open_size) = &
          ordinary*born_density(1, 1:active_open_size, 1:active_open_size) + &
          correlated*born_density(2, 1:active_open_size, 1:active_open_size)
+    ! The generated helicity-flip Born density stores one off-diagonal
+    ! orientation.  The scalar FKS path takes the real part after contracting
+    ! it; the equivalent block operator is its Hermitian projection.
+    do row = 1, active_open_size
+      do column = row, active_open_size
+        value = 0.5d0*(reduced_density(row, column) + &
+             conjg(reduced_density(column, row)))
+        reduced_density(row, column) = value
+        reduced_density(column, row) = conjg(value)
+      end do
+    end do
     reduced_matrix_is_available = .true.
   end subroutine set_spin_density_reduced_from_born
 

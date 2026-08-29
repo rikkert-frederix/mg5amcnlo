@@ -25,6 +25,7 @@ from madgraph.fks import fks_common
 from madgraph.fks import fks_decay
 from madgraph.fks import fks_helas_objects
 from madgraph.interface.master_interface import MasterCmd
+from madgraph.various import banner
 
 
 class TestFKSDecayChains(unittest.TestCase):
@@ -999,6 +1000,8 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn('(0D0,1D0)*BORN_AMPS', density_source)
             self.assertEqual(
                 density_source.count('SLOOPMATRIXHEL_THRES'), 2)
+            self.assertIn('IF (A.EQ.B) THEN', density_source)
+            self.assertIn('RAW_IMAG=0D0', density_source)
             self.assertIn('DCMPLX(', density_source)
             self.assertIn(
                 'VALUE=0.5D0*(RHO(K,A,B)+DCONJG(RHO(K,B,A)))',
@@ -1531,7 +1534,35 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn(
                 'leaves_seen /= workspace%leaf_count', driver_source)
             self.assertIn(
+                'event_momenta(0, 1, soft_counterevent) <= 0d0',
+                driver_source)
+            self.assertIn(
+                'f(component_integral) = central_weight', driver_source)
+            self.assertEqual(
+                driver_source.lower().count(
+                    'call capture_multiplicative_snapshot'), 2)
+            self.assertIn(
                 'if (multiplicative_nlo_enabled()) return', driver_source)
+            with open(os.path.join(
+                    subprocess_dir, 'fks_contributions.f90')) as stream:
+                contribution_source = stream.read().lower()
+            self.assertIn(
+                'record_spectator_born_densities', contribution_source)
+            self.assertIn(
+                'component == spin_density_active_component_position()',
+                contribution_source)
+            self.assertNotIn(
+                'sdm_component_is_corrected', contribution_source)
+            with open(os.path.join(
+                    subprocess_dir, 'fks_singular.f90')) as stream:
+                singular_source = ' '.join(
+                    stream.read().lower().split())
+            self.assertIn(
+                'eik*iden_comp*g**2', singular_source)
+            self.assertIn(
+                'link_multiplier*eik*iden_comp*g**2', singular_source)
+            self.assertIn(
+                'link_multiplier*eikireg*oneo8pi2*g**2', singular_source)
             with open(os.path.join(
                     subprocess_dir, 'mint_module.f90')) as stream:
                 mint_source = stream.read()
@@ -1604,6 +1635,19 @@ class TestFKSDecayChains(unittest.TestCase):
                           flat_accessors)
             self.assertIn('CALL GET_FACTORIZED_BLOCK_MOMENTA(',
                           flat_accessors)
+            component_accessors = flat_accessors.split(
+                'SUBROUTINE SDM_COMPONENT_BORN_DENSITY(', 1)[1]
+            self.assertIn(
+                'CALL SDM_DECAY_1_BORN(P,0,LOCAL_RHO)',
+                component_accessors)
+            self.assertIn(
+                'CALL SDM_DECAY_2_BORN(P,0,LOCAL_RHO)',
+                component_accessors)
+            self.assertNotRegex(
+                component_accessors,
+                r'CALL SDM_DECAY_[0-9]+_BORN_CONTRIBUTION_[0-9]+')
+            self.assertNotIn(
+                'SDM_COMPONENT_IS_CORRECTED', flat_accessors)
             with open(os.path.join(
                     subprocess_dir,
                     'multiplicative_nlo_decay.f90')) as stream:
@@ -1615,6 +1659,15 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn('restore_multiplicative_leaf', workspace_source)
             self.assertIn(
                 'workspace%leaf_count = spin_density_branch_leaf_count',
+                workspace_source)
+            self.assertIn(
+                'subroutine complete_multiplicative_zero_branches',
+                workspace_source)
+            self.assertIn(
+                'workspace%branches(component)%has_bornlike',
+                workspace_source)
+            self.assertIn(
+                'workspace%branches(component)%has_real',
                 workspace_source)
             with open(os.path.join(
                     subprocess_dir,
@@ -1911,7 +1964,20 @@ class TestFKSDecayChains(unittest.TestCase):
             with open(os.path.join(
                     subprocess_dir, 'makefile')) as stream:
                 makefile = stream.read()
-            self.assertIn('FNLO_CUTTOOLS_LIBRARY', makefile)
+            self.assertIn('$(libcuttools) $(libOLP)', makefile)
+            self.assertNotIn('FNLO_CUTTOOLS_LIBRARY', makefile)
+            for card_path in [
+                    os.path.join(process_dir, 'Cards',
+                                 'MadLoopParams.dat'),
+                    os.path.join(process_dir, 'Cards',
+                                 'MadLoopParams_default.dat'),
+                    os.path.join(process_dir, 'SubProcesses',
+                                 'MadLoopParams.dat')]:
+                self.assertEqual(
+                    banner.MadLoopParam(card_path)['COLLIERGlobalCache'],
+                    0)
+                self.assertEqual(
+                    banner.MadLoopParam(card_path)['ImprovePSPoint'], 1)
             self.assertTrue(os.path.isfile(os.path.join(
                 subprocess_dir, 'nlo_decay_info_2.dat')))
             self.assertTrue(os.path.isfile(os.path.join(

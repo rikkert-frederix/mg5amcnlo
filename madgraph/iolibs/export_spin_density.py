@@ -521,12 +521,20 @@ class SpinDensityExporter(object):
             '     $ PREC_ASKED,PREC_REAL,LOCAL_CODE)',
             '    PRECISION=MAX(PRECISION,PREC_REAL(%d))' % result_index,
             '    RET_CODE=MAX(RET_CODE,LOCAL_CODE)',
-            '    SDM_BORN_AMP=(0D0,1D0)*BORN_AMPS',
-            '    MP_SDM_BORN_AMP=(0D0,1D0)*BORN_AMPS',
-            '    CALL %sSLOOPMATRIXHEL_THRES(P,H,RAW_IMAG,' % prefix,
+            # Hermiticity removes the imaginary part of every diagonal
+            # density entry exactly.  Asking MadLoop to reconstruct that
+            # identically zero component makes its relative stability test
+            # compare pure roundoff and needlessly trigger a QP rescue.
+            '    IF (A.EQ.B) THEN',
+            '      RAW_IMAG=0D0',
+            '    ELSE',
+            '      SDM_BORN_AMP=(0D0,1D0)*BORN_AMPS',
+            '      MP_SDM_BORN_AMP=(0D0,1D0)*BORN_AMPS',
+            '      CALL %sSLOOPMATRIXHEL_THRES(P,H,RAW_IMAG,' % prefix,
             '     $ PREC_ASKED,PREC_IMAG,LOCAL_CODE)',
-            '    PRECISION=MAX(PRECISION,PREC_IMAG(%d))' % result_index,
-            '    RET_CODE=MAX(RET_CODE,LOCAL_CODE)',
+            '      PRECISION=MAX(PRECISION,PREC_IMAG(%d))' % result_index,
+            '      RET_CODE=MAX(RET_CODE,LOCAL_CODE)',
+            '    ENDIF',
             '    DO K=1,3',
             '      RHO(K,A,B)=RHO(K,A,B)+%s*DCMPLX(' %
             _fortran_double(normalization),

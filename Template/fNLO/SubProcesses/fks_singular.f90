@@ -1055,8 +1055,12 @@ contains
               pmass, partonic_sqrt_shat, eik)
             softcontr = softcontr + wgt*eik*iden_comp
             if (spin_density_fks_collection_enabled()) then
+              ! The generated colour-linked Born returns its matrix before
+              ! the explicit strong-coupling factor applied to the scalar
+              ! WGT (see SBORN_SF_FACTORIZED).  Restore the same convention
+              ! before accumulating the reduced density.
               call add_spin_density_reduced_color( &
-                   cmplx(-2d0*eik*iden_comp, 0d0, kind=8))
+                   cmplx(-2d0*eik*iden_comp*g**2, 0d0, kind=8))
             end if
 ! update the amp_split array
             amp_split(1:amp_split_size) = amp_split(1:amp_split_size) - 2d0*eik*amp_split_soft(1:amp_split_size)*iden_comp
@@ -1131,7 +1135,8 @@ contains
                  link_multiplier*link_weight*eik*iden_comp
             if (spin_density_fks_collection_enabled()) then
               call add_spin_density_reduced_color(cmplx( &
-                   -2d0*link_multiplier*eik*iden_comp, 0d0, kind=8))
+                   -2d0*link_multiplier*eik*iden_comp*g**2, &
+                   0d0, kind=8))
             end if
             amp_split(1:amp_split_size) = &
                  amp_split(1:amp_split_size) - &
@@ -1523,7 +1528,7 @@ contains
               if (spin_density_fks_collection_enabled()) then
                 density_coefficients = (0d0, 0d0)
                 density_coefficients(1) = cmplx( &
-                     -2d0*link_multiplier*eikIreg*oneo8pi2, &
+                     -2d0*link_multiplier*eikIreg*oneo8pi2*g**2, &
                      0d0, kind=8)
                 call add_spin_density_integrated_color( &
                      density_coefficients)

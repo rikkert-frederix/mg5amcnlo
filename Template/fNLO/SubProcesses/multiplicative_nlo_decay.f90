@@ -35,7 +35,7 @@ module multiplicative_nlo_decay
   public :: set_multiplicative_real_configuration
   public :: restore_multiplicative_leaf
   public :: add_multiplicative_block_density
-  public :: complete_multiplicative_zero_real_branches
+  public :: complete_multiplicative_zero_branches
   public :: contract_multiplicative_leaf
 
   interface
@@ -345,11 +345,12 @@ contains
   end subroutine add_multiplicative_block_density
 
 
-  subroutine complete_multiplicative_zero_real_branches(workspace)
-    ! A sampled real map may be kinematically rejected before it records a
-    ! weight line.  Its branch is then the exact zero matrix.  Mark that
-    ! explicitly so contractions containing it vanish before they request a
-    ! momentum snapshot.
+  subroutine complete_multiplicative_zero_branches(workspace)
+    ! A sampled map may omit one side of a local B/R pair before it records a
+    ! weight line.  This includes a rejected real map and the second solution
+    ! of a massive real-emission map, which intentionally has no Born-like
+    ! counterevent.  Mark every missing branch as the exact zero matrix so
+    ! contractions containing it vanish before they request a snapshot.
     type(multiplicative_nlo_workspace), intent(inout) :: workspace
     complex(kind=8), allocatable :: zero_density(:, :, :)
     integer :: component, contribution, open_size
@@ -357,15 +358,21 @@ contains
     call validate_workspace(workspace)
     do contribution = 1, workspace%corrected_count
       component = workspace%contribution_positions(contribution)
-      if (workspace%branches(component)%has_real) cycle
       open_size = workspace%component_open_sizes(component)
       allocate(zero_density(workspace%weight_count, open_size, open_size))
       zero_density = (0d0, 0d0)
-      call add_multiplicative_block_density( &
-           workspace, component, spin_density_real_branch, zero_density)
+      if (.not. workspace%branches(component)%has_bornlike) then
+        call add_multiplicative_block_density( &
+             workspace, component, spin_density_bornlike_branch, &
+             zero_density)
+      end if
+      if (.not. workspace%branches(component)%has_real) then
+        call add_multiplicative_block_density( &
+             workspace, component, spin_density_real_branch, zero_density)
+      end if
       deallocate(zero_density)
     end do
-  end subroutine complete_multiplicative_zero_real_branches
+  end subroutine complete_multiplicative_zero_branches
 
 
   subroutine contract_multiplicative_leaf(workspace, result)

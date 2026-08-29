@@ -614,12 +614,24 @@ contains
 
 
   integer function nlo_decay_combination_mode()
+    if (.not. has_decay_chains() .and. .not. has_nlo_decay()) then
+      nlo_decay_combination_mode = nlo_decay_additive
+      return
+    end if
     if (.not. initialized) call initialize_decay_chain_parameters()
     nlo_decay_combination_mode = nlo_combination_value
   end function nlo_decay_combination_mode
 
 
   logical function multiplicative_nlo_enabled()
+    ! This query is used by shared fNLO code, including ordinary production
+    ! processes with no decay metadata or decay_card.dat.  Such processes are
+    ! necessarily on the legacy additive path and must not initialize decay
+    ! parameters merely to answer the mode question.
+    if (.not. has_decay_chains() .and. .not. has_nlo_decay()) then
+      multiplicative_nlo_enabled = .false.
+      return
+    end if
     if (.not. initialized) call initialize_decay_chain_parameters()
     multiplicative_nlo_enabled = &
          nlo_combination_value == nlo_decay_multiplicative

@@ -33,7 +33,7 @@ module driver_mintfo_module
        factorized_integration_dimension, &
        factorized_radiation_start, &
        nlo_virtual_grid_count, bundle_component_count, &
-       bundle_component_label
+       bundle_component_label, bundle_nlo_component
   use setscales_module, only: set_alphas
   use split_orders, only: check_amp_split
   use cuts_module, only: passcuts, passcuts_multiplicative
@@ -64,7 +64,7 @@ module driver_mintfo_module
        set_multiplicative_weight_count, reset_multiplicative_leaf_iterator, &
        next_multiplicative_leaf, capture_multiplicative_snapshot, &
        set_multiplicative_real_configuration, restore_multiplicative_leaf, &
-       complete_multiplicative_zero_real_branches, &
+       complete_multiplicative_zero_branches, &
        contract_multiplicative_leaf
   use multiplicative_event_materialization, only: &
        multiplicative_leaf_particle_capacity, &
@@ -594,7 +594,8 @@ contains
     integer :: ibody, ifks, leaf_capacity, particle_count
     integer :: production_position, radiation_block, weight
     integer(kind=8) :: leaf_mask, leaves_seen
-    logical :: available, pass_leaf, production_contribution
+    logical :: available, leaf_has_snapshots, pass_leaf
+    logical :: production_contribution
     real :: plot_time_before, plot_time_after
 
     if (new_point .and. ifl /= 2) pass_cuts_check = .false.
@@ -616,6 +617,7 @@ contains
     sigint_multiplicative_impl = 0d0
     f = 0d0
     icontr = 0
+    iwgt = 0
     do amplitude_order = 0, n_ave_virt
       virt_wgt_mint(amplitude_order) = 0d0
       born_wgt_mint(amplitude_order) = 0d0
@@ -689,6 +691,14 @@ contains
         return
       end if
 
+      component_position = &
+           workspace%contribution_positions(contribution)
+      if (production_contribution) production_position = component_position
+      ! The second solution of a massive real-emission map has no soft/Born
+      ! counterevent.  It contributes only to R, so leave its B density and
+      ! snapshot absent here; they are completed as an exact zero below.
+      if (event_momenta(0, 1, soft_counterevent) <= 0d0) cycle
+
       call compute_prefactors_nbody(vegas_wgt)
       call set_alphas( &
            event_momenta(0:3, 1:nexternal, soft_counterevent))
@@ -698,23 +708,18 @@ contains
       call compute_nbody_noborn()
       call finish_bundle_virtual_tricks()
 
-      component_position = &
-           workspace%contribution_positions(contribution)
       if (production_contribution) then
-        production_position = component_position
         production_boost(spin_density_bornlike_branch) = &
              ybst_til_tolab(soft_counterevent)
         ! The production Born generation materializes the complete LO decay
-        ! tree, including any uncorrected spectator blocks.
+        ! tree.  Keep that one coherent embedding for every block; a decay
+        ! contribution adds its NLO increment but must not replace this B
+        ! snapshot with independently generated decay kinematics.
         do component = 1, workspace%component_count
           call capture_multiplicative_snapshot( &
                workspace, component, spin_density_bornlike_branch, &
                soft_counterevent)
         end do
-      else
-        call capture_multiplicative_snapshot( &
-             workspace, component_position, spin_density_bornlike_branch, &
-             soft_counterevent)
       end if
     end do
     if (production_position == 0) then
@@ -770,24 +775,81 @@ contains
       call compute_real_emission()
     end do
 
+    ! MINT's cut-acceptance counter describes the sampled kinematics, not
+    ! whether a matrix element happens to vanish.  In particular, an exact
+    ! zero FKS sector must still be recognized as passing inclusive cuts so
+    ! that MINT can classify it as a zero channel instead of repeatedly
+    ! increasing the number of phase-space points.  Test every materialized
+    ! B/R leaf before the density weights are inspected; leaves whose exact
+    ! zero branch has no snapshot are intentionally skipped.
+    leaf_capacity = multiplicative_leaf_particle_capacity()
+    allocate(leaf_momenta(0:3, leaf_capacity))
+    allocate(statuses(leaf_capacity), pdgs(leaf_capacity))
+    allocate(particle_from_decay(leaf_capacity))
+    call reset_multiplicative_leaf_iterator(workspace)
+    do
+      call next_multiplicative_leaf(workspace, leaf_mask, available)
+      if (.not. available) exit
+      leaf_has_snapshots = .true.
+      do component = 1, workspace%component_count
+        if (.not. workspace%has_snapshot( &
+             workspace%branch_by_component(component), component)) then
+          leaf_has_snapshots = .false.
+          exit
+        end if
+      end do
+      if (.not. leaf_has_snapshots) cycle
+      call restore_multiplicative_leaf(workspace, soft_counterevent)
+      call materialize_multiplicative_leaf( &
+           workspace, soft_counterevent, leaf_momenta, statuses, pdgs, &
+           particle_from_decay, particle_count)
+      pass_leaf = passcuts_multiplicative( &
+           leaf_momenta, particle_count, statuses, pdgs, &
+           particle_from_decay, reweight, &
+           production_boost( &
+           workspace%branch_by_component(production_position)))
+      if (pass_leaf) then
+        pass_cuts_check = .true.
+        exit
+      end if
+    end do
+
     call include_pdf_and_alphas()
     if (doreweight) then
       if (do_rwgt_scale .or. do_rwgt_decay_scale) call reweight_scale()
       if (do_rwgt_pdf) call reweight_pdf()
     end if
-    if (icontr < 1 .or. iwgt < 1) then
-      call fail_driver('multiplicative NLO produced no density weight lines')
+    if (icontr < 1) then
+      ! A sampled factorized map can reject every local event.  This is an
+      ! ordinary zero integrand point, not an incomplete branch workspace.
+      do contribution = 1, contribution_count
+        production_contribution = &
+             .not. contribution_is_nlo_decay(contribution)
+        if (production_contribution) then
+          category = ini_fin_fks(ichan)
+        else
+          category = 0
+        end if
+        call fill_mc_integer( &
+             multiplicative_mc_dimension( &
+             contribution, category, production_contribution), &
+             picked_integers(contribution), 0d0)
+      end do
+      call set_spin_density_fks_collection(.false.)
+      deallocate(picked_integers, configurations, volumes)
+      deallocate(leaf_momenta, statuses, pdgs)
+      deallocate(particle_from_decay)
+      return
+    end if
+    if (iwgt < 1) then
+      call fail_driver('multiplicative NLO produced no evaluated weights')
     end if
     call set_multiplicative_weight_count(workspace, iwgt)
     call aggregate_spin_density_weight_lines(workspace)
-    call complete_multiplicative_zero_real_branches(workspace)
+    call complete_multiplicative_zero_branches(workspace)
 
-    leaf_capacity = multiplicative_leaf_particle_capacity()
     allocate(contracted_weights(iwgt), leaf_weights(iwgt))
     allocate(total_weights(iwgt))
-    allocate(leaf_momenta(0:3, leaf_capacity))
-    allocate(statuses(leaf_capacity), pdgs(leaf_capacity))
-    allocate(particle_from_decay(leaf_capacity))
     total_weights = 0d0
     leaves_seen = 0_8
     call reset_multiplicative_leaf_iterator(workspace)
@@ -887,12 +949,27 @@ contains
     implicit none
     double precision, intent(out) :: f(nintegrals)
     double precision, intent(in) :: central_weight, virtual_ratio
-    integer :: amplitude_order, born_index, virtual_index
+    integer :: amplitude_order, born_index, component
+    integer :: component_integral, contribution, virtual_index
 
     f = 0d0
     f(1) = abs(central_weight)
     f(2) = central_weight
     f(4) = virtual_ratio
+    ! A multiplicative product has no additive production/decay component
+    ! decomposition.  The corresponding MINT slots are nevertheless the
+    ! grid-learning inputs for each block's private radiation variables.
+    ! Feed the complete integrand to every corrected-block proxy so those
+    ! dimensions adapt to the function being integrated instead of seeing an
+    ! identically zero grid weight.
+    do contribution = 1, nlo_contribution_count()
+      component = bundle_nlo_component(contribution)
+      component_integral = first_bundle_component_integral + component - 1
+      if (component_integral > nintegrals) then
+        call fail_driver('a multiplicative grid proxy is out of range')
+      end if
+      f(component_integral) = central_weight
+    end do
     do amplitude_order = 0, n_ord_virt
       if (amplitude_order == 0) then
         f(3) = 0d0

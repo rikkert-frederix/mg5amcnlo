@@ -43,6 +43,97 @@ class MGerror(Exception): pass
 class TestMadEventCmd(unittest.TestCase):
     """ check if the ValidCmd works correctly """
 
+    def test_fixed_order_refinement_splits_exact_doubling(self):
+        """A refinement exactly twice as long uses available workers."""
+
+        interface = object.__new__(run_mecmd.aMCatNLOCmd)
+        interface.stop_for_runweb = True
+        interface.options = {'run_mode': 2, 'nb_core': 4}
+        job = {
+            'p_dir': 'P0_gg_test',
+            'channel': '1',
+            'dirname': '/tmp/P0_gg_test/all_G1',
+            'resultABS': 1.0,
+            'time_spend': 100.0,
+            'niters': 2,
+            'npoints': 2000,
+            'niters_done': 2,
+            'npoints_done': 1000,
+            'combined': 1,
+            'accuracy': 0.01,
+        }
+
+        jobs, collected = interface.split_jobs_fixed_order([job], [job])
+
+        self.assertEqual([entry['split'] for entry in jobs], [1, 2])
+        self.assertEqual(len(collected), 2)
+        self.assertTrue(all(entry['niters'] == 1 for entry in jobs))
+        self.assertTrue(all(entry['wgt_mult'] == 0.5 for entry in jobs))
+
+    def test_fnlo_calculate_xsect_allows_saved_grid_resume(self):
+        """Fixed-order-only outputs can resume their MINT refinement."""
+
+        interface = object.__new__(run_mecmd.aMCatNLOCmd)
+        interface.stop_for_runweb = True
+        interface.force = False
+        interface.proc_characteristics = {'fixed_order_only': True}
+        with tempfile.TemporaryDirectory() as output_root:
+            interface.me_dir = output_root
+            options = {
+                'force': False,
+                'multicore': True,
+                'cluster': False,
+                'only_generation': True,
+            }
+            args = ['NLO']
+
+            interface.check_calculate_xsect(args, options)
+
+            self.assertEqual(args, ['NLO'])
+
+    def test_fixed_order_resume_uses_latest_numbered_result(self):
+        """An interrupted refinement resumes from its completed grid."""
+
+        interface = object.__new__(run_mecmd.aMCatNLOCmd)
+        interface.stop_for_runweb = True
+        interface.fnlo_multiplicative_enabled = lambda: False
+        with tempfile.TemporaryDirectory() as output_root:
+            with open(pjoin(output_root, 'res_0.dat'), 'w') as stream:
+                stream.write('10.0 0.4 9.0 0.5 2 1000 12.5\n')
+            job = {'dirname': output_root}
+
+            interface.append_the_results([job], -1)
+
+            self.assertEqual(job['resultABS'], 10.0)
+            self.assertEqual(job['result'], 9.0)
+            self.assertEqual(job['niters_done'], 2)
+            self.assertEqual(job['npoints_done'], 1000)
+
+    def test_fixed_order_resume_keeps_independent_refinement(self):
+        """A precise saved grid still gets one independent final pass."""
+
+        interface = object.__new__(run_mecmd.aMCatNLOCmd)
+        interface.stop_for_runweb = True
+        interface.cross_sect_dict = {
+            'errt': 0.5,
+            'xsect': 100.0,
+            'erra': 0.4,
+            'xseca': 120.0,
+        }
+        job = {
+            'resultABS': 100.0,
+            'errorABS': 0.1,
+            'niters_done': 2,
+            'npoints_done': 1000,
+        }
+
+        jobs = interface.update_jobs_to_run(0.01, -1, [job])
+
+        self.assertEqual(jobs, [job])
+        self.assertEqual(job['mint_mode'], -1)
+        self.assertEqual(job['niters'], 2)
+        self.assertEqual(job['npoints'], 2000)
+
     def test_fnlo_forced_width_pids(self):
         """Forced decay resonances are discovered from subprocess metadata."""
 
@@ -116,6 +207,28 @@ class TestMadEventCmd(unittest.TestCase):
             'call reset_spin_density_fks_matrices()', ensure_body)
         self.assertIn('call ensure_spin_density_fks_matrices()', reset_body)
         self.assertIn('call clear_spin_density_fks_matrices()', reset_body)
+        correlated_body = matrix_source.split(
+            'subroutine set_spin_density_reduced_from_born', 1)[1].split(
+                'end subroutine set_spin_density_reduced_from_born', 1)[0]
+        self.assertIn('hermitian projection', correlated_body)
+        self.assertIn('conjg(reduced_density(column, row))',
+                      correlated_body)
+
+        with open(pjoin(subprocess_dir, 'driver_mintFO.f90')) as stream:
+            driver_source = stream.read().lower()
+        multiplicative_driver = driver_source.split(
+            'double precision function sigint_multiplicative_impl', 1)[1]
+        self.assertIn('icontr = 0\n    iwgt = 0', driver_source)
+        self.assertIn('if (icontr < 1) then', driver_source)
+        self.assertIn('picked_integers(contribution), 0d0)', driver_source)
+        self.assertIn('workspace%has_snapshot(', driver_source)
+        self.assertLess(
+            multiplicative_driver.index(
+                'pass_leaf = passcuts_multiplicative'),
+            multiplicative_driver.index('call include_pdf_and_alphas()'))
+        self.assertNotIn(
+            'multiplicative nlo produced no density weight lines',
+            driver_source)
 
         with open(pjoin(subprocess_dir, 'madfks_plot.f90')) as stream:
             plot_source = stream.read().lower()
@@ -128,6 +241,15 @@ class TestMadEventCmd(unittest.TestCase):
             parameter_source = stream.read().lower()
         self.assertNotIn(
             '.not. present(factor_index) .or.', parameter_source)
+        multiplicative_mode_body = parameter_source.split(
+            'logical function multiplicative_nlo_enabled()', 1)[1].split(
+                'end function multiplicative_nlo_enabled', 1)[0]
+        self.assertIn(
+            '.not. has_decay_chains() .and. .not. has_nlo_decay()',
+            multiplicative_mode_body)
+        self.assertIn(
+            'multiplicative_nlo_enabled = .false.',
+            multiplicative_mode_body)
 
         with open(pjoin(
                 subprocess_dir, 'test_soft_col_limits.f90')) as stream:

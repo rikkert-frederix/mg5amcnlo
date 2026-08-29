@@ -764,13 +764,6 @@ class CheckValidForCmd(object):
         if options['multicore'] and options['cluster']:
             raise self.InvalidCmd('options -m (--multicore) and -c (--cluster)' + \
                     ' are not compatible. Please choose one.')
-        if is_fixed_order_only(
-                self.me_dir, getattr(self, 'proc_characteristics', None)) \
-                and options.get('only_generation'):
-            raise self.InvalidCmd(
-                '--only_generation is not available for fNLO outputs')
-
-
     def check_generate_events(self, args, options):
         """check the validity of the line. args is ORDER,
         ORDER being LO or NLO. If no mode is passed, NLO is used"""
@@ -891,7 +884,10 @@ class CheckValidForCmd(object):
                 'This fNLO process only supports fixed-order LO or NLO runs')
 
         if fixed_order_only:
-            event_options = enabled_event_options(options)
+            # --only_generation resumes the fixed-order MINT integration from
+            # its saved job status; it does not request an event workflow.
+            event_options = [option for option in enabled_event_options(options)
+                             if option != '--only_generation']
             if event_options:
                 raise self.InvalidCmd(
                     '%s are not available for fNLO outputs' %
@@ -2224,7 +2220,8 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
                 'This fNLO process only supports fixed-order LO or NLO runs')
         if fixed_order_only:
             event_options = [option for option in enabled_event_options(options)
-                             if option != '--parton']
+                             if option not in
+                             ('--parton', '--only_generation')]
             if event_options:
                 raise aMCatNLOError(
                     '%s are not available for fNLO outputs' %
@@ -2885,7 +2882,12 @@ RESTART = %(mint_mode)s
             # if the time expected for this job is (much) larger than
             # the time spend in the previous iteration, and larger
             # than the expected time per job, split it
-            if time_expected > max(2*job['time_spend']/job['combined'],time_per_job) \
+            # The adaptive fixed-order refinement commonly doubles the
+            # requested statistics exactly.  Include that boundary: with a
+            # strict comparison an expensive job whose projected duration is
+            # precisely twice its previous duration is left serial even when
+            # multicore slots are available.
+            if time_expected >= max(2*job['time_spend']/job['combined'],time_per_job) \
                     or job['npoints'] >= __maxint__:
                 # determine the number of splits needed; the second condition 
                 # (job['npoints'] >= __maxint__) prevents integer overflow in fortran
@@ -2994,8 +2996,12 @@ RESTART = %(mint_mode)s
                     # Determine relative required accuracy on the ABS for this job
                     job['accuracy']=req_accABS*math.sqrt(totABS/job['resultABS'])
                     # If already accurate enough, skip the job
-                    if job['accuracy'] > job['errorABS']/job['resultABS'] and step != 0:
-                            continue
+                    # Step -1 is the saved-grid resume path and must behave
+                    # like the original grid step 0: always perform one
+                    # independent refinement before accepting convergence.
+                    if (job['accuracy'] >
+                            job['errorABS']/job['resultABS'] and step > 0):
+                        continue
                     # Update the number of PS points based on errorABS, ncall and accuracy
                     itmax_fl=job['niters_done']*math.pow(job['errorABS']/
                                                          (job['accuracy']*job['resultABS']),2)
@@ -3074,7 +3080,25 @@ RESTART = %(mint_mode)s
                 else:
                 # should only be here when doing fixed order with the 'only_generation'
                 # option equal to True. Take the results from the final run done.
-                    with open(pjoin(job['dirname'],'res.dat')) as res_file:
+                    result_path = pjoin(job['dirname'], 'res.dat')
+                    if not os.path.isfile(result_path):
+                        # An interrupted accuracy-driven run can have a fully
+                        # completed grid stage but no final res.dat yet.  Resume
+                        # from the newest completed numbered result instead of
+                        # discarding that (potentially expensive) grid.
+                        numbered_results = []
+                        for candidate in glob.glob(pjoin(
+                                job['dirname'], 'res_*.dat')):
+                            match = re.match(
+                                r'res_([0-9]+)\.dat$',
+                                os.path.basename(candidate))
+                            if match:
+                                numbered_results.append(
+                                    (int(match.group(1)), candidate))
+                        if not numbered_results:
+                            raise IOError('no completed fixed-order result')
+                        result_path = max(numbered_results)[1]
+                    with open(result_path) as res_file:
                         results=res_file.readline().split()
             except IOError:
                 if not error_found:

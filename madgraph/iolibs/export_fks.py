@@ -375,13 +375,24 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             pjoin(self.dir_path, 'Source', 'PDF', 'pdf.inc'))
 
     def configure_fnlo_decay_chain_cards(self):
-        """Create runtime decay data and disable unsafe helicity filters.
+        """Create runtime decay data and disable unsafe loop optimizations.
 
         MadLoop's numerical helicity filter and the FKS Monte-Carlo helicity
         sum assume an ordinary, undecayed external-state layout.  Applying
         either optimization to the flattened decay-chain matrix element can
         remove physical helicities.  Decay-chain outputs therefore use the
         exact helicity sum for both the virtual and FKS contributions.
+
+        A contribution bundle links independently generated MadLoop providers
+        into one executable.  COLLIER's global cache cannot distinguish their
+        different call layouts, so reusing one provider's cache for another
+        can access invalid entries.  Keep COLLIER itself available, but disable
+        that cross-call cache whenever more than one provider is linked.
+
+        The default MadLoop phase-space improvement method only supports two
+        incoming particles.  Bundled decay providers have one incoming parent,
+        so select the general PSMC method directly instead of failing the
+        default method and rescuing every helicity evaluation with PSMC.
         """
 
         if self.opt.get('fks_template') != 'fNLO':
@@ -484,6 +495,25 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             self.dir_path, 'Cards', 'MadLoopParams.dat')
         madloop_params = banner_mod.MadLoopParam(madloop_card)
         madloop_params.set('HelicityFilterLevel', 0)
+        virtual_library_paths = glob.glob(pjoin(
+            self.dir_path, 'SubProcesses', 'P*',
+            'virtual_libraries.inc'))
+        multiple_virtual_providers = False
+        for virtual_library_path in virtual_library_paths:
+            with open(virtual_library_path) as virtual_library_file:
+                virtual_libraries = re.findall(
+                    r'libMadLoop_[0-9]+\.a',
+                    virtual_library_file.read())
+            if len(virtual_libraries) > 1:
+                multiple_virtual_providers = True
+                break
+        if multiple_virtual_providers:
+            madloop_params.set('COLLIERGlobalCache', 0)
+        has_nlo_decay_provider = bool(glob.glob(pjoin(
+            self.dir_path, 'SubProcesses', 'P*',
+            'nlo_decay_info_*.dat')))
+        if has_nlo_decay_provider:
+            madloop_params.set('ImprovePSPoint', 1)
         for output_path in [
                 madloop_card,
                 pjoin(self.dir_path, 'Cards',
@@ -3736,23 +3766,6 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
 
         source.extend([
             '',
-            'LOGICAL FUNCTION SDM_COMPONENT_IS_CORRECTED(POSITION)',
-            'IMPLICIT NONE',
-            'INTEGER POSITION',
-            'SELECT CASE (POSITION)'])
-        for position in range(1, len(components) + 1):
-            source.extend([
-                'CASE (%d)' % position,
-                '  SDM_COMPONENT_IS_CORRECTED=%s' % (
-                    '.TRUE.' if position in contribution_positions
-                    else '.FALSE.')])
-        source.extend([
-            'CASE DEFAULT',
-            "  WRITE(*,*) 'Invalid density component',POSITION",
-            '  STOP 1',
-            'END SELECT',
-            'END',
-            '',
             'SUBROUTINE SDM_COMPONENT_BORN_DENSITY(POSITION,EVENT_SLOT,',
             '     $ OPEN_SIZE,QCD_POWER,SCALE_PDG,RHO)',
             'IMPLICIT NONE',
@@ -3773,8 +3786,12 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             'END SELECT',
             'END'])
         for position in range(1, len(components) + 1):
-            provider = born_leaf_providers[position]
             component_id = component_ids[position - 1]
+            # These accessors seed every spectator from the common global
+            # Born event.  Use the canonical component provider: an
+            # FKS-contribution provider may have a different local leg order
+            # and is only valid with that contribution's private context.
+            provider = plan['components'][component_id]['born']
             provider_me = provider['matrix_element']
             provider_nexternal, _ = provider_me.get_nexternal_ninitial()
             squared_orders, _ = provider_me.get_split_orders_mapping()
