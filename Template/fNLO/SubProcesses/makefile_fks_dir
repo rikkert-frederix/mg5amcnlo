@@ -50,6 +50,10 @@ FILES= fnlo_process_common.o process_dimensions.o			\
 	 decay_chain_parameters_bridge.o phase_space_kinematics.o	\
 	 factorized_phase_space.o factorized_block_kinematics.o	\
 	 spin_density_matrix_results.o					\
+	 spin_density_fks_matrices.o					\
+	 multiplicative_nlo_decay.o					\
+	 multiplicative_event_materialization.o				\
+	 spin_density_weight_lines.o					\
 	 decay_chain_kinematics.o nlo_decay_kinematics.o		\
 	 decay_chain_scales.o						\
 	 fks_diagnostics.o fks_qcd_splitting.o fks_soft_kernels.o	\
@@ -237,6 +241,15 @@ phase_space_kinematics.o: process_dimensions.o \
 factorized_phase_space.o: process_dimensions.o fnlo_process_common.o
 spin_density_matrix_results.o: process_dimensions.o fnlo_process_common.o \
 	factorized_phase_space.o
+spin_density_fks_matrices.o: spin_density_matrix_results.o
+multiplicative_nlo_decay.o: spin_density_matrix_results.o \
+	factorized_phase_space.o
+multiplicative_event_materialization.o: multiplicative_nlo_decay.o \
+	spin_density_matrix_results.o factorized_phase_space.o \
+	factorized_block_kinematics.o
+spin_density_weight_lines.o: multiplicative_nlo_decay.o \
+	spin_density_matrix_results.o decay_chain_parameters.o \
+	$(LIBDIR)alfas_functions_module.mod
 factorized_block_kinematics.o: process_dimensions.o phase_space_kinematics.o
 decay_chain_kinematics.o: process_dimensions.o fnlo_process_common.o \
 	decay_chain_metadata.o \
@@ -286,6 +299,7 @@ fks_singular.o: process_dimensions.o fks_model_state.o fks_metadata.o \
 	chooser_functions.o phase_space_kinematics.o decay_chain_metadata.o \
 	decay_chain_kinematics.o decay_chain_scales.o \
 	factorized_phase_space.o \
+	spin_density_fks_matrices.o \
 	nlo_decay_metadata.o nlo_decay_kinematics.o \
 	nlo_contribution_bundle.o \
 	fks_qcd_splitting.o fks_soft_kernels.o \
@@ -297,13 +311,15 @@ fks_weights.o: process_dimensions.o fks_model_state.o fks_metadata.o \
 	decay_chain_metadata.o decay_chain_scales.o \
 	decay_chain_parameters.o fnlo_scale_variations.o \
 	nlo_decay_metadata.o nlo_contribution_bundle.o \
-	weight_lines.o mint_module.o FKSParams.o setscales.o \
+	weight_lines.o spin_density_weight_lines.o mint_module.o FKSParams.o setscales.o \
 	splitorders_stuff.o chooser_functions.o madfks_plot.o \
 	$(LIBDIR)run_state.mod $(LIBDIR)timing_state.mod \
 	$(LIBDIR)extra_weights.mod $(LIBDIR)alfas_functions_module.mod
 fks_contributions.o: process_dimensions.o fks_model_state.o \
 	decay_chain_metadata.o decay_chain_kinematics.o \
-	factorized_phase_space.o nlo_decay_metadata.o \
+	decay_chain_scales.o factorized_phase_space.o \
+	spin_density_matrix_results.o spin_density_fks_matrices.o \
+	nlo_decay_metadata.o \
 	nlo_contribution_bundle.o fks_singular.o fks_weights.o mint_module.o \
 	splitorders_stuff.o \
 	madfks_plot.o $(LIBDIR)timing_state.mod $(LIBDIR)extra_weights.mod
@@ -313,6 +329,9 @@ fks_singular_bridge.o: fks_model_state.o fks_singular.o \
 fks_random_bridge.o: fks_random.o mint_module.o
 driver_mintFO.o: process_dimensions.o fks_metadata.o fks_channel_map.o \
 	decay_chain_metadata.o nlo_contribution_bundle.o \
+	decay_chain_parameters.o spin_density_fks_matrices.o \
+	spin_density_weight_lines.o multiplicative_nlo_decay.o \
+	multiplicative_event_materialization.o \
 	fnlo_scale_variations.o \
 	fks_random.o genps_fks.o \
 	weight_lines.o mint_module.o FKSParams.o MC_integer.o setscales.o \

@@ -790,6 +790,63 @@ class SpinDensityExporter(object):
         code.extend(['  ENDDO', 'ENDDO'])
         return declarations, code
 
+    def branch_contraction_lines(
+            self, plan, branch_results='SDM_BRANCHES',
+            branch_choices='SDM_BRANCH_CHOICE',
+            weight_count='SDM_WEIGHT_COUNT', result_name='SDM_RESULT'):
+        """Contract one already-aggregated B/R choice for every block.
+
+        FKS counterevent slots are intentionally absent from this interface.
+        The caller must first combine LO, soft-virtual, integrated, soft,
+        collinear and soft-collinear densities into each block's B branch.
+        Consequently one invocation represents exactly one global B/R leaf.
+        """
+
+        self.prepare_plan(plan)
+        _, state_count, states = self._contraction_layout(plan)
+        node_count = len(plan['topology']['nodes'])
+        providers = dict(
+            (component_id, component['born'])
+            for component_id, component in plan['components'].items())
+        positions = self._block_position_map(providers)
+        component_count = len(providers)
+
+        declarations = [
+            'INTEGER SDM_STATE,SDM_STATE2,SDM_WEIGHT',
+            'INTEGER SDM_LEFT(%d),SDM_RIGHT(%d)' % (
+                component_count, component_count),
+            'INTEGER SDM_NODE_STATE(%d,%d)' % (
+                max(1, node_count), max(1, state_count))]
+        for node_id in sorted(states):
+            declarations.append(
+                'DATA (SDM_NODE_STATE(%d,SDM_STATE),SDM_STATE=1,%d) '
+                '/%s/' % (node_id, state_count,
+                          ','.join(map(str, states[node_id]))))
+
+        code = [
+            '%s=(0D0,0D0)' % result_name,
+            'DO SDM_STATE=1,%d' % state_count,
+            '  DO SDM_STATE2=1,%d' % state_count]
+        for component_id, provider in sorted(providers.items()):
+            position = positions[component_id]
+            code.extend([
+                '    SDM_LEFT(%d)=%s' % (
+                    position, self._state_index(provider, 'SDM_STATE')),
+                '    SDM_RIGHT(%d)=%s' % (
+                    position, self._state_index(
+                        provider, 'SDM_STATE2'))])
+        code.extend([
+            '    DO SDM_WEIGHT=1,%s' % weight_count,
+            '      %s(SDM_WEIGHT)=%s(SDM_WEIGHT)+' % (
+                result_name, result_name),
+            '     $ SPIN_DENSITY_BRANCH_PRODUCT(%s,%s,' % (
+                branch_results, branch_choices),
+            '     $ SDM_WEIGHT,SDM_LEFT,SDM_RIGHT)',
+            '    ENDDO',
+            '  ENDDO',
+            'ENDDO'])
+        return declarations, code
+
     def virtual_contraction_lines(self, plan, variant,
                                   result_name='SDM_VIRTUAL_RESULT',
                                   precision_asked='PREC_ASKED', event_slot=0):

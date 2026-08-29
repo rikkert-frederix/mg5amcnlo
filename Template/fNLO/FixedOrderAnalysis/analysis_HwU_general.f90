@@ -123,40 +123,48 @@ contains
   subroutine analysis_fill(p, istatus, ipdg, wgts, ibody)
 !ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
     implicit none
-    integer, intent(in) :: istatus(nexternal)
-    integer, intent(in) :: iPDG(nexternal)
-    double precision, intent(in) :: p(0:4, nexternal)
+    integer, intent(in) :: istatus(:)
+    integer, intent(in) :: iPDG(:)
+    double precision, intent(in) :: p(0:, :)
     double precision, intent(in) :: wgts(*)
     integer, intent(in) :: ibody
-    integer i, j, k, l
-    double precision pQCD(0:3, nexternal), palg, rfj, sycut, yjmax &
-    & , pjet(0:3, nexternal), tmp, ptlep(4), ptem, ptep, ptmm, ptmp, ptepem &
+    integer i, j, k, l, nparticles
+    double precision pQCD(0:3, size(p,2)), palg, rfj, sycut, yjmax &
+    & , pjet(0:3, size(p,2)), tmp, ptlep(4), ptem, ptep, ptmm, ptmp, ptepem &
     & , ptmpmm, ptepve, ptmmvm, ptepemmpmm, ptepvemmvm, ptt, ptat, pttt &
     & , etmiss, pth(2), pthh, ptv(3), ptjet(3), Mepem, Mmpmm, Mepve, Mmmvm &
     & , Mepemmpmm, Mepvemmvm, Mtt, Mhh, Mj1j2, Mj1j3, Mj2j3, Mj1j2j3, Mvvv &
-    & , HTparton, HTreco, p_reco(0:4, nexternal), ptphiso(nexternal), Mphphph
-    integer nQCD, jet(nexternal), njet, itop, iatop, iem, iep, imp, imm, ive &
-    & , ivm, iv1, iv2, iv3, ih1, ih2, il, ipdg_reco(nexternal)
+    & , HTparton, HTreco, p_reco(0:4, size(p,2)), &
+    & ptphiso(size(p,2)), Mphphph
+    integer nQCD, jet(size(p,2)), njet, itop, iatop, iem, iep, imp, imm, ive &
+    & , ivm, iv1, iv2, iv3, ih1, ih2, il, ipdg_reco(size(p,2))
 ! Photon isolation
     integer nph, nem, nin, nphiso
     double precision ptg
-    double precision Etsum(0:nexternal)
-    real drlist(nexternal)
-    double precision pgamma(0:3, nexternal), pgammaiso(0:3, nexternal), pem(0:3, nexternal)
+    double precision Etsum(0:size(p,2))
+    real drlist(size(p,2))
+    double precision pgamma(0:3, size(p,2))
+    double precision pgammaiso(0:3, size(p,2)), pem(0:3, size(p,2))
     logical isolated
 ! Sort array of results: ismode>0 for real, isway=0 for ascending order
-    integer ismode, isway, izero, isorted(nexternal)
+    integer ismode, isway, izero, isorted(size(p,2))
     parameter(ismode=1)
     parameter(isway=0)
     parameter(izero=0)
-    logical is_a_ph(nexternal)
+    logical is_a_ph(size(p,2))
 !      integer iph1,iph2,iph3
+    nparticles = size(p,2)
+    if (nparticles < nincoming .or. size(istatus) /= nparticles .or. &
+    & size(ipdg) /= nparticles) then
+      write (*, *) 'analysis_fill received inconsistent event arrays'
+      stop 1
+    end if
     p_reco = p
     iPDG_reco = iPDG
 
 ! Put all (light) QCD partons(+photon) in momentum array for jet clustering.
     nQCD = 0
-    do j = nincoming + 1, nexternal
+    do j = nincoming + 1, nparticles
       if (abs(ipdg_reco(j)) .le. 5 .or. ipdg_reco(j) .eq. 21 &
       & .or. (ipdg_reco(j) .eq. 22 .and. gamma_is_j)) then
         nQCD = nQCD + 1
@@ -197,7 +205,7 @@ contains
 ! PHOTON (ISOLATION) CUTS
 !
 ! find the photons
-    do i = 1, nexternal
+    do i = 1, nparticles
       if (istatus(i) .eq. 1 .and. ipdg(i) .eq. 22 .and. .not. gamma_is_j) then
         is_a_ph(i) = .true.
       else
@@ -206,7 +214,7 @@ contains
     end do
     if (ptgmin .gt. 0d0) then
       nph = 0
-      do j = nincoming + 1, nexternal
+      do j = nincoming + 1, nparticles
         if (is_a_ph(j)) then
           nph = nph + 1
           do i = 0, 3
@@ -222,7 +230,7 @@ contains
             pem(i, k) = pgamma(i, k)
           end do
         end do
-        do j = nincoming + 1, nexternal
+        do j = nincoming + 1, nparticles
           if (istatus(j) .eq. 1 .and. (abs(ipdg(j)) .eq. 11 .or. &
           & abs(ipdg(j)) .eq. 13 .or. abs(ipdg(j)) .eq. 15)) then
             nem = nem + 1
@@ -345,7 +353,7 @@ contains
 !      iph2=0
 !      iph3=0
 !          print*,"nell'analisi"
-    do i = 1, nexternal
+    do i = 1, nparticles
 !          print*,"idpg di ",i,"=",ipdg(i)
 !          print*,"idpg_reco di ",i,"=",ipdg_reco(i)
 
@@ -412,39 +420,39 @@ contains
 !      print*,itop,iatop
 !      stop
 
-    if (itop .ne. 0) ptt = getptv4(p_reco(0, itop))
-    if (iatop .ne. 0) ptat = getptv4(p_reco(0, iatop))
+    if (itop .ne. 0) ptt = getptv4(p_reco(0:3, itop))
+    if (iatop .ne. 0) ptat = getptv4(p_reco(0:3, iatop))
     if (itop .ne. 0 .and. iatop .ne. 0) then
-      pttt = getptv4_2(p_reco(0, itop), p_reco(0, iatop))
-      Mtt = getinvm4_2(p_reco(0, itop), p_reco(0, iatop))
+      pttt = getptv4_2(p_reco(0:3, itop), p_reco(0:3, iatop))
+      Mtt = getinvm4_2(p_reco(0:3, itop), p_reco(0:3, iatop))
     end if
-    if (iem .ne. 0) ptem = getptv4(p_reco(0, iem))
-    if (iep .ne. 0) ptep = getptv4(p_reco(0, iep))
-    if (imm .ne. 0) ptmm = getptv4(p_reco(0, imm))
-    if (imp .ne. 0) ptmp = getptv4(p_reco(0, imp))
+    if (iem .ne. 0) ptem = getptv4(p_reco(0:3, iem))
+    if (iep .ne. 0) ptep = getptv4(p_reco(0:3, iep))
+    if (imm .ne. 0) ptmm = getptv4(p_reco(0:3, imm))
+    if (imp .ne. 0) ptmp = getptv4(p_reco(0:3, imp))
     if (iem .ne. 0 .and. iep .ne. 0) then
-      ptepem = getptv4_2(p_reco(0, iem), p_reco(0, iep))
-      Mepem = getinvm4_2(p_reco(0, iem), p_reco(0, iep))
+      ptepem = getptv4_2(p_reco(0:3, iem), p_reco(0:3, iep))
+      Mepem = getinvm4_2(p_reco(0:3, iem), p_reco(0:3, iep))
     end if
     if (imm .ne. 0 .and. imp .ne. 0) then
-      ptmpmm = getptv4_2(p_reco(0, imm), p_reco(0, imp))
-      Mmpmm = getinvm4_2(p_reco(0, imm), p_reco(0, imp))
+      ptmpmm = getptv4_2(p_reco(0:3, imm), p_reco(0:3, imp))
+      Mmpmm = getinvm4_2(p_reco(0:3, imm), p_reco(0:3, imp))
     end if
     if (iep .ne. 0 .and. ive .ne. 0) then
-      ptepve = getptv4_2(p_reco(0, iep), p_reco(0, ive))
-      Mepve = getinvm4_2(p_reco(0, iep), p_reco(0, ive))
+      ptepve = getptv4_2(p_reco(0:3, iep), p_reco(0:3, ive))
+      Mepve = getinvm4_2(p_reco(0:3, iep), p_reco(0:3, ive))
     end if
     if (imm .ne. 0 .and. ivm .ne. 0) then
-      ptmmvm = getptv4_2(p_reco(0, imm), p_reco(0, ivm))
-      Mmmvm = getinvm4_2(p_reco(0, imm), p_reco(0, ivm))
+      ptmmvm = getptv4_2(p_reco(0:3, imm), p_reco(0:3, ivm))
+      Mmmvm = getinvm4_2(p_reco(0:3, imm), p_reco(0:3, ivm))
     end if
     if (iem .ne. 0 .and. iep .ne. 0 .and. imm .ne. 0 .and. imp .ne. 0) then
-      ptepemmpmm = getptv4_4(p_reco(0, iem), p_reco(0, iep), p_reco(0, imm), p_reco(0, imp))
-      Mepemmpmm = getinvm4_4(p_reco(0, iem), p_reco(0, iep), p_reco(0, imm), p_reco(0, imp))
+      ptepemmpmm = getptv4_4(p_reco(0:3, iem), p_reco(0:3, iep), p_reco(0:3, imm), p_reco(0:3, imp))
+      Mepemmpmm = getinvm4_4(p_reco(0:3, iem), p_reco(0:3, iep), p_reco(0:3, imm), p_reco(0:3, imp))
     end if
     if (ive .ne. 0 .and. iep .ne. 0 .and. imm .ne. 0 .and. ivm .ne. 0) then
-      ptepvemmvm = getptv4_4(p_reco(0, iep), p_reco(0, ive), p_reco(0, imm), p_reco(0, ivm))
-      Mepvemmvm = getinvm4_4(p_reco(0, iep), p_reco(0, ive), p_reco(0, imm), p_reco(0, ivm))
+      ptepvemmvm = getptv4_4(p_reco(0:3, iep), p_reco(0:3, ive), p_reco(0:3, imm), p_reco(0:3, ivm))
+      Mepvemmvm = getinvm4_4(p_reco(0:3, iep), p_reco(0:3, ive), p_reco(0:3, imm), p_reco(0:3, ivm))
     end if
 
     il = 0
@@ -478,16 +486,16 @@ contains
 
 ! missing Et
     if (ive .ne. 0 .and. ivm .ne. 0) then
-      etmiss = getptv4_2(p_reco(0, ivm), p_reco(0, ive))
+      etmiss = getptv4_2(p_reco(0:3, ivm), p_reco(0:3, ive))
     elseif (ive .ne. 0 .or. ivm .ne. 0) then
-      etmiss = getptv4(p_reco(0, ive + ivm))
+      etmiss = getptv4(p_reco(0:3, ive + ivm))
     end if
 
-    if (ih1 .ne. 0) pth(1) = getptv4(p_reco(0, ih1))
-    if (ih2 .ne. 0) pth(2) = getptv4(p_reco(0, ih2))
+    if (ih1 .ne. 0) pth(1) = getptv4(p_reco(0:3, ih1))
+    if (ih2 .ne. 0) pth(2) = getptv4(p_reco(0:3, ih2))
     if (ih1 .ne. 0 .and. ih2 .ne. 0) then
-      pthh = getptv4_2(p_reco(0, ih1), p_reco(0, ih2))
-      Mhh = getinvm4_2(p_reco(0, ih1), p_reco(0, ih2))
+      pthh = getptv4_2(p_reco(0:3, ih1), p_reco(0:3, ih2))
+      Mhh = getinvm4_2(p_reco(0:3, ih1), p_reco(0:3, ih2))
 !     order the higgs bosons (if there are 2)
       if (pth(1) .lt. pth(2)) then
         tmp = pth(1)
@@ -496,11 +504,11 @@ contains
       end if
     end if
 
-    if (iv1 .ne. 0) ptv(1) = getptv4(p_reco(0, iv1))
-    if (iv2 .ne. 0) ptv(2) = getptv4(p_reco(0, iv2))
-    if (iv3 .ne. 0) ptv(3) = getptv4(p_reco(0, iv3))
+    if (iv1 .ne. 0) ptv(1) = getptv4(p_reco(0:3, iv1))
+    if (iv2 .ne. 0) ptv(2) = getptv4(p_reco(0:3, iv2))
+    if (iv3 .ne. 0) ptv(3) = getptv4(p_reco(0:3, iv3))
     if (iv1 .ne. 0 .and. iv2 .ne. 0 .and. iv3 .ne. 0) then
-      Mvvv = getinvm4_3(p_reco(0, iv1), p_reco(0, iv2), p_reco(0, iv3))
+      Mvvv = getinvm4_3(p_reco(0:3, iv1), p_reco(0:3, iv2), p_reco(0:3, iv3))
     end if
 
     do i = 1, nphiso
@@ -508,7 +516,7 @@ contains
     end do
 
     if (iv1 .ne. 0 .and. iv2 .ne. 0 .and. iv3 .ne. 0) then
-      Mvvv = getinvm4_3(p_reco(0, iv1), p_reco(0, iv2), p_reco(0, iv3))
+      Mvvv = getinvm4_3(p_reco(0:3, iv1), p_reco(0:3, iv2), p_reco(0:3, iv3))
 !     order the vector bosons (if there are 3)
       do i = 1, 2
         do j = 1, 3 - i
@@ -549,7 +557,7 @@ contains
       end if
     end if
 
-    do i = 1, njet
+    do i = 1, min(njet, size(ptjet))
       ptjet(i) = getptv4(pjet(0, i))
     end do
     if (njet .ge. 2) then
@@ -563,13 +571,13 @@ contains
 !
     HTparton = 0d0
     HTreco = 0d0
-    do i = 1, nexternal
-      HTparton = HTparton + getptv4(p(0, i))
+    do i = 1, nparticles
+      HTparton = HTparton + getptv4(p(0:3, i))
       if (abs(ipdg_reco(i)) .gt. 5 .and. ipdg_reco(i) .ne. 21 .and. &
       & ipdg_reco(i) .ne. 22 .and. abs(ipdg_reco(i)) .ne. 12 .and. &
       & abs(ipdg_reco(i)) .ne. 14 .and. abs(ipdg_reco(i)) .ne. 16) &
       & then
-        HTreco = HTreco + getptv4(p_reco(0, i))
+        HTreco = HTreco + getptv4(p_reco(0:3, i))
       end if
     end do
     do i = 1, njet

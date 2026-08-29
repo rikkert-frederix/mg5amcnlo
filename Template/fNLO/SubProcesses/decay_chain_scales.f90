@@ -16,6 +16,7 @@ module decay_chain_scales
   private
 
   public :: decay_qcd_squared_order, production_qcd_squared_order
+  public :: active_block_qcd_squared_order
   public :: decay_qcd_coupling_weight
   public :: decay_qcd_coupling_rescaling
   public :: corrected_born_qcd_squared_order
@@ -23,6 +24,28 @@ module decay_chain_scales
   public :: select_production_ren_scale_momenta
 
 contains
+
+  integer function active_block_qcd_squared_order(total_qcd_order)
+    integer, intent(in) :: total_qcd_order
+
+    if (has_nlo_decay()) then
+      ! The direct density provider contains only the corrected decay block;
+      ! remove production and every spectator decay from the flattened order.
+      active_block_qcd_squared_order = total_qcd_order - &
+           nlo_decay_production_born_qcd_order() - &
+           nlo_decay_static_qcd_order()
+    else if (has_decay_chains()) then
+      ! In the bundle member without NLO-decay metadata the active block is
+      ! production.  All decay orders are spectators of this local density.
+      active_block_qcd_squared_order = &
+           production_qcd_squared_order(total_qcd_order)
+    else
+      active_block_qcd_squared_order = total_qcd_order
+    end if
+    if (active_block_qcd_squared_order < 0) then
+      call fail_scales('the active block has a negative QCD order')
+    end if
+  end function active_block_qcd_squared_order
 
   integer function decay_qcd_squared_order(total_qcd_order)
     integer, intent(in), optional :: total_qcd_order

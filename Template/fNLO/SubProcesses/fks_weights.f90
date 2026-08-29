@@ -22,7 +22,7 @@ module fks_weights_module
        bundle_component_count
   use decay_chain_scales, only: production_qcd_squared_order, &
        decay_qcd_squared_order, decay_qcd_coupling_weight, &
-       decay_qcd_coupling_rescaling
+       decay_qcd_coupling_rescaling, active_block_qcd_squared_order
   use decay_chain_parameters, only: decay_width_expansion_coefficient, &
        decay_width_denominator_rescaling, decay_scale_species_count, &
        decay_scale_species_index, decay_scale_factor
@@ -39,6 +39,12 @@ module fks_weights_module
                                  idup, idup_d, &
                                  subproc_pd, subproc_iproc, &
                                  orders_tag_plot, virtual_over_born
+  use spin_density_weight_lines, only: &
+       record_spin_density_weight_line, copy_spin_density_weight_line, &
+       spin_density_weight_line_present, &
+       spin_density_weight_line_is_production, &
+       evaluate_spin_density_weight_line, &
+       spin_density_weight_line_multiplier
   implicit none
   private
 
@@ -196,7 +202,10 @@ contains
   end function momenta_equal_uborn
 
   subroutine add_wgt(event_slot, type, wgt1, wgt2, wgt3, &
-                     is_width_counterterm)
+                     is_width_counterterm, density_coefficients, &
+                     density_component, density_branch, &
+                     density_qcd_power, density_scale_pdg, &
+                     density_is_production)
 ! Adds a contribution to the list in weight_lines. 'type' sets the type
 ! of the contribution and wgt1..wgt3 are the coefficients multiplying
 ! the logs. The arguments are:
@@ -267,14 +276,33 @@ contains
     integer event_slot, type, i, j, contribution
     logical foundIt
     logical, intent(in), optional :: is_width_counterterm
+    complex(kind=8), intent(in), optional :: density_coefficients(:, :, :)
+    integer, intent(in), optional :: density_component, density_branch
+    integer, intent(in), optional :: density_qcd_power, density_scale_pdg
+    logical, intent(in), optional :: density_is_production
     logical :: width_counterterm
+    logical :: density_is_present, density_is_nonzero
+    logical :: local_density_is_production
+    integer :: local_density_qcd_power, local_density_scale_pdg
     double precision wgt1, wgt2, wgt3
 
-    if (wgt1 .eq. 0d0 .and. wgt2 .eq. 0d0 .and. wgt3 .eq. 0d0) return
+    density_is_present = present(density_coefficients)
+    density_is_nonzero = .false.
+    if (density_is_present) then
+      density_is_nonzero = any(abs(density_coefficients) > 0d0)
+    end if
+    if (wgt1 .eq. 0d0 .and. wgt2 .eq. 0d0 .and. wgt3 .eq. 0d0 .and. &
+        .not. density_is_nonzero) return
 ! Check for NaN's and INF's. Simply skip the contribution
     if (wgt1 .ne. wgt1) return
     if (wgt2 .ne. wgt2) return
     if (wgt3 .ne. wgt3) return
+    if (density_is_present) then
+      if (any(real(density_coefficients, kind=8) /= &
+              real(density_coefficients, kind=8)) .or. &
+          any(aimag(density_coefficients) /= &
+              aimag(density_coefficients))) return
+    end if
 
 ! Apply user-defined (in FKS_params.dat) contribution type filters if necessary
 
@@ -317,6 +345,9 @@ contains
     if (has_nlo_decay()) then
       correction_scale_pdg(icontr) = corrected_parent_pdg()
     end if
+    if (present(density_scale_pdg)) then
+      correction_scale_pdg(icontr) = abs(density_scale_pdg)
+    end if
     if (has_nlo_contribution_bundle()) then
       contribution = active_nlo_contribution()
       width_counterterm = .false.
@@ -332,6 +363,31 @@ contains
       else
         bundle_component(icontr) = bundle_decay_component(contribution)
       end if
+    end if
+    if (present(density_coefficients) .or. &
+        present(density_component) .or. present(density_branch)) then
+      if (.not. present(density_coefficients) .or. &
+          .not. present(density_component) .or. &
+          .not. present(density_branch)) then
+        write (*, *) 'ERROR: incomplete spin-density weight line'
+        stop 1
+      end if
+      local_density_qcd_power = active_block_qcd_squared_order(QCD_power)
+      if (present(density_qcd_power)) then
+        local_density_qcd_power = density_qcd_power
+      end if
+      local_density_scale_pdg = correction_scale_pdg(icontr)
+      if (present(density_scale_pdg)) then
+        local_density_scale_pdg = abs(density_scale_pdg)
+      end if
+      local_density_is_production = active_contribution_is_production()
+      if (present(density_is_production)) then
+        local_density_is_production = density_is_production
+      end if
+      call record_spin_density_weight_line( &
+           icontr, density_component, density_branch, &
+           density_coefficients, local_density_qcd_power, &
+           local_density_is_production, local_density_scale_pdg)
     end if
     ipr(icontr) = 0
     call set_pdg_impl(icontr, nFKSprocess, idup)
@@ -392,32 +448,53 @@ contains
     integer, intent(in) :: index
     double precision, intent(in) :: mu2_r, mu2_f, production_g
     integer, intent(in) :: factor_indices(:)
+    double precision :: logarithmic_mu2_r, multiplier
+
+    logarithmic_mu2_r = weight_line_logarithmic_mu2_r( &
+         index, mu2_r, factor_indices)
+    multiplier = weight_line_multiplier(index, production_g, factor_indices)
+    evaluate_weight_line = &
+         (wgt(1, index) + &
+          wgt(2, index)*log(logarithmic_mu2_r/scales2(1, index)) + &
+          wgt(3, index)*log(mu2_f/scales2(1, index)))*multiplier
+  end function evaluate_weight_line
+
+
+  double precision function weight_line_logarithmic_mu2_r( &
+       index, mu2_r, factor_indices)
+    use weight_lines
+    integer, intent(in) :: index
+    double precision, intent(in) :: mu2_r
+    integer, intent(in) :: factor_indices(:)
     integer :: species_index, factor_index
-    double precision :: logarithmic_mu2_r, decay_coupling_weight
+
+    weight_line_logarithmic_mu2_r = mu2_r
+    if (correction_scale_pdg(index) == 0) return
+    factor_index = 1
+    if (size(factor_indices) > 0) then
+      species_index = decay_scale_species_index(correction_scale_pdg(index))
+      if (species_index < 1 .or. species_index > size(factor_indices)) then
+        write (*, *) 'ERROR: corrected decay has no scale factor', &
+             correction_scale_pdg(index)
+        stop 1
+      end if
+      factor_index = factor_indices(species_index)
+    end if
+    weight_line_logarithmic_mu2_r = scales2(1, index)* &
+         decay_scale_factor(factor_index)**2
+  end function weight_line_logarithmic_mu2_r
+
+
+  double precision function weight_line_multiplier( &
+       index, production_g, factor_indices)
+    use weight_lines
+    integer, intent(in) :: index
+    double precision, intent(in) :: production_g
+    integer, intent(in) :: factor_indices(:)
+    double precision :: decay_coupling_weight
     double precision :: denominator_rescaling, width_coefficient
 
-    logarithmic_mu2_r = mu2_r
-    if (correction_scale_pdg(index) /= 0) then
-      factor_index = 1
-      if (size(factor_indices) > 0) then
-        species_index = decay_scale_species_index(&
-             correction_scale_pdg(index))
-        if (species_index < 1 .or. &
-            species_index > size(factor_indices)) then
-          write (*, *) 'ERROR: corrected decay has no scale factor', &
-               correction_scale_pdg(index)
-          stop 1
-        end if
-        factor_index = factor_indices(species_index)
-      end if
-      ! scales2(1) stores the central Ellis--Sexton scale of this line.
-      ! An NLO-decay logarithm runs with its corrected decay scale, not
-      ! with the production renormalisation scale.
-      logarithmic_mu2_r = scales2(1, index)* &
-           decay_scale_factor(factor_index)**2
-    end if
-
-    decay_coupling_weight = decay_qcd_coupling_weight(&
+    decay_coupling_weight = decay_qcd_coupling_weight( &
          decayqcdpower(index), factor_indices)
     denominator_rescaling = 1d0
     width_coefficient = 1d0
@@ -429,13 +506,9 @@ contains
              decay_width_expansion_coefficient(factor_indices)
       end if
     end if
-    evaluate_weight_line = &
-         (wgt(1, index) + &
-          wgt(2, index)*log(logarithmic_mu2_r/scales2(1, index)) + &
-          wgt(3, index)*log(mu2_f/scales2(1, index))) * &
-         production_g**QCDpower(index)*decay_coupling_weight* &
-         denominator_rescaling*width_coefficient
-  end function evaluate_weight_line
+    weight_line_multiplier = production_g**QCDpower(index)* &
+         decay_coupling_weight*denominator_rescaling*width_coefficient
+  end function weight_line_multiplier
 
 
   subroutine include_PDF_and_alphas
@@ -453,6 +526,7 @@ contains
     integer i, j, iamp, icontr_orig
     logical virt_found
     double precision xlum, mu2_r, mu2_f, wgt_wo_pdf, conv
+    double precision :: logarithmic_mu2_r, density_multiplier
     double precision decay_rescaling
     integer, allocatable :: central_factor_indices(:)
     parameter(conv=389379660d0) ! conversion to picobarns
@@ -495,6 +569,15 @@ contains
       wgt_wo_pdf = evaluate_weight_line(&
            i, mu2_r, mu2_f, g_strong(i), central_factor_indices)
       wgts(iwgt, i) = xlum*wgt_wo_pdf
+      if (spin_density_weight_line_present(i)) then
+        logarithmic_mu2_r = weight_line_logarithmic_mu2_r( &
+             i, mu2_r, central_factor_indices)
+        density_multiplier = spin_density_weight_line_multiplier( &
+             i, g_strong(i), central_factor_indices, xlum)
+        call evaluate_spin_density_weight_line( &
+             i, iwgt, logarithmic_mu2_r, mu2_f, scales2(1, i), &
+             density_multiplier)
+      end if
       do j = 1, subproc_iproc
         parton_iproc(j, i) = parton_iproc(j, i)*wgt_wo_pdf
       end do
@@ -556,6 +639,7 @@ contains
       amppos(ict_new) = amppos(ict)
       bundle_component(ict_new) = bundle_component(ict)
       correction_scale_pdg(ict_new) = correction_scale_pdg(ict)
+      call copy_spin_density_line_if_present(ict, ict_new)
       do k = 1, nexternal
         do j = 0, 3
           momenta(j, k, ict_new) = momenta(j, k, ict)
@@ -571,6 +655,16 @@ contains
     icontr = icontr + i_add
     return
   end subroutine separate_flavour_config
+
+
+  subroutine copy_spin_density_line_if_present(source_line, target_line)
+    integer, intent(in) :: source_line, target_line
+
+    if (spin_density_weight_line_present(source_line) .and. &
+        spin_density_weight_line_is_production(source_line)) then
+      call copy_spin_density_weight_line(source_line, target_line)
+    end if
+  end subroutine copy_spin_density_line_if_present
 
   subroutine set_pdg_codes(iproc, pd, iFKS, ict)
     use weight_lines
@@ -639,6 +733,7 @@ contains
     integer, allocatable :: factor_indices(:)
     double precision xlum, pi, mu2_r, c_mu2_r, c_mu2_f
     double precision mu2_f, g, conv
+    double precision :: logarithmic_mu2_r, density_multiplier
     parameter(pi=3.1415926535897932385d0)
     parameter(conv=389379660d0) ! conversion to picobarns
     call cpu_time(tBefore)
@@ -677,6 +772,15 @@ contains
                nexternal, max_contr, iwgt, max_iproc)
           wgts(iwgt, i) = xlum*evaluate_weight_line(&
                i, mu2_r, mu2_f, g, factor_indices)
+          if (spin_density_weight_line_present(i)) then
+            logarithmic_mu2_r = weight_line_logarithmic_mu2_r( &
+                 i, mu2_r, factor_indices)
+            density_multiplier = spin_density_weight_line_multiplier( &
+                 i, g, factor_indices, xlum)
+            call evaluate_spin_density_weight_line( &
+                 i, iwgt, logarithmic_mu2_r, mu2_f, scales2(1, i), &
+                 density_multiplier)
+          end if
         end do
       end do
     end do
@@ -697,6 +801,7 @@ contains
     real :: tBefore, tAfter
     integer n, i, nn
     double precision xlum, pi, mu2_r, mu2_f, g, conv
+    double precision :: logarithmic_mu2_r, density_multiplier
     integer, allocatable :: central_factor_indices(:)
     parameter(pi=3.1415926535897932385d0)
     parameter(conv=389379660d0) ! conversion to picobarns
@@ -731,6 +836,15 @@ contains
 ! add the weights to the array
           wgts(iwgt, i) = xlum*evaluate_weight_line(&
                i, mu2_r, mu2_f, g, central_factor_indices)
+          if (spin_density_weight_line_present(i)) then
+            logarithmic_mu2_r = weight_line_logarithmic_mu2_r( &
+                 i, mu2_r, central_factor_indices)
+            density_multiplier = spin_density_weight_line_multiplier( &
+                 i, g, central_factor_indices, xlum)
+            call evaluate_spin_density_weight_line( &
+                 i, iwgt, logarithmic_mu2_r, mu2_f, scales2(1, i), &
+                 density_multiplier)
+          end if
         end do
       end do
     end do

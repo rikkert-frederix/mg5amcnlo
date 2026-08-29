@@ -3,6 +3,8 @@ module fks_channel_map
                                 validate_process_dimensions
   use fks_metadata, only: fks_j_d, need_color_links_d, &
                           validate_fks_metadata
+  use nlo_contribution_bundle, only: contribution_fks_first, &
+       contribution_fks_last
   implicit none
   private
 
@@ -12,6 +14,8 @@ module fks_channel_map
   logical, save :: born_map_printed = .false.
 
   public :: fks_channel_count, fks_channel_configuration
+  public :: contribution_channel_count
+  public :: contribution_channel_configuration
   public :: print_fks_channel_map, get_born_fks_process
 
 contains
@@ -37,6 +41,53 @@ contains
     end if
     fks_channel_configuration = channel_map(category, position)
   end function fks_channel_configuration
+
+
+  integer function contribution_channel_count(contribution, category)
+    implicit none
+    integer, intent(in) :: contribution, category
+    integer :: configuration
+
+    call ensure_channel_map()
+    call validate_category(category)
+    contribution_channel_count = 0
+    do configuration = contribution_fks_first(contribution), &
+                       contribution_fks_last(contribution)
+      if (configuration_has_category(configuration, category)) then
+        contribution_channel_count = contribution_channel_count + 1
+      end if
+    end do
+    if (contribution_channel_count == 0) then
+      call fail_channel_map( &
+           'an NLO contribution has no FKS channel in this category')
+    end if
+  end function contribution_channel_count
+
+
+  integer function contribution_channel_configuration( &
+       contribution, category, position)
+    implicit none
+    integer, intent(in) :: contribution, category, position
+    integer :: configuration, current
+
+    contribution_channel_configuration = 0
+    call ensure_channel_map()
+    call validate_category(category)
+    if (position < 1) then
+      call fail_channel_map('contribution channel position is out of range')
+    end if
+    current = 0
+    do configuration = contribution_fks_first(contribution), &
+                       contribution_fks_last(contribution)
+      if (.not. configuration_has_category(configuration, category)) cycle
+      current = current + 1
+      if (current == position) then
+        contribution_channel_configuration = configuration
+        return
+      end if
+    end do
+    call fail_channel_map('contribution channel position is out of range')
+  end function contribution_channel_configuration
 
 
   subroutine print_fks_channel_map()
@@ -166,6 +217,19 @@ contains
       call fail_channel_map('FKS initial/final category is out of range')
     end if
   end subroutine validate_category
+
+
+  logical function configuration_has_category(configuration, category)
+    implicit none
+    integer, intent(in) :: configuration, category
+    integer :: emitter
+
+    emitter = fks_j_d(configuration)
+    configuration_has_category = category == 0 .or. &
+         (category == 1 .and. emitter > nincoming .and. &
+          emitter <= nexternal) .or. &
+         (category == 2 .and. emitter > 0 .and. emitter <= nincoming)
+  end function configuration_has_category
 
 
   subroutine fail_channel_map(message)

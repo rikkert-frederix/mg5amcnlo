@@ -29,6 +29,12 @@ from madgraph.interface.master_interface import MasterCmd
 
 class TestFKSDecayChains(unittest.TestCase):
 
+    def setUp(self):
+        # ``output`` changes into the generated process.  Always return to a
+        # live directory before TemporaryDirectory removes that process so a
+        # failed export cannot cascade into unrelated tests.
+        self.addCleanup(os.chdir, os.getcwd())
+
     @staticmethod
     def generate(process):
         command = MasterCmd()
@@ -304,6 +310,14 @@ class TestFKSDecayChains(unittest.TestCase):
                 'type, public :: spin_density_block_result', result_source)
             self.assertIn(
                 'function strict_spin_density_product', result_source)
+            self.assertIn(
+                'type, public :: spin_density_branch_result', result_source)
+            self.assertIn(
+                'function selected_spin_density_product', result_source)
+            self.assertIn(
+                'function spin_density_branch_product', result_source)
+            self.assertIn(
+                'subroutine decode_spin_density_branch_mask', result_source)
             self.assertIn('insertion_order > 1', result_source)
             self.assertIn('momentum_revision', result_source)
             self.assertIn('the active block has no density insertion',
@@ -1206,8 +1220,17 @@ class TestFKSDecayChains(unittest.TestCase):
                 'type, public :: factorized_measure_state', block_state)
             self.assertIn('base_measure', block_state)
             self.assertIn('event_measure', block_state)
+            self.assertIn('global_event_measure', block_state)
             self.assertIn(
                 'compose_factorized_event_measure', block_state)
+            self.assertIn(
+                'compose_factorized_block_measure', block_state)
+            self.assertIn(
+                'type, public :: factorized_branch_snapshot', block_state)
+            self.assertIn(
+                'capture_factorized_branch_snapshot', block_state)
+            self.assertIn(
+                'restore_factorized_branch_snapshot', block_state)
             with open(os.path.join(
                     subprocess_dir, 'genps_fks.f90')) as stream:
                 phase_space = stream.read().lower()
@@ -1217,6 +1240,8 @@ class TestFKSDecayChains(unittest.TestCase):
                 'store_factorized_radiation_state', phase_space)
             self.assertIn(
                 'finalize_factorized_event_measure', phase_space)
+            self.assertIn(
+                'store_factorized_global_event_measure', phase_space)
             self.assertIn('radiation_jacobian', phase_space)
             with open(os.path.join(
                     subprocess_dir, 'fks_singular.f90')) as stream:
@@ -1491,6 +1516,18 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn(
                 'source_start = factorized_radiation_start',
                 driver_source)
+            self.assertIn('sigint_multiplicative_impl', driver_source)
+            self.assertIn(
+                'call next_multiplicative_leaf', driver_source.lower())
+            self.assertIn(
+                'pass_leaf = passcuts_multiplicative',
+                driver_source.lower())
+            self.assertIn(
+                'call outfun_multiplicative_impl', driver_source.lower())
+            self.assertIn(
+                'leaves_seen /= workspace%leaf_count', driver_source)
+            self.assertIn(
+                'if (multiplicative_nlo_enabled()) return', driver_source)
             with open(os.path.join(
                     subprocess_dir, 'mint_module.f90')) as stream:
                 mint_source = stream.read()
@@ -1522,6 +1559,91 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertTrue(all(
                 'SDM_BLOCK_AVAILABLE' not in source
                 for source in real_sources))
+            contraction_path = os.path.join(
+                subprocess_dir,
+                'spin_density_multiplicative_contraction.f')
+            self.assertTrue(os.path.isfile(contraction_path))
+            with open(contraction_path) as stream:
+                contraction_source = stream.read()
+            flat_contraction = ' '.join(
+                contraction_source.replace('$', ' ').split()).replace(
+                    ' ,', ',')
+            self.assertIn(
+                'SUBROUTINE SDM_MULTIPLICATIVE_CONTRACTION(',
+                flat_contraction)
+            self.assertIn(
+                'TYPE(SPIN_DENSITY_BRANCH_RESULT) SDM_BRANCHES(',
+                flat_contraction)
+            self.assertIn(
+                'SPIN_DENSITY_BRANCH_PRODUCT(SDM_BRANCHES,SDM_BRANCH_CHOICE,',
+                flat_contraction)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'spin_density_branch_dimensions.inc')) as stream:
+                dimensions_source = stream.read()
+            self.assertIn('PARAMETER (SDM_COMPONENT_COUNT=3,',
+                          dimensions_source)
+            self.assertIn('SDM_CORRECTED_COUNT=3', dimensions_source)
+            self.assertIn('DATA SDM_COMPONENT_ID /0,1,2/',
+                          dimensions_source)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'spin_density_block_accessors.f')) as stream:
+                accessor_source = stream.read()
+            flat_accessors = ' '.join(
+                accessor_source.replace('$', ' ').split()).replace(' ,', ',')
+            self.assertIn('SUBROUTINE SDM_BORN_BLOCK_DENSITY(',
+                          flat_accessors)
+            self.assertIn('SUBROUTINE SDM_REAL_BLOCK_DENSITY(',
+                          flat_accessors)
+            self.assertIn('SUBROUTINE SDM_COLOR_BLOCK_DENSITY(',
+                          flat_accessors)
+            self.assertIn('CALL GET_FACTORIZED_BLOCK_MOMENTA(',
+                          flat_accessors)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'multiplicative_nlo_decay.f90')) as stream:
+                workspace_source = stream.read().lower()
+            self.assertIn(
+                'type, public :: multiplicative_nlo_workspace',
+                workspace_source)
+            self.assertIn('next_multiplicative_leaf', workspace_source)
+            self.assertIn('restore_multiplicative_leaf', workspace_source)
+            self.assertIn(
+                'workspace%leaf_count = spin_density_branch_leaf_count',
+                workspace_source)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'multiplicative_event_materialization.f90')) as stream:
+                materialization_source = stream.read().lower()
+            self.assertIn(
+                'call fetch_factorized_block_momenta',
+                materialization_source)
+            self.assertIn(
+                'call fetch_factorized_embedded_momenta',
+                materialization_source)
+            self.assertIn('ir-safe observables', materialization_source)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'spin_density_matrix_results.f90')) as stream:
+                result_source = stream.read().lower()
+            self.assertIn(
+                'spin_density_branch_leaf_count = shiftl(1_8, block_count)',
+                result_source)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'decay_chain_parameters.f90')) as stream:
+                parameter_source = stream.read().lower()
+            self.assertIn(
+                'function decay_multiplicative_width_rescaling',
+                parameter_source)
+            self.assertIn(
+                'decay_lo_width(pdg)/selected_width', parameter_source)
+            with open(os.path.join(
+                    process_dir, 'Cards', 'decay_card.dat')) as stream:
+                decay_card = stream.read()
+            self.assertIn(
+                'NLO_DECAY_COMBINATION ADDITIVE', decay_card)
 
     def test_full_nlo_bundle_supports_nested_corrected_decays(self):
         command = self.generate(

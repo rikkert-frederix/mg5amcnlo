@@ -16,6 +16,7 @@ module madfks_plot_module
   double precision, allocatable, save :: xsec_scale_points(:, :)
 
   public :: initplot_impl, topout_impl, outfun_impl
+  public :: outfun_multiplicative_impl
 
   interface
     subroutine analysis_begin(nwgt, weights_info)
@@ -33,6 +34,16 @@ module madfks_plot_module
       double precision, intent(in) :: wgts(*)
       integer, intent(in) :: ibody
     end subroutine analysis_fill
+
+    subroutine analysis_fill_multiplicative( &
+         p, particle_count, istatus, ipdg, wgts, ibody)
+      integer, intent(in) :: particle_count
+      double precision, intent(in) :: p(0:4, particle_count)
+      integer, intent(in) :: istatus(particle_count)
+      integer, intent(in) :: ipdg(particle_count)
+      double precision, intent(in) :: wgts(*)
+      integer, intent(in) :: ibody
+    end subroutine analysis_fill_multiplicative
 
     subroutine initpdfsetbynamem(iset, setname)
       integer, intent(in) :: iset
@@ -224,7 +235,7 @@ contains
     double precision :: chybst, chybstmo, p(0:4, nexternal)
     double precision :: pplab(0:3, nexternal), shybst
     double precision, parameter :: xd(3) = (/ 0d0, 0d0, 1d0 /)
-    integer :: i, ibody, i_wgt, kk, n, nn, point
+    integer :: i, ibody
     integer :: istatus(nexternal)
 
     call validate_process_dimensions()
@@ -244,8 +255,8 @@ contains
     shybst = sinh(ybst_til_tolab)
     chybstmo = chybst - 1d0
     do i = 1, nexternal
-      call boostwdir2(chybst, shybst, chybstmo, xd, pp(0, i), &
-           pplab(0, i))
+      call boostwdir2(chybst, shybst, chybstmo, xd, pp(0:3, i), &
+           pplab(0:3, i))
     end do
 
     do i = 1, nexternal
@@ -259,6 +270,65 @@ contains
     end do
 
     call analysis_fill(p, istatus, ipdg, www, ibody)
+
+    call accumulate_analysis_weights(www)
+  end subroutine outfun_impl
+
+
+  subroutine outfun_multiplicative_impl( &
+       pp, particle_count, ybst_til_tolab, www, ipdg, istatus, ibody)
+    ! Multiplicative leaves can contain one resolved emission from every
+    ! corrected block, so their particle count is not bounded by the legacy
+    ! one-real ``nexternal`` layout.
+    implicit none
+
+    integer, intent(in) :: particle_count, ibody
+    double precision, intent(in) :: pp(0:, :), ybst_til_tolab
+    double precision, intent(in) :: www(*)
+    integer, intent(in) :: ipdg(:), istatus(:)
+
+    double precision :: chybst, chybstmo
+    double precision :: p(0:4, particle_count)
+    double precision :: pplab(0:3, particle_count), mass_squared, shybst
+    double precision, parameter :: xd(3) = (/ 0d0, 0d0, 1d0 /)
+    integer :: i
+
+    call validate_process_dimensions()
+    if (particle_count < nincoming .or. particle_count > size(pp, 2) .or. &
+        particle_count > size(ipdg) .or. &
+        particle_count > size(istatus)) then
+      write (*, *) 'Error in multiplicative outfun: invalid particle count', &
+           particle_count
+      stop 1
+    end if
+    if (ibody /= 1 .and. ibody /= 2) then
+      write (*, *) 'Error in multiplicative outfun: invalid body type', ibody
+      stop 1
+    end if
+
+    chybst = cosh(ybst_til_tolab)
+    shybst = sinh(ybst_til_tolab)
+    chybstmo = chybst - 1d0
+    do i = 1, particle_count
+      call boostwdir2(chybst, shybst, chybstmo, xd, pp(0:3, i), &
+           pplab(0:3, i))
+      p(0:3, i) = pplab(0:3, i)
+      mass_squared = pplab(0, i)**2 - sum(pplab(1:3, i)**2)
+      p(4, i) = sqrt(max(0d0, mass_squared))
+    end do
+
+    call analysis_fill_multiplicative( &
+         p, particle_count, istatus(1:particle_count), &
+         ipdg(1:particle_count), www, ibody)
+
+    call accumulate_analysis_weights(www)
+  end subroutine outfun_multiplicative_impl
+
+
+  subroutine accumulate_analysis_weights(www)
+    implicit none
+    double precision, intent(in) :: www(*)
+    integer :: i_wgt, kk, n, nn, point
 
     i_wgt = 1
     if (do_rwgt_scale .or. do_rwgt_decay_scale) then
@@ -284,6 +354,6 @@ contains
         end if
       end do
     end if
-  end subroutine outfun_impl
+  end subroutine accumulate_analysis_weights
 
 end module madfks_plot_module

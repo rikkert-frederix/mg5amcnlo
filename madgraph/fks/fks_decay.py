@@ -3938,7 +3938,8 @@ def decay_card_text(widths, renormalization_scales,
                     decay_scale_variation_mode='NONE',
                     decay_scale_factors=(1.0,),
                     lo_width_variations=None,
-                    nlo_width_variations=None):
+                    nlo_width_variations=None,
+                    nlo_decay_combination='ADDITIVE'):
     """Return a deterministic runtime card for on-shell decay parameters."""
 
     absolute_widths = dict(
@@ -3984,6 +3985,14 @@ def decay_card_text(widths, renormalization_scales,
         raise ValueError(
             'Decay scale variation mode must be NONE, CORRELATED or '
             'INDEPENDENT')
+    nlo_decay_combination = nlo_decay_combination.upper()
+    if nlo_decay_combination not in ('ADDITIVE', 'MULTIPLICATIVE'):
+        raise ValueError(
+            'NLO decay combination must be ADDITIVE or MULTIPLICATIVE')
+    if nlo_decay_combination == 'MULTIPLICATIVE' and \
+            not absolute_nlo_width_pdgs:
+        raise ValueError(
+            'Multiplicative NLO decay combination requires NLO widths')
     decay_scale_factors = tuple(float(factor)
                                 for factor in decay_scale_factors)
     if not decay_scale_factors or decay_scale_factors[0] != 1.0:
@@ -4054,18 +4063,25 @@ def decay_card_text(widths, renormalization_scales,
                     raise ValueError(
                         'Every varied NLO-width PDG needs an explicit NLO '
                         'width at every noncentral factor')
+    combination_comments = [
+        '# NLO_DECAY_COMBINATION selects expanded or multiplicative blocks.',
+        '# MULTIPLICATIVE normalizes corrected decays with their NLO widths.'] \
+        if absolute_nlo_width_pdgs else [
+        '# Bundled NLO results use the strict O(alpha_s) width expansion.',
+        '# All NWA denominators use LO widths; NLO-LO enters only linearly.']
     lines = [
         '# FNLO_DECAY_CARD',
         '# Runtime parameters for fixed-on-shell decay chains.',
         '# LO_DECAY_WIDTH entries are LO physical total widths in GeV.',
-        '# NLO_DECAY_WIDTH entries are NLO physical total widths in GeV.',
-        '# Bundled NLO results use the strict O(alpha_s) width expansion.',
-        '# All NWA denominators use LO widths; NLO-LO enters only linearly.',
+        '# NLO_DECAY_WIDTH entries are NLO physical total widths in GeV.'] + \
+        combination_comments + [
         '# DECAY_REN_SCALE entries are independent decay scales in GeV.',
         'FORMAT %d' % (5 if variation_requested else
                        (4 if absolute_nlo_width_pdgs else 3)),
         'DUMMY_WIDTH_RATIO %.16e' % dummy_width_ratio,
         'PRODUCTION_REN_SCALE_MOMENTA %s' % production_scale_momenta]
+    if absolute_nlo_width_pdgs:
+        lines.append('NLO_DECAY_COMBINATION %s' % nlo_decay_combination)
     if variation_requested:
         lines.extend([
             '# Scale variations evaluate the same strict O(alpha_s) sum.',
@@ -4108,7 +4124,8 @@ def write_decay_card(path, widths, renormalization_scales,
                      decay_scale_variation_mode='NONE',
                      decay_scale_factors=(1.0,),
                      lo_width_variations=None,
-                     nlo_width_variations=None):
+                     nlo_width_variations=None,
+                     nlo_decay_combination='ADDITIVE'):
     """Write ``decay_card.dat`` containing runtime decay parameters."""
 
     filename = os.path.join(path, 'decay_card.dat')
@@ -4117,4 +4134,5 @@ def write_decay_card(path, widths, renormalization_scales,
             widths, renormalization_scales, dummy_width_ratio,
             production_scale_momenta, nlo_width_pdgs, nlo_widths,
             decay_scale_variation_mode, decay_scale_factors,
-            lo_width_variations, nlo_width_variations))
+            lo_width_variations, nlo_width_variations,
+            nlo_decay_combination))

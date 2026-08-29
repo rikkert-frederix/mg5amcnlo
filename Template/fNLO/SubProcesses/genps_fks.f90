@@ -15,7 +15,7 @@ module genps_fks
        store_factorized_radiation_state, &
        scale_factorized_radiation_jacobians, &
        store_factorized_event_measure, &
-       multiply_factorized_event_measure, &
+       store_factorized_global_event_measure, &
        compose_factorized_event_measure, &
        scale_factorized_event_measures
   use decay_chain_metadata, only: has_decay_chains, context_for_fks, &
@@ -523,7 +523,7 @@ contains
     xjac = max(composed_jacobian*composed_weight, 1d-99)*flux
     flux_measure = factorized_measure_state()
     flux_measure%phase_space_weight = flux
-    call multiply_factorized_event_measure(event_slot, 0, flux_measure)
+    call store_factorized_global_event_measure(event_slot, flux_measure)
   end subroutine finalize_factorized_event_measure
 
   subroutine store_FKS_event(icountevts, xiimax, xinorm, &

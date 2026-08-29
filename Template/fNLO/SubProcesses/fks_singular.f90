@@ -42,6 +42,23 @@ module fks_singular_module
   use chooser_functions_module, only: get_mother_colour_impl, set_pdg_impl
   use fks_model_state_module, only: g => strong_coupling, active_flavours, &
                                     external_masses, validate_fks_model_state
+  use spin_density_fks_matrices, only: &
+       spin_density_fks_collection_enabled, &
+       load_spin_density_born_matrix, load_spin_density_real_matrix, &
+       load_spin_density_color_matrix, &
+       reset_spin_density_reduced_matrix, &
+       set_spin_density_reduced_from_real, &
+       set_spin_density_reduced_from_born, &
+       add_spin_density_reduced_color, &
+       reset_spin_density_degenerate_matrix, &
+       set_spin_density_degenerate_from_born, &
+       reset_spin_density_integrated_matrix, &
+       add_spin_density_integrated_born, &
+       add_spin_density_integrated_color, &
+       reset_spin_density_virtual_matrix, &
+       reduce_spin_density_virtual_matrix, &
+       spin_density_virtual_matrix_available, &
+       spin_density_nlo_amp_position
   use fnlo_process_common, only: nfksprocess, i_fks, j_fks, &
                                  soft_counterevent, &
                                  soft_collinear_counterevent, real_event, &
@@ -354,6 +371,11 @@ contains
     if (uses_factorized_kernel_state()) then
       call sborn_factorized( &
            active_nlo_contribution(), event_slot, weight)
+      if (has_nlo_contribution_bundle() .and. &
+          spin_density_fks_collection_enabled()) then
+        call load_spin_density_born_matrix( &
+             active_nlo_contribution(), nfksprocess, event_slot)
+      end if
     else
       call sborn(legacy_momenta, weight)
     end if
@@ -377,6 +399,11 @@ contains
     if (uses_factorized_kernel_state()) then
       call sborn_sf_factorized(active_nlo_contribution(), event_slot, &
                                first, second, weight)
+      if (has_nlo_contribution_bundle() .and. &
+          spin_density_fks_collection_enabled()) then
+        call load_spin_density_color_matrix( &
+             active_nlo_contribution(), first, second, event_slot)
+      end if
     else
       call sborn_sf(legacy_momenta, first, second, weight)
     end if
@@ -399,6 +426,11 @@ contains
     end if
     if (uses_factorized_kernel_state()) then
       call smatrix_real_factorized(nfksprocess, event_slot, weight)
+      if (has_nlo_contribution_bundle() .and. &
+          spin_density_fks_collection_enabled()) then
+        call load_spin_density_real_matrix( &
+             nfksprocess, event_slot, active_nlo_contribution())
+      end if
     else
       call smatrix_real(legacy_momenta, weight)
     end if
@@ -666,6 +698,9 @@ contains
 
     double precision pmass(nexternal)
     double precision kernel_momenta(0:3, nexternal)
+    if (spin_density_fks_collection_enabled()) then
+      call reset_spin_density_reduced_matrix()
+    end if
     call select_kernel_event(event_slot, kernel_momenta, pmass)
     partonic_shat = fks_subtraction_shat(event_slot)
     partonic_sqrt_shat = sqrt(partonic_shat)
@@ -727,6 +762,10 @@ contains
       end if
     else
       call evaluate_real_matrix(event_slot, wgt)
+      if (spin_density_fks_collection_enabled()) then
+        call set_spin_density_reduced_from_real( &
+             xi_i_fks**2*(1d0 - y_ij_fks))
+      end if
       wgt = wgt*xi_i_fks**2*(1d0 - y_ij_fks)
       amp_split(1:amp_split_size) = amp_split(1:amp_split_size)*xi_i_fks**2*(1d0 - y_ij_fks)
     end if
@@ -757,6 +796,7 @@ contains
     double precision kernel_masses(nexternal)
     type(factorized_radiation_state) :: radiation
     complex(kind=kind(0d0)) wgt1(2)
+    complex(kind=8) :: density_ordinary, density_correlated
 !
     amp_split_local(1:amp_split_size) = 0d0
     call load_kernel_radiation(real_event, radiation)
@@ -787,6 +827,8 @@ contains
     call evaluate_born_matrix(soft_counterevent, wgt_born)
     call AP_reduced(j_type, i_type, t, z, g, ap)
     call Qterms_reduced_timelike(j_type, i_type, t, z, g, Q)
+    density_ordinary = cmplx(ap(1)*iden_comp, 0d0, kind=8)
+    density_correlated = cmplx(Q(1)*iden_comp, 0d0, kind=8)
     wgt = 0d0
     iord = qcd_pos
     wgt1(1) = ans_cnt(1, iord)
@@ -794,6 +836,7 @@ contains
     if (abs(j_type) .eq. 3 .and. i_type .eq. 8) then
       Q(1) = 0d0
       wgt1(2) = 0d0
+      density_correlated = (0d0, 0d0)
     elseif (m_type .eq. 8) then
 ! Insert <ij>/(/ij/) which is not included by sborn()
       if (1d0 - y_ij_fks .lt. vtiny) then
@@ -820,6 +863,8 @@ contains
       call getaziangles(kernel_born(:, imother_fks), cphi_mother, &
                         sphi_mother)
       wgt1(2) = -(cphi_mother - ximag*sphi_mother)**2*wgt1(2)*azifact
+      density_correlated = density_correlated* &
+           (-(cphi_mother - ximag*sphi_mother)**2*azifact)
       amp_split_cnt(1:amp_split_size, 2, iord) = &
         -(cphi_mother - ximag*sphi_mother)**2 &
         *amp_split_cnt(1:amp_split_size, 2, iord)*azifact
@@ -827,6 +872,10 @@ contains
       write (*, *) 'FATAL ERROR in sborncol_fsr', i_type, j_type, &
                    selected_i_fks, selected_j_fks
       stop 1
+    end if
+    if (spin_density_fks_collection_enabled()) then
+      call set_spin_density_reduced_from_born( &
+           density_ordinary, density_correlated)
     end if
     wgt = wgt + dble(wgt1(1)*ap(1) + wgt1(2)*Q(1))
     amp_split_local(1:amp_split_size) = &
@@ -861,6 +910,7 @@ contains
     type(factorized_radiation_state) :: radiation
     complex(kind=kind(0d0)) amp_split_cnt_local(amp_split_size, 2, nsplitorders)
     complex(kind=kind(0d0)) wgt1(2)
+    complex(kind=8) :: density_ordinary, density_correlated
 !
     amp_split_local(1:amp_split_size) = 0d0
     call load_kernel_radiation(real_event, radiation)
@@ -881,6 +931,8 @@ contains
     t = z*partonic_shat/4d0
     call AP_reduced(m_type, i_type, t, z, g, ap)
     call Qterms_reduced_spacelike(m_type, i_type, t, z, g, Q)
+    density_ordinary = cmplx(ap(1)*iden_comp, 0d0, kind=8)
+    density_correlated = cmplx(Q(1)*iden_comp, 0d0, kind=8)
     wgt = 0d0
     iord = qcd_pos
     call evaluate_born_matrix(soft_counterevent, wgt_born)
@@ -890,6 +942,7 @@ contains
     if (abs(m_type) .eq. 3) then
       Q(1) = 0d0
       wgt1(2) = cmplx(0d0, 0d0, kind=kind(0d0))
+      density_correlated = (0d0, 0d0)
       amp_split_cnt_local(1:amp_split_size, 2, iord) = cmplx(0d0, 0d0, kind=kind(0d0))
     else
 ! Insert <ij>/(/ij/) which is not included by sborn()
@@ -924,9 +977,15 @@ contains
       cphi_mother = 1.d0
       sphi_mother = 0.d0
       wgt1(2) = -(cphi_mother + ximag*sphi_mother)**2*wgt1(2)*conjg(azifact)
+      density_correlated = density_correlated* &
+           (-(cphi_mother + ximag*sphi_mother)**2*conjg(azifact))
       amp_split_cnt_local(1:amp_split_size, 2, iord) = &
         -(cphi_mother + ximag*sphi_mother)**2 &
         *amp_split_cnt_local(1:amp_split_size, 2, iord)*conjg(azifact)
+    end if
+    if (spin_density_fks_collection_enabled()) then
+      call set_spin_density_reduced_from_born( &
+           density_ordinary, density_correlated)
     end if
     wgt = wgt + dble(wgt1(1)*ap(1) + wgt1(2)*Q(1))
     amp_split_local(1:amp_split_size) = &
@@ -971,6 +1030,9 @@ contains
 ! because of the caching of the diagrams.
 !
     call evaluate_born_matrix(soft_counterevent, wgt1)
+    if (spin_density_fks_collection_enabled()) then
+      call reset_spin_density_reduced_matrix()
+    end if
 !
 ! Reset the amp_split array
     amp_split(1:amp_split_size) = 0d0
@@ -985,12 +1047,17 @@ contains
           call select_visible_color_pair(m, n, visible_m, visible_n)
           call evaluate_born_color_matrix( &
                soft_counterevent, visible_m, visible_n, wgt)
-          if (wgt .ne. 0d0) then
+          if (wgt .ne. 0d0 .or. &
+              spin_density_fks_collection_enabled()) then
             call eikonal_reduced( &
               pp, m, n, i_fks, j_fks, xi_i_fks, y_ij_fks, &
               kernel_fks_momenta, &
               pmass, partonic_sqrt_shat, eik)
             softcontr = softcontr + wgt*eik*iden_comp
+            if (spin_density_fks_collection_enabled()) then
+              call add_spin_density_reduced_color( &
+                   cmplx(-2d0*eik*iden_comp, 0d0, kind=8))
+            end if
 ! update the amp_split array
             amp_split(1:amp_split_size) = amp_split(1:amp_split_size) - 2d0*eik*amp_split_soft(1:amp_split_size)*iden_comp
           end if
@@ -1039,6 +1106,9 @@ contains
 
     ! Prime the generated Born cache before evaluating its color-linked forms.
     call evaluate_born_matrix(soft_counterevent, born_weight)
+    if (spin_density_fks_collection_enabled()) then
+      call reset_spin_density_reduced_matrix()
+    end if
     amp_split(1:amp_split_size) = 0d0
     softcontr = 0d0
     partner_count = nlo_decay_partner_count(nfksprocess)
@@ -1052,12 +1122,17 @@ contains
                nfksprocess, m, n, visible_m, visible_n, link_multiplier)
           call evaluate_born_color_matrix( &
                soft_counterevent, visible_m, visible_n, link_weight)
-          if (link_weight /= 0d0) then
+          if (link_weight /= 0d0 .or. &
+              spin_density_fks_collection_enabled()) then
             call eikonal_reduced( &
                  local_momenta, m, n, local_i, local_j, xi_i_fks, &
                  y_ij_fks, local_fks_momenta, local_masses, decay_mass, eik)
             softcontr = softcontr + &
                  link_multiplier*link_weight*eik*iden_comp
+            if (spin_density_fks_collection_enabled()) then
+              call add_spin_density_reduced_color(cmplx( &
+                   -2d0*link_multiplier*eik*iden_comp, 0d0, kind=8))
+            end if
             amp_split(1:amp_split_size) = &
                  amp_split(1:amp_split_size) - &
                  2d0*link_multiplier*eik* &
@@ -1097,12 +1172,16 @@ contains
     double precision amp_split_collrem_xi(amp_split_size), amp_split_collrem_lxi(amp_split_size)
     double precision prefact_xi
     double precision subtraction_shat
+    complex(kind=8) :: density_multipliers(3)
 
     amp_split_collrem_xi(1:amp_split_size) = 0d0
     amp_split_collrem_lxi(1:amp_split_size) = 0d0
     amp_split_wgtdegrem_xi(1:amp_split_size) = 0d0
     amp_split_wgtdegrem_lxi(1:amp_split_size) = 0d0
     amp_split_wgtdegrem_muF(1:amp_split_size) = 0d0
+    if (spin_density_fks_collection_enabled()) then
+      call reset_spin_density_degenerate_matrix()
+    end if
 
     subtraction_shat = fks_subtraction_shat(event_slot)
     call select_kernel_event(event_slot, kernel_momenta, kernel_masses)
@@ -1185,6 +1264,15 @@ contains
     amp_split_wgtdegrem_muF(1:amp_split_size) = &
       amp_split_wgtdegrem_muF(1:amp_split_size) - &
       oo2pi*dble(amp_split_cnt(1:amp_split_size, 1, iord))*ap(iap)*xnorm
+    if (spin_density_fks_collection_enabled()) then
+      density_multipliers(1) = cmplx( &
+           oo2pi*prefact_xi*xnorm, 0d0, kind=8)
+      density_multipliers(2) = cmplx( &
+           oo2pi*collrem_lxi_tmp*xnorm, 0d0, kind=8)
+      density_multipliers(3) = cmplx( &
+           -oo2pi*ap(iap)*xnorm, 0d0, kind=8)
+      call set_spin_density_degenerate_from_born(density_multipliers)
+    end if
     calculatedborn = .false.
 
     return
@@ -1237,6 +1325,9 @@ contains
     double precision amp_split_bsv(amp_split_size)
     double precision kernel_momenta(0:3, nexternal)
     double precision kernel_shat, kernel_sqrt_shat, link_multiplier
+    complex(kind=8) :: density_coefficients(3)
+    double precision :: density_muf, density_mur, density_factor
+    double precision :: density_virtual_average, density_sampling_fraction
     type(factorized_radiation_state) :: radiation
     if (has_nlo_contribution_bundle()) then
       need_color_links_used = .false.
@@ -1284,6 +1375,10 @@ contains
     amp_split_bsv(1:amp_split_size) = 0d0
     amp_split_virt(1:amp_split_size) = 0d0
     amp_split_avv(1:amp_split_size) = 0d0
+    if (spin_density_fks_collection_enabled()) then
+      call reset_spin_density_integrated_matrix()
+      call reset_spin_density_virtual_matrix()
+    end if
 
     if (.not. need_color_links_used) then
 ! just return 0
@@ -1307,6 +1402,11 @@ contains
     end if
 
     call evaluate_born_matrix(soft_counterevent, wgt1)
+    if (spin_density_fks_collection_enabled()) then
+      density_coefficients = (0d0, 0d0)
+      density_coefficients(1) = (1d0, 0d0)
+      call add_spin_density_integrated_born(density_coefficients)
+    end if
 
 ! Born contribution:
     bsv_wgt = wgt1
@@ -1377,6 +1477,11 @@ contains
     bsv_wgt = bsv_wgt + aso2pi*Q*dble(ans_cnt(1, qcd_pos))
     amp_split_bsv(1:amp_split_size) = amp_split_bsv(1:amp_split_size) + &
       aso2pi*Q*dble(amp_split_cnt(1:amp_split_size, 1, qcd_pos))
+    if (spin_density_fks_collection_enabled()) then
+      density_coefficients = (0d0, 0d0)
+      density_coefficients(1) = cmplx(aso2pi*Q, 0d0, kind=8)
+      call add_spin_density_integrated_born(density_coefficients)
+    end if
 
 !     If doing MC over helicities, must sum over the two
 !     helicity contributions for the Q-terms of collinear limit.
@@ -1409,11 +1514,20 @@ contains
                                            link_multiplier)
             call evaluate_born_color_matrix( &
                  soft_counterevent, visible_m, visible_n, wgt)
-            if (wgt .ne. 0d0) then
+            if (wgt .ne. 0d0 .or. &
+                spin_density_fks_collection_enabled()) then
               call eikonal_Ireg(kernel_momenta, m, n, xicut_used, pmass, &
                                  kernel_shat, qes2, abrv, &
                                  eikIreg)
               contr = contr + link_multiplier*wgt*eikIreg
+              if (spin_density_fks_collection_enabled()) then
+                density_coefficients = (0d0, 0d0)
+                density_coefficients(1) = cmplx( &
+                     -2d0*link_multiplier*eikIreg*oneo8pi2, &
+                     0d0, kind=8)
+                call add_spin_density_integrated_color( &
+                     density_coefficients)
+              end if
               do k = 1, amp_split_size
                 amp_split_bsv(k) = amp_split_bsv(k) - &
                   2d0*link_multiplier*eikIreg*oneo8pi2*amp_split_soft(k)
@@ -1489,8 +1603,28 @@ contains
         virt_wgt = virt_wgt/virtual_fraction(ichan)
         do iamp = 1, amp_split_size
           amp_split_virt(iamp) = &
-            amp_split_virt(iamp)/virtual_fraction(ichan)
+          amp_split_virt(iamp)/virtual_fraction(ichan)
         end do
+      end if
+      if (spin_density_fks_collection_enabled() .and. &
+          spin_density_virtual_matrix_available()) then
+        virtual_grid = active_virtual_grid_index( &
+             spin_density_nlo_amp_position(), amp_split_size)
+        if (virtual_grid == 0) then
+          write (*,*) 'ERROR: the density virtual has no bundle grid'
+          stop 1
+        end if
+        if (use_poly_virtual) then
+          density_virtual_average = polyfit(virtual_grid)
+        else
+          density_virtual_average = average_virtual(virtual_grid, ichan)
+        end if
+        density_sampling_fraction = 1d0
+        if (abrv .ne. 'virt') then
+          density_sampling_fraction = virtual_fraction(ichan)
+        end if
+        call reduce_spin_density_virtual_matrix( &
+             density_virtual_average, density_sampling_fraction)
       end if
       call cpu_time(tAfter)
       tOLP = tOLP + (tAfter - tBefore)
@@ -1541,6 +1675,14 @@ contains
              *dble(amp_split_cnt(iamp, 1, qcd_pos))
         amp_split_bsv(iamp) = amp_split_bsv(iamp) + contr_mufoqes
         bsv_wgt_mufoqes = bsv_wgt_mufoqes + contr_mufoqes
+        if (spin_density_fks_collection_enabled() .and. &
+            iamp == spin_density_nlo_amp_position()) then
+          density_factor = pi*beta0*dble(production_born_qcd_order)* &
+               log(q2fact(1)/QES2)*aso2pi
+          density_coefficients = (0d0, 0d0)
+          density_coefficients(1) = cmplx(density_factor, 0d0, kind=8)
+          call add_spin_density_integrated_born(density_coefficients)
+        end if
       end do
       bsv_wgt = bsv_wgt + bsv_wgt_mufoqes
     end if
@@ -1558,6 +1700,14 @@ contains
              *dble(amp_split_cnt(iamp, 1, qcd_pos))
         amp_split_bsv(iamp) = amp_split_bsv(iamp) + contr_mufomur
         bsv_wgt_mufomur = bsv_wgt_mufomur + contr_mufomur
+        if (spin_density_fks_collection_enabled() .and. &
+            iamp == spin_density_nlo_amp_position()) then
+          density_factor = -pi*beta0*dble(production_born_qcd_order)* &
+               log(q2fact(1)/scale**2)*aso2pi
+          density_coefficients = (0d0, 0d0)
+          density_coefficients(1) = cmplx(density_factor, 0d0, kind=8)
+          call add_spin_density_integrated_born(density_coefficients)
+        end if
       end do
       bsv_wgt = bsv_wgt + bsv_wgt_mufomur
     end if
@@ -1570,6 +1720,8 @@ contains
 
     if (abrv .ne. 'born' .and. abrv .ne. 'grid') then
       call evaluate_born_matrix(soft_counterevent, wgt1)
+      density_muf = 0d0
+      density_mur = 0d0
       if (abrv(1:2) .ne. 'vi') then
         do i = 1, kernel_initial_count
           if (pmass(i) .ne. zero) cycle
@@ -1583,6 +1735,8 @@ contains
           if (aj .eq. -1) cycle
           c_used = c(aj)
           gamma_used = gamma(aj)
+          density_muf = density_muf - &
+               (gamma_used + 2d0*c_used*dlog(xicut_used))*aso2pi
           do iamp = 1, amp_split_size
             if (dble(amp_split_cnt(iamp, 1, qcd_pos)) .eq. 0d0) cycle
             amp_split_wgtwnstmpmuf(iamp) = &
@@ -1598,6 +1752,9 @@ contains
                corrected_born_qcd_squared_order(orders(qcd_pos))
           amp_split_wgtwnstmpmur(iamp) = dble(amp_split_cnt(iamp, 1, qcd_pos)) &
                *pi*beta0*dble(production_born_qcd_order)*aso2pi
+          if (iamp == spin_density_nlo_amp_position()) then
+            density_mur = pi*beta0*dble(production_born_qcd_order)*aso2pi
+          end if
         end do
       end if
 ! bsv_wgt here always contains the Born; must subtract it, since
@@ -1608,6 +1765,14 @@ contains
         *amp_split_wgtwnstmpmuf(1:amp_split_size) &
         - log(scale**2/QES2) &
         *amp_split_wgtwnstmpmur(1:amp_split_size)
+      if (spin_density_fks_collection_enabled()) then
+        density_coefficients(1) = cmplx( &
+             -1d0 - log(q2fact(1)/QES2)*density_muf - &
+             log(scale**2/QES2)*density_mur, 0d0, kind=8)
+        density_coefficients(2) = cmplx(density_mur, 0d0, kind=8)
+        density_coefficients(3) = cmplx(density_muf, 0d0, kind=8)
+        call add_spin_density_integrated_born(density_coefficients)
+      end if
     end if
 
     amp_split(1:amp_split_size) = amp_split_bsv(1:amp_split_size)

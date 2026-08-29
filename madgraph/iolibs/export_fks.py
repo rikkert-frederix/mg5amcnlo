@@ -1396,6 +1396,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               'nlo_decay_kinematics.f90',
                               'factorized_phase_space.f90',
                               'spin_density_matrix_results.f90',
+                              'spin_density_fks_matrices.f90',
+                              'multiplicative_nlo_decay.f90',
+                              'multiplicative_event_materialization.f90',
+                              'spin_density_weight_lines.f90',
                               'decay_chain_scales.f90',
                               'phase_space_kinematics.f90',
                               'fks_diagnostics.f90',
@@ -3083,6 +3087,739 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             written.add(variant['filename'])
             density_exporter.write_color_provider(
                 writers.FortranWriter(variant['filename']), plan, variant)
+        self.write_spin_density_block_accessors(
+            matrix_element, density_exporter)
+        # The template runtime is linked for every fNLO subprocess.  Emit the
+        # contraction symbol even when multiplicative mode is unavailable so
+        # ordinary factorized decay outputs keep a complete link interface.
+        self.write_spin_density_branch_contraction(
+            matrix_element, density_exporter)
+
+
+    @staticmethod
+    def write_spin_density_branch_contraction(matrix_element,
+                                              density_exporter):
+        """Emit the process-specific contraction of aggregated B/R blocks."""
+
+        plan = matrix_element.spin_density_plan
+        component_count = len(plan['components'])
+        declarations, code = density_exporter.branch_contraction_lines(plan)
+        source = [
+            'SUBROUTINE SDM_MULTIPLICATIVE_CONTRACTION(SDM_BRANCHES,',
+            '     $ SDM_BRANCH_CHOICE,SDM_WEIGHT_COUNT,SDM_RESULT)',
+            'USE SPIN_DENSITY_MATRIX_RESULTS',
+            'IMPLICIT NONE',
+            'INTEGER SDM_COMPONENT_COUNT',
+            'PARAMETER (SDM_COMPONENT_COUNT=%d)' % component_count,
+            'INTEGER SDM_WEIGHT_COUNT',
+            'INTEGER SDM_BRANCH_CHOICE(SDM_COMPONENT_COUNT)',
+            'TYPE(SPIN_DENSITY_BRANCH_RESULT) SDM_BRANCHES(',
+            '     $ SDM_COMPONENT_COUNT)',
+            'COMPLEX*16 SDM_RESULT(SDM_WEIGHT_COUNT)']
+        source.extend(declarations)
+        source.extend(code)
+        source.append('END')
+        writers.FortranWriter(
+            'spin_density_multiplicative_contraction.f').writelines(
+                '\n'.join(source))
+
+
+    @staticmethod
+    def write_spin_density_block_accessors(matrix_element,
+                                           density_exporter):
+        """Expose uncontracted block densities to the multiplicative path."""
+
+        plan = matrix_element.spin_density_plan
+        density_exporter.prepare_plan(plan)
+        components = sorted(plan['components'].items())
+        component_ids = [identifier for identifier, _ in components]
+        component_positions = dict(
+            (identifier, position)
+            for position, identifier in enumerate(component_ids, 1))
+        component_open_sizes = [component['born']['open_size']
+                                for _, component in components]
+        all_providers = [component['born'] for _, component in components]
+        all_providers.extend(plan.get('auxiliary_providers', []))
+        all_providers.extend(
+            variant['provider'] for variant in plan.get('real_variants', []))
+        all_open_sizes = [provider['open_size'] for provider in all_providers]
+        all_open_sizes.extend(
+            variant['open_size']
+            for variant in plan.get('virtual_variants', []))
+        max_open_size = max(all_open_sizes)
+
+        born_variants = plan.get('born_variants', [])
+        contribution_positions = [
+            component_positions[variant['active_component']]
+            for variant in born_variants]
+        dimensions = [
+            'INTEGER SDM_COMPONENT_COUNT,SDM_CORRECTED_COUNT',
+            'INTEGER SDM_MAX_OPEN_SIZE',
+            ('PARAMETER (SDM_COMPONENT_COUNT=%d,SDM_CORRECTED_COUNT=%d,'
+             'SDM_MAX_OPEN_SIZE=%d)') % (
+                len(components), len(born_variants), max_open_size),
+            'INTEGER SDM_COMPONENT_ID(SDM_COMPONENT_COUNT)',
+            'INTEGER SDM_COMPONENT_OPEN_SIZE(SDM_COMPONENT_COUNT)',
+            'INTEGER SDM_CONTRIBUTION_POSITION(SDM_CORRECTED_COUNT)',
+            'DATA SDM_COMPONENT_ID /%s/' % ','.join(map(str, component_ids)),
+            'DATA SDM_COMPONENT_OPEN_SIZE /%s/' % ','.join(
+                map(str, component_open_sizes)),
+            'DATA SDM_CONTRIBUTION_POSITION /%s/' % ','.join(
+                map(str, contribution_positions))]
+        writers.FortranWriter(
+            'spin_density_branch_dimensions.inc').writelines(
+                '\n'.join(dimensions))
+
+        source = []
+        info_list = matrix_element.get_fks_info_list()
+        correlation_legs = []
+        for info in info_list:
+            fks_info = info['fks_info']
+            if 'ij_massless' in info:
+                massless = info['ij_massless']
+            else:
+                ij = fks_info['ij']
+                massless = matrix_element.born_me[
+                    'processes'][0]['legs'][ij - 1]['massless']
+            correlation_legs.append(fks_info['ij'] if massless else 0)
+        source.extend([
+            'INTEGER FUNCTION SDM_BRANCH_COMPONENT_COUNT()',
+            'IMPLICIT NONE',
+            "INCLUDE 'spin_density_branch_dimensions.inc'",
+            'SDM_BRANCH_COMPONENT_COUNT=SDM_COMPONENT_COUNT',
+            'END',
+            '',
+            'INTEGER FUNCTION SDM_BRANCH_CORRECTED_COUNT()',
+            'IMPLICIT NONE',
+            "INCLUDE 'spin_density_branch_dimensions.inc'",
+            'SDM_BRANCH_CORRECTED_COUNT=SDM_CORRECTED_COUNT',
+            'END',
+            '',
+            'INTEGER FUNCTION SDM_BRANCH_MAX_OPEN_SIZE()',
+            'IMPLICIT NONE',
+            "INCLUDE 'spin_density_branch_dimensions.inc'",
+            'SDM_BRANCH_MAX_OPEN_SIZE=SDM_MAX_OPEN_SIZE',
+            'END',
+            '',
+            'INTEGER FUNCTION SDM_BRANCH_COMPONENT_ID(POSITION)',
+            'IMPLICIT NONE',
+            "INCLUDE 'spin_density_branch_dimensions.inc'",
+            'INTEGER POSITION',
+            'IF (POSITION.LT.1.OR.POSITION.GT.SDM_COMPONENT_COUNT) THEN',
+            "  WRITE(*,*) 'Invalid density component position',POSITION",
+            '  STOP 1',
+            'ENDIF',
+            'SDM_BRANCH_COMPONENT_ID=SDM_COMPONENT_ID(POSITION)',
+            'END',
+            '',
+            'INTEGER FUNCTION SDM_BRANCH_COMPONENT_OPEN_SIZE(POSITION)',
+            'IMPLICIT NONE',
+            "INCLUDE 'spin_density_branch_dimensions.inc'",
+            'INTEGER POSITION',
+            'IF (POSITION.LT.1.OR.POSITION.GT.SDM_COMPONENT_COUNT) THEN',
+            "  WRITE(*,*) 'Invalid density component position',POSITION",
+            '  STOP 1',
+            'ENDIF',
+            'SDM_BRANCH_COMPONENT_OPEN_SIZE=',
+            '     $ SDM_COMPONENT_OPEN_SIZE(POSITION)',
+            'END',
+            '',
+            'INTEGER FUNCTION SDM_CONTRIBUTION_COMPONENT_POSITION(',
+            '     $ CONTRIBUTION)',
+            'IMPLICIT NONE',
+            "INCLUDE 'spin_density_branch_dimensions.inc'",
+            'INTEGER CONTRIBUTION',
+            'IF (CONTRIBUTION.LT.1.OR.',
+            '     $ CONTRIBUTION.GT.SDM_CORRECTED_COUNT) THEN',
+            "  WRITE(*,*) 'Invalid density contribution position',",
+            '     $ CONTRIBUTION',
+            '  STOP 1',
+            'ENDIF',
+            'SDM_CONTRIBUTION_COMPONENT_POSITION=',
+            '     $ SDM_CONTRIBUTION_POSITION(CONTRIBUTION)',
+            'END',
+            '',
+            'INTEGER FUNCTION SDM_FKS_CORRELATION_LEG(CONFIGURATION)',
+            'IMPLICIT NONE',
+            'INTEGER CONFIGURATION',
+            'INTEGER CORRELATION_LEGS(%d)' % max(1, len(correlation_legs)),
+            'DATA CORRELATION_LEGS /%s/' % ','.join(
+                map(str, correlation_legs or [0])),
+            'IF (CONFIGURATION.LT.1.OR.CONFIGURATION.GT.%d) THEN' %
+            max(1, len(correlation_legs)),
+            "  WRITE(*,*) 'Invalid density correlation configuration',",
+            '     $ CONFIGURATION',
+            '  STOP 1',
+            'ENDIF',
+            'SDM_FKS_CORRELATION_LEG=CORRELATION_LEGS(CONFIGURATION)',
+            'END',
+            '',
+            'INTEGER FUNCTION SDM_LOCAL_CORRELATION_LEG(CONTRIBUTION,',
+            '     $ GLOBAL_LEG)',
+            'IMPLICIT NONE',
+            'INTEGER CONTRIBUTION,GLOBAL_LEG',
+            'SDM_LOCAL_CORRELATION_LEG=0',
+            'SELECT CASE (CONTRIBUTION)'])
+        for variant in born_variants:
+            provider = variant.get(
+                'provider', plan['components'][
+                    variant['active_component']]['born'])
+            correlation_map = density_exporter.correlation_leg_map(
+                plan, provider, variant['context'], variant['context_kind'])
+            source.extend([
+                'CASE (%d)' % variant['contribution_id'],
+                '  IF (GLOBAL_LEG.GT.0) THEN',
+                '    IF (GLOBAL_LEG.GT.%d) THEN' % len(correlation_map),
+                "      WRITE(*,*) 'Invalid global density correlation leg',",
+                '     $ GLOBAL_LEG',
+                '      STOP 1',
+                '    ENDIF',
+                '    SELECT CASE (GLOBAL_LEG)'])
+            for global_leg, local_leg in enumerate(correlation_map, 1):
+                source.extend([
+                    '    CASE (%d)' % global_leg,
+                    '      SDM_LOCAL_CORRELATION_LEG=%d' % local_leg])
+            source.extend(['    END SELECT', '  ENDIF'])
+        source.extend([
+            'CASE DEFAULT',
+            "  WRITE(*,*) 'Invalid density correlation contribution',",
+            '     $ CONTRIBUTION',
+            '  STOP 1',
+            'END SELECT',
+            'END',
+            ''])
+        source.extend([
+            'SUBROUTINE SDM_BORN_BLOCK_DENSITY(CONTRIBUTION,EVENT_SLOT,',
+            '     $ CORR_LEG,OPEN_SIZE,RHO)',
+            'IMPLICIT NONE',
+            "INCLUDE 'spin_density_branch_dimensions.inc'",
+            'INTEGER CONTRIBUTION,EVENT_SLOT,CORR_LEG,OPEN_SIZE',
+            'COMPLEX*16 RHO(2,SDM_MAX_OPEN_SIZE,SDM_MAX_OPEN_SIZE)',
+            'SELECT CASE (CONTRIBUTION)'])
+        for variant in born_variants:
+            contribution = variant['contribution_id']
+            source.extend([
+                'CASE (%d)' % contribution,
+                '  CALL SDM_BORN_BLOCK_DENSITY_%d(EVENT_SLOT,CORR_LEG,' %
+                contribution,
+                '     $ OPEN_SIZE,RHO)'])
+        source.extend([
+            'CASE DEFAULT',
+            "  WRITE(*,*) 'Invalid B-branch contribution',CONTRIBUTION",
+            '  STOP 1',
+            'END SELECT',
+            'END'])
+        for variant in born_variants:
+            contribution = variant['contribution_id']
+            provider = variant.get(
+                'provider', plan['components'][
+                    variant['active_component']]['born'])
+            nexternal, _ = provider['matrix_element'].get_nexternal_ninitial()
+            open_size = provider['open_size']
+            source.extend([
+                '',
+                'SUBROUTINE SDM_BORN_BLOCK_DENSITY_%d(EVENT_SLOT,' %
+                contribution,
+                '     $ CORR_LEG,OPEN_SIZE,RHO)',
+                'IMPLICIT NONE',
+                "INCLUDE 'spin_density_branch_dimensions.inc'",
+                'INTEGER EVENT_SLOT,CORR_LEG,OPEN_SIZE',
+                'REAL*8 P(0:3,%d)' % nexternal,
+                'COMPLEX*16 LOCAL_RHO(2,%d,%d)' % (
+                    open_size, open_size),
+                'COMPLEX*16 RHO(2,SDM_MAX_OPEN_SIZE,SDM_MAX_OPEN_SIZE)',
+                'CALL GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,%d,%d,P)' % (
+                    variant['active_component'], nexternal),
+                'CALL %s(P,CORR_LEG,LOCAL_RHO)' % provider['fortran_name'],
+                'RHO=(0D0,0D0)',
+                'RHO(:,1:%d,1:%d)=LOCAL_RHO' % (open_size, open_size),
+                'OPEN_SIZE=%d' % open_size,
+                'END'])
+
+        real_variants = plan.get('real_variants', [])
+        configurations_by_me = {}
+        for configuration, info in enumerate(info_list, 1):
+            configurations_by_me.setdefault(info['n_me'], []).append(
+                configuration)
+        source.extend([
+            '',
+            'SUBROUTINE SDM_REAL_BLOCK_DENSITY(CONFIGURATION,EVENT_SLOT,',
+            '     $ OPEN_SIZE,RHO)',
+            'IMPLICIT NONE',
+            "INCLUDE 'spin_density_branch_dimensions.inc'",
+            'INTEGER CONFIGURATION,EVENT_SLOT,OPEN_SIZE',
+            'COMPLEX*16 RHO(2,SDM_MAX_OPEN_SIZE,SDM_MAX_OPEN_SIZE)',
+            'SELECT CASE (CONFIGURATION)'])
+        for matrix_index, variant in enumerate(real_variants, 1):
+            configurations = configurations_by_me.get(matrix_index, [])
+            if not configurations:
+                continue
+            source.extend([
+                'CASE (%s)' % ','.join(map(str, configurations)),
+                '  CALL SDM_REAL_BLOCK_DENSITY_%d(EVENT_SLOT,' % matrix_index,
+                '     $ OPEN_SIZE,RHO)'])
+        source.extend([
+            'CASE DEFAULT',
+            "  WRITE(*,*) 'Invalid R-branch configuration',CONFIGURATION",
+            '  STOP 1',
+            'END SELECT',
+            'END'])
+        for matrix_index, variant in enumerate(real_variants, 1):
+            provider = variant['provider']
+            nexternal, _ = provider['matrix_element'].get_nexternal_ninitial()
+            open_size = provider['open_size']
+            source.extend([
+                '',
+                'SUBROUTINE SDM_REAL_BLOCK_DENSITY_%d(EVENT_SLOT,' %
+                matrix_index,
+                '     $ OPEN_SIZE,RHO)',
+                'IMPLICIT NONE',
+                "INCLUDE 'spin_density_branch_dimensions.inc'",
+                'INTEGER EVENT_SLOT,OPEN_SIZE',
+                'REAL*8 P(0:3,%d)' % nexternal,
+                'COMPLEX*16 LOCAL_RHO(2,%d,%d)' % (
+                    open_size, open_size),
+                'COMPLEX*16 RHO(2,SDM_MAX_OPEN_SIZE,SDM_MAX_OPEN_SIZE)',
+                'CALL GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,%d,%d,P)' % (
+                    variant['active_component'], nexternal),
+                'CALL %s(P,0,LOCAL_RHO)' % provider['fortran_name'],
+                'RHO=(0D0,0D0)',
+                'RHO(:,1:%d,1:%d)=LOCAL_RHO' % (open_size, open_size),
+                'OPEN_SIZE=%d' % open_size,
+                'END'])
+
+        color_variants = plan.get('color_variants', [])
+        source.extend([
+            '',
+            'SUBROUTINE SDM_COLOR_BLOCK_DENSITY_PAIR(CONTRIBUTION,',
+            '     $ FIRST,SECOND,EVENT_SLOT,OPEN_SIZE,RHO)',
+            'IMPLICIT NONE',
+            "INCLUDE 'spin_density_branch_dimensions.inc'",
+            'INTEGER CONTRIBUTION,FIRST,SECOND,EVENT_SLOT,OPEN_SIZE',
+            'COMPLEX*16 RHO(SDM_MAX_OPEN_SIZE,SDM_MAX_OPEN_SIZE)'])
+        for index, color_link in enumerate(matrix_element.color_links, 1):
+            first, second = color_link['link']
+            prefix = 'IF' if index == 1 else 'ELSE IF'
+            if first == second:
+                condition = 'FIRST.EQ.%d.AND.SECOND.EQ.%d' % (
+                    first, second)
+            else:
+                condition = ('(FIRST.EQ.%d.AND.SECOND.EQ.%d).OR.'
+                             '(FIRST.EQ.%d.AND.SECOND.EQ.%d)') % (
+                                 first, second, second, first)
+            source.extend([
+                '%s (%s) THEN' % (prefix, condition),
+                '  CALL SDM_COLOR_BLOCK_DENSITY(CONTRIBUTION,%d,' % index,
+                '     $ EVENT_SLOT,OPEN_SIZE,RHO)'])
+        if matrix_element.color_links:
+            source.extend([
+                'ELSE',
+                "  WRITE(*,*) 'Invalid B-branch color pair',FIRST,SECOND",
+                '  STOP 1',
+                'ENDIF'])
+        else:
+            source.extend([
+                "WRITE(*,*) 'A process without color links requested one'",
+                'STOP 1'])
+        source.append('END')
+        source.extend([
+            '',
+            'SUBROUTINE SDM_COLOR_BLOCK_DENSITY(CONTRIBUTION,LINK,',
+            '     $ EVENT_SLOT,OPEN_SIZE,RHO)',
+            'IMPLICIT NONE',
+            "INCLUDE 'spin_density_branch_dimensions.inc'",
+            'INTEGER CONTRIBUTION,LINK,EVENT_SLOT,OPEN_SIZE',
+            'COMPLEX*16 RHO(SDM_MAX_OPEN_SIZE,SDM_MAX_OPEN_SIZE)',
+            'RHO=(0D0,0D0)',
+            'SELECT CASE (CONTRIBUTION)'])
+        color_by_contribution = {}
+        for variant in color_variants:
+            color_by_contribution.setdefault(
+                variant.get('contribution_id', 1), []).append(variant)
+        for contribution, variants in sorted(color_by_contribution.items()):
+            source.extend(['CASE (%d)' % contribution, '  SELECT CASE (LINK)'])
+            for variant in variants:
+                link = variant['generated_index']
+                source.extend([
+                    '  CASE (%d)' % link,
+                    '    CALL SDM_COLOR_BLOCK_DENSITY_%d_%d(EVENT_SLOT,' % (
+                        contribution, link),
+                    '     $ OPEN_SIZE,RHO)'])
+            source.extend([
+                '  CASE DEFAULT',
+                "    WRITE(*,*) 'Invalid B-branch color link',LINK",
+                '    STOP 1',
+                '  END SELECT'])
+        source.extend([
+            'CASE DEFAULT',
+            "  WRITE(*,*) 'Invalid B-branch color contribution',",
+            '     $ CONTRIBUTION',
+            '  STOP 1',
+            'END SELECT',
+            'END'])
+        for variant in color_variants:
+            contribution = variant.get('contribution_id', 1)
+            link = variant['generated_index']
+            provider = variant['provider']
+            nexternal, _ = provider['matrix_element'].get_nexternal_ninitial()
+            open_size = provider['open_size']
+            source.extend([
+                '',
+                'SUBROUTINE SDM_COLOR_BLOCK_DENSITY_%d_%d(EVENT_SLOT,' % (
+                    contribution, link),
+                '     $ OPEN_SIZE,RHO)',
+                'IMPLICIT NONE',
+                "INCLUDE 'spin_density_branch_dimensions.inc'",
+                'INTEGER EVENT_SLOT,OPEN_SIZE',
+                'REAL*8 P(0:3,%d)' % nexternal,
+                'COMPLEX*16 LOCAL_RHO(%d,%d)' % (open_size, open_size),
+                'COMPLEX*16 RHO(SDM_MAX_OPEN_SIZE,SDM_MAX_OPEN_SIZE)',
+                'CALL GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,%d,%d,P)' % (
+                    variant['active_component'], nexternal),
+                'CALL %s(P,LOCAL_RHO)' % variant['fortran_name'],
+                'RHO=(0D0,0D0)',
+                'RHO(1:%d,1:%d)=LOCAL_RHO' % (open_size, open_size),
+                'OPEN_SIZE=%d' % open_size,
+                'END'])
+
+        virtual_variants = plan.get('virtual_variants', [])
+        virtual_variants_with_contribution = [
+            (variant, variant.get('contribution_id', index))
+            for index, variant in enumerate(virtual_variants, 1)]
+        source.extend([
+            '',
+            'SUBROUTINE SDM_VIRTUAL_BLOCK_DENSITY(CONTRIBUTION,',
+            '     $ EVENT_SLOT,PREC_ASKED,OPEN_SIZE,RHO,PRECISION,',
+            '     $ RET_CODE)',
+            'IMPLICIT NONE',
+            "INCLUDE 'spin_density_branch_dimensions.inc'",
+            'INTEGER CONTRIBUTION,EVENT_SLOT,OPEN_SIZE,RET_CODE',
+            'REAL*8 PREC_ASKED,PRECISION',
+            'COMPLEX*16 RHO(3,SDM_MAX_OPEN_SIZE,SDM_MAX_OPEN_SIZE)',
+            'SELECT CASE (CONTRIBUTION)'])
+        for variant, contribution in virtual_variants_with_contribution:
+            source.extend([
+                'CASE (%d)' % contribution,
+                '  CALL SDM_VIRTUAL_BLOCK_DENSITY_%d(EVENT_SLOT,' %
+                contribution,
+                '     $ PREC_ASKED,OPEN_SIZE,RHO,PRECISION,RET_CODE)'])
+        source.extend([
+            'CASE DEFAULT',
+            "  WRITE(*,*) 'Invalid B-branch virtual contribution',",
+            '     $ CONTRIBUTION',
+            '  STOP 1',
+            'END SELECT',
+            'END'])
+        for variant, contribution in virtual_variants_with_contribution:
+            nexternal, _ = variant['matrix_element'].get_nexternal_ninitial()
+            open_size = variant['open_size']
+            source.extend([
+                '',
+                'SUBROUTINE SDM_VIRTUAL_BLOCK_DENSITY_%d(EVENT_SLOT,' %
+                contribution,
+                '     $ PREC_ASKED,OPEN_SIZE,RHO,PRECISION,RET_CODE)',
+                'IMPLICIT NONE',
+                "INCLUDE 'spin_density_branch_dimensions.inc'",
+                'INTEGER EVENT_SLOT,OPEN_SIZE,RET_CODE',
+                'REAL*8 P(0:3,%d),PREC_ASKED,PRECISION' % nexternal,
+                'COMPLEX*16 LOCAL_RHO(3,%d,%d)' % (
+                    open_size, open_size),
+                'COMPLEX*16 RHO(3,SDM_MAX_OPEN_SIZE,SDM_MAX_OPEN_SIZE)',
+                'CALL GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,%d,%d,P)' % (
+                    variant['active_component'], nexternal),
+                'CALL %s(P,LOCAL_RHO,PREC_ASKED,PRECISION,RET_CODE)' %
+                variant['fortran_name'],
+                'RHO=(0D0,0D0)',
+                'RHO(:,1:%d,1:%d)=LOCAL_RHO' % (open_size, open_size),
+                'OPEN_SIZE=%d' % open_size,
+                'END'])
+
+        # A multiplicative leaf combines block layouts which originate from
+        # different FKS contributions.  Keep the process-specific topology
+        # in generated fixed-form accessors and let the generic runtime own
+        # only the scratch storage and recursive embedding algorithm.
+        def leaf_layout(provider, context=None):
+            legs = sorted(
+                provider['matrix_element'].get('processes')[0].get('legs'),
+                key=lambda item: item.get('number'))
+            layout = []
+            for leg in legs:
+                number = leg.get('number')
+                kind, target = provider['momentum_targets'][number]
+                if kind == 'LOCAL_LEG':
+                    if context is None:
+                        raise fks_common.FKSProcessError(
+                            'A local density provider has no leaf context')
+                    kind, target = context['local_map'][number]
+                layout.append({
+                    'status': 1 if leg.get('state') else -1,
+                    'pdg': leg.get('id'),
+                    'target_kind': 1 if kind == 'NODE' else 0,
+                    'target_id': target})
+            return layout
+
+        born_layouts = {}
+        born_leaf_providers = {}
+        born_leaf_contexts = {}
+        for identifier, component in components:
+            provider = component['born']
+            context = None
+            if any(kind == 'LOCAL_LEG' for kind, _ in
+                   provider['momentum_targets'].values()):
+                matches = [
+                    variant for variant in born_variants
+                    if variant['active_component'] == identifier]
+                if len(matches) != 1:
+                    raise fks_common.FKSProcessError(
+                        'A local Born leaf provider has no unique context')
+                context = matches[0].get('context')
+            born_layouts[component_positions[identifier]] = leaf_layout(
+                provider, context)
+            born_leaf_providers[component_positions[identifier]] = provider
+            born_leaf_contexts[component_positions[identifier]] = context
+        for variant in born_variants:
+            position = component_positions[variant['active_component']]
+            provider = variant.get(
+                'provider', plan['components'][
+                    variant['active_component']]['born'])
+            born_layouts[position] = leaf_layout(
+                provider, variant.get('context'))
+            born_leaf_providers[position] = provider
+            born_leaf_contexts[position] = variant.get('context')
+
+        configurations_by_me = {}
+        for configuration, info in enumerate(info_list, 1):
+            configurations_by_me.setdefault(info['n_me'], []).append(
+                configuration)
+        real_layouts = {}
+        real_positions = {}
+        for matrix_index, variant in enumerate(real_variants, 1):
+            position = component_positions[variant['active_component']]
+            layout = leaf_layout(variant['provider'], variant.get('context'))
+            for configuration in configurations_by_me.get(matrix_index, []):
+                real_layouts[configuration] = layout
+                real_positions[configuration] = position
+        if len(real_layouts) != len(info_list):
+            raise fks_common.FKSProcessError(
+                'The multiplicative leaf layouts do not cover all FKS '
+                'configurations')
+
+        component_position_by_id = dict(
+            (identifier, position)
+            for position, identifier in enumerate(component_ids, 1))
+
+        def terminal_count(position, layout, stack=()):
+            if position in stack:
+                raise fks_common.FKSProcessError(
+                    'The multiplicative leaf topology contains a cycle')
+            total = 0
+            for leg in layout:
+                if leg['status'] < 0:
+                    if component_ids[position - 1] == 0:
+                        total += 1
+                    continue
+                if leg['target_kind'] == 1:
+                    try:
+                        child_position = component_position_by_id[
+                            leg['target_id']]
+                    except KeyError:
+                        raise fks_common.FKSProcessError(
+                            'A multiplicative leaf targets an unknown node')
+                    total += terminal_count(
+                        child_position, born_layouts[child_position],
+                        stack + (position,))
+                else:
+                    total += 1
+            return total
+
+        try:
+            production_position = component_position_by_id[0]
+        except KeyError:
+            raise fks_common.FKSProcessError(
+                'A multiplicative leaf has no production component')
+        born_particle_count = terminal_count(
+            production_position, born_layouts[production_position])
+        maximum_particle_count = born_particle_count
+        for position in contribution_positions:
+            born_count = terminal_count(position, born_layouts[position])
+            real_counts = [
+                terminal_count(position, layout)
+                for configuration, layout in real_layouts.items()
+                if real_positions[configuration] == position]
+            if not real_counts:
+                if getattr(matrix_element, 'contribution_bundle', False):
+                    raise fks_common.FKSProcessError(
+                        'A corrected block has no real leaf layout')
+                # Legacy LO/additive outputs still link the generic runtime,
+                # but can never enter its multiplicative path.  Their Born
+                # accessor remains useful and no synthetic R layout is
+                # required for link compatibility.
+                continue
+            maximum_particle_count += max(0, max(real_counts) - born_count)
+        maximum_block_size = max(
+            [len(layout) for layout in born_layouts.values()] +
+            [len(layout) for layout in real_layouts.values()])
+
+        source.extend([
+            '',
+            'INTEGER FUNCTION SDM_LEAF_MAX_PARTICLE_COUNT()',
+            'IMPLICIT NONE',
+            'SDM_LEAF_MAX_PARTICLE_COUNT=%d' % maximum_particle_count,
+            'END',
+            '',
+            'INTEGER FUNCTION SDM_LEAF_MAX_BLOCK_SIZE()',
+            'IMPLICIT NONE',
+            'SDM_LEAF_MAX_BLOCK_SIZE=%d' % maximum_block_size,
+            'END',
+            '',
+            'SUBROUTINE SDM_LEAF_BLOCK_LAYOUT(POSITION,BRANCH,',
+            '     $ CONFIGURATION,COUNT,STATUS,TARGET_KIND,TARGET_ID,PDG)',
+            'IMPLICIT NONE',
+            'INTEGER POSITION,BRANCH,CONFIGURATION,COUNT',
+            'INTEGER STATUS(%d),TARGET_KIND(%d),TARGET_ID(%d),PDG(%d)' % (
+                maximum_block_size, maximum_block_size,
+                maximum_block_size, maximum_block_size),
+            'INTEGER I',
+            'COUNT=0',
+            'DO I=1,%d' % maximum_block_size,
+            '  STATUS(I)=0',
+            '  TARGET_KIND(I)=0',
+            '  TARGET_ID(I)=0',
+            '  PDG(I)=0',
+            'ENDDO',
+            'IF (BRANCH.EQ.0) THEN',
+            '  SELECT CASE (POSITION)'])
+
+        def append_layout_assignments(target, layout, indent):
+            target.append('%sCOUNT=%d' % (indent, len(layout)))
+            for leg_index, leg in enumerate(layout, 1):
+                target.extend([
+                    '%sSTATUS(%d)=%d' % (
+                        indent, leg_index, leg['status']),
+                    '%sTARGET_KIND(%d)=%d' % (
+                        indent, leg_index, leg['target_kind']),
+                    '%sTARGET_ID(%d)=%d' % (
+                        indent, leg_index, leg['target_id']),
+                    '%sPDG(%d)=%d' % (
+                        indent, leg_index, leg['pdg'])])
+
+        for position, layout in sorted(born_layouts.items()):
+            source.append('  CASE (%d)' % position)
+            append_layout_assignments(source, layout, '    ')
+        source.extend([
+            '  CASE DEFAULT',
+            "    WRITE(*,*) 'Invalid B leaf component',POSITION",
+            '    STOP 1',
+            '  END SELECT',
+            'ELSE IF (BRANCH.EQ.1) THEN',
+            '  SELECT CASE (CONFIGURATION)'])
+        for configuration, layout in sorted(real_layouts.items()):
+            position = real_positions[configuration]
+            source.extend([
+                '  CASE (%d)' % configuration,
+                '    IF (POSITION.NE.%d) THEN' % position,
+                "      WRITE(*,*) 'R leaf belongs to another component',",
+                '     $ POSITION,CONFIGURATION',
+                '      STOP 1',
+                '    ENDIF'])
+            append_layout_assignments(source, layout, '    ')
+        source.extend([
+            '  CASE DEFAULT',
+            "    WRITE(*,*) 'Invalid R leaf configuration',CONFIGURATION",
+            '    STOP 1',
+            '  END SELECT',
+            'ELSE',
+            "  WRITE(*,*) 'Invalid multiplicative leaf branch',BRANCH",
+            '  STOP 1',
+            'ENDIF',
+            'END'])
+
+        source.extend([
+            '',
+            'LOGICAL FUNCTION SDM_COMPONENT_IS_CORRECTED(POSITION)',
+            'IMPLICIT NONE',
+            'INTEGER POSITION',
+            'SELECT CASE (POSITION)'])
+        for position in range(1, len(components) + 1):
+            source.extend([
+                'CASE (%d)' % position,
+                '  SDM_COMPONENT_IS_CORRECTED=%s' % (
+                    '.TRUE.' if position in contribution_positions
+                    else '.FALSE.')])
+        source.extend([
+            'CASE DEFAULT',
+            "  WRITE(*,*) 'Invalid density component',POSITION",
+            '  STOP 1',
+            'END SELECT',
+            'END',
+            '',
+            'SUBROUTINE SDM_COMPONENT_BORN_DENSITY(POSITION,EVENT_SLOT,',
+            '     $ OPEN_SIZE,QCD_POWER,SCALE_PDG,RHO)',
+            'IMPLICIT NONE',
+            "INCLUDE 'spin_density_branch_dimensions.inc'",
+            'INTEGER POSITION,EVENT_SLOT,OPEN_SIZE,QCD_POWER,SCALE_PDG',
+            'COMPLEX*16 RHO(2,SDM_MAX_OPEN_SIZE,SDM_MAX_OPEN_SIZE)',
+            'SELECT CASE (POSITION)'])
+        for position in range(1, len(components) + 1):
+            source.extend([
+                'CASE (%d)' % position,
+                '  CALL SDM_COMPONENT_BORN_DENSITY_%d(EVENT_SLOT,' %
+                position,
+                '     $ OPEN_SIZE,QCD_POWER,SCALE_PDG,RHO)'])
+        source.extend([
+            'CASE DEFAULT',
+            "  WRITE(*,*) 'Invalid density component',POSITION",
+            '  STOP 1',
+            'END SELECT',
+            'END'])
+        for position in range(1, len(components) + 1):
+            provider = born_leaf_providers[position]
+            component_id = component_ids[position - 1]
+            provider_me = provider['matrix_element']
+            provider_nexternal, _ = provider_me.get_nexternal_ninitial()
+            squared_orders, _ = provider_me.get_split_orders_mapping()
+            if len(squared_orders) != 1:
+                if getattr(matrix_element, 'contribution_bundle', False):
+                    raise fks_common.FKSProcessError(
+                        'A component Born leaf has several squared orders')
+                # This value is unreachable in legacy LO/additive mode; keep
+                # a deterministic compatibility accessor for linking.
+                local_order = squared_orders[0] if squared_orders else []
+            else:
+                local_order = squared_orders[0]
+            if local_order and isinstance(local_order[0], tuple):
+                local_order = local_order[0]
+            split_orders = provider_me.get('processes')[0].get(
+                'split_orders')
+            qcd_power = (local_order[split_orders.index('QCD')]
+                         if 'QCD' in split_orders and local_order else 0)
+            scale_pdg = (0 if component_id == 0 else
+                         plan['topology']['nodes'][component_id - 1]['pdg'])
+            open_size = provider['open_size']
+            source.extend([
+                '',
+                'SUBROUTINE SDM_COMPONENT_BORN_DENSITY_%d(EVENT_SLOT,' %
+                position,
+                '     $ OPEN_SIZE,QCD_POWER,SCALE_PDG,RHO)',
+                'IMPLICIT NONE',
+                "INCLUDE 'spin_density_branch_dimensions.inc'",
+                'INTEGER EVENT_SLOT,OPEN_SIZE,QCD_POWER,SCALE_PDG',
+                'REAL*8 P(0:3,%d)' % provider_nexternal,
+                'COMPLEX*16 LOCAL_RHO(2,%d,%d)' % (
+                    open_size, open_size),
+                'COMPLEX*16 RHO(2,SDM_MAX_OPEN_SIZE,SDM_MAX_OPEN_SIZE)',
+                'CALL GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,%d,%d,P)' % (
+                    component_id, provider_nexternal),
+                'CALL %s(P,0,LOCAL_RHO)' % provider['fortran_name'],
+                'RHO=(0D0,0D0)',
+                'RHO(:,1:%d,1:%d)=LOCAL_RHO' % (open_size, open_size),
+                'OPEN_SIZE=%d' % open_size,
+                'QCD_POWER=%d' % qcd_power,
+                'SCALE_PDG=%d' % scale_pdg,
+                'END'])
+
+        writers.FortranWriter(
+            'spin_density_block_accessors.f').writelines('\n'.join(source))
 
 
     @staticmethod
@@ -3163,6 +3900,135 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
       IMPLICIT NONE
       INTEGER CONTRIBUTION,IORDER,IAMP
       WRITE(*,*) 'Explicit density virtual called for a legacy process'
+      STOP 1
+      END
+
+      INTEGER FUNCTION SDM_BRANCH_COMPONENT_COUNT()
+      IMPLICIT NONE
+      SDM_BRANCH_COMPONENT_COUNT=1
+      END
+
+      INTEGER FUNCTION SDM_BRANCH_CORRECTED_COUNT()
+      IMPLICIT NONE
+      SDM_BRANCH_CORRECTED_COUNT=1
+      END
+
+      INTEGER FUNCTION SDM_BRANCH_MAX_OPEN_SIZE()
+      IMPLICIT NONE
+      SDM_BRANCH_MAX_OPEN_SIZE=1
+      END
+
+      INTEGER FUNCTION SDM_BRANCH_COMPONENT_ID(I)
+      IMPLICIT NONE
+      INTEGER I
+      SDM_BRANCH_COMPONENT_ID=0
+      END
+
+      INTEGER FUNCTION SDM_BRANCH_COMPONENT_OPEN_SIZE(I)
+      IMPLICIT NONE
+      INTEGER I
+      SDM_BRANCH_COMPONENT_OPEN_SIZE=1
+      END
+
+      INTEGER FUNCTION SDM_LEAF_MAX_PARTICLE_COUNT()
+      IMPLICIT NONE
+      SDM_LEAF_MAX_PARTICLE_COUNT=1
+      END
+
+      INTEGER FUNCTION SDM_LEAF_MAX_BLOCK_SIZE()
+      IMPLICIT NONE
+      SDM_LEAF_MAX_BLOCK_SIZE=1
+      END
+
+      SUBROUTINE SDM_LEAF_BLOCK_LAYOUT(I,J,K,L,A,B,C,D)
+      IMPLICIT NONE
+      INTEGER I,J,K,L,A(*),B(*),C(*),D(*)
+      WRITE(*,*) 'Leaf layout called for a legacy process'
+      STOP 1
+      END
+
+      LOGICAL FUNCTION SDM_COMPONENT_IS_CORRECTED(I)
+      IMPLICIT NONE
+      INTEGER I
+      SDM_COMPONENT_IS_CORRECTED=.FALSE.
+      END
+
+      SUBROUTINE SDM_COMPONENT_BORN_DENSITY(I,J,K,L,M,RHO)
+      IMPLICIT NONE
+      INTEGER I,J,K,L,M
+      COMPLEX*16 RHO(*)
+      WRITE(*,*) 'Component Born density called for a legacy process'
+      STOP 1
+      END
+
+      INTEGER FUNCTION SDM_CONTRIBUTION_COMPONENT_POSITION(I)
+      IMPLICIT NONE
+      INTEGER I
+      SDM_CONTRIBUTION_COMPONENT_POSITION=1
+      END
+
+      INTEGER FUNCTION SDM_FKS_CORRELATION_LEG(I)
+      IMPLICIT NONE
+      INTEGER I
+      SDM_FKS_CORRELATION_LEG=0
+      END
+
+      INTEGER FUNCTION SDM_LOCAL_CORRELATION_LEG(I,J)
+      IMPLICIT NONE
+      INTEGER I,J
+      SDM_LOCAL_CORRELATION_LEG=0
+      END
+
+      SUBROUTINE SDM_BORN_BLOCK_DENSITY(I,J,K,L,RHO)
+      IMPLICIT NONE
+      INTEGER I,J,K,L
+      COMPLEX*16 RHO(*)
+      WRITE(*,*) 'Block density called for a legacy process'
+      STOP 1
+      END
+
+      SUBROUTINE SDM_REAL_BLOCK_DENSITY(I,J,K,RHO)
+      IMPLICIT NONE
+      INTEGER I,J,K
+      COMPLEX*16 RHO(*)
+      WRITE(*,*) 'Block density called for a legacy process'
+      STOP 1
+      END
+
+      SUBROUTINE SDM_COLOR_BLOCK_DENSITY(I,J,K,L,RHO)
+      IMPLICIT NONE
+      INTEGER I,J,K,L
+      COMPLEX*16 RHO(*)
+      WRITE(*,*) 'Block density called for a legacy process'
+      STOP 1
+      END
+
+      SUBROUTINE SDM_COLOR_BLOCK_DENSITY_PAIR(I,J,K,L,M,RHO)
+      IMPLICIT NONE
+      INTEGER I,J,K,L,M
+      COMPLEX*16 RHO(*)
+      WRITE(*,*) 'Block density called for a legacy process'
+      STOP 1
+      END
+
+      SUBROUTINE SDM_VIRTUAL_BLOCK_DENSITY(I,J,A,K,RHO,B,L)
+      IMPLICIT NONE
+      INTEGER I,J,K,L
+      REAL*8 A,B
+      COMPLEX*16 RHO(*)
+      WRITE(*,*) 'Block density called for a legacy process'
+      STOP 1
+      END
+
+
+      SUBROUTINE SDM_MULTIPLICATIVE_CONTRACTION(BRANCHES,CHOICE,
+     $ WEIGHT_COUNT,RESULT)
+      USE SPIN_DENSITY_MATRIX_RESULTS
+      IMPLICIT NONE
+      TYPE(SPIN_DENSITY_BRANCH_RESULT) BRANCHES(*)
+      INTEGER CHOICE(*),WEIGHT_COUNT
+      COMPLEX*16 RESULT(*)
+      WRITE(*,*) 'Multiplicative contraction called for a legacy process'
       STOP 1
       END
 """
@@ -3582,6 +4448,9 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
             'SUBROUTINE %s(EVENT_SLOT,ANS,PREC_ASKED,' % subroutine_name,
             '     $ PREC_FOUND,RET_CODE)',
             'USE SPIN_DENSITY_MATRIX_RESULTS',
+            'USE SPIN_DENSITY_FKS_MATRICES, ONLY:',
+            '     $ SPIN_DENSITY_FKS_COLLECTION_ENABLED,',
+            '     $ SET_SPIN_DENSITY_VIRTUAL_MATRIX',
             'IMPLICIT NONE',
             'REAL*8 ANS(0:3,0:1)',
             'REAL*8 PREC_ASKED,PREC_FOUND(0:1),BORN_VALUE',
@@ -3589,6 +4458,10 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
         source.extend(declarations)
         source.extend(code)
         source.extend([
+            'IF (SPIN_DENSITY_FKS_COLLECTION_ENABLED()) THEN',
+            '  CALL SET_SPIN_DENSITY_VIRTUAL_MATRIX(%d,' % contribution,
+            '     $ SDM_INSERTION_RHO)',
+            'ENDIF',
             'ANS=0D0',
             'CALL SBORN_FACTORIZED(%d,EVENT_SLOT,BORN_VALUE)' %
             contribution,

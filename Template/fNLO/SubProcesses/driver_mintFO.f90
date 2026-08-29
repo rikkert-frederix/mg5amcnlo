@@ -10,13 +10,15 @@ module driver_mintfo_module
                          first_bundle_component_integral
   use mint_module, only: ans_result => ans, unc_result => unc
   use FKSParams, only: min_virt_fraction, virt_fraction, FKSParamReader
-  use weight_lines, only: icontr, deallocate_weight_lines
+  use weight_lines, only: icontr, iwgt, deallocate_weight_lines
   use process_dimensions, only: nexternal, nincoming, fks_configs, &
                                 amp_split_size, lmaxconfigs, &
                                 validate_process_and_born_dimensions
   use fks_metadata, only: fks_i_d, pdg_type_d, validate_fks_metadata
   use fks_channel_map, only: fks_channel_count, &
                              fks_channel_configuration, &
+                             contribution_channel_count, &
+                             contribution_channel_configuration, &
                              print_fks_channel_map, get_born_fks_process
   use fks_random_module, only: random_unit_interval
   use run_state, only: lpp, fixed_fac_scale, muf1_over_ref, &
@@ -27,13 +29,14 @@ module driver_mintfo_module
   use fnlo_scale_variations, only: configure_fnlo_scale_variations
   use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
        nlo_contribution_count, contribution_representative_fks, &
-       contribution_for_fks, factorized_integration_dimension, &
+       contribution_for_fks, contribution_is_nlo_decay, &
+       factorized_integration_dimension, &
        factorized_radiation_start, &
        nlo_virtual_grid_count, bundle_component_count, &
        bundle_component_label
   use setscales_module, only: set_alphas
   use split_orders, only: check_amp_split
-  use cuts_module, only: passcuts
+  use cuts_module, only: passcuts, passcuts_multiplicative
   use mc_integer_module, only: get_mc_integer, fill_mc_integer
   use timing_state, only: reset_timing_state, tBorn, tIS, tReal, &
                           tCount, tf_nb, tf_all, t_as, tr_s, tr_pdf, t_plot, &
@@ -48,11 +51,30 @@ module driver_mintfo_module
        reweight_pdf, get_wgt_no_nbody, fill_plots, fill_mint_function, &
        begin_bundle_virtual_tricks, finish_bundle_virtual_tricks
   use fks_singular_module, only: fill_configurations_common, setfksfactor
-  use madfks_plot_module, only: topout_impl
+  use madfks_plot_module, only: topout_impl, outfun_multiplicative_impl
+  use decay_chain_parameters, only: multiplicative_nlo_enabled
+  use spin_density_fks_matrices, only: &
+       set_spin_density_fks_collection, reset_spin_density_fks_matrices
+  use spin_density_weight_lines, only: clear_spin_density_weight_lines, &
+       aggregate_spin_density_weight_lines
+  use spin_density_matrix_results, only: spin_density_bornlike_branch, &
+       spin_density_real_branch
+  use multiplicative_nlo_decay, only: multiplicative_nlo_workspace, &
+       initialize_generated_multiplicative_workspace, &
+       set_multiplicative_weight_count, reset_multiplicative_leaf_iterator, &
+       next_multiplicative_leaf, capture_multiplicative_snapshot, &
+       set_multiplicative_real_configuration, restore_multiplicative_leaf, &
+       complete_multiplicative_zero_real_branches, &
+       contract_multiplicative_leaf
+  use multiplicative_event_materialization, only: &
+       multiplicative_leaf_particle_capacity, &
+       materialize_multiplicative_leaf
   use fnlo_process_common, only: nfksprocess, soft_counterevent, &
                                  collinear_counterevent, &
+                                 soft_collinear_counterevent, &
                                  real_event, &
-                                 ybst_til_tolab, force_polecheck
+                                 ybst_til_tolab, force_polecheck, &
+                                 orders_tag_plot
   implicit none
   private
 
@@ -317,6 +339,10 @@ contains
     character(len=96) :: label
 
     if (.not. has_nlo_contribution_bundle()) return
+    ! The expanded component bins are not a decomposition of the
+    ! multiplicative product.  Omitting this file is less misleading than
+    ! reporting zero components and a spurious non-zero closure failure.
+    if (multiplicative_nlo_enabled()) return
     component_count = bundle_component_count()
     open(newunit=unit_number, file='contribution_results.dat', &
          status='replace', action='write', iostat=ios)
@@ -363,6 +389,14 @@ contains
     integer :: nbody_contribution, nbody_contribution_max
     logical :: passcuts_nbody, passcuts_n1body, passcuts_coll
     logical :: skip_nplusone
+
+    if (multiplicative_nlo_enabled()) then
+      sigint_impl = sigint_multiplicative_impl( &
+           xx, vegas_wgt, ifl, f, ini_fin_fks, nndim, nbody, &
+           event_momenta, p_born, virtual_over_born, calculated_born, &
+           abrv, wgt_me_born, wgt_me_real)
+      return
+    end if
 
     if (new_point .and. ifl /= 2) pass_cuts_check = .false.
     call print_fks_channel_map()
@@ -526,6 +560,357 @@ contains
     call fill_plots()
     call fill_mint_function(f)
   end function sigint_impl
+
+
+  double precision function sigint_multiplicative_impl( &
+       xx, vegas_wgt, ifl, f, ini_fin_fks, nndim, nbody, &
+       event_momenta, p_born, virtual_over_born, calculated_born, &
+       abrv, wgt_me_born, wgt_me_real)
+    implicit none
+    double precision, intent(in) :: xx(ndimmax), vegas_wgt
+    integer, intent(in) :: ifl, ini_fin_fks(maxchannels), nndim
+    double precision, intent(out) :: f(nintegrals)
+    logical, intent(inout) :: nbody, calculated_born
+    double precision, intent(inout) :: &
+         event_momenta(0:3, nexternal, soft_counterevent:real_event)
+    double precision, intent(inout) :: p_born(0:3, nexternal - 1)
+    double precision, intent(inout) :: virtual_over_born
+    character(len=4), intent(in) :: abrv
+    double precision, intent(inout) :: wgt_me_born, wgt_me_real
+
+    type(multiplicative_nlo_workspace) :: workspace
+    complex(kind=8), allocatable :: contracted_weights(:)
+    double precision, allocatable :: leaf_weights(:), total_weights(:)
+    double precision, allocatable :: leaf_momenta(:, :)
+    double precision, allocatable :: volumes(:)
+    integer, allocatable :: picked_integers(:), configurations(:)
+    integer, allocatable :: statuses(:), pdgs(:)
+    logical, allocatable :: particle_from_decay(:)
+    double precision :: jacobian, momentum(0:3, nexternal)
+    double precision :: vegas_variables(99), reweight
+    double precision :: production_boost(0:1), imaginary_tolerance
+    integer :: amplitude_order, category, channel_count, component
+    integer :: component_position, contribution, contribution_count
+    integer :: ibody, ifks, leaf_capacity, particle_count
+    integer :: production_position, radiation_block, weight
+    integer(kind=8) :: leaf_mask, leaves_seen
+    logical :: available, pass_leaf, production_contribution
+    real :: plot_time_before, plot_time_after
+
+    if (new_point .and. ifl /= 2) pass_cuts_check = .false.
+    call print_fks_channel_map()
+    if (ifl /= 0) then
+      write (*, *) 'ERROR ifl not equal to zero in multiplicative sigint', ifl
+      stop 1
+    end if
+    if (.not. has_nlo_contribution_bundle()) then
+      call fail_driver( &
+           'multiplicative NLO requires a complete contribution bundle')
+    end if
+    if (abrv == 'born' .or. abrv == 'real' .or. abrv == 'bovi' .or. &
+        abrv(1:2) == 'vi') then
+      call fail_driver( &
+           'multiplicative NLO requires the full Born/real/virtual run mode')
+    end if
+
+    sigint_multiplicative_impl = 0d0
+    f = 0d0
+    icontr = 0
+    do amplitude_order = 0, n_ave_virt
+      virt_wgt_mint(amplitude_order) = 0d0
+      born_wgt_mint(amplitude_order) = 0d0
+    end do
+    virtual_over_born = 0d0
+    wgt_me_born = 0d0
+    wgt_me_real = 0d0
+    call clear_spin_density_weight_lines()
+    call reset_spin_density_fks_matrices()
+    call set_spin_density_fks_collection(.true.)
+    call initialize_generated_multiplicative_workspace(workspace)
+
+    contribution_count = nlo_contribution_count()
+    if (workspace%corrected_count /= contribution_count) then
+      call fail_driver( &
+           'generated B/R branches do not match the NLO contributions')
+    end if
+    allocate(picked_integers(contribution_count))
+    allocate(configurations(contribution_count))
+    allocate(volumes(contribution_count))
+    production_position = 0
+    production_boost = 0d0
+
+    ! Every corrected physical block samples its own local FKS sector.  The
+    ! initial/final outer channel partitions production only; all decay
+    ! sectors use their complete local category.
+    do contribution = 1, contribution_count
+      production_contribution = &
+           .not. contribution_is_nlo_decay(contribution)
+      if (production_contribution) then
+        category = ini_fin_fks(ichan)
+      else
+        category = 0
+      end if
+      channel_count = contribution_channel_count(contribution, category)
+      call get_mc_integer( &
+           multiplicative_mc_dimension(contribution, category, &
+                                       production_contribution), &
+           channel_count, picked_integers(contribution), &
+           volumes(contribution))
+      configurations(contribution) = &
+           contribution_channel_configuration( &
+           contribution, category, picked_integers(contribution))
+      call set_multiplicative_real_configuration( &
+           workspace, contribution, configurations(contribution))
+    end do
+
+    ! First reduce every physical block to its canonical n-body branch.  No
+    ! cuts are applied to the internal FKS slots: their fully weighted
+    ! densities are combined before the global observable is evaluated.
+    nbody = .true.
+    do contribution = 1, contribution_count
+      calculated_born = .false.
+      wgt_me_born = 0d0
+      wgt_me_real = 0d0
+      ifks = contribution_representative_fks(contribution)
+      radiation_block = contribution
+      call update_vegas_x_impl( &
+           xx, vegas_variables, nndim, abrv, radiation_block)
+      call update_fks_dir_impl(ifks)
+      production_contribution = &
+           .not. contribution_is_nlo_decay(contribution)
+      jacobian = 1d0
+      if (production_contribution .and. &
+          ini_fin_fks(ichan) /= 0) jacobian = 0.5d0
+      call generate_momenta( &
+           nndim, iconfig, jacobian, vegas_variables, momentum)
+      if (p_born(0, 1) < 0d0) then
+        call set_spin_density_fks_collection(.false.)
+        deallocate(picked_integers, configurations, volumes)
+        return
+      end if
+
+      call compute_prefactors_nbody(vegas_wgt)
+      call set_alphas( &
+           event_momenta(0:3, 1:nexternal, soft_counterevent))
+      call include_multichannel_enhance(1)
+      call compute_born()
+      call begin_bundle_virtual_tricks()
+      call compute_nbody_noborn()
+      call finish_bundle_virtual_tricks()
+
+      component_position = &
+           workspace%contribution_positions(contribution)
+      if (production_contribution) then
+        production_position = component_position
+        production_boost(spin_density_bornlike_branch) = &
+             ybst_til_tolab(soft_counterevent)
+        ! The production Born generation materializes the complete LO decay
+        ! tree, including any uncorrected spectator blocks.
+        do component = 1, workspace%component_count
+          call capture_multiplicative_snapshot( &
+               workspace, component, spin_density_bornlike_branch, &
+               soft_counterevent)
+        end do
+      else
+        call capture_multiplicative_snapshot( &
+             workspace, component_position, spin_density_bornlike_branch, &
+             soft_counterevent)
+      end if
+    end do
+    if (production_position == 0) then
+      call fail_driver('multiplicative branches contain no production block')
+    end if
+
+    ! Evaluate one resolved-real sector per block, together with its local
+    ! soft, collinear and soft-collinear counterterms.  Those counterterms
+    ! feed B; only the resolved event feeds R.
+    nbody = .false.
+    do contribution = 1, contribution_count
+      ifks = configurations(contribution)
+      calculated_born = .false.
+      wgt_me_born = 0d0
+      wgt_me_real = 0d0
+      jacobian = 1d0/volumes(contribution)
+      call update_vegas_x_impl( &
+           xx, vegas_variables, nndim, abrv, contribution)
+      call update_fks_dir_impl(ifks)
+      call generate_momenta( &
+           nndim, iconfig, jacobian, vegas_variables, momentum)
+      if (p_born(0, 1) < 0d0) cycle
+
+      component_position = &
+           workspace%contribution_positions(contribution)
+      call capture_multiplicative_snapshot( &
+           workspace, component_position, spin_density_real_branch, &
+           real_event)
+      production_contribution = &
+           .not. contribution_is_nlo_decay(contribution)
+      if (production_contribution) then
+        production_boost(spin_density_real_branch) = &
+             ybst_til_tolab(real_event)
+      end if
+
+      call compute_prefactors_n1body(vegas_wgt)
+      if (event_momenta(0, 1, soft_counterevent) > 0d0) then
+        call set_alphas( &
+             event_momenta(0:3, 1:nexternal, soft_counterevent))
+        call include_multichannel_enhance(3)
+        call compute_soft_counter_term()
+        if (event_momenta(0, 1, soft_collinear_counterevent) > 0d0) then
+          call compute_soft_collinear_ct_impl()
+        end if
+      end if
+      if (event_momenta(0, 1, collinear_counterevent) > 0d0) then
+        call set_alphas( &
+             event_momenta(0:3, 1:nexternal, collinear_counterevent))
+        call compute_collinear_counter_term()
+      end if
+      call set_alphas(momentum)
+      call include_multichannel_enhance(2)
+      call compute_real_emission()
+    end do
+
+    call include_pdf_and_alphas()
+    if (doreweight) then
+      if (do_rwgt_scale .or. do_rwgt_decay_scale) call reweight_scale()
+      if (do_rwgt_pdf) call reweight_pdf()
+    end if
+    if (icontr < 1 .or. iwgt < 1) then
+      call fail_driver('multiplicative NLO produced no density weight lines')
+    end if
+    call set_multiplicative_weight_count(workspace, iwgt)
+    call aggregate_spin_density_weight_lines(workspace)
+    call complete_multiplicative_zero_real_branches(workspace)
+
+    leaf_capacity = multiplicative_leaf_particle_capacity()
+    allocate(contracted_weights(iwgt), leaf_weights(iwgt))
+    allocate(total_weights(iwgt))
+    allocate(leaf_momenta(0:3, leaf_capacity))
+    allocate(statuses(leaf_capacity), pdgs(leaf_capacity))
+    allocate(particle_from_decay(leaf_capacity))
+    total_weights = 0d0
+    leaves_seen = 0_8
+    call reset_multiplicative_leaf_iterator(workspace)
+    do
+      call next_multiplicative_leaf(workspace, leaf_mask, available)
+      if (.not. available) exit
+      leaves_seen = leaves_seen + 1_8
+      call contract_multiplicative_leaf(workspace, contracted_weights)
+      if (all(abs(contracted_weights) == 0d0)) cycle
+
+      do weight = 1, iwgt
+        imaginary_tolerance = 1d-8*max( &
+             1d0, abs(real(contracted_weights(weight), kind=8)))
+        if (abs(aimag(contracted_weights(weight))) > &
+            imaginary_tolerance) then
+          call fail_driver( &
+               'a multiplicative spin-density contraction is not real')
+        end if
+        leaf_weights(weight) = real(contracted_weights(weight), kind=8)
+      end do
+
+      call restore_multiplicative_leaf(workspace, soft_counterevent)
+      call materialize_multiplicative_leaf( &
+           workspace, soft_counterevent, leaf_momenta, statuses, pdgs, &
+           particle_from_decay, particle_count)
+      pass_leaf = passcuts_multiplicative( &
+           leaf_momenta, particle_count, statuses, pdgs, &
+           particle_from_decay, reweight, &
+           production_boost( &
+           workspace%branch_by_component(production_position)))
+      if (.not. pass_leaf) cycle
+      pass_cuts_check = .true.
+      leaf_weights = leaf_weights*reweight
+      total_weights = total_weights + leaf_weights
+
+      ibody = 2
+      if (any(workspace%branch_by_component == &
+              spin_density_real_branch)) ibody = 1
+      ! A multiplicative product spans several perturbative orders and has no
+      ! unique legacy split-order tag.  Inclusive histograms remain defined.
+      orders_tag_plot = -1
+      call cpu_time(plot_time_before)
+      call outfun_multiplicative_impl( &
+           leaf_momenta, particle_count, &
+           production_boost( &
+           workspace%branch_by_component(production_position)), &
+           leaf_weights, pdgs, statuses, ibody)
+      call cpu_time(plot_time_after)
+      t_plot = t_plot + plot_time_after - plot_time_before
+    end do
+    if (leaves_seen /= workspace%leaf_count) then
+      call fail_driver('the multiplicative B/R iterator missed a leaf')
+    end if
+
+    do contribution = 1, contribution_count
+      production_contribution = &
+           .not. contribution_is_nlo_decay(contribution)
+      if (production_contribution) then
+        category = ini_fin_fks(ichan)
+      else
+        category = 0
+      end if
+      call fill_mc_integer( &
+           multiplicative_mc_dimension(contribution, category, &
+                                       production_contribution), &
+           picked_integers(contribution), &
+           abs(total_weights(1))*volumes(contribution))
+    end do
+
+    call fill_multiplicative_mint_function( &
+         f, total_weights(1), virtual_over_born)
+    call set_spin_density_fks_collection(.false.)
+    deallocate(picked_integers, configurations, volumes)
+    deallocate(contracted_weights, leaf_weights, total_weights)
+    deallocate(leaf_momenta, statuses, pdgs)
+    deallocate(particle_from_decay)
+  end function sigint_multiplicative_impl
+
+
+  integer function multiplicative_mc_dimension( &
+       contribution, category, production_contribution)
+    implicit none
+    integer, intent(in) :: contribution, category
+    logical, intent(in) :: production_contribution
+
+    if (production_contribution) then
+      multiplicative_mc_dimension = max(category, 1)
+    else
+      ! Dimensions one and two retain the production initial/final grids.
+      multiplicative_mc_dimension = contribution + 2
+    end if
+  end function multiplicative_mc_dimension
+
+
+  subroutine fill_multiplicative_mint_function( &
+       f, central_weight, virtual_ratio)
+    implicit none
+    double precision, intent(out) :: f(nintegrals)
+    double precision, intent(in) :: central_weight, virtual_ratio
+    integer :: amplitude_order, born_index, virtual_index
+
+    f = 0d0
+    f(1) = abs(central_weight)
+    f(2) = central_weight
+    f(4) = virtual_ratio
+    do amplitude_order = 0, n_ord_virt
+      if (amplitude_order == 0) then
+        f(3) = 0d0
+        f(5) = 0d0
+        f(6) = 0d0
+        do virtual_index = 1, n_ord_virt
+          f(3) = f(3) + virt_wgt_mint(virtual_index)
+          f(6) = f(6) + born_wgt_mint(virtual_index)
+        end do
+        f(5) = abs(f(3))
+      else
+        virtual_index = 2*amplitude_order + 5
+        born_index = 2*amplitude_order + 6
+        f(virtual_index) = virt_wgt_mint(amplitude_order)
+        f(born_index) = born_wgt_mint(amplitude_order)
+      end if
+    end do
+  end subroutine fill_multiplicative_mint_function
 
   subroutine update_fks_dir_impl(nfks)
     implicit none
