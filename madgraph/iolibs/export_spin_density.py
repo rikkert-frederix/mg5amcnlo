@@ -114,6 +114,61 @@ class SpinDensityExporter(object):
         variant['open_dimensions'] = tuple(dimensions)
         variant['open_size'] = _product(dimensions)
         variant.setdefault('loop_prefix', 'SDMV%d_' % index)
+        variant['analytic_top_decay'] = \
+            self._analytic_top_decay_info(variant)
+
+    @staticmethod
+    def _analytic_top_decay_info(variant):
+        """Return the supported t -> b W two-body layout, if present."""
+
+        matrix_element = variant['matrix_element']
+        processes = matrix_element.get('processes')
+        if not processes:
+            return None
+        layouts = []
+        for process in processes:
+            model = process.get('model')
+            if model is None or model.get('name') != 'loop_sm':
+                return None
+            legs = sorted(process.get('legs'),
+                          key=lambda leg: leg.get('number'))
+            incoming = [leg for leg in legs if not leg.get('state')]
+            outgoing = [leg for leg in legs if leg.get('state')]
+            if (len(incoming) != 1 or abs(incoming[0].get('id')) != 6 or
+                    len(outgoing) != 2 or
+                    sorted(abs(leg.get('id')) for leg in outgoing) !=
+                    [5, 24]):
+                return None
+            bottom = next(leg for leg in outgoing
+                          if abs(leg.get('id')) == 5)
+            vector = next(leg for leg in outgoing
+                          if abs(leg.get('id')) == 24)
+            parent_sign = 1 if incoming[0].get('id') > 0 else -1
+            if (bottom.get('id') != parent_sign*5 or
+                    vector.get('id') != parent_sign*24):
+                return None
+            layouts.append((incoming[0].get('id'),
+                            incoming[0].get('number'),
+                            bottom.get('number'), vector.get('number')))
+        if any(layout != layouts[0] for layout in layouts[1:]):
+            return None
+
+        parent_pdg, parent_leg, bottom_leg, vector_leg = layouts[0]
+        open_legs = set(variant['open_legs'])
+        if open_legs == set([parent_leg]):
+            expected_open_size = 2
+        elif open_legs == set([parent_leg, vector_leg]):
+            expected_open_size = 6
+        else:
+            return None
+        if variant['open_size'] != expected_open_size:
+            return None
+        return {
+            'parent_pdg': parent_pdg,
+            'parent_leg': parent_leg,
+            'bottom_leg': bottom_leg,
+            'vector_leg': vector_leg,
+            'open_size': expected_open_size}
 
     @staticmethod
     def _color_matrix_lines(matrix_element):
@@ -957,6 +1012,7 @@ class SpinDensityExporter(object):
         component_count = len(providers)
         active_position = positions[active]
         nexternal, _ = variant['matrix_element'].get_nexternal_ninitial()
+        analytic_top_decay = variant.get('analytic_top_decay')
 
         declarations = [
             'INTEGER SDM_STATE,SDM_STATE2,SDM_K,SDM_RET_CODE',
@@ -971,6 +1027,13 @@ class SpinDensityExporter(object):
             'REAL*8 SDM_INSERTION_P(0:3,%d)' % nexternal,
             'COMPLEX*16 SDM_INSERTION_RHO(3,%d,%d)' % (
                 variant['open_size'], variant['open_size'])]
+        if analytic_top_decay is not None:
+            declarations.extend([
+                "INCLUDE 'coupl.inc'",
+                'LOGICAL TDV_USE_ANALYTIC,TDV_NEEDS_MADLOOP',
+                'REAL*8 TDV_VALIDATION_P(0:3,3)',
+                'COMPLEX*16 TDV_ANALYTIC_RHO(3,%d,%d)' % (
+                    variant['open_size'], variant['open_size'])])
         for node_id in sorted(states):
             declarations.append(
                 'DATA (SDM_NODE_STATE(%d,SDM_STATE),SDM_STATE=1,%d) '
@@ -1006,10 +1069,58 @@ class SpinDensityExporter(object):
         code.extend([
             'CALL GET_FACTORIZED_BLOCK_MOMENTA(%s,%d,%d,' % (
                 str(event_slot), active, nexternal),
-            '     $ SDM_INSERTION_P)',
-            'CALL %s(SDM_INSERTION_P,SDM_INSERTION_RHO,%s,' % (
-                variant['fortran_name'], precision_asked),
-            '     $ SDM_PRECISION,SDM_RET_CODE)',
+            '     $ SDM_INSERTION_P)'])
+        if analytic_top_decay is None:
+            code.extend([
+                'CALL %s(SDM_INSERTION_P,SDM_INSERTION_RHO,%s,' % (
+                    variant['fortran_name'], precision_asked),
+                '     $ SDM_PRECISION,SDM_RET_CODE)'])
+        else:
+            parent_pdg = analytic_top_decay['parent_pdg']
+            parent_leg = analytic_top_decay['parent_leg']
+            bottom_leg = analytic_top_decay['bottom_leg']
+            vector_leg = analytic_top_decay['vector_leg']
+            open_size = analytic_top_decay['open_size']
+            evaluator = ('TDV_EVALUATE_TWO_BODY_TOP' if open_size == 2
+                         else 'TDV_EVALUATE_TWO_BODY_TOP_W')
+            contribution = variant.get('contribution_id', 1)
+            code.extend([
+                'TDV_VALIDATION_P(:,1)=SDM_INSERTION_P(:,%d)' %
+                parent_leg,
+                'TDV_VALIDATION_P(:,2)=SDM_INSERTION_P(:,%d)' %
+                bottom_leg,
+                'TDV_VALIDATION_P(:,3)=SDM_INSERTION_P(:,%d)' %
+                vector_leg,
+                'TDV_USE_ANALYTIC=TDV_TWO_BODY_ANALYTIC_SUPPORTED(',
+                '     $ %d,TDV_VALIDATION_P(:,1),%d)' % (
+                    parent_pdg, open_size),
+                'IF (TDV_USE_ANALYTIC) THEN',
+                '  CALL %s(%d,TDV_VALIDATION_P(:,1),' % (
+                    evaluator, parent_pdg),
+                '     $ TDV_VALIDATION_P(:,2),TDV_VALIDATION_P(:,3),',
+                '     $ MDL_MT,MDL_MB,MDL_MW,MU_R,',
+                '     $ G**2/(4D0*3.1415926535897932385D0),GC_11,',
+                '     $ TDV_ANALYTIC_RHO)',
+                'ENDIF',
+                'TDV_NEEDS_MADLOOP=.NOT.TDV_USE_ANALYTIC.OR.',
+                '     $ TDV_MADLOOP_VALIDATION_REQUIRED(%d)' %
+                contribution,
+                'IF (TDV_NEEDS_MADLOOP) THEN',
+                '  CALL %s(SDM_INSERTION_P,SDM_INSERTION_RHO,%s,' % (
+                    variant['fortran_name'], precision_asked),
+                '     $ SDM_PRECISION,SDM_RET_CODE)',
+                '  IF (TDV_USE_ANALYTIC) THEN',
+                '    CALL TDV_VALIDATE_AGAINST_MADLOOP(%d,' %
+                contribution,
+                '     $ TDV_VALIDATION_P,TDV_ANALYTIC_RHO,',
+                '     $ SDM_INSERTION_RHO,SDM_PRECISION,SDM_RET_CODE)',
+                '  ENDIF',
+                'ELSE',
+                '  SDM_INSERTION_RHO=TDV_ANALYTIC_RHO',
+                '  SDM_PRECISION=0D0',
+                '  SDM_RET_CODE=0',
+                'ENDIF'])
+        code.extend([
             'CALL SET_SPIN_DENSITY_INSERTION(SDM_BLOCKS(%d),' %
             active_position,
             '     $ SPIN_DENSITY_VIRTUAL_INSERTION,1,',

@@ -1952,6 +1952,22 @@ class TestFKSDecayChains(unittest.TestCase):
                     subprocess_dir,
                     'spin_density_virtual_contributions.f')) as stream:
                 contractions = stream.read()
+            production_contraction = contractions.split(
+                'SUBROUTINE SDM_VIRTUAL_CONTRIBUTION_1', 1)[1].split(
+                    'SUBROUTINE SDM_VIRTUAL_CONTRIBUTION_2', 1)[0]
+            self.assertNotIn('TDV_', production_contraction)
+            flat_contractions = ' '.join(
+                contractions.replace('$', ' ').split())
+            for contribution, parent in [(2, 6), (3, -6)]:
+                self.assertIn(
+                    'TDV_MADLOOP_VALIDATION_REQUIRED(%d)' % contribution,
+                    flat_contractions)
+                self.assertIn(
+                    'CALL TDV_VALIDATE_AGAINST_MADLOOP(%d,' % contribution,
+                    flat_contractions)
+                self.assertIn(
+                    'CALL TDV_EVALUATE_TWO_BODY_TOP(%d,' % parent,
+                    flat_contractions)
             for contribution in [1, 2, 3]:
                 self.assertIn(
                     'SUBROUTINE SDM_VIRTUAL_CONTRIBUTION_%d' %
@@ -2001,6 +2017,29 @@ class TestFKSDecayChains(unittest.TestCase):
                 makefile = stream.read()
             self.assertIn('$(libcuttools) $(libOLP)', makefile)
             self.assertNotIn('FNLO_CUTTOOLS_LIBRARY', makefile)
+            self.assertIn(
+                '$(filter-out -fno-automatic,$(FFLAGS))', makefile)
+            for filename in [
+                    'top_decay_virtual_cdr.f90',
+                    'top_decay_virtual_dispatch.f90']:
+                self.assertTrue(os.path.isfile(os.path.join(
+                    subprocess_dir, filename)))
+            with open(os.path.join(
+                    subprocess_dir,
+                    'top_decay_virtual_dispatch.f90')) as stream:
+                top_dispatch = ' '.join(stream.read().lower().split())
+            self.assertIn(
+                'tdv_required_validation_points = 3', top_dispatch)
+            self.assertIn('logical function same_momenta', top_dispatch)
+            self.assertIn(
+                'subsequent phase-space points skip madloop.',
+                top_dispatch)
+            with open(os.path.join(
+                    subprocess_dir, 'fks_singular.f90')) as stream:
+                singular_source = ' '.join(stream.read().lower().split())
+            self.assertIn(
+                'if (full_top_decay_virtual) '
+                'virtual_sampling_fraction = 1d0', singular_source)
             for card_path in [
                     os.path.join(process_dir, 'Cards',
                                  'MadLoopParams.dat'),

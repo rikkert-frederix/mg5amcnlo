@@ -47,6 +47,7 @@ FILES= fnlo_process_common.o process_dimensions.o			\
 	 fnlo_scale_variations.o					\
 	 decay_chain_parameters_bridge.o phase_space_kinematics.o	\
 	 factorized_phase_space.o factorized_block_kinematics.o	\
+	 top_decay_virtual_cdr.o top_decay_virtual_dispatch.o		\
 	 spin_density_matrix_results.o					\
 	 spin_density_fks_matrices.o					\
 	 multiplicative_nlo_decay.o					\
@@ -170,6 +171,13 @@ SYM= $(RUN) BinothLHADummy.o BinothLHADummy_bridge.o \
 	$(FC) $(FFLAGS) -c -I. -I$(LIBDIR) $<
 %.o: %.f90
 	$(FC) $(FFLAGS) -c -I. -I$(LIBDIR) $<
+
+# The imported analytic top-decay implementation contains PURE helpers.
+# The template-wide -fno-automatic flag implicitly gives their local
+# variables SAVE, which is forbidden in PURE procedures.  Keep the source
+# unchanged and remove that legacy fixed-order flag for this object only.
+top_decay_virtual_cdr.o: top_decay_virtual_cdr.f90
+	$(FC) $(filter-out -fno-automatic,$(FFLAGS)) -c -I. -I$(LIBDIR) $<
 %.o: $(ANADIR)/%.f
 	$(FC) $(FFLAGS) -c -I. -I$(LIBDIR) -I$(ANADIR) $(FO_INCLUDEPATHS) $<
 %.o: $(ANADIR)/%.f90
@@ -237,6 +245,8 @@ fnlo_scale_variations.o: decay_chain_metadata.o nlo_decay_metadata.o \
 phase_space_kinematics.o: process_dimensions.o \
 	$(LIBDIR)kin_functions_module.mod
 factorized_phase_space.o: process_dimensions.o fnlo_process_common.o
+top_decay_virtual_dispatch.o: top_decay_virtual_cdr.o \
+	nlo_contribution_bundle.o
 spin_density_matrix_results.o: process_dimensions.o fnlo_process_common.o \
 	factorized_phase_space.o
 spin_density_fks_matrices.o: spin_density_matrix_results.o
@@ -348,7 +358,8 @@ virtual_contribution_chooser.o: nlo_contribution_bundle.o
 born.o $(patsubst %.f,%.o,$(wildcard b_sf_???.f)) \
 $(patsubst %.f,%.o,$(wildcard matrix_*.f)) \
 $(patsubst %.f,%.o,$(wildcard spin_density_*.f)): \
-	nlo_contribution_bundle.o spin_density_matrix_results.o
+	nlo_contribution_bundle.o spin_density_matrix_results.o \
+	top_decay_virtual_dispatch.o
 setcuts.o: process_dimensions.o fks_metadata.o decay_chain_metadata.o \
 	decay_chain_kinematics.o nlo_decay_metadata.o nlo_decay_kinematics.o \
 	fks_random.o mint_module.o \

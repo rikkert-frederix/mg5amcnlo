@@ -1425,6 +1425,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               'decay_chain_kinematics.f90',
                               'nlo_decay_kinematics.f90',
                               'factorized_phase_space.f90',
+                              'top_decay_virtual_cdr.f90',
+                              'top_decay_virtual_dispatch.f90',
                               'spin_density_matrix_results.f90',
                               'spin_density_fks_matrices.f90',
                               'multiplicative_nlo_decay.f90',
@@ -4497,11 +4499,20 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
             'USE SPIN_DENSITY_MATRIX_RESULTS',
             'USE SPIN_DENSITY_FKS_MATRICES, ONLY:',
             '     $ SPIN_DENSITY_FKS_COLLECTION_ENABLED,',
-            '     $ SET_SPIN_DENSITY_VIRTUAL_MATRIX',
+            '     $ SET_SPIN_DENSITY_VIRTUAL_MATRIX']
+        if variant.get('analytic_top_decay') is not None:
+            source.extend([
+                'USE TOP_DECAY_VIRTUAL_DISPATCH, ONLY:',
+                '     $ TDV_EVALUATE_TWO_BODY_TOP,',
+                '     $ TDV_EVALUATE_TWO_BODY_TOP_W,',
+                '     $ TDV_TWO_BODY_ANALYTIC_SUPPORTED,',
+                '     $ TDV_MADLOOP_VALIDATION_REQUIRED,',
+                '     $ TDV_VALIDATE_AGAINST_MADLOOP'])
+        source.extend([
             'IMPLICIT NONE',
             'REAL*8 ANS(0:3,0:1)',
             'REAL*8 PREC_ASKED,PREC_FOUND(0:1),BORN_VALUE',
-            'INTEGER EVENT_SLOT,RET_CODE']
+            'INTEGER EVENT_SLOT,RET_CODE'])
         source.extend(declarations)
         source.extend(code)
         source.extend([

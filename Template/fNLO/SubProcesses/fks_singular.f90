@@ -30,6 +30,7 @@ module fks_singular_module
   use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
        active_nlo_contribution, &
        active_contribution_fks_first, active_contribution_fks_last, &
+       active_contribution_is_nlo_decay, contribution_parent_pdg, &
        active_contribution_has_virtual, active_virtual_grid_index
   use fks_qcd_splitting, only: AP_reduced, AP_reduced_prime, &
                                 Qterms_reduced_timelike, &
@@ -1337,6 +1338,8 @@ contains
     complex(kind=8) :: density_coefficients(3)
     double precision :: density_muf, density_mur, density_factor
     double precision :: density_virtual_average, density_sampling_fraction
+    double precision :: virtual_sampling_fraction
+    logical :: full_top_decay_virtual
     type(factorized_radiation_state) :: radiation
     if (has_nlo_contribution_bundle()) then
       need_color_links_used = .false.
@@ -1384,6 +1387,15 @@ contains
     amp_split_bsv(1:amp_split_size) = 0d0
     amp_split_virt(1:amp_split_size) = 0d0
     amp_split_avv(1:amp_split_size) = 0d0
+    full_top_decay_virtual = .false.
+    if (has_nlo_contribution_bundle()) then
+      if (active_contribution_is_nlo_decay()) then
+        full_top_decay_virtual = abs(contribution_parent_pdg( &
+             active_nlo_contribution())) == 6
+      end if
+    end if
+    virtual_sampling_fraction = virtual_fraction(ichan)
+    if (full_top_decay_virtual) virtual_sampling_fraction = 1d0
     if (spin_density_fks_collection_enabled()) then
       call reset_spin_density_integrated_matrix()
       call reset_spin_density_virtual_matrix()
@@ -1580,7 +1592,7 @@ contains
     end do
 
     if (active_contribution_has_virtual() .and. &
-        ((random_unit_interval(iconfig) .le. virtual_fraction(ichan) &
+        ((random_unit_interval(iconfig) .le. virtual_sampling_fraction &
          .and. abrv(1:3) .ne. 'nov') .or. &
         abrv(1:4) .eq. 'virt')) then
       call cpu_time(tBefore)
@@ -1609,10 +1621,10 @@ contains
         virt_wgt = virt_wgt + amp_split_virt(iamp)
       end do
       if (abrv .ne. 'virt') then
-        virt_wgt = virt_wgt/virtual_fraction(ichan)
+        virt_wgt = virt_wgt/virtual_sampling_fraction
         do iamp = 1, amp_split_size
           amp_split_virt(iamp) = &
-          amp_split_virt(iamp)/virtual_fraction(ichan)
+          amp_split_virt(iamp)/virtual_sampling_fraction
         end do
       end if
       if (spin_density_fks_collection_enabled() .and. &
@@ -1630,7 +1642,7 @@ contains
         end if
         density_sampling_fraction = 1d0
         if (abrv .ne. 'virt') then
-          density_sampling_fraction = virtual_fraction(ichan)
+          density_sampling_fraction = virtual_sampling_fraction
         end if
         call reduce_spin_density_virtual_matrix( &
              density_virtual_average, density_sampling_fraction)
