@@ -1028,8 +1028,9 @@ class SpinDensityExporter(object):
             'INTEGER H,HP,K,A,B,LOCAL_CODE,SDM_EVALUATIONS',
             'REAL*8 RAW_REAL(0:3,0:1),RAW_IMAG(0:3,0:1)',
             'REAL*8 PREC_REAL(0:1),PREC_IMAG(0:1)',
-            'REAL*8 CHECKED_REAL(3,NCOMB),CHECKED_PRECISION(NCOMB)',
-            'REAL*8 DIRECT_SCALE,DIRECT_DIFFERENCE',
+            ('REAL*8 CHECKED_REAL(3,NCOMB),DIRECT_REAL(3,NCOMB),'
+             'CHECKED_PRECISION(NCOMB)'),
+            'REAL*8 COMPONENT_SCALE(3),DIRECT_DIFFERENCE',
             'COMPLEX*16 RAW_RHO(3,NOPEN,NOPEN),VALUE(3)',
             ('COMPLEX*16 LOOP_FLOW(3,NLOOPFLOWS,NAMPSO,NCOMB),'
              'BORN_FLOW(NBORNFLOWS,NAMPSO,NCOMB)'),
@@ -1063,6 +1064,7 @@ class SpinDensityExporter(object):
             'BORN_FLOW=(0D0,0D0)',
             'FLOW_AVAILABLE=.FALSE.',
             'CHECKED_REAL=0D0',
+            'DIRECT_REAL=0D0',
             'CHECKED_PRECISION=0D0',
             'PRECISION=0D0',
             'RET_CODE=0',
@@ -1093,20 +1095,25 @@ class SpinDensityExporter(object):
             'IF (DIRECT_OK) THEN',
             '  DO H=1,NCOMB',
             '    CALL %sSDM_COLOR_FLOW_INTERFERENCE(' % prefix,
-            '     $ LOOP_FLOW(:,:,:,H),BORN_FLOW(:,:,H),VALUE)',
-            '    DO K=1,3',
-            '      DIRECT_SCALE=MAX(1D-30,',
-            '     $ ABS(CHECKED_REAL(K,H)*%s),' %
-            _fortran_double(normalization),
-            '     $ ABS(DBLE(VALUE(K))*%s))' %
+            '     $ LOOP_FLOW(:,:,:,H),BORN_FLOW(:,:,H),%d,VALUE)' %
+            result_index,
+            '    DIRECT_REAL(:,H)=DBLE(VALUE)*%s' %
             _fortran_double(flow_normalization),
+            '  ENDDO',
+            'C Use one physical scale per Laurent component: an exactly',
+            'C vanishing helicity may retain harmless reconstruction roundoff.',
+            '  DO K=1,3',
+            '    COMPONENT_SCALE(K)=MAX(1D-30,',
+            '     $ MAXVAL(ABS(CHECKED_REAL(K,:)*%s)),' %
+            _fortran_double(normalization),
+            '     $ MAXVAL(ABS(DIRECT_REAL(K,:))))',
+            '    DO H=1,NCOMB',
             '      DIRECT_DIFFERENCE=ABS(',
             '     $ CHECKED_REAL(K,H)*%s-' %
             _fortran_double(normalization),
-            '     $ DBLE(VALUE(K))*%s)' %
-            _fortran_double(flow_normalization),
+            '     $ DIRECT_REAL(K,H))',
             '      IF (DIRECT_DIFFERENCE.GT.MAX(1D-8,10D0*',
-            '     $ ABS(CHECKED_PRECISION(H)))*DIRECT_SCALE)',
+            '     $ ABS(CHECKED_PRECISION(H)))*COMPONENT_SCALE(K))',
             '     $ DIRECT_OK=.FALSE.',
             '    ENDDO',
             '  ENDDO',
@@ -1118,7 +1125,8 @@ class SpinDensityExporter(object):
             '      IF (CLOSED_INDEX(H).NE.CLOSED_INDEX(HP)) CYCLE',
             '      B=OPEN_INDEX(HP)',
             '      CALL %sSDM_COLOR_FLOW_INTERFERENCE(' % prefix,
-            '     $ LOOP_FLOW(:,:,:,H),BORN_FLOW(:,:,HP),VALUE)',
+            '     $ LOOP_FLOW(:,:,:,H),BORN_FLOW(:,:,HP),%d,VALUE)' %
+            result_index,
             '      RAW_RHO(:,A,B)=RAW_RHO(:,A,B)+%s*VALUE' %
             _fortran_double(flow_normalization),
             '    ENDDO',
@@ -2430,9 +2438,10 @@ class SpinDensityExporter(object):
                 component_count, maximum_open_size,
                 maximum_basis_primitives),
             'INTEGER MAXPRIMITIVES,PRIMITIVE_COUNTS(NBLOCKS)',
-            'INTEGER SDM_PRIMITIVE',
+            'INTEGER SDM_PRIMITIVE,SDM_LEFT,SDM_RIGHT',
             'COMPLEX*16 COEFFICIENTS(MAXPRIMITIVES,NBLOCKS)',
             'COMPLEX*16 RESULT',
+            'COMPLEX*16 SDM_HERMITIAN_VALUE',
             'COMPLEX*16 SDM_EFFECTIVE(MAXOPEN,MAXOPEN,NBLOCKS)',
             'COMPLEX*16 SDM_BASIS_RHO(MAXOPEN,MAXOPEN,MAXBASIS,NBLOCKS)',
             'COMMON /SDM_MULTIPLICATIVE_BASIS_STORAGE/ SDM_BASIS_RHO',
@@ -2463,6 +2472,27 @@ class SpinDensityExporter(object):
                 '     $ COEFFICIENTS(SDM_PRIMITIVE,%d)*' % position,
                 '     $ SDM_BASIS_RHO(1:%d,1:%d,SDM_PRIMITIVE,%d)' % (
                     open_size, open_size, position),
+                'ENDDO',
+                ('C Complex azimuthal kernels multiply one-sided spin-'
+                 'correlated'),
+                ('C Born insertions.  Form the physical Hermitian block '
+                 'operator'),
+                'C before multiplying it by any other NLO block.',
+                'DO SDM_LEFT=1,%d' % open_size,
+                'SDM_EFFECTIVE(SDM_LEFT,SDM_LEFT,%d)=DCMPLX(DBLE(' %
+                position,
+                '     $ SDM_EFFECTIVE(SDM_LEFT,SDM_LEFT,%d)),0D0)' %
+                position,
+                'DO SDM_RIGHT=SDM_LEFT+1,%d' % open_size,
+                'SDM_HERMITIAN_VALUE=0.5D0*(',
+                '     $ SDM_EFFECTIVE(SDM_LEFT,SDM_RIGHT,%d)+' % position,
+                '     $ DCONJG(SDM_EFFECTIVE(SDM_RIGHT,SDM_LEFT,%d)))' %
+                position,
+                'SDM_EFFECTIVE(SDM_LEFT,SDM_RIGHT,%d)=' % position,
+                '     $ SDM_HERMITIAN_VALUE',
+                'SDM_EFFECTIVE(SDM_RIGHT,SDM_LEFT,%d)=' % position,
+                '     $ DCONJG(SDM_HERMITIAN_VALUE)',
+                'ENDDO',
                 'ENDDO'])
 
         def effective_matrix(component_id):

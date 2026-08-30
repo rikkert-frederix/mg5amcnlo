@@ -1345,6 +1345,10 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn(
                 'CALL RECORD_DIRECT_VIRTUAL_RECONSTRUCTION(',
                 density_source)
+            self.assertIn('COMPONENT_SCALE', density_source)
+            self.assertIn(
+                'MAXVAL(ABS(CHECKED_REAL(K,:)',
+                density_source)
             self.assertIn('SDM_EVALUATIONS=SDM_EVALUATIONS+1',
                           density_source)
             self.assertIn('SDM_EVALUATIONS=SDM_EVALUATIONS+2',
@@ -1374,6 +1378,8 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn('IF (SDM_OVERRIDE_BORN) THEN', loop_source)
             self.assertIn('IF (SDM_OVERRIDE_BORN) THEN', mp_loop_source)
             self.assertIn('SDM_GET_COLOR_FLOW_AMPLITUDES', color_source)
+            self.assertIn('ML5SQSOINDEX(M,N)', color_source)
+            self.assertIn('ISQSO.NE.SQUARED_ORDER', color_source)
             self.assertIn('SDM_COLOR_FLOW_STABILITY_COMPATIBLE',
                           color_source)
 
@@ -2009,6 +2015,11 @@ class TestFKSDecayChains(unittest.TestCase):
                 product_source)
             self.assertIn(
                 'SUBROUTINE SDM_MULTIPLICATIVE_EVALUATE_BASIS(',
+                product_source)
+            self.assertIn(
+                'SDM_HERMITIAN_VALUE=0.5D0*(', product_source)
+            self.assertIn(
+                'DCONJG(SDM_EFFECTIVE(SDM_RIGHT,SDM_LEFT,',
                 product_source)
             self.assertIn('INTEGER EVENT_SLOTS(NBLOCKS)', product_source)
             flat_product_source = ' '.join(

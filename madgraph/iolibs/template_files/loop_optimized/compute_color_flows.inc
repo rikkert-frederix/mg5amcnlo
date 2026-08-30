@@ -956,7 +956,7 @@ C Stability-aware complex-amplitude access for fNLO density matrices.
       END
 
       SUBROUTINE %(proc_prefix)sSDM_COLOR_FLOW_INTERFERENCE(
-     $ LOOP_FLOW,BORN_VALUES,VALUE)
+     $ LOOP_FLOW,BORN_VALUES,SQUARED_ORDER,VALUE)
       IMPLICIT NONE
       COMPLEX*16 IMAG1
       PARAMETER (IMAG1=(0D0,1D0))
@@ -966,7 +966,8 @@ C Stability-aware complex-amplitude access for fNLO density matrices.
       COMPLEX*16 LOOP_FLOW(3,NLOOPFLOWS,NLOOPAMPSO)
       COMPLEX*16 BORN_VALUES(NBORNFLOWS,NLOOPAMPSO),VALUE(3)
       COMPLEX*16 COLOR_COEF
-      INTEGER I,J,K,M,N
+      INTEGER I,J,K,M,N,ISQSO,SQUARED_ORDER
+      INTEGER %(proc_prefix)sML5SQSOINDEX
       TYPE COLORCOEFF
         SEQUENCE
         INTEGER :: NUM
@@ -989,7 +990,12 @@ C Stability-aware complex-amplitude access for fNLO density matrices.
           IF (LOOPCOLORFLOWMATRIX(I,J)%%DENOM.LT.0)
      $     COLOR_COEF=COLOR_COEF*IMAG1
           DO M=1,NLOOPAMPSO
+C           Empty split-order slots have no valid squared-order map.
+            IF (SUM(ABS(LOOP_FLOW(:,I,M))).EQ.0D0) CYCLE
             DO N=1,NLOOPAMPSO
+              IF (ABS(BORN_VALUES(J,N)).EQ.0D0) CYCLE
+              ISQSO=%(proc_prefix)sML5SQSOINDEX(M,N)
+              IF (ISQSO.NE.SQUARED_ORDER) CYCLE
               DO K=1,3
                 VALUE(K)=VALUE(K)+2D0*COLOR_COEF*LOOP_FLOW(K,I,M)*
      $           DCONJG(BORN_VALUES(J,N))
