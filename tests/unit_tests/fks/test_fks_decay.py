@@ -1062,6 +1062,60 @@ class TestFKSDecayChains(unittest.TestCase):
                 metadata)
             self.assertIn('VIRTUAL_CURRENT_COUNT 1\n', metadata)
 
+    def test_optimized_density_virtual_uses_color_flow_snapshots(self):
+        command = self.generate(
+            'u u~ > t t~, '
+            '(t > w+ b QED^2=2 QCD^2=0 [QCD])')
+        command.exec_cmd(
+            'set loop_optimized_output True',
+            printcmd=False, precmd=True)
+
+        with tempfile.TemporaryDirectory() as output_dir:
+            process_dir = os.path.join(output_dir, 'PROC')
+            command.exec_cmd(
+                'output fNLO %s' % process_dir,
+                printcmd=False, precmd=True)
+            subprocess_root = os.path.join(process_dir, 'SubProcesses')
+            subprocesses = [
+                os.path.join(subprocess_root, name)
+                for name in os.listdir(subprocess_root)
+                if name.startswith('P') and
+                os.path.isdir(os.path.join(subprocess_root, name))]
+            self.assertEqual(len(subprocesses), 1)
+            subprocess_dir = subprocesses[0]
+            virtuals = [
+                os.path.join(subprocess_dir, name)
+                for name in os.listdir(subprocess_dir)
+                if name.startswith('V') and
+                os.path.isdir(os.path.join(subprocess_dir, name))]
+            self.assertEqual(len(virtuals), 1)
+            self.assertTrue(os.path.isfile(os.path.join(
+                virtuals[0], 'compute_color_flows.f')))
+
+            with open(os.path.join(
+                    virtuals[0], 'compute_color_flows.f')) as stream:
+                flow_source = stream.read()
+            self.assertIn('SDM_CAPTURE_COLOR_FLOWS', flow_source)
+            self.assertIn('SDM_COLOR_FLOW_INTERFERENCE', flow_source)
+
+            with open(os.path.join(
+                    subprocess_dir,
+                    'spin_density_decay_1_virtual.f')) as stream:
+                density_source = stream.read()
+            self.assertIn('SDM_RESET_COLOR_FLOW_SNAPSHOTS', density_source)
+            self.assertIn('SDM_GET_COLOR_FLOW_AMPLITUDES', density_source)
+            self.assertIn('SDM_COLOR_FLOW_STABILITY_COMPATIBLE',
+                          density_source)
+            self.assertIn('SDM_FORCE_FULL_HELICITY=.TRUE.', density_source)
+            self.assertEqual(
+                density_source.count('SLOOPMATRIX_THRES(P,RAW_REAL,'),
+                1)
+            self.assertIn('CHECKED_TOTAL(K)-', density_source)
+            self.assertIn('SDM_SET_FORCE_TOMOGRAPHY', density_source)
+            self.assertIn('IF (DIRECT_OK) THEN', density_source)
+            self.assertIn('SDM_OVERRIDE_BORN=.TRUE.', density_source)
+            self.assertNotIn('BASIS_PIVOT', density_source)
+
     def test_nlo_decay_factorized_fortran_matrix_elements_are_written(self):
         command = self.generate(
             'u u~ > t t~, '
@@ -2129,6 +2183,13 @@ class TestFKSDecayChains(unittest.TestCase):
                     subprocess_dir, filename)))
             with open(os.path.join(
                     subprocess_dir,
+                    'top_decay_virtual_cdr.f90')) as stream:
+                top_cdr = ' '.join(stream.read().lower().split())
+            self.assertIn(
+                'denom = gc11/cmplx(q2-mw*mw, mw*ww, real64)',
+                top_cdr)
+            with open(os.path.join(
+                    subprocess_dir,
                     'top_decay_virtual_dispatch.f90')) as stream:
                 top_dispatch = ' '.join(stream.read().lower().split())
             self.assertIn(
@@ -2137,6 +2198,17 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn(
                 'subsequent phase-space points skip madloop.',
                 top_dispatch)
+            self.assertIn(
+                'top_charge_phases(top_spin_size) = (/ 1, -1 /)',
+                top_dispatch)
+            self.assertIn(
+                '(/ 1, -1, -1, 1, 1, -1 /)', top_dispatch)
+            self.assertIn('subroutine charge_conjugate_density',
+                          top_dispatch)
+            self.assertNotIn('three_body_kinematics_supported',
+                             top_dispatch)
+            self.assertNotIn('joint_density_supported', top_dispatch)
+            self.assertNotIn('parity_reflect', top_dispatch)
             with open(os.path.join(
                     subprocess_dir,
                     'spin_density_virtual_capabilities.f')) as stream:
@@ -2162,6 +2234,26 @@ class TestFKSDecayChains(unittest.TestCase):
                 'active_nlo_contribution())) '
                 'virtual_sampling_fraction = 1d0', singular_source)
             self.assertNotIn('contribution_parent_pdg', singular_source)
+            with open(os.path.join(
+                    process_dir, 'SubProcesses',
+                    'mint_module.f90')) as stream:
+                mint_source = ' '.join(
+                    stream.read().lower().replace('&', ' ').split())
+            self.assertIn(
+                'contribution = virtual_grid_contribution(k_ord_virt)',
+                mint_source)
+            self.assertIn(
+                'if (sdm_virtual_uses_analytic_provider(contribution)) cycle',
+                mint_source)
+            self.assertIn(
+                'first grid iteration total points:', mint_source)
+            with open(os.path.join(
+                    process_dir, 'SubProcesses',
+                    'nlo_contribution_bundle.f90')) as stream:
+                bundle_source = stream.read().lower()
+            self.assertIn(
+                'integer function virtual_grid_contribution',
+                bundle_source)
             for card_path in [
                     os.path.join(process_dir, 'Cards',
                                  'MadLoopParams.dat'),

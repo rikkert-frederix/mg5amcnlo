@@ -50,7 +50,7 @@ module mint_module
                                reset_MC_grid
   use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
        factorized_shared_dimension, factorized_radiation_block, &
-       bundle_nlo_component
+       bundle_nlo_component, virtual_grid_contribution
   use polynomial_fit, only: init_polyfit, add_point_polyfit, &
                             do_polyfit, get_polyfit, save_polyfit, restore_polyfit
   implicit none
@@ -500,13 +500,24 @@ contains
 ! Update the fraction of phase-space points for which we include the virtual corrections
 ! in the calculation
     implicit none
-    integer kchan, k_ord_virt
+    integer kchan, k_ord_virt, contribution, sampled_grid_count
     double precision :: error_virt
+    logical, external :: sdm_virtual_uses_analytic_provider
     do kchan = 1, nchans
       error_virt = 0d0
+      sampled_grid_count = 0
       do k_ord_virt = 1, n_ord_virt
+        if (has_nlo_contribution_bundle()) then
+          contribution = virtual_grid_contribution(k_ord_virt)
+          ! Analytic virtual providers are evaluated at every point.  Their
+          ! integration error must not increase the sampling fraction used
+          ! for expensive MadLoop production or non-analytic decay blocks.
+          if (sdm_virtual_uses_analytic_provider(contribution)) cycle
+        end if
         error_virt = error_virt + etot(2*k_ord_virt + 5, kchan)**2
+        sampled_grid_count = sampled_grid_count + 1
       end do
+      if (sampled_grid_count == 0) cycle
       error_virt = sqrt(error_virt)
       virtual_fraction(kchan) = max(min(virtual_fraction(kchan) &
                                         *max(min(2d0*error_virt/etot(1, kchan), 2d0), 0.25d0), 1d0) &
@@ -682,6 +693,8 @@ contains
     etot(1:nintegrals, 0) = sum(etot(1:nintegrals, 1:nchans)**2, dim=2)
     etot(1:nintegrals, 0) = sqrt(etot(1:nintegrals, 0))
     ncalls0 = ncalls0*nchans
+    write (*, *) 'First grid iteration total points:', ncalls0, &
+         ' (', ncalls0/nchans, ' per channel x ', nchans, ' channels)'
   end subroutine combine_special_channels
 
   subroutine get_amount_of_points(enough_points)

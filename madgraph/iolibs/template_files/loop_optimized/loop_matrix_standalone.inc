@@ -223,6 +223,15 @@ C     Below are variables to bypass the checkphase and insure stability check to
 	  LOGICAL OLD_GOODAMP(NSQUAREDSO,NLOOPGROUPS)
 	  LOGICAL BYPASS_CHECK, ALWAYS_TEST_STABILITY
 	  COMMON/%(proc_prefix)sBYPASS_CHECK/BYPASS_CHECK, ALWAYS_TEST_STABILITY
+## if(SpinDensityOverride) {
+C     A density matrix needs loop amplitudes for helicities which may have a
+C     vanishing diagonal Born interference.  Disable only MadLoop's
+C     helicity/group filters while retaining its ordinary stability tests.
+	  LOGICAL SDM_FORCE_FULL_HELICITY
+	  DATA SDM_FORCE_FULL_HELICITY/.FALSE./
+	  COMMON/%(proc_prefix)sSDM_FORCE_FULL_HELICITY/
+     $ SDM_FORCE_FULL_HELICITY
+## }
 C
 C FUNCTIONS
 C
@@ -820,6 +829,12 @@ IF (BYPASS_CHECK) THEN
   OLD_HELDOUBLECHECKED = HELDOUBLECHECKED
   CHECKPHASE = .FALSE.
   HELDOUBLECHECKED = .TRUE.
+ENDIF
+## if(SpinDensityOverride) {
+IF (BYPASS_CHECK.OR.SDM_FORCE_FULL_HELICITY) THEN
+## }else{
+IF (BYPASS_CHECK) THEN
+## }
   DO I=1,NCOMB
     OLD_GOODHEL(I)=GOODHEL(I)
 	GOODHEL(I)=1
@@ -1141,7 +1156,17 @@ C We need the dummy argument I_SO for the squared order index to conform to the 
 ## if(not LoopInduced) {
       ITEMP = %(proc_prefix)sML5SQSOINDEX(%(proc_prefix)sML5SOINDEX_FOR_LOOP_AMP(I),%(proc_prefix)sML5SOINDEX_FOR_BORN_AMP(J))
       DO K=1,3
+## if(SpinDensityOverride) {
+        IF (SDM_OVERRIDE_BORN) THEN
+          TEMP2(K) = 2.0d0*HEL_MULT*DBLE(CFTOT*AMPL(K,I)*
+     $      DCONJG(SDM_BORN_AMP(J)))
+        ELSE
+          TEMP2(K) = 2.0d0*HEL_MULT*DBLE(CFTOT*AMPL(K,I)*
+     $      DCONJG(AMP(J)))
+        ENDIF
+## } else {
         TEMP2(K) = 2.0d0*HEL_MULT*DBLE(CFTOT*AMPL(K,I)*DCONJG(AMP(J)))
+## }
       ENDDO
 ## } else {
       ITEMP = %(proc_prefix)sML5SQSOINDEX(%(proc_prefix)sML5SOINDEX_FOR_LOOP_AMP(I),%(proc_prefix)sML5SOINDEX_FOR_LOOP_AMP(J))
@@ -1178,6 +1203,13 @@ C We should compute the color flow either if it contributes to the final result 
 IF (((.NOT.DIRECT_ME_COMPUTATION).AND.ME_COMPUTATION_FROM_JAMP).OR.((H.EQ.USERHEL.OR.USERHEL.EQ.-1).and.(POLARIZATIONS(0,0).eq.-1.or.%(proc_prefix)sIS_HEL_SELECTED(H)))) THEN
 C The cumulative quantities must only be computed if that helicity contributes according to user request (second argument of the subroutine below).
   CALL %(proc_prefix)sCOMPUTE_COLOR_FLOWS(HEL_MULT)
+## if(SpinDensityOverride) {
+C Keep the complex colour-flow amplitude associated with every independent
+C stability evaluation.  The density provider later selects the same DP/QP
+C family as MadLoop's checked scalar result.
+  CALL %(proc_prefix)sSDM_CAPTURE_COLOR_FLOWS(H,DOING_QP_EVALS,
+     $ STAB_INDEX+1)
+## }
   IF(ME_COMPUTATION_FROM_JAMP) THEN
     CALL %(proc_prefix)sCOMPUTE_RES_FROM_JAMP(BUFFRES,HEL_MULT)
     IF(((.NOT.DIRECT_ME_COMPUTATION).AND.ME_COMPUTATION_FROM_JAMP)) THEN
@@ -1904,6 +1936,12 @@ C Reinitialize the check phase logicals and the filters if check bypassed
 IF (BYPASS_CHECK) THEN
   CHECKPHASE = OLD_CHECKPHASE
   HELDOUBLECHECKED = OLD_HELDOUBLECHECKED
+ENDIF
+## if(SpinDensityOverride) {
+IF (BYPASS_CHECK.OR.SDM_FORCE_FULL_HELICITY) THEN
+## }else{
+IF (BYPASS_CHECK) THEN
+## }
   DO I=1,NCOMB
 	GOODHEL(I)=OLD_GOODHEL(I)
   ENDDO

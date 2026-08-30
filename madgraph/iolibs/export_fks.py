@@ -7919,8 +7919,19 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
         # Extract number of external particles
         (nexternal, ninitial) = matrix_element.get_nexternal_ninitial()
 
-        calls=self.write_loop_matrix_element_v4(None,matrix_element,fortran_model)
-        
+        previous_color_flows = self.compute_color_flows
+        if getattr(self, '_fnlo_spin_density_override', False):
+            # The optimized loop colour-flow amplitudes retain the complete
+            # complex loop information.  Spin-density providers can use them
+            # to construct all open-helicity interferences after one checked,
+            # helicity-summed MadLoop evaluation.
+            self.compute_color_flows = True
+        try:
+            calls = self.write_loop_matrix_element_v4(
+                None, matrix_element, fortran_model)
+        finally:
+            self.compute_color_flows = previous_color_flows
+
         # We need a link to coefs.inc from DHELAS
         ln(pjoin(self.dir_path, 'Source', 'DHELAS', 'coef_specs.inc'),
                                                         abspath=False, cwd=None)

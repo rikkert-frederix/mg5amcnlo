@@ -35,6 +35,7 @@ module nlo_contribution_bundle
   public :: active_contribution_is_nlo_decay
   public :: contribution_has_virtual, active_contribution_has_virtual
   public :: nlo_virtual_grid_count, active_virtual_grid_index
+  public :: virtual_grid_contribution
   public :: factorized_radiation_block_count
   public :: factorized_shared_dimension
   public :: factorized_integration_dimension
@@ -510,6 +511,30 @@ contains
     active_virtual_grid_index = &
          virtual_grid_values(local_grid, contribution)
   end function active_virtual_grid_index
+
+
+  integer function virtual_grid_contribution(virtual_grid)
+    integer, intent(in) :: virtual_grid
+    integer :: contribution
+
+    if (.not. initialized) call initialize_nlo_contribution_bundle()
+    if (.not. enabled) then
+      virtual_grid_contribution = 1
+      return
+    end if
+    if (virtual_grid < 1 .or. &
+        virtual_grid > number_of_virtual_grids) then
+      call fail_bundle('virtual-grid index is out of range')
+    end if
+    do contribution = 1, number_of_contributions
+      if (any(virtual_grid_values(:, contribution) == virtual_grid)) then
+        virtual_grid_contribution = contribution
+        return
+      end if
+    end do
+    call fail_bundle('a virtual grid has no owning contribution')
+    virtual_grid_contribution = 0
+  end function virtual_grid_contribution
 
 
   integer function factorized_radiation_block_count()

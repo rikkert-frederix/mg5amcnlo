@@ -189,7 +189,7 @@ class SpinDensityExporter(object):
         if len(outgoing) != 3:
             return None
         charged = [leg for leg in outgoing
-                   if abs(leg.get('id')) in (11, 13) and
+                   if abs(leg.get('id')) in (11, 13, 15) and
                    leg.get('id') == -parent_sign*abs(leg.get('id'))]
         if len(charged) != 1:
             return None
@@ -198,6 +198,12 @@ class SpinDensityExporter(object):
                     if abs(leg.get('id')) == charged_pdg + 1 and
                     leg.get('id') == parent_sign*abs(leg.get('id'))]
         if len(neutrino) != 1:
+            return None
+        charged_particle = model.get_particle(charged[0].get('id'))
+        neutrino_particle = model.get_particle(neutrino[0].get('id'))
+        if (charged_particle is None or neutrino_particle is None or
+                charged_particle.get('mass').upper() != 'ZERO' or
+                neutrino_particle.get('mass').upper() != 'ZERO'):
             return None
         return {
             'mode': 'three_body',
@@ -857,6 +863,20 @@ class SpinDensityExporter(object):
         normalization = standard_normalization / desired_normalization
         prefix = variant['loop_prefix'].upper()
 
+        loop_representation = getattr(loop_matrix_element, 'rep_dict', {})
+        color_flow_shape = tuple(int(loop_representation.get(key, 0))
+                                 for key in (
+                                     'nLoopFlows', 'nBornFlows', 'nAmpSO'))
+        if (loop_matrix_element.optimized_output and
+                all(value > 0 for value in color_flow_shape)):
+            writer.writelines(
+                self._direct_virtual_color_flow_provider_lines(
+                    variant, tree_provider, helicities, open_index,
+                    closed_index, nborn, ncolor, nexternal, result_index,
+                    normalization, desired_normalization, prefix,
+                    *color_flow_shape))
+            return
+
         basis_pivots, basis_transform = \
             self._born_color_projection(tree_matrix_element)
         basis_rank = len(basis_pivots)
@@ -1036,6 +1056,211 @@ class SpinDensityExporter(object):
             'ENDDO',
             'END'])
         writer.writelines(lines)
+
+    def _direct_virtual_color_flow_provider_lines(
+            self, variant, tree_provider, helicities, open_index,
+            closed_index, nborn, ncolor, nexternal, result_index,
+            normalization, desired_normalization, prefix, nloopflows,
+            nbornflows, namplitude_orders):
+        """Reconstruct a loop density from coherent MadLoop colour flows.
+
+        Optimized MadLoop output retains the complex renormalized loop and
+        Born amplitudes in its colour-flow basis.  One fully checked evaluation
+        over all complete helicities therefore contains all the information
+        needed for the open-spin density.  The generated provider
+        obtains every helicity snapshot in one helicity-summed MadLoop call,
+        checks the summed physical diagonal against MadLoop's scalar result,
+        and uses the established Born-amplitude tomography pointwise if the
+        snapshots are unavailable or inconsistent.  Testing the sum is also
+        important numerically: stability tests on tiny individual-helicity
+        interferences can otherwise cause needless quadruple-precision rescue.
+        """
+
+        ncomb = len(helicities)
+        flow_normalization = 1.0 / float(desired_normalization)
+        return [
+            'SUBROUTINE %s(P,RHO,PREC_ASKED,PRECISION,RET_CODE)' %
+            variant['fortran_name'],
+            'IMPLICIT NONE',
+            'INTEGER NEXTERNAL,NCOMB,NOPEN,NBORN,NCOLOR',
+            'INTEGER NLOOPFLOWS,NBORNFLOWS,NAMPSO',
+            ('PARAMETER (NEXTERNAL=%d,NCOMB=%d,NOPEN=%d,NBORN=%d,'
+             'NCOLOR=%d)') % (
+                 nexternal, ncomb, variant['open_size'], nborn, ncolor),
+            'PARAMETER (NLOOPFLOWS=%d,NBORNFLOWS=%d,NAMPSO=%d)' % (
+                nloopflows, nbornflows, namplitude_orders),
+            'REAL*8 P(0:3,NEXTERNAL),PREC_ASKED,PRECISION',
+            'COMPLEX*16 RHO(3,NOPEN,NOPEN)',
+            'INTEGER RET_CODE,NHEL(NEXTERNAL,NCOMB)',
+            'INTEGER OPEN_INDEX(NCOMB),CLOSED_INDEX(NCOMB)',
+            'INTEGER H,HP,K,A,B,LOCAL_CODE',
+            'REAL*8 RAW_REAL(0:3,0:1),RAW_IMAG(0:3,0:1)',
+            'REAL*8 PREC_REAL(0:1),PREC_IMAG(0:1)',
+            'REAL*8 CHECKED_TOTAL(3),DIRECT_REAL(3,NCOMB)',
+            'REAL*8 CHECKED_PRECISION',
+            'REAL*8 COMPONENT_SCALE(3),DIRECT_DIFFERENCE',
+            'COMPLEX*16 RAW_RHO(3,NOPEN,NOPEN),VALUE(3)',
+            ('COMPLEX*16 LOOP_FLOW(3,NLOOPFLOWS,NAMPSO,NCOMB),'
+             'BORN_FLOW(NBORNFLOWS,NAMPSO,NCOMB)'),
+            'COMPLEX*16 BORN_AMPS(NBORN,NCOMB),DUMMY_JAMP(NCOLOR)',
+            ('LOGICAL FLOW_AVAILABLE(NCOMB),DIRECT_OK,'
+             'STABILITY_COMPATIBLE'),
+            'LOGICAL SDM_FORCE_TOMOGRAPHY,SDM_FORCE_FULL_HELICITY',
+            ('LOGICAL SDM_OVERRIDE_BORN,MP_SDM_OVERRIDE_BORN,'
+             'SDM_BYPASS_CHECK,SDM_ALWAYS_TEST_STABILITY'),
+            'COMPLEX*16 SDM_BORN_AMP(NBORN)',
+            'COMPLEX*32 MP_SDM_BORN_AMP(NBORN)',
+            'COMMON /%sSDM_BORN_OVERRIDE/' % prefix,
+            '     $ SDM_BORN_AMP,SDM_OVERRIDE_BORN',
+            'COMMON /%sMP_SDM_BORN_OVERRIDE/' % prefix,
+            '     $ MP_SDM_BORN_AMP,MP_SDM_OVERRIDE_BORN',
+            'COMMON /%sBYPASS_CHECK/' % prefix,
+            '     $ SDM_BYPASS_CHECK,SDM_ALWAYS_TEST_STABILITY',
+            'COMMON /%sSDM_FORCE_TOMOGRAPHY/' % prefix,
+            '     $ SDM_FORCE_TOMOGRAPHY',
+            'COMMON /%sSDM_FORCE_FULL_HELICITY/' % prefix,
+            '     $ SDM_FORCE_FULL_HELICITY',
+            'DATA SDM_FORCE_TOMOGRAPHY/.FALSE./',
+            'DATA NHEL /%s/' % ','.join(
+                str(value) for helicity in helicities for value in helicity),
+            'DATA OPEN_INDEX /%s/' % ','.join(map(str, open_index)),
+            'DATA CLOSED_INDEX /%s/' % ','.join(map(str, closed_index)),
+            'RHO=(0D0,0D0)',
+            'RAW_RHO=(0D0,0D0)',
+            'LOOP_FLOW=(0D0,0D0)',
+            'BORN_FLOW=(0D0,0D0)',
+            'FLOW_AVAILABLE=.FALSE.',
+            'CHECKED_TOTAL=0D0',
+            'DIRECT_REAL=0D0',
+            'CHECKED_PRECISION=0D0',
+            'PRECISION=0D0',
+            'RET_CODE=0',
+            'SDM_OVERRIDE_BORN=.FALSE.',
+            'MP_SDM_OVERRIDE_BORN=.FALSE.',
+            'SDM_BYPASS_CHECK=.FALSE.',
+            'SDM_FORCE_FULL_HELICITY=.TRUE.',
+            'CALL %sSDM_COLOR_FLOW_STABILITY_COMPATIBLE(' % prefix,
+            '     $ STABILITY_COMPATIBLE)',
+            'DIRECT_OK=.NOT.SDM_FORCE_TOMOGRAPHY.AND.',
+            '     $ STABILITY_COMPATIBLE',
+            'DO H=1,NCOMB',
+            '  CALL %sSDM_RESET_COLOR_FLOW_SNAPSHOTS(H)' % prefix,
+            'ENDDO',
+            'CALL %sSLOOPMATRIX_THRES(P,RAW_REAL,' % prefix,
+            '     $ PREC_ASKED,PREC_REAL,LOCAL_CODE)',
+            'CHECKED_TOTAL=RAW_REAL(1:3,%d)' % result_index,
+            'CHECKED_PRECISION=PREC_REAL(%d)' % result_index,
+            'PRECISION=MAX(PRECISION,CHECKED_PRECISION)',
+            'RET_CODE=MAX(RET_CODE,LOCAL_CODE)',
+            'DO H=1,NCOMB',
+            '  CALL %sSDM_GET_COLOR_FLOW_AMPLITUDES(H,' % prefix,
+            '     $ LOOP_FLOW(:,:,:,H),BORN_FLOW(:,:,H),',
+            '     $ FLOW_AVAILABLE(H))',
+            '  IF (.NOT.FLOW_AVAILABLE(H)) DIRECT_OK=.FALSE.',
+            'ENDDO',
+            'SDM_FORCE_FULL_HELICITY=.FALSE.',
+            'IF (DIRECT_OK) THEN',
+            '  DO H=1,NCOMB',
+            '    CALL %sSDM_COLOR_FLOW_INTERFERENCE(' % prefix,
+            '     $ LOOP_FLOW(:,:,:,H),BORN_FLOW(:,:,H),%d,VALUE)' %
+            result_index,
+            '    DIRECT_REAL(:,H)=DBLE(VALUE)*%s' %
+            _fortran_double(flow_normalization),
+            '  ENDDO',
+            'C Check the physical helicity sum.  Individual helicity',
+            'C interferences can be tiny even when the observable sum is stable.',
+            '  DO K=1,3',
+            '    COMPONENT_SCALE(K)=MAX(1D-30,',
+            '     $ ABS(CHECKED_TOTAL(K)),',
+            '     $ ABS(SUM(DIRECT_REAL(K,:))))',
+            '    DIRECT_DIFFERENCE=ABS(CHECKED_TOTAL(K)-',
+            '     $ SUM(DIRECT_REAL(K,:)))',
+            '    IF (DIRECT_DIFFERENCE.GT.MAX(1D-8,10D0*',
+            '     $ ABS(CHECKED_PRECISION))*COMPONENT_SCALE(K))',
+            '     $ DIRECT_OK=.FALSE.',
+            '  ENDDO',
+            'ENDIF',
+            'IF (DIRECT_OK) THEN',
+            '  DO H=1,NCOMB',
+            '    A=OPEN_INDEX(H)',
+            '    DO HP=1,NCOMB',
+            '      IF (CLOSED_INDEX(H).NE.CLOSED_INDEX(HP)) CYCLE',
+            '      B=OPEN_INDEX(HP)',
+            '      CALL %sSDM_COLOR_FLOW_INTERFERENCE(' % prefix,
+            '     $ LOOP_FLOW(:,:,:,H),BORN_FLOW(:,:,HP),%d,VALUE)' %
+            result_index,
+            '      RAW_RHO(:,A,B)=RAW_RHO(:,A,B)+%s*VALUE' %
+            _fortran_double(flow_normalization),
+            '    ENDDO',
+            '  ENDDO',
+            'ELSE',
+            '  BORN_AMPS=(0D0,0D0)',
+            '  DO HP=1,NCOMB',
+            '    CALL %s_JAMP(P,NHEL(1,HP),DUMMY_JAMP,' %
+            tree_provider['fortran_name'],
+            '     $ BORN_AMPS(1,HP))',
+            '  ENDDO',
+            '  SDM_OVERRIDE_BORN=.TRUE.',
+            '  MP_SDM_OVERRIDE_BORN=.TRUE.',
+            '  SDM_BYPASS_CHECK=.TRUE.',
+            '  DO H=1,NCOMB',
+            '    A=OPEN_INDEX(H)',
+            '    SDM_BORN_AMP=BORN_AMPS(:,H)',
+            '    MP_SDM_BORN_AMP=BORN_AMPS(:,H)',
+            '    CALL %sSLOOPMATRIXHEL_THRES(P,H,RAW_REAL,' % prefix,
+            '     $ PREC_ASKED,PREC_REAL,LOCAL_CODE)',
+            '    PRECISION=MAX(PRECISION,PREC_REAL(%d))' % result_index,
+            '    RET_CODE=MAX(RET_CODE,LOCAL_CODE)',
+            '    DO K=1,3',
+            '      RAW_RHO(K,A,A)=RAW_RHO(K,A,A)+%s*DCMPLX(' %
+            _fortran_double(normalization),
+            '     $ RAW_REAL(K,%d),0D0)' % result_index,
+            '    ENDDO',
+            '    DO HP=1,NCOMB',
+            '      IF (CLOSED_INDEX(H).NE.CLOSED_INDEX(HP)) CYCLE',
+            '      IF (HP.EQ.H) CYCLE',
+            '      B=OPEN_INDEX(HP)',
+            '      SDM_BORN_AMP=BORN_AMPS(:,HP)',
+            '      MP_SDM_BORN_AMP=BORN_AMPS(:,HP)',
+            '      CALL %sSLOOPMATRIXHEL_THRES(P,H,RAW_REAL,' % prefix,
+            '     $ PREC_ASKED,PREC_REAL,LOCAL_CODE)',
+            '      PRECISION=MAX(PRECISION,PREC_REAL(%d))' % result_index,
+            '      RET_CODE=MAX(RET_CODE,LOCAL_CODE)',
+            '      SDM_BORN_AMP=(0D0,1D0)*BORN_AMPS(:,HP)',
+            '      MP_SDM_BORN_AMP=(0D0,1D0)*BORN_AMPS(:,HP)',
+            '      CALL %sSLOOPMATRIXHEL_THRES(P,H,RAW_IMAG,' % prefix,
+            '     $ PREC_ASKED,PREC_IMAG,LOCAL_CODE)',
+            '      PRECISION=MAX(PRECISION,PREC_IMAG(%d))' % result_index,
+            '      RET_CODE=MAX(RET_CODE,LOCAL_CODE)',
+            '      DO K=1,3',
+            '        RAW_RHO(K,A,B)=RAW_RHO(K,A,B)+%s*DCMPLX(' %
+            _fortran_double(normalization),
+            '     $ RAW_REAL(K,%d),RAW_IMAG(K,%d))' % (
+                result_index, result_index),
+            '      ENDDO',
+            '    ENDDO',
+            '  ENDDO',
+            'ENDIF',
+            'SDM_BYPASS_CHECK=.FALSE.',
+            'SDM_OVERRIDE_BORN=.FALSE.',
+            'MP_SDM_OVERRIDE_BORN=.FALSE.',
+            'DO K=1,3',
+            '  DO A=1,NOPEN',
+            '    DO B=1,NOPEN',
+            '      RHO(K,A,B)=0.5D0*(RAW_RHO(K,A,B)+',
+            '     $ DCONJG(RAW_RHO(K,B,A)))',
+            '    ENDDO',
+            '  ENDDO',
+            'ENDDO',
+            'END',
+            '',
+            'SUBROUTINE %sSDM_SET_FORCE_TOMOGRAPHY(ENABLED)' % prefix,
+            'IMPLICIT NONE',
+            'LOGICAL ENABLED,SDM_FORCE_TOMOGRAPHY',
+            'COMMON /%sSDM_FORCE_TOMOGRAPHY/' % prefix,
+            '     $ SDM_FORCE_TOMOGRAPHY',
+            'SDM_FORCE_TOMOGRAPHY=ENABLED',
+            'END']
 
     @staticmethod
     def _node_visible_legs(plan, context, context_kind):

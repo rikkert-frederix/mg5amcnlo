@@ -84,6 +84,9 @@
 ! matrix elements should be included. When using MINT, during the
 ! grid-setup phase, this number will be updated automatically after
 ! each iteration depending on the relative MC uncertainties.
+! In factorized NLO decay chains this fraction controls production and
+! non-analytic decay virtuals. Validated analytic decay virtuals are
+! evaluated at every phase-space point independently of this setting.
 #VirtualFraction
 1.0d0
 ! Default :: 1.0d0

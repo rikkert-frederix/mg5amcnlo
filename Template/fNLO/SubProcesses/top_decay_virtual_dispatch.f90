@@ -11,6 +11,9 @@ module top_decay_virtual_dispatch
   integer, parameter :: top_spin_size = 2
   integer, parameter :: top_w_spin_size = 6
   integer, parameter :: decay_momentum_count = 4
+  integer, parameter :: top_charge_phases(top_spin_size) = (/ 1, -1 /)
+  integer, parameter :: top_w_charge_phases(top_w_spin_size) = &
+       (/ 1, -1, -1, 1, 1, -1 /)
   double precision, parameter :: validation_tolerance = 1d-8
   integer, allocatable, save :: validated_point_count(:)
   double precision, allocatable, save :: validated_momenta(:, :, :, :)
@@ -31,7 +34,6 @@ contains
     complex(kind=8), intent(in) :: gc11
     complex(kind=8), intent(out) :: rho(3, top_spin_size, top_spin_size)
     logical, intent(out) :: analytic_available
-    double precision :: parity_pt(0:3), parity_pb(0:3), parity_pw(0:3)
     complex(kind=8) :: top_rho(3, top_spin_size, top_spin_size)
 
     call check_parent(parent_pdg)
@@ -39,15 +41,14 @@ contains
     if (parent_pdg == top_pdg) then
       call tdv_virtual_rho_top(pt, pb, pw, mt, mb, mw, mur, alphas, &
            gc11, rho)
+      call require_finite_analytic_density(rho)
       return
     end if
 
-    call parity_reflect(pt, parity_pt)
-    call parity_reflect(pb, parity_pb)
-    call parity_reflect(pw, parity_pw)
-    call tdv_virtual_rho_top(parity_pt, parity_pb, parity_pw, mt, mb, &
-         mw, mur, alphas, gc11, top_rho)
-    call transform_top_only_antitop_density(pt, top_rho, rho)
+    call tdv_virtual_rho_top(pt, pb, pw, mt, mb, mw, mur, alphas, &
+         gc11, top_rho)
+    call charge_conjugate_density(top_rho, top_charge_phases, rho)
+    call require_finite_analytic_density(rho)
   end subroutine tdv_evaluate_two_body_top
 
 
@@ -59,27 +60,21 @@ contains
     complex(kind=8), intent(in) :: gc11
     complex(kind=8), intent(out) :: rho(3, top_w_spin_size, top_w_spin_size)
     logical, intent(out) :: analytic_available
-    double precision :: parity_pt(0:3), parity_pb(0:3), parity_pw(0:3)
     complex(kind=8) :: top_rho(3, top_w_spin_size, top_w_spin_size)
 
     call check_parent(parent_pdg)
-    analytic_available = joint_density_supported(parent_pdg, pt)
-    if (.not. analytic_available) then
-      rho = (0d0, 0d0)
-      return
-    end if
+    analytic_available = .true.
     if (parent_pdg == top_pdg) then
       call tdv_virtual_rho_top_w(pt, pb, pw, mt, mb, mw, mur, alphas, &
            gc11, rho)
+      call require_finite_analytic_density(rho)
       return
     end if
 
-    call parity_reflect(pt, parity_pt)
-    call parity_reflect(pb, parity_pb)
-    call parity_reflect(pw, parity_pw)
-    call tdv_virtual_rho_top_w(parity_pt, parity_pb, parity_pw, mt, mb, &
-         mw, mur, alphas, gc11, top_rho)
-    call transform_antitop_density(pt, top_rho, rho)
+    call tdv_virtual_rho_top_w(pt, pb, pw, mt, mb, mw, mur, alphas, &
+         gc11, top_rho)
+    call charge_conjugate_density(top_rho, top_w_charge_phases, rho)
+    call require_finite_analytic_density(rho)
   end subroutine tdv_evaluate_two_body_top_w
 
 
@@ -91,71 +86,24 @@ contains
     complex(kind=8), intent(in) :: gc11
     complex(kind=8), intent(out) :: rho(3, top_spin_size, top_spin_size)
     logical, intent(out) :: analytic_available
-    double precision :: parity_pt(0:3), parity_pb(0:3)
-    double precision :: parity_pl(0:3), parity_pnu(0:3)
-    double precision :: q(0:3), q2, pole_distance, width_factor
     complex(kind=8) :: top_rho(3, top_spin_size, top_spin_size)
 
     call check_parent(parent_pdg)
-    q = pl + pnu
-    q2 = q(0)**2 - sum(q(1:3)**2)
-    pole_distance = q2 - mw**2
-    analytic_available = three_body_kinematics_supported( &
-         pt, pb, pl, pnu, mt, mb, mw, q2, pole_distance)
-    if (.not. analytic_available) then
-      rho = (0d0, 0d0)
-      return
-    end if
+    analytic_available = .true.
 
     if (parent_pdg == top_pdg) then
       call tdv_virtual_rho_top_3body(pt, pb, pl, pnu, mt, mb, mw, mur, &
-           alphas, gc11, rho)
+           alphas, gc11, rho, ww)
     else
-      call parity_reflect(pt, parity_pt)
-      call parity_reflect(pb, parity_pb)
-      call parity_reflect(pl, parity_pl)
-      call parity_reflect(pnu, parity_pnu)
-      call tdv_virtual_rho_top_3body(parity_pt, parity_pb, parity_pl, &
-           parity_pnu, mt, mb, mw, mur, alphas, gc11, top_rho)
-      call transform_top_only_antitop_density(pt, top_rho, rho)
+      ! Keep pl and pnu assigned by physical PDG role.  Charge conjugation
+      ! reverses the fermion flow through complex conjugation and the HELAS
+      ! top-spin phases below; it does not exchange their momenta.
+      call tdv_virtual_rho_top_3body(pt, pb, pl, pnu, mt, mb, mw, mur, &
+           alphas, gc11, top_rho, ww)
+      call charge_conjugate_density(top_rho, top_charge_phases, rho)
     end if
-
-    ! The packaged kernel has a zero-width W propagator.  For the fixed-width
-    ! propagator used by the generated tree and loop amplitudes, only its
-    ! common modulus squared changes because the massless leptonic current is
-    ! transverse.  Points too close to the zero-width pole use MadLoop above.
-    width_factor = pole_distance**2/(pole_distance**2 + (mw*ww)**2)
-    rho = width_factor*rho
-    if (.not. density_is_finite(rho)) then
-      analytic_available = .false.
-      rho = (0d0, 0d0)
-    end if
+    call require_finite_analytic_density(rho)
   end subroutine tdv_evaluate_three_body_top
-
-
-  logical function three_body_kinematics_supported( &
-       pt, pb, pl, pnu, mt, mb, mw, q2, pole_distance)
-    double precision, intent(in) :: pt(0:3), pb(0:3), pl(0:3), pnu(0:3)
-    double precision, intent(in) :: mt, mb, mw, q2, pole_distance
-    double precision :: scale
-
-    scale = max(mt**2, mw**2, 1d0)
-    three_body_kinematics_supported = &
-         all(ieee_is_finite(pt)) .and. all(ieee_is_finite(pb)) .and. &
-         all(ieee_is_finite(pl)) .and. all(ieee_is_finite(pnu)) .and. &
-         ieee_is_finite(q2) .and. ieee_is_finite(pole_distance) .and. &
-         q2 > 0d0 .and. q2 < (mt-mb)**2 .and. &
-         abs(pole_distance) > 1d-8*scale
-  end function three_body_kinematics_supported
-
-
-  pure logical function joint_density_supported(parent_pdg, pt)
-    integer, intent(in) :: parent_pdg
-    double precision, intent(in) :: pt(0:3)
-
-    joint_density_supported = .not. (parent_pdg == -top_pdg .and. &
-         effectively_at_rest(pt))
-  end function joint_density_supported
 
 
   logical function tdv_madloop_required(contribution, analytic_available)
@@ -281,80 +229,37 @@ contains
   end function density_is_finite
 
 
-  pure logical function effectively_at_rest(momentum)
-    double precision, intent(in) :: momentum(0:3)
-
-    effectively_at_rest = sum(momentum(1:3)**2) <= &
-         64d0*epsilon(1d0)*max(momentum(0)**2, 1d0)
-  end function effectively_at_rest
-
-
-  subroutine transform_top_only_antitop_density(pt, top_density, &
+  subroutine charge_conjugate_density(top_density, phases, &
        antitop_density)
-    double precision, intent(in) :: pt(0:3)
-    complex(kind=8), intent(in) :: top_density(3, top_spin_size, &
-         top_spin_size)
-    complex(kind=8), intent(out) :: antitop_density(3, top_spin_size, &
-         top_spin_size)
-
-    ! Charge conjugation maps the antitop density to a parity-reflected top
-    ! density.  Match the spinor phase convention used by the generated
-    ! MadLoop insertion before returning it to the common contraction code.
-    if (effectively_at_rest(pt)) then
-      antitop_density(:, 1, 1) = top_density(:, 2, 2)
-      antitop_density(:, 1, 2) = top_density(:, 2, 1)
-      antitop_density(:, 2, 1) = top_density(:, 1, 2)
-      antitop_density(:, 2, 2) = top_density(:, 1, 1)
-    else
-      call transform_antitop_density(pt, top_density, antitop_density)
-    end if
-  end subroutine transform_top_only_antitop_density
-
-
-  subroutine transform_antitop_density(pt, top_density, antitop_density)
-    double precision, intent(in) :: pt(0:3)
     complex(kind=8), intent(in) :: top_density(:, :, :)
+    integer, intent(in) :: phases(:)
     complex(kind=8), intent(out) :: antitop_density(:, :, :)
-    complex(kind=8) :: phase(6)
-    complex(kind=8) :: even_phase
-    double precision :: transverse_squared
     integer :: first, second
 
     if (size(top_density, 1) /= 3 .or. &
         any(shape(top_density) /= shape(antitop_density)) .or. &
         size(top_density, 2) /= size(top_density, 3) .or. &
-        (size(top_density, 2) /= 2 .and. &
-         size(top_density, 2) /= 6)) then
+        size(phases) /= size(top_density, 2)) then
       call fail_dispatch('the antitop density has an unsupported shape')
     end if
 
-    transverse_squared = pt(1)**2 + pt(2)**2
-    if (transverse_squared <= &
-        64d0*epsilon(1d0)*max(sum(pt(1:3)**2), 1d0)) then
-      even_phase = (-1d0, 0d0)
-    else
-      even_phase = cmplx( &
-           -(pt(1)**2 - pt(2)**2)/transverse_squared, &
-           2d0*pt(1)*pt(2)/transverse_squared, kind=8)
-    end if
-    phase(1:size(top_density, 2)) = (1d0, 0d0)
-    phase(2:size(top_density, 2):2) = even_phase
     do first = 1, size(top_density, 2)
       do second = 1, size(top_density, 2)
         antitop_density(:, first, second) = &
-             phase(first)*top_density(:, first, second)*conjg(phase(second))
+             phases(first)*phases(second)* &
+             conjg(top_density(:, first, second))
       end do
     end do
-  end subroutine transform_antitop_density
+  end subroutine charge_conjugate_density
 
 
-  pure subroutine parity_reflect(momentum, reflected)
-    double precision, intent(in) :: momentum(0:3)
-    double precision, intent(out) :: reflected(0:3)
+  subroutine require_finite_analytic_density(density)
+    complex(kind=8), intent(in) :: density(:, :, :)
 
-    reflected(0) = momentum(0)
-    reflected(1:3) = -momentum(1:3)
-  end subroutine parity_reflect
+    if (.not. density_is_finite(density)) then
+      call fail_dispatch('the analytic density is non-finite')
+    end if
+  end subroutine require_finite_analytic_density
 
 
   subroutine check_parent(parent_pdg)
