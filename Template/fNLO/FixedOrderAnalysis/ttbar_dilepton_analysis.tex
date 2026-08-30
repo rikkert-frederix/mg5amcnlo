@@ -1,0 +1,584 @@
+\documentclass[10pt,a4paper]{article}
+
+\usepackage[margin=1.65cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{array,booktabs,longtable}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage{microtype}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.55em}
+\setlength{\LTpre}{0.25em}
+\setlength{\LTpost}{0.8em}
+\renewcommand{\arraystretch}{1.13}
+
+\newcommand{\ttbar}{t\bar t}
+\newcommand{\pt}{p_{\mathrm T}}
+\newcommand{\met}{p_{\mathrm T}^{\mathrm{miss}}}
+\newcommand{\ddphi}{\Delta\phi}
+\newcommand{\dr}{\Delta R}
+\newcommand{\lplus}{\ell^+}
+\newcommand{\lminus}{\ell^-}
+\newcommand{\Wp}{W^+}
+\newcommand{\Wm}{W^-}
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\hist}[1]{\textsf{#1}}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+
+\title{Comprehensive fixed-order analysis of dileptonic top-pair production\\
+\large Observable definitions and implementation reference}
+\author{fNLO fixed-order template}
+\date{30 August 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This document specifies the comprehensive HwU analysis
+\code{analysis_HwU_pp_ttx_dilepton.o} for
+\(
+ pp\to\ttbar+X\to b\lplus\nu_\ell\,\bar b\lminus\bar\nu_\ell+X
+\)
+at the LHC.  Its 247 histograms cover inclusive truth information, charged
+leptons, neutrinos, reconstructed \(W\) bosons and top quarks, FastJet jet
+activity, a detector-motivated fiducial region, transverse variables that do
+not require the individual neutrino momenta, and the complete set of single-
+and double-spin angular moments in the \(k,r,n\) basis.  The same IR-safe
+measurement function is used for additive and multiplicative NLO decay-chain
+events and for all real-event counterevents.
+\end{abstract}
+
+\tableofcontents
+
+\section{Scope and intended use}
+
+The analysis accepts one final-state positive charged lepton, one negative
+charged lepton, their flavour-matched neutrino and antineutrino, one \(b\), and
+one \(\bar b\).  Here \(\ell=e,\mu,\tau\); particle identification is by PDG
+code and status rather than by position in the process definition.  The
+positive-lepton chain is always associated with the top decay and the
+negative-lepton chain with the antitop decay.  Extra final-state light quarks
+and gluons are allowed.  Events that do not have a unique required set of
+decay products stop with an explicit error instead of silently filling an
+incorrect observable.
+
+There are three complementary levels:
+
+\begin{enumerate}[leftmargin=1.8em]
+\item \textbf{Inclusive truth} uses the exact neutrino momenta and perfect
+  identification of decay products, with no acceptance cuts.  It is useful
+  for theory comparisons, spin-density studies, and understanding decay
+  dynamics, but is not directly measurable.
+\item \textbf{Fiducial visible} applies lepton, jet, isolation, dilepton-mass,
+  and missing-momentum requirements.  It never uses the individual true
+  neutrino momenta.  These observables are closest to stable-particle or
+  detector-level measurements, subject to the parton-level limitations in
+  Sec.~\ref{sec:limitations}.
+\item \textbf{Neutrino-blind reconstructed} starts from the fiducial objects
+  and total missing transverse momentum.  A deterministic mass-constraint
+  fit supplies two neutrino four-momenta, reconstructed \(W^\pm\), top and
+  antitop candidates, and reconstructed spin angles.  This is a transparent
+  fixed-order proxy, not an emulation of a particular experimental fit.
+\end{enumerate}
+
+All plots are filled with every active HwU weight.  Thus the central value,
+scale variations, PDF variations, and any other weights made available by the
+run are propagated consistently.  Histogram integrals have the normal
+fixed-order cross-section normalization; no shape normalization is applied by
+the analysis.
+
+\section{Kinematic conventions}
+
+Four-vectors are \(p=(E,p_x,p_y,p_z)\), with
+\begin{align}
+ \pt(p)&=\sqrt{p_x^2+p_y^2}, &
+ y(p)&=\frac12\ln\frac{E+p_z}{E-p_z},\\
+ \eta(p)&=\frac12\ln\frac{|\vec p|+p_z}{|\vec p|-p_z}, &
+ m(p)&=\sqrt{\max(0,p^2)}.
+\end{align}
+The unsigned azimuthal separation lies in \([0,\pi]\), while
+\(\ddphi_{\rm signed}(a,b)=\operatorname{atan2}[\sin(\phi_a-\phi_b),
+\cos(\phi_a-\phi_b)]\).  Angular distance is
+\(\dr=\sqrt{(\Delta\eta)^2+(\ddphi)^2}\).  ``Leading'' and ``trailing''
+mean largest and smallest \(\pt\), respectively.
+
+The total missing transverse vector is constructed only from visible
+final-state particles,
+\begin{equation}
+ \vec p_{\mathrm T}^{\,\mathrm{miss}}
+ =-\sum_{i\notin\{\nu_e,\nu_\mu,\nu_\tau\}}\vec p_{\mathrm T,i}.
+\end{equation}
+Momentum conservation makes it equal to the dineutrino transverse momentum
+for an ideal event, but the realistic reconstruction never reads either true
+neutrino momentum separately.
+
+For a visible system \(v\) and a massless invisible transverse momentum
+\(\vec q_{\mathrm T}\),
+\begin{equation}
+ m_{\mathrm T}^2(v,\vec q_{\mathrm T})=m_v^2+2
+ \left(E_{\mathrm T,v}|\vec q_{\mathrm T}|-
+       \vec p_{\mathrm T,v}\!\cdot\!\vec q_{\mathrm T}\right),
+ \qquad E_{\mathrm T,v}=\sqrt{m_v^2+\pt^2(v)}.
+\end{equation}
+The dilepton cluster transverse mass treats the two neutrinos as one massless
+invisible system.  The stransverse mass is
+\begin{equation}
+ m_{\mathrm T2}(v_1,v_2)=
+ \min_{\vec q_{1\mathrm T}+\vec q_{2\mathrm T}=\vec p_{\mathrm T}^{\rm miss}}
+ \max\{m_{\mathrm T}(v_1,\vec q_{1\mathrm T}),
+       m_{\mathrm T}(v_2,\vec q_{2\mathrm T})\}.
+\end{equation}
+The code evaluates this two-dimensional minimum with a coarse grid followed
+by a convergent pattern search.  For \(m_{\mathrm T2}^{b\ell}\), both
+lepton--b-jet pairings are minimized and the smaller result is retained.
+
+\section{Truth resonances and IR-safe jets}
+
+The exact \(W\) candidates are
+\(p_{\Wp}=p_{\lplus}+p_\nu\) and
+\(p_{\Wm}=p_{\lminus}+p_{\bar\nu}\).  At Born level the top candidates are
+\(p_{\Wp}+p_b\) and \(p_{\Wm}+p_{\bar b}\).  With real radiation, every
+non-bottom final-state QCD parton is assigned to production, the top decay, or
+the antitop decay.  Of the \(3^{N_{\rm rad}}\) assignments, the analysis picks
+the one minimizing
+\begin{equation}
+ \chi^2_{\rm truth}=
+ \left(\frac{m_{t,\rm cand}-m_t^{\rm ref}}{5\ \mathrm{GeV}}\right)^2+
+ \left(\frac{m_{\bar t,\rm cand}-m_t^{\rm ref}}{5\ \mathrm{GeV}}\right)^2.
+\end{equation}
+This makes the reconstruction independent of event-record ordering and keeps
+decay radiation with the resonance that it reconstructs.  Soft and collinear
+limits are unchanged except on measure-zero assignment boundaries.  The
+reference masses are read from the model parameters.
+
+All final-state quarks with \(|\mathrm{PDG}|\leq5\) and all gluons are passed
+to FastJet.  Jets use the anti-\(k_T\) algorithm with \(R=0.4\); unless stated
+otherwise, counted jets have \(\pt>25\) GeV and \(|\eta|<4.5\).  A jet is
+ideally b-tagged when it contains the unique final-state \(b\) or \(\bar b\)
+parton.  If both are clustered into one jet, inclusive jet plots remain
+well-defined but the two-distinct-b-jet fiducial requirement fails.  Additional
+jets are all accepted jets other than the two b-tagged jet indices.
+
+Define
+\begin{align}
+ H_{\mathrm T}^{j}&=\sum_{j}\pt(j), &
+ H_{\mathrm T}^{\rm extra}&=\sum_{j\notin b,\bar b}\pt(j),\\
+ H_{\mathrm T}^{\rm vis}&=\pt(\lplus)+\pt(\lminus)+H_{\mathrm T}^{j}, &
+ S_{\mathrm T}&=H_{\mathrm T}^{\rm vis}+\met,\\
+ p_{\rm vis}&=p_{\lplus}+p_{\lminus}+p_{b\text{-jet}}+p_{\bar b\text{-jet}}.
+\end{align}
+The two jet-gap histograms are cumulative cross sections, not differential
+spectra: their bin centred at \(Q\) receives an event when the leading
+additional-jet \(\pt<Q\), or when \(H_{\mathrm T}^{\rm extra}<Q\),
+respectively.  Threshold centres run from 15 to 205 GeV in 10 GeV steps.
+
+\section{Fiducial region and cutflow}
+\label{sec:fiducial}
+
+The baseline fiducial selection is deliberately simple and reproducible:
+\begin{align*}
+ \pt(\ell_1)&>25\ \mathrm{GeV}, & \pt(\ell_2)&>20\ \mathrm{GeV},
+ & |\eta(\ell)|&<2.5,\\
+ m_{\ell\ell}&>20\ \mathrm{GeV}, &
+ \pt(b\text{-jet})&>30\ \mathrm{GeV}, & |\eta(b\text{-jet})|&<2.5,\\
+ \min_{\ell,j}\dr(\ell,j)&>0.4, & \met&>20\ \mathrm{GeV}.&&
+\end{align*}
+Two distinct b-tagged jets are required.  The isolation minimum includes all
+jets with \(\pt>25\) GeV and \(|\eta|<4.5\).  An additional same-flavour
+signal-region stage requires
+\(|m_{\ell\ell}-91.1876\ \mathrm{GeV}|>15\) GeV and \(\met>40\) GeV;
+different-flavour events pass this stage without the extra requirements.
+
+The eight cutflow bin centres mean:
+\begin{center}
+\begin{tabular}{cl}
+\toprule
+Bin & Requirement accumulated through this bin\\
+\midrule
+1 & all valid dileptonic events\\
+2 & lepton \(\pt\) and \(|\eta|\)\\
+3 & dilepton mass\\
+4 & two distinct accepted b-tagged jets\\
+5 & lepton--jet separation\\
+6 & baseline missing transverse momentum (the fiducial sample)\\
+7 & same-flavour \(Z\)-veto and tightened \(\met\), when applicable\\
+8 & successful neutrino reconstruction after bin 7\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The visible \(b\ell\) pairing chooses between
+\(\{\lplus b,\lminus\bar b\}\) and
+\(\{\lplus\bar b,\lminus b\}\) by selecting the pairing with the smaller
+maximum pair mass.  The minimum, maximum, and average masses in the chosen
+pairing are plotted.  This definition uses no neutrino information.
+
+\section{Neutrino-blind reconstruction}
+
+For a trial transverse split
+\(\vec q_{\mathrm T}\) and
+\(\vec p_{\mathrm T}^{\rm miss}-\vec q_{\mathrm T}\), the two equations
+\((p_{\ell}+p_\nu)^2=(m_W^{\rm ref})^2\) give up to two longitudinal roots per
+side.  When a discriminant is negative, its real part is used.  Both roots and
+both b-jet/lepton pairings are tested.  The selected solution minimizes
+\begin{align}
+ \chi^2_{\rm reco}={}&
+ \sum_{q=t,\bar t}\left(\frac{m_q-m_t^{\rm ref}}{15\ \mathrm{GeV}}\right)^2
+ +\sum_{V=\Wp,\Wm}\left(\frac{m_V-m_W^{\rm ref}}{10\ \mathrm{GeV}}\right)^2
+ +\left(\frac{m_t-m_{\bar t}}{30\ \mathrm{GeV}}\right)^2.
+\end{align}
+The transverse split is initialized on a \(5\times5\) grid around half of
+\(\vec p_{\mathrm T}^{\rm miss}\), followed by up to twelve eight-direction
+pattern-search refinements.  The procedure is deterministic and uses only the
+two charged leptons, two b-tagged jets, total \(\vec p_{\mathrm T}^{\rm miss}\),
+and the model pole masses.  Consequently reconstructed truth-comparison plots
+are validation diagnostics; all other reconstructed plots are in principle
+obtainable without observing either neutrino separately.
+
+\section{Spin-correlation observables}
+\label{sec:spin}
+
+Spin axes are constructed in the \(\ttbar\) rest frame.  Let \(\hat p\) be
+the boosted positive-beam direction, \(\hat k\) the top direction, and
+\(c=\hat p\cdot\hat k\).  The beam-basis triad is
+\begin{equation}
+ \hat r=\operatorname{sign}(c)\,
+ \frac{\hat p-c\hat k}{\sqrt{1-c^2}},\qquad
+ \hat n=\operatorname{sign}(c)\,
+ \frac{\hat p\times\hat k}{\sqrt{1-c^2}},\qquad
+ \hat k=\frac{\vec p_t^{\,\ttbar}}{|\vec p_t^{\,\ttbar}|}.
+\end{equation}
+The sign factors make the axes appropriate for a symmetric \(pp\) initial
+state.  A deterministic orthogonal completion is used at the exceptional
+forward points.  The charged leptons are boosted first into the \(\ttbar\)
+frame and then into their respective parent rest frames.  With
+\(a,b\in\{k,r,n\}\),
+\begin{equation}
+ c_a^+=\hat\ell_+\cdot\hat a,\qquad
+ c_b^-=\hat\ell_-\cdot\hat b,
+ \qquad q_{ab}=c_a^+c_b^-.
+\end{equation}
+The six one-spin angles and all nine products are histogrammed.  This is the
+complete angular information needed for the single-spin polarizations and the
+\(3\times3\) spin-correlation matrix.  In the commonly used convention
+\begin{equation}
+ \frac1\sigma\frac{d^2\sigma}{dc_a^+dc_b^-}
+ =\frac14\left[1+B_a^+c_a^+ + B_b^-c_b^- -C_{ab}c_a^+c_b^-\right],
+\end{equation}
+the moments obey \(B_a^\pm=3\langle c_a^\pm\rangle\) and
+\(C_{ab}=-9\langle q_{ab}\rangle\).  Stating this convention matters: the
+histograms themselves are raw, convention-independent angular moments.
+
+The symmetric and antisymmetric off-diagonal combinations expose
+\(C_{ab}\!+C_{ba}\) and \(C_{ab}\!-C_{ba}\).  The event-level diagonal
+quantity is
+\(d_{\rm diag}=(q_{kk}+q_{rr}+q_{nn})/3\); with the convention above,
+\(D\equiv\operatorname{tr}C/3=-9\langle d_{\rm diag}\rangle\).
+The lepton opening cosine, laboratory \(\ddphi_{\ell\ell}\), signed
+\(\sin\ddphi_{\ell\ell}\), and
+\((\hat\ell_+\times\hat\ell_-)\cdot\hat k\) provide compact spin and
+CP-sensitive projections.  The complete set is filled once with exact truth
+tops (histograms 191--216) and once with reconstructed tops (217--242).
+
+For the \(W\)-helicity angles, the charged lepton is evaluated in its \(W\)
+rest frame against the direction opposite to the top-decay recoil in that
+frame.  This exact definition is used for both charges and avoids ambiguity
+about the anti-top decay-product ordering.
+
+\section{Complete histogram catalogue}
+
+The integer in the first column is the booking order in
+\code{MADatNLO.HwU}.  Every name shown below is followed by the HwU tag
+\code{|T@NLO}.  ``Truth'' means no acceptance selection; ``fiducial'' means
+the baseline through cutflow bin 6; ``reconstructed'' additionally requires a
+valid mass-constraint solution.
+
+\subsection{Rates and truth top-pair kinematics (1--28)}
+
+\begin{longtable}{L{1.1cm}L{5.7cm}L{9.0cm}}
+\toprule ID & HwU name & Definition and purpose\\ \midrule\endhead
+1 & \hist{inclusive rate} & One-bin total valid-process rate.\\
+2 & \hist{fiducial cutflow} & Eight cumulative stages defined in Sec.~\ref{sec:fiducial}.\\
+3--4 & \hist{truth top pT}; \hist{truth antitop pT} & \(\pt(t)\) and \(\pt(\bar t)\).\\
+5--6 & \hist{truth leading top pT}; \hist{truth trailing top pT} & Maximum and minimum of the two top transverse momenta.\\
+7--8 & \hist{truth top rapidity}; \hist{truth antitop rapidity} & \(y_t\) and \(y_{\bar t}\).\\
+9 & \hist{truth ttbar mass} & \(m_{\ttbar}\), central for threshold and boosted-tail studies.\\
+10 & \hist{truth ttbar pT} & Recoil \(\pt(\ttbar)\), zero at production Born level but populated by radiation.\\
+11--12 & \hist{truth ttbar rapidity}; \hist{truth abs ttbar rapidity} & \(y_{\ttbar}\) and \(|y_{\ttbar}|\).\\
+13--14 & \hist{truth delta rapidity top antitop}; \hist{truth abs delta rapidity top antitop} & \(y_t-y_{\bar t}\) and its absolute value.\\
+15 & \hist{truth delta abs rapidity top antitop} & \(|y_t|-|y_{\bar t}|\), a charge-asymmetry observable.\\
+16 & \hist{truth ttbar boost rapidity} & \((y_t+y_{\bar t})/2\).\\
+17 & \hist{truth ttbar star rapidity} & \((y_t-y_{\bar t})/2\).\\
+18 & \hist{truth top scattering cosine} & Cosine between the top and positive beam in the \(\ttbar\) frame.\\
+19 & \hist{truth top speed in ttbar frame} & \(|\vec p_t^{\,\ttbar}|/E_t^{\ttbar}\).\\
+20 & \hist{truth rho two mt over mtt} & \(\rho=2m_t^{\rm ref}/m_{\ttbar}\), emphasizing threshold.\\
+21--22 & \hist{truth delta phi top antitop}; \hist{truth delta R top antitop} & Top-pair azimuthal and \(\eta\)-\(\phi\) separations.\\
+23 & \hist{truth scalar top pT sum} & \(\pt(t)+\pt(\bar t)\).\\
+24 & \hist{truth top pT asymmetry} & \([\pt(t)-\pt(\bar t)]/[\pt(t)+\pt(\bar t)]\).\\
+25 & \hist{truth ttbar transverse centrality} & \(2[\pt(t)+\pt(\bar t)]/m_{\ttbar}\).\\
+26 & \hist{truth top energy in ttbar frame} & \(E_t^{\ttbar}\).\\
+27 & \hist{truth chi exp abs delta y} & \(\chi=\exp|y_t-y_{\bar t}|\).\\
+28 & \hist{truth ttbar longitudinal boost} & \(|p_{z,\ttbar}|/E_{\ttbar}\).\\
+\bottomrule
+\end{longtable}
+
+\subsection{Truth charged-lepton observables (29--52)}
+
+\begin{longtable}{L{1.1cm}L{6.0cm}L{8.7cm}}
+\toprule ID & HwU name & Definition and purpose\\ \midrule\endhead
+29--30 & \hist{truth positive lepton pT}; \hist{truth negative lepton pT} & Charge-separated lepton transverse momenta.\\
+31--32 & \hist{truth leading lepton pT}; \hist{truth trailing lepton pT} & Ordered lepton transverse momenta.\\
+33--34 & \hist{truth positive lepton eta}; \hist{truth negative lepton eta} & Charge-separated pseudorapidities.\\
+35--36 & \hist{truth positive lepton rapidity}; \hist{truth negative lepton rapidity} & Charge-separated true rapidities.\\
+37--40 & \hist{truth dilepton mass}; \hist{truth dilepton pT}; \hist{truth dilepton rapidity}; \hist{truth abs dilepton rapidity} & \(m_{\ell\ell}\), \(\pt(\ell\ell)\), \(y_{\ell\ell}\), and \(|y_{\ell\ell}|\).\\
+41 & \hist{truth dilepton delta phi} & Unsigned \(\ddphi(\lplus,\lminus)\), a robust laboratory spin observable.\\
+42--43 & \hist{truth dilepton delta eta}; \hist{truth abs dilepton delta eta} & \(\eta_+-\eta_-\) and its absolute value.\\
+44 & \hist{truth dilepton delta R} & \(\dr(\lplus,\lminus)\).\\
+45 & \hist{truth lepton opening cosine lab} & \(\hat\ell_+^{\rm lab}\cdot\hat\ell_-^{\rm lab}\).\\
+46 & \hist{truth dilepton cos theta star} & \(\tanh[(\eta_+-\eta_-)/2]\), a longitudinally boost-invariant scattering proxy.\\
+47 & \hist{truth lepton pT ratio} & \(\pt(\ell_2)/\pt(\ell_1)\).\\
+48 & \hist{truth scalar lepton pT sum} & \(H_{\mathrm T}^{\ell}=\pt(\lplus)+\pt(\lminus)\).\\
+49 & \hist{truth delta abs lepton eta} & \(|\eta_+|-|\eta_-|\), sensitive to charge-dependent centrality.\\
+50 & \hist{truth dilepton acoplanarity} & \(\pi-\ddphi_{\ell\ell}\).\\
+51 & \hist{truth signed dilepton delta phi} & Wrapped \(\phi_+-\phi_-\in[-\pi,\pi]\).\\
+52 & \hist{truth dilepton mass over lepton HT} & \(m_{\ell\ell}/H_{\mathrm T}^{\ell}\).\\
+\bottomrule
+\end{longtable}
+
+\subsection{Truth W-boson, decay, and neutrino observables (53--91)}
+
+\begin{longtable}{L{1.1cm}L{6.1cm}L{8.6cm}}
+\toprule ID & HwU name & Definition and purpose\\ \midrule\endhead
+53--55 & \hist{truth Wplus pT}; \hist{truth Wplus rapidity}; \hist{truth Wplus mass} & \(\pt\), \(y\), and invariant mass of \(p_{\lplus}+p_\nu\).\\
+56--58 & \hist{truth Wminus pT}; \hist{truth Wminus rapidity}; \hist{truth Wminus mass} & Corresponding quantities for \(p_{\lminus}+p_{\bar\nu}\).\\
+59--61 & \hist{truth WW mass}; \hist{truth WW pT}; \hist{truth WW rapidity} & Invariant mass, transverse momentum, and rapidity of the diboson system.\\
+62--63 & \hist{truth WW delta phi}; \hist{truth WW delta R} & Angular separations of the two truth \(W\) candidates.\\
+64--65 & \hist{truth positive lepton b mass}; \hist{truth negative lepton bbar mass} & Charge-correct \(m(\lplus b\text{-jet})\) and \(m(\lminus\bar b\text{-jet})\).\\
+66--68 & \hist{truth minimum correct lb mass}; \hist{truth maximum correct lb mass}; \hist{truth average correct lb mass} & Minimum, maximum, and mean of the two charge-correct masses.\\
+69--70 & \hist{truth positive lepton energy top frame}; \hist{truth negative lepton energy top frame} & Charged-lepton energies in the associated exact parent rest frames.\\
+71--72 & \hist{truth top recoil energy top frame}; \hist{truth antitop recoil energy top frame} & Energy of \(p_t-p_W\) in each parent frame; includes assigned decay radiation.\\
+73--74 & \hist{truth Wplus helicity cosine}; \hist{truth Wminus helicity cosine} & Charged-lepton helicity angles defined in Sec.~\ref{sec:spin}.\\
+75--76 & \hist{truth Wplus energy top frame}; \hist{truth Wminus energy top frame} & \(W\)-candidate energy in its parent rest frame.\\
+77--79 & \hist{truth neutrino pT}; \hist{truth neutrino eta}; \hist{truth neutrino rapidity} & Exact top-decay neutrino kinematics; theory-only.\\
+80--82 & \hist{truth antineutrino pT}; \hist{truth antineutrino eta}; \hist{truth antineutrino rapidity} & Exact antitop-decay antineutrino kinematics; theory-only.\\
+83--85 & \hist{truth dineutrino pT}; \hist{truth dineutrino mass}; \hist{truth dineutrino rapidity} & Kinematics of \(p_\nu+p_{\bar\nu}\).\\
+86--87 & \hist{truth dineutrino delta phi}; \hist{truth dineutrino delta R} & Separation of the two exact neutrinos; theory-only.\\
+88 & \hist{visible missing pT} & Magnitude of missing momentum inferred from the visible final state.\\
+89--90 & \hist{minimum delta phi missing pT lepton}; \hist{maximum delta phi missing pT lepton} & Smaller and larger of the two lepton--missing-vector azimuthal separations.\\
+91 & \hist{dilepton missing transverse mass} & Cluster transverse mass of \(p_{\ell\ell}\) and total missing momentum.\\
+\bottomrule
+\end{longtable}
+
+\subsection{FastJet and event-activity observables (92--121)}
+
+\begin{longtable}{L{1.1cm}L{6.1cm}L{8.6cm}}
+\toprule ID & HwU name & Definition and purpose\\ \midrule\endhead
+92--93 & \hist{truth b jet pT}; \hist{truth bbar jet pT} & Ideal flavour-labelled b-jet transverse momenta.\\
+94--95 & \hist{truth leading b jet pT}; \hist{truth trailing b jet pT} & Ordered b-jet transverse momenta.\\
+96--97 & \hist{truth b jet eta}; \hist{truth bbar jet eta} & Ideal flavour-labelled b-jet pseudorapidities.\\
+98--101 & \hist{truth bb jet mass}; \hist{truth bb jet pT}; \hist{truth bb jet delta phi}; \hist{truth bb jet delta R} & Mass, recoil, and separation of the two b-jet system.\\
+102--103 & \hist{jet multiplicity pT25}; \hist{jet multiplicity pT40} & Numbers of jets with \(|\eta|<4.5\) above 25 and 40 GeV.\\
+104--107 & \hist{leading jet pT}; \hist{leading jet eta}; \hist{subleading jet pT}; \hist{subleading jet eta} & Kinematics of the first two accepted jets, ordered by FastJet \(\pt\).\\
+108 & \hist{additional jet multiplicity pT25} & Accepted jets excluding the b- and \(\bar b\)-tagged jet indices.\\
+109--110 & \hist{leading additional jet pT}; \hist{leading additional jet rapidity} & Hardest additional-jet kinematics when one is present.\\
+111 & \hist{additional jet HT} & \(H_{\mathrm T}^{\rm extra}\).\\
+112 & \hist{jet HT pT25} & \(H_{\mathrm T}^{j}\).\\
+113 & \hist{visible HT leptons and jets} & \(H_{\mathrm T}^{\rm vis}\).\\
+114 & \hist{visible ST including missing pT} & \(S_{\mathrm T}\).\\
+115--117 & \hist{visible dilepton bb mass}; \hist{visible dilepton bb pT}; \hist{visible dilepton bb rapidity} & Kinematics of \(p_{\rm vis}\).\\
+118 & \hist{additional jet gap Q0} & Cumulative rate with leading additional-jet \(\pt<Q_0\).\\
+119 & \hist{additional jet gap Qsum} & Cumulative rate with \(H_{\mathrm T}^{\rm extra}<Q_{\rm sum}\).\\
+120--121 & \hist{minimum lepton b jet delta R}; \hist{maximum lepton b jet delta R} & Minimum and maximum among all four charged-lepton/b-jet pair distances.\\
+\bottomrule
+\end{longtable}
+
+\subsection{Fiducial visible observables (122--159)}
+
+\begin{longtable}{L{1.1cm}L{6.25cm}L{8.45cm}}
+\toprule ID & HwU name & Definition and purpose\\ \midrule\endhead
+122 & \hist{fiducial rate} & One-bin baseline fiducial cross section.\\
+123--124 & \hist{fiducial leading lepton pT}; \hist{fiducial trailing lepton pT} & Ordered selected-lepton transverse momenta.\\
+125--126 & \hist{fiducial positive lepton eta}; \hist{fiducial negative lepton eta} & Charge-separated selected-lepton pseudorapidities.\\
+127--129 & \hist{fiducial dilepton mass}; \hist{fiducial dilepton pT}; \hist{fiducial dilepton rapidity} & Selected dilepton-system kinematics.\\
+130--132 & \hist{fiducial dilepton delta phi}; \hist{fiducial abs dilepton delta eta}; \hist{fiducial dilepton delta R} & Selected dilepton angular separations.\\
+133 & \hist{fiducial missing pT} & Visible-state \(\met\) after the baseline cuts.\\
+134 & \hist{fiducial dilepton missing transverse mass} & Dilepton cluster transverse mass.\\
+135 & \hist{fiducial min delta phi missing lepton} & Smaller lepton--missing-vector azimuthal separation.\\
+136--139 & \hist{fiducial leading b jet pT}; \hist{fiducial trailing b jet pT}; \hist{fiducial abs leading b jet eta}; \hist{fiducial abs trailing b jet eta} & Ordered accepted b-jet kinematics.\\
+140--142 & \hist{fiducial bb jet mass}; \hist{fiducial bb jet pT}; \hist{fiducial bb jet delta R} & Selected b-jet-pair kinematics.\\
+143--145 & \hist{fiducial visible dilepton bb mass}; \hist{fiducial visible dilepton bb pT}; \hist{fiducial visible dilepton bb rapidity} & Kinematics of the selected visible \(\ell\ell b\bar b\) system.\\
+146--148 & \hist{fiducial jet HT}; \hist{fiducial visible HT}; \hist{fiducial ST} & Selected \(H_{\mathrm T}^{j}\), \(H_{\mathrm T}^{\rm vis}\), and \(S_{\mathrm T}\).\\
+149--150 & \hist{fiducial jet multiplicity}; \hist{fiducial additional jet multiplicity} & Selected total and non-b jet counts.\\
+151--153 & \hist{fiducial minimum paired lb mass}; \hist{fiducial maximum paired lb mass}; \hist{fiducial average paired lb mass} & Three masses from the neutrino-blind minimax pairing.\\
+154 & \hist{fiducial mT2 dilepton} & \(m_{\mathrm T2}(\lplus,\lminus)\) with massless invisible daughters.\\
+155 & \hist{fiducial mT2 lb systems} & Minimum \(m_{\mathrm T2}\) of the two possible \(b\ell\) pairings.\\
+156 & \hist{fiducial delta abs lepton eta} & \(|\eta_+|-|\eta_-|\).\\
+157 & \hist{fiducial lepton pT ratio} & Trailing-to-leading lepton \(\pt\) ratio.\\
+158 & \hist{fiducial b jet pT ratio} & Trailing-to-leading b-jet \(\pt\) ratio.\\
+159 & \hist{fiducial lepton opening cosine lab} & Laboratory three-dimensional charged-lepton opening cosine.\\
+\bottomrule
+\end{longtable}
+
+\subsection{Neutrino-blind reconstructed observables (160--190)}
+
+\begin{longtable}{L{1.1cm}L{6.25cm}L{8.45cm}}
+\toprule ID & HwU name & Definition and purpose\\ \midrule\endhead
+160 & \hist{reconstructed rate} & One-bin rate for successful reconstruction in the baseline fiducial region.\\
+161--163 & \hist{reconstructed Wplus pT}; \hist{reconstructed Wplus rapidity}; \hist{reconstructed Wplus mass} & Fitted \(W^+\) candidate kinematics.\\
+164--166 & \hist{reconstructed Wminus pT}; \hist{reconstructed Wminus rapidity}; \hist{reconstructed Wminus mass} & Fitted \(W^-\) candidate kinematics.\\
+167--169 & \hist{reconstructed top pT}; \hist{reconstructed top rapidity}; \hist{reconstructed top mass} & Fitted top kinematics.\\
+170--172 & \hist{reconstructed antitop pT}; \hist{reconstructed antitop rapidity}; \hist{reconstructed antitop mass} & Fitted antitop kinematics.\\
+173--175 & \hist{reconstructed ttbar mass}; \hist{reconstructed ttbar pT}; \hist{reconstructed ttbar rapidity} & Fitted top-pair-system kinematics.\\
+176 & \hist{reconstructed delta top rapidity} & \(y_t^{\rm reco}-y_{\bar t}^{\rm reco}\).\\
+177 & \hist{reconstructed delta abs top rapidity} & \(|y_t^{\rm reco}|-|y_{\bar t}^{\rm reco}|\).\\
+178 & \hist{reconstructed top scattering cosine} & Reconstructed top/beam angle in the reconstructed \(\ttbar\) frame.\\
+179 & \hist{reconstructed top speed ttbar frame} & Reconstructed \(|\vec p_t|/E_t\) in that frame.\\
+180--181 & \hist{reconstructed neutrino pz}; \hist{reconstructed antineutrino pz} & Longitudinal roots selected by the global constraint score.\\
+182--183 & \hist{reconstructed dineutrino mass}; \hist{reconstructed dineutrino pz} & Mass and longitudinal momentum of the fitted neutrino pair.\\
+184 & \hist{reconstruction constraint score} & Selected \(\chi^2_{\rm reco}\), clipped only at the histogram edge.\\
+185 & \hist{reconstructed top mass difference} & \(m_t^{\rm reco}-m_{\bar t}^{\rm reco}\).\\
+186 & \hist{reconstructed b lepton pairing} & Bin 1 is charge-correct \((\lplus b,\lminus\bar b)\); bin 2 is crossed.\\
+187 & \hist{reco truth average top pT ratio} & \([\pt(t)_{\rm reco}+\pt(\bar t)_{\rm reco}]/[\pt(t)_{\rm truth}+\pt(\bar t)_{\rm truth}]\); validation only.\\
+188 & \hist{reco truth ttbar mass residual} & \(m_{\ttbar}^{\rm reco}-m_{\ttbar}^{\rm truth}\); validation only.\\
+189--190 & \hist{reconstructed Wplus helicity cosine}; \hist{reconstructed Wminus helicity cosine} & Helicity angles from fitted \(W\) and top candidates.\\
+\bottomrule
+\end{longtable}
+
+\subsection{Truth and reconstructed spin sets (191--242)}
+
+The following 26-entry template occurs twice.  In the table, \(s=191\) for
+the truth set and \(s=217\) for the reconstructed set; the ID is
+\(s+i-1\).  The exact HwU prefix is \hist{truth spin} or \hist{reco spin}.
+
+\begin{longtable}{L{1.3cm}L{5.6cm}L{8.9cm}}
+\toprule \(i\) (IDs) & Suffix & Definition\\ \midrule\endhead
+1--3 (191--193; 217--219) & \hist{cos plus k/r/n} & \(c_k^+,c_r^+,c_n^+\): positive-lepton one-spin analysers.\\
+4--6 (194--196; 220--222) & \hist{cos minus k/r/n} & \(c_k^-,c_r^-,c_n^-\): negative-lepton one-spin analysers.\\
+7--15 (197--205; 223--231) & \hist{product kk, kr, kn, rk, rr, rn, nk, nr, nn} & All \(q_{ab}=c_a^+c_b^-\), in row-major \(a,b=k,r,n\) order; the full correlation matrix.\\
+16 (206; 232) & \hist{lepton opening cosine} & \(\hat\ell_+\cdot\hat\ell_-\) in their respective parent rest frames, using common \(k,r,n\) coordinates.\\
+17 (207; 233) & \hist{lab dilepton delta phi} & Unsigned laboratory \(\ddphi_{\ell\ell}\).\\
+18--19 (208--209; 234--235) & \hist{symmetric kr rk}; \hist{antisymmetric kr rk} & \(q_{kr}+q_{rk}\) and \(q_{kr}-q_{rk}\).\\
+20--21 (210--211; 236--237) & \hist{symmetric kn nk}; \hist{antisymmetric kn nk} & \(q_{kn}+q_{nk}\) and \(q_{kn}-q_{nk}\).\\
+22--23 (212--213; 238--239) & \hist{symmetric rn nr}; \hist{antisymmetric rn nr} & \(q_{rn}+q_{nr}\) and \(q_{rn}-q_{nr}\).\\
+24 (214; 240) & \hist{lepton triple product} & \((\hat\ell_+\times\hat\ell_-)\cdot\hat k\), a signed naive-T-odd projection.\\
+25 (215; 241) & \hist{diagonal D estimator} & Event variable \((q_{kk}+q_{rr}+q_{nn})/3\).\\
+26 (216; 242) & \hist{signed sine delta phi} & \(\sin[\ddphi_{\rm signed}(\lplus,\lminus)]\).\\
+\bottomrule
+\end{longtable}
+
+\subsection{Reconstruction diagnostics (243--247)}
+
+\begin{longtable}{L{1.1cm}L{6.1cm}L{8.6cm}}
+\toprule ID & HwU name & Definition and purpose\\ \midrule\endhead
+243 & \hist{diagnostic truth top assignment score} & \(\chi^2_{\rm truth}\) of the selected radiation assignment.\\
+244 & \hist{diagnostic assigned radiation count} & Number of light QCD partons assigned to either top decay rather than production.\\
+245 & \hist{diagnostic truth top mass residual} & \(\max(|m_t-m_t^{\rm ref}|,|m_{\bar t}-m_t^{\rm ref}|)\).\\
+246 & \hist{diagnostic reco W mass residual} & \(\max(|m_{W^+}^{\rm reco}-m_W^{\rm ref}|,|m_{W^-}^{\rm reco}-m_W^{\rm ref}|)\).\\
+247 & \hist{diagnostic reconstruction rate} & One-bin successful-reconstruction rate; compare with the fiducial rate.\\
+\bottomrule
+\end{longtable}
+
+\section{Fixed-order and IR-safety considerations}
+
+The analysis is called on real events and on their soft, collinear, and
+soft-collinear projections.  It deliberately does not branch on the internal
+body label.  Anti-\(k_T\) jets, inclusive missing momentum, the deterministic
+minimizations, and all measurement cuts are applied identically to each
+event/counterevent.  Therefore unresolved momenta that are indistinguishable
+to an IR-safe observable remain indistinguishable to the analysis.  Sharp cut
+boundaries and discrete assignment boundaries can differ only on sets of zero
+phase-space measure, as in an ordinary fixed-order analysis.
+
+The truth-top assignment is resonance-aware but not an event-history query.
+This matters for the multiplicative path, whose combined event can contain
+different real/Born momentum choices for different production and decay
+blocks.  The analysis reconstructs solely from the materialized external
+state, so additive and multiplicative results use the same observable
+definition.
+
+Jet multiplicities and jet vetoes are meaningful fixed-order observables, but
+large logarithms can make the exclusive zero-additional-jet region sensitive
+to resummation.  Similarly, tails near kinematic endpoints can carry large
+scale dependence.  HwU scale/PDF variations should be inspected rather than
+interpreting only a central curve.
+
+\section{Running the analysis}
+
+Select the module in \code{Cards/FO_analyse_card.dat}:
+\begin{verbatim}
+FO_ANALYSIS_FORMAT = HwU
+FO_ANALYSE         = analysis_HwU_pp_ttx_dilepton.o
+\end{verbatim}
+The companion ABI bridge is selected automatically.  FastJet is already part
+of the fixed-order template link, so no extra FastJet entry is needed in
+\code{FO_EXTRALIBS}.  The module works for both
+\code{NLO_DECAY_COMBINATION ADDITIVE} and
+\code{NLO_DECAY_COMBINATION MULTIPLICATIVE}.  The output is
+\code{MADatNLO.HwU}; standard HwU post-processing may be used for uncertainty
+bands, normalized distributions, ratios, and publication plots.
+
+For a direct-decay process, a representative syntax is
+\begin{verbatim}
+generate p p > t t~ [QCD], \
+ (t > w+ b QED=1 [QCD], w+ > e+ ve), \
+ (t~ > w- b~ QED=1 [QCD], w- > mu- vm~)
+\end{verbatim}
+The lepton flavour and the order of decay products in the process command do
+not affect object mapping.
+
+\section{Limitations and interpretation}
+\label{sec:limitations}
+
+\begin{itemize}[leftmargin=1.8em]
+\item Jets are parton-level FastJet jets.  There is no shower,
+  hadronization, pile-up, detector response, lepton dressing, or b-tagging
+  efficiency/mistag model.  Ideal constituent flavour labels are used only to
+  identify the two b jets.
+\item The fiducial cuts are a generic LHC-like reference selection, not the
+  exact selection of a specific ATLAS or CMS publication.  A comparison to
+  data must reproduce that measurement's object definitions, flavour
+  channels, dressing, jet acceptance, and unfolding level.
+\item The neutrino reconstruction is a fast deterministic constraint fit.
+  Experimental methods can include transfer functions, multiple detector
+  hypotheses, likelihood weights, and resolution smearing.  Truth-residual
+  plots 187--188 are not observable in data.
+\item Exact neutrino, exact \(W\), truth-top, and truth-spin plots assume
+  perfect knowledge and are theory-only.  Fiducial lepton, jet, missing-
+  momentum, \(m_{\mathrm T2}\), and visible-system plots require much less
+  reconstruction and are the preferred measurement-facing set.
+\item The analysis expects exactly one final charged lepton of each sign and a
+  unique flavour-matched neutrino pair.  It does not unfold secondary
+  \(\tau\) decays or additional electroweak lepton pairs.
+\end{itemize}
+
+\section{Primary references}
+
+The complete spin-density-matrix organization and the \(k,r,n\) basis follow
+the framework of Bernreuther, Heisler, and Si,
+\href{https://arxiv.org/abs/1508.05271}{arXiv:1508.05271}.  Experimental use
+of the full set of 15 independent polarization and correlation coefficients
+is illustrated by ATLAS,
+\href{https://arxiv.org/abs/1612.07004}{arXiv:1612.07004}, and comprehensive
+dilepton spin measurements by CMS,
+\href{https://arxiv.org/abs/1907.03729}{arXiv:1907.03729}.
+
+Representative LHC differential measurements motivating the top, lepton,
+dilepton, b-jet, and additional-jet catalogue include CMS
+\href{https://arxiv.org/abs/1708.07638}{arXiv:1708.07638} and
+\href{https://arxiv.org/abs/1811.06625}{arXiv:1811.06625}, and ATLAS
+\href{https://arxiv.org/abs/1709.09407}{arXiv:1709.09407},
+\href{https://arxiv.org/abs/1606.09490}{arXiv:1606.09490}, and
+\href{https://arxiv.org/abs/2303.15340}{arXiv:2303.15340}.  Dineutrino and
+missing-momentum-sensitive observables are discussed in the recent CMS study
+\href{https://arxiv.org/abs/2510.00160}{arXiv:2510.00160}; the visible
+\(m_{b\ell}\) endpoint is used, for example, in the ATLAS top-mass analysis
+\href{https://arxiv.org/abs/1503.05427}{arXiv:1503.05427}.
+
+Jet finding uses FastJet
+\href{https://arxiv.org/abs/1111.6097}{arXiv:1111.6097} and the anti-\(k_T\)
+algorithm of Cacciari, Salam, and Soyez,
+\href{https://arxiv.org/abs/0802.1189}{arXiv:0802.1189}.
+
+\end{document}

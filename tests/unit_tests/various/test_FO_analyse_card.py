@@ -87,3 +87,18 @@ FO_ANALYSE=analysis_fixed_order.o dummy1.o dummy2.o
             self.assertEqual(a,b)
         self.assertEqual(text, goal)
 
+
+    def test_fnlo_dilepton_module_adds_matching_bridge(self):
+        """The comprehensive fNLO analysis selects its ABI bridge."""
+        card = FO_analyse_card.FOAnalyseCard(
+            """FO_ANALYSIS_FORMAT=HwU
+FO_ANALYSE=analysis_HwU_pp_ttx_dilepton.o
+FO_EXTRALIBS=
+FO_EXTRAPATHS=
+FO_INCLUDEPATHS=
+""", testing=True)
+        text = card.write_card('', fixed_order_only=True)
+        self.assertIn(
+            'FO_ANALYSE=analysis_HwU_pp_ttx_dilepton.o '
+            'HwU.o HwU_bridge.o '
+            'analysis_HwU_pp_ttx_dilepton_bridge.o\n', text)

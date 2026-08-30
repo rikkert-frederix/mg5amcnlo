@@ -94,6 +94,7 @@ FNLO_MODULE_ANALYSES = \
 	analysis_HwU_pp_lplm.o analysis_HwU_pp_lvl.o \
 	analysis_HwU_pp_lvl2.o analysis_HwU_pp_taptam.o \
 	analysis_HwU_pp_tj.o analysis_HwU_pp_ttx.o \
+	analysis_HwU_pp_ttx_dilepton.o \
 	analysis_HwU_pp_ttx_v2.o \
 	analysis_HwU_template.o
 FNLO_MODULE_ANALYSIS_BRIDGES = \
