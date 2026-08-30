@@ -102,3 +102,18 @@ FO_INCLUDEPATHS=
             'FO_ANALYSE=analysis_HwU_pp_ttx_dilepton.o '
             'HwU.o HwU_bridge.o '
             'analysis_HwU_pp_ttx_dilepton_bridge.o\n', text)
+
+    def test_fnlo_ttw_trilepton_module_adds_matching_bridge(self):
+        """The comprehensive ttW analysis selects its ABI bridge."""
+        card = FO_analyse_card.FOAnalyseCard(
+            """FO_ANALYSIS_FORMAT=HwU
+FO_ANALYSE=analysis_HwU_pp_ttxw_trilepton.o
+FO_EXTRALIBS=
+FO_EXTRAPATHS=
+FO_INCLUDEPATHS=
+""", testing=True)
+        text = card.write_card('', fixed_order_only=True)
+        self.assertIn(
+            'FO_ANALYSE=analysis_HwU_pp_ttxw_trilepton.o '
+            'HwU.o HwU_bridge.o '
+            'analysis_HwU_pp_ttxw_trilepton_bridge.o\n', text)
