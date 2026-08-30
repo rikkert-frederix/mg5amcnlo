@@ -8,7 +8,7 @@ module check_poles_module
   use fks_random_module, only: random_unit_interval
   use FKSParams, only: IRPoleCheckThreshold, FKSParamReader
   use fks_singular_module, only: setfksfactor, evaluate_born_matrix, &
-                                 evaluate_virtual_matrix
+       evaluate_virtual_matrix, fill_configurations_common
   use decay_chain_metadata, only: initialize_decay_chain_metadata, &
                                   has_decay_chains
   use decay_chain_kinematics, only: initialize_decay_chain_kinematics, &
@@ -26,7 +26,7 @@ module check_poles_module
                                  nfksprocess, qes2, force_polecheck, &
                                  polecheck_passed, &
                                  ret_code_ml => ret_code_common, &
-                                 soft_counterevent
+                                 soft_counterevent, this_config
   implicit none
   private
 
@@ -163,6 +163,7 @@ contains
     if (has_decay_chains()) call initialize_decay_chain_kinematics()
     if (has_nlo_decay()) call initialize_nlo_decay_kinematics()
     call init_fks_singular_bridge()
+    call fill_configurations_common()
     call setcuts()
     call printout()
     call write_run_summary()
@@ -176,6 +177,7 @@ contains
     iconfig = 1
     ichan = 1
     iconfigs(1) = iconfig
+    this_config = iconfig
 
     write (*, *) ' Insert the number of points to test'
     read (*, *) npoints

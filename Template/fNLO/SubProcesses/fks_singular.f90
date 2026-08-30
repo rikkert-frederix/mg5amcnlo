@@ -34,7 +34,6 @@ module fks_singular_module
   use fks_qcd_splitting, only: AP_reduced, AP_reduced_prime, &
                                 Qterms_reduced_timelike, &
                                 Qterms_reduced_spacelike
-  use fks_random_module, only: random_unit_interval
   use fks_soft_kernels, only: eikonal_reduced, eikonal_Ireg
   use fks_sij_module, only: initialize_fks_sij_module, &
                             set_fks_sij_partition_state, fks_sij_impl
@@ -1357,7 +1356,7 @@ contains
     double precision :: density_muf, density_mur, density_factor
     double precision :: density_virtual_average, density_sampling_fraction
     double precision :: virtual_sampling_fraction
-    logical, external :: sdm_virtual_uses_analytic_provider
+    logical :: evaluate_virtual
     type(factorized_radiation_state) :: radiation
     if (has_nlo_contribution_bundle()) then
       need_color_links_used = .false.
@@ -1405,9 +1404,9 @@ contains
     amp_split_bsv(1:amp_split_size) = 0d0
     amp_split_virt(1:amp_split_size) = 0d0
     amp_split_avv(1:amp_split_size) = 0d0
-    virtual_sampling_fraction = virtual_fraction(ichan)
-    if (sdm_virtual_uses_analytic_provider( &
-        active_nlo_contribution())) virtual_sampling_fraction = 1d0
+    virtual_sampling_fraction = &
+         virtual_sampling_fraction_for_contribution( &
+         active_nlo_contribution(), ichan)
     if (spin_density_fks_collection_enabled()) then
       call reset_spin_density_integrated_matrix()
       call reset_spin_density_virtual_matrix()
@@ -1603,10 +1602,15 @@ contains
       end if
     end do
 
-    if (active_contribution_has_virtual() .and. &
-        ((random_unit_interval(iconfig) .le. virtual_sampling_fraction &
-         .and. abrv(1:3) .ne. 'nov') .or. &
-        abrv(1:4) .eq. 'virt')) then
+    evaluate_virtual = .false.
+    if (active_contribution_has_virtual()) then
+      evaluate_virtual = abrv(1:4) .eq. 'virt'
+      if (.not. evaluate_virtual .and. abrv(1:3) .ne. 'nov') then
+        evaluate_virtual = sample_virtual_for_contribution( &
+             active_nlo_contribution(), ichan)
+      end if
+    end if
+    if (active_contribution_has_virtual() .and. evaluate_virtual) then
       call cpu_time(tBefore)
       call evaluate_virtual_matrix( &
            soft_counterevent, born_wgt, virt_wgt)

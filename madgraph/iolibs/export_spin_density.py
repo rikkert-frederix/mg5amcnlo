@@ -1429,7 +1429,26 @@ class SpinDensityExporter(object):
                 'REAL*8 SDM_INSERTION_P(0:3,%d)' % nexternal,
                 'COMPLEX*16 SDM_INSERTION_RHO(2,%d,%d)' % (
                     active_provider['open_size'],
-                    active_provider['open_size'])])
+                    active_provider['open_size']),
+                # The complete contraction changes when a decay fold changes
+                # its spectator blocks, but the active production insertion
+                # does not.  Keep one exact-key entry per generated wrapper
+                # so consecutive replicas only redo the cheap contraction.
+                # Decay insertions use the same code and naturally miss when
+                # their local momenta change.
+                'LOGICAL SDM_INSERTION_CACHE_VALID,',
+                '     $ SDM_INSERTION_CACHE_HIT',
+                'REAL*8 SDM_INSERTION_CACHE_P(0:3,%d)' % nexternal,
+                'REAL*8 SDM_INSERTION_CACHE_G',
+                'INTEGER SDM_INSERTION_CACHE_CORR_LEG',
+                'COMPLEX*16 SDM_INSERTION_CACHE_RHO(2,%d,%d)' % (
+                    active_provider['open_size'],
+                    active_provider['open_size']),
+                'SAVE SDM_INSERTION_CACHE_VALID,',
+                '     $ SDM_INSERTION_CACHE_P,SDM_INSERTION_CACHE_G,',
+                '     $ SDM_INSERTION_CACHE_CORR_LEG,',
+                '     $ SDM_INSERTION_CACHE_RHO',
+                'DATA SDM_INSERTION_CACHE_VALID/.FALSE./'])
 
         code = [
             '%s=(0D0,0D0)' % result_name,
@@ -1465,9 +1484,26 @@ class SpinDensityExporter(object):
                 'CALL GET_FACTORIZED_BLOCK_MOMENTA(%s,%d,%d,' % (
                     str(event_slot), active_component, nexternal),
                 '     $ SDM_INSERTION_P)',
-                'CALL %s(SDM_INSERTION_P,' %
+                'SDM_INSERTION_CACHE_HIT=SDM_INSERTION_CACHE_VALID',
+                'IF (SDM_INSERTION_CACHE_HIT) THEN',
+                '  SDM_INSERTION_CACHE_HIT=ALL(SDM_INSERTION_P.EQ.',
+                '     $ SDM_INSERTION_CACHE_P).AND.',
+                '     $ SDM_CORR_LEG.EQ.SDM_INSERTION_CACHE_CORR_LEG',
+                '  SDM_INSERTION_CACHE_HIT=SDM_INSERTION_CACHE_HIT.AND.',
+                '     $ STRONG_COUPLING.EQ.SDM_INSERTION_CACHE_G',
+                'ENDIF',
+                'IF (SDM_INSERTION_CACHE_HIT) THEN',
+                '  SDM_INSERTION_RHO=SDM_INSERTION_CACHE_RHO',
+                'ELSE',
+                '  CALL %s(SDM_INSERTION_P,' %
                 active_provider['fortran_name'],
-                '     $ SDM_CORR_LEG,SDM_INSERTION_RHO)'])
+                '     $ SDM_CORR_LEG,SDM_INSERTION_RHO)',
+                '  SDM_INSERTION_CACHE_P=SDM_INSERTION_P',
+                '  SDM_INSERTION_CACHE_G=STRONG_COUPLING',
+                '  SDM_INSERTION_CACHE_CORR_LEG=SDM_CORR_LEG',
+                '  SDM_INSERTION_CACHE_RHO=SDM_INSERTION_RHO',
+                '  SDM_INSERTION_CACHE_VALID=.TRUE.',
+                'ENDIF'])
             if not uses_ordinary_insertion:
                 code.extend([
                     'IF (.NOT.SDM_LO_AVAILABLE_%d) THEN' % active_component,
@@ -1607,6 +1643,30 @@ class SpinDensityExporter(object):
         if analytic_top_decay is not None:
             declarations.extend(self._analytic_top_decay_declarations(
                 analytic_top_decay))
+        else:
+            # A decay-space fold keeps the active production block fixed
+            # while changing its LO decay spectators.  Cache the expensive
+            # open-spin loop insertion, then contract that same insertion
+            # with the new spectator densities below.  Exact momenta,
+            # couplings and requested precision form the key, so this is
+            # also safe outside folding and for non-production providers.
+            declarations.extend([
+                "INCLUDE 'coupl.inc'",
+                'LOGICAL SDM_VIRTUAL_CACHE_VALID,SDM_VIRTUAL_CACHE_HIT',
+                'REAL*8 SDM_VIRTUAL_CACHE_P(0:3,%d)' % nexternal,
+                'REAL*8 SDM_VIRTUAL_CACHE_PREC_ASKED',
+                'REAL*8 SDM_VIRTUAL_CACHE_PRECISION',
+                'REAL*8 SDM_VIRTUAL_CACHE_MU_R,SDM_VIRTUAL_CACHE_G',
+                'INTEGER SDM_VIRTUAL_CACHE_RET_CODE',
+                'COMPLEX*16 SDM_VIRTUAL_CACHE_RHO(3,%d,%d)' % (
+                    variant['open_size'], variant['open_size']),
+                'SAVE SDM_VIRTUAL_CACHE_VALID,SDM_VIRTUAL_CACHE_P,',
+                '     $ SDM_VIRTUAL_CACHE_PREC_ASKED,',
+                '     $ SDM_VIRTUAL_CACHE_PRECISION,',
+                '     $ SDM_VIRTUAL_CACHE_MU_R,SDM_VIRTUAL_CACHE_G,',
+                '     $ SDM_VIRTUAL_CACHE_RET_CODE,',
+                '     $ SDM_VIRTUAL_CACHE_RHO',
+                'DATA SDM_VIRTUAL_CACHE_VALID/.FALSE./'])
         for node_id in sorted(states):
             declarations.append(
                 'DATA (SDM_NODE_STATE(%d,SDM_STATE),SDM_STATE=1,%d) '
@@ -1645,9 +1705,34 @@ class SpinDensityExporter(object):
             '     $ SDM_INSERTION_P)'])
         if analytic_top_decay is None:
             code.extend([
-                'CALL %s(SDM_INSERTION_P,SDM_INSERTION_RHO,%s,' % (
+                'SDM_VIRTUAL_CACHE_HIT=SDM_VIRTUAL_CACHE_VALID',
+                'IF (SDM_VIRTUAL_CACHE_HIT) THEN',
+                '  SDM_VIRTUAL_CACHE_HIT=ALL(SDM_INSERTION_P.EQ.',
+                '     $ SDM_VIRTUAL_CACHE_P)',
+                '  SDM_VIRTUAL_CACHE_HIT=SDM_VIRTUAL_CACHE_HIT.AND.',
+                '     $ %s.EQ.SDM_VIRTUAL_CACHE_PREC_ASKED' %
+                precision_asked,
+                '  SDM_VIRTUAL_CACHE_HIT=SDM_VIRTUAL_CACHE_HIT.AND.',
+                '     $ MU_R.EQ.SDM_VIRTUAL_CACHE_MU_R.AND.',
+                '     $ G.EQ.SDM_VIRTUAL_CACHE_G',
+                'ENDIF',
+                'IF (SDM_VIRTUAL_CACHE_HIT) THEN',
+                '  SDM_INSERTION_RHO=SDM_VIRTUAL_CACHE_RHO',
+                '  SDM_PRECISION=SDM_VIRTUAL_CACHE_PRECISION',
+                '  SDM_RET_CODE=SDM_VIRTUAL_CACHE_RET_CODE',
+                'ELSE',
+                '  CALL %s(SDM_INSERTION_P,SDM_INSERTION_RHO,%s,' % (
                     variant['fortran_name'], precision_asked),
-                '     $ SDM_PRECISION,SDM_RET_CODE)'])
+                '     $ SDM_PRECISION,SDM_RET_CODE)',
+                '  SDM_VIRTUAL_CACHE_P=SDM_INSERTION_P',
+                '  SDM_VIRTUAL_CACHE_RHO=SDM_INSERTION_RHO',
+                '  SDM_VIRTUAL_CACHE_PREC_ASKED=%s' % precision_asked,
+                '  SDM_VIRTUAL_CACHE_PRECISION=SDM_PRECISION',
+                '  SDM_VIRTUAL_CACHE_RET_CODE=SDM_RET_CODE',
+                '  SDM_VIRTUAL_CACHE_MU_R=MU_R',
+                '  SDM_VIRTUAL_CACHE_G=G',
+                '  SDM_VIRTUAL_CACHE_VALID=.TRUE.',
+                'ENDIF'])
         else:
             code.extend(self._analytic_top_decay_lines(
                 variant, analytic_top_decay, precision_asked))
@@ -1710,7 +1795,15 @@ class SpinDensityExporter(object):
             'COMPLEX*16 SDM_COLOR_RHO(%d,%d)' % (
                 active_provider['open_size'], active_provider['open_size']),
             'COMPLEX*16 SDM_COLOR_INSERTION(1,%d,%d)' % (
-                active_provider['open_size'], active_provider['open_size'])]
+                active_provider['open_size'], active_provider['open_size']),
+            'LOGICAL SDM_COLOR_CACHE_VALID,SDM_COLOR_CACHE_HIT',
+            'REAL*8 SDM_COLOR_CACHE_P(0:3,%d)' % nexternal,
+            'REAL*8 SDM_COLOR_CACHE_G',
+            'COMPLEX*16 SDM_COLOR_CACHE_RHO(%d,%d)' % (
+                active_provider['open_size'], active_provider['open_size']),
+            'SAVE SDM_COLOR_CACHE_VALID,SDM_COLOR_CACHE_P,',
+            '     $ SDM_COLOR_CACHE_G,SDM_COLOR_CACHE_RHO',
+            'DATA SDM_COLOR_CACHE_VALID/.FALSE./']
         for node_id in sorted(states):
             declarations.append(
                 'DATA (SDM_NODE_STATE(%d,SDM_STATE),SDM_STATE=1,%d) '
@@ -1744,8 +1837,22 @@ class SpinDensityExporter(object):
             'CALL GET_FACTORIZED_BLOCK_MOMENTA(%s,%d,%d,' % (
                 str(event_slot), active, nexternal),
             '     $ SDM_INSERTION_P)',
-            'CALL %s(SDM_INSERTION_P,SDM_COLOR_RHO)' %
+            'SDM_COLOR_CACHE_HIT=SDM_COLOR_CACHE_VALID',
+            'IF (SDM_COLOR_CACHE_HIT) THEN',
+            '  SDM_COLOR_CACHE_HIT=ALL(SDM_INSERTION_P.EQ.',
+            '     $ SDM_COLOR_CACHE_P).AND.',
+            '     $ STRONG_COUPLING.EQ.SDM_COLOR_CACHE_G',
+            'ENDIF',
+            'IF (SDM_COLOR_CACHE_HIT) THEN',
+            '  SDM_COLOR_RHO=SDM_COLOR_CACHE_RHO',
+            'ELSE',
+            '  CALL %s(SDM_INSERTION_P,SDM_COLOR_RHO)' %
             variant['fortran_name'],
+            '  SDM_COLOR_CACHE_P=SDM_INSERTION_P',
+            '  SDM_COLOR_CACHE_G=STRONG_COUPLING',
+            '  SDM_COLOR_CACHE_RHO=SDM_COLOR_RHO',
+            '  SDM_COLOR_CACHE_VALID=.TRUE.',
+            'ENDIF',
             'SDM_COLOR_INSERTION(1,:,:)=SDM_COLOR_RHO',
             'CALL SET_SPIN_DENSITY_INSERTION(SDM_BLOCKS(%d),' %
             active_position,

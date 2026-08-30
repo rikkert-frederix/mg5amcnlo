@@ -7,7 +7,10 @@ module driver_mintfo_module
                          iconfig, ichan, &
                          iconfigs, accuracy, wgt_mult, new_point, pass_cuts_check, &
                          virt_wgt_mint, born_wgt_mint, mint, &
-                         first_bundle_component_integral
+                         first_bundle_component_integral, &
+                         configure_decay_folding, &
+                         decay_fold_group_active, &
+                         decay_fold_reuses_production
   use mint_module, only: ans_result => ans, unc_result => unc
   use FKSParams, only: min_virt_fraction, virt_fraction, FKSParamReader
   use weight_lines, only: icontr, iwgt, deallocate_weight_lines
@@ -25,7 +28,9 @@ module driver_mintfo_module
                        muf2_over_ref, muf1_ref_fixed, muf2_ref_fixed, &
                        do_rwgt_scale, do_rwgt_decay_scale, do_rwgt_pdf
   use genps_fks, only: generate_momenta, generate_momenta_reusing_born
-  use decay_chain_metadata, only: real_phase_space_dimension
+  use decay_chain_metadata, only: real_phase_space_dimension, &
+                                  decay_random_dimension
+  use decay_chain_kinematics, only: decay_variable_start
   use fnlo_scale_variations, only: configure_fnlo_scale_variations
   use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
        nlo_contribution_count, contribution_representative_fks, &
@@ -228,6 +233,10 @@ contains
     ! common Born variables followed by one (xi,y,phi) triple.  MINT owns an
     ! independent copy of that triple for every factorized NLO block.
     ndim = factorized_integration_dimension(nndim)
+    if (has_nlo_contribution_bundle()) then
+      call configure_decay_folding( &
+           nndim, decay_variable_start(), decay_random_dimension())
+    end if
 
     if (fixed_fac_scale) then
       unequal_factorization_scales = abs( &
@@ -392,6 +401,9 @@ contains
     integer :: selected_contribution
     logical :: passcuts_nbody
     logical :: nplusone_evaluated, skip_nplusone
+    integer, save :: folded_picked_integer = 0
+    double precision, save :: folded_integer_volume = 0d0
+    logical, save :: folded_integer_is_valid = .false.
 
     call reset_luminosity_cache()
     if (multiplicative_nlo_enabled()) then
@@ -420,9 +432,22 @@ contains
     nplusone_evaluated = .false.
     skip_nplusone = .false.
 
-    call get_mc_integer(max(ini_fin_fks(ichan), 1), &
-                        fks_channel_count(ini_fin_fks(ichan)), picked_integer, &
-                        volume)
+    if (decay_fold_reuses_production() .and. &
+        folded_integer_is_valid) then
+      picked_integer = folded_picked_integer
+      volume = folded_integer_volume
+    else
+      call get_mc_integer(max(ini_fin_fks(ichan), 1), &
+                          fks_channel_count(ini_fin_fks(ichan)), &
+                          picked_integer, volume)
+      if (decay_fold_group_active()) then
+        folded_picked_integer = picked_integer
+        folded_integer_volume = volume
+        folded_integer_is_valid = .true.
+      else
+        folded_integer_is_valid = .false.
+      end if
+    end if
     nfks_picked = fks_channel_configuration(ini_fin_fks(ichan), &
                                             picked_integer)
     selected_contribution = 1
@@ -643,6 +668,7 @@ contains
     integer(kind=8) :: leaf_mask, leaves_seen
     logical :: available, leaf_is_materialized, pass_leaf
     logical :: production_contribution
+    logical, save :: folded_production_integer_is_valid = .false.
     real :: plot_time_before, plot_time_after
 
     if (new_point .and. ifl /= 2) pass_cuts_check = .false.
@@ -694,6 +720,12 @@ contains
     end if
     production_position = 0
     production_boost = 0d0
+    if (decay_fold_group_active() .and. &
+        .not. decay_fold_reuses_production()) then
+      folded_production_integer_is_valid = .false.
+    else if (.not. decay_fold_group_active()) then
+      folded_production_integer_is_valid = .false.
+    end if
 
     ! Every corrected physical block samples its own local FKS sector.  The
     ! initial/final outer channel partitions production only; all decay
@@ -707,11 +739,23 @@ contains
         category = 0
       end if
       channel_count = contribution_channel_count(contribution, category)
-      call get_mc_integer( &
-           multiplicative_mc_dimension(contribution, category, &
-                                       production_contribution), &
-           channel_count, picked_integers(contribution), &
-           volumes(contribution))
+      if (production_contribution .and. &
+          decay_fold_reuses_production()) then
+        if (.not. folded_production_integer_is_valid) then
+          call fail_driver( &
+               'a decay fold lost its production FKS-channel choice')
+        end if
+      else
+        call get_mc_integer( &
+             multiplicative_mc_dimension(contribution, category, &
+                                         production_contribution), &
+             channel_count, picked_integers(contribution), &
+             volumes(contribution))
+        if (production_contribution .and. &
+            decay_fold_group_active()) then
+          folded_production_integer_is_valid = .true.
+        end if
+      end if
       configurations(contribution) = &
            contribution_channel_configuration( &
            contribution, category, picked_integers(contribution))

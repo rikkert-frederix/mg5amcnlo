@@ -46,11 +46,13 @@ module mint_module
   use fnlo_process_common, only: fnlo_maxchannels, fks_configs, &
                                  amp_split_size
   use FKSParams ! contains use_poly_virtual
-  use mc_integer_module, only: regrid_MC_integer, empty_MC_integer, &
-                               reset_MC_grid
+  use mc_integer_module, only: regrid_MC_integer
   use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
        factorized_shared_dimension, factorized_radiation_block, &
-       bundle_nlo_component, virtual_grid_contribution
+       factorized_radiation_start, nlo_contribution_count, &
+       contribution_is_nlo_decay, bundle_nlo_component, &
+       virtual_grid_contribution
+  use fks_random_module, only: random_unit_interval
   use polynomial_fit, only: init_polyfit, add_point_polyfit, &
                             do_polyfit, get_polyfit, save_polyfit, restore_polyfit
   implicit none
@@ -117,14 +119,27 @@ module mint_module
   double precision, private :: vol_chan
   double precision, allocatable, private :: rand(:)
   double precision, allocatable, private :: xgrid_new(:, :)
-  logical, private :: bad_iteration = .false.
   logical, private :: mint_state_initialized = .false.
   double precision, private :: even_dng = 0d0
   integer, private :: even_current_dim = 0
   integer, allocatable, private :: even_iii(:), even_kkk(:)
+  logical, allocatable, private :: decay_fold_dimension(:)
+  integer, private :: decay_fold_canonical_dimension = 0
+  integer, private :: decay_fold_first_dimension = 0
+  integer, private :: decay_fold_shared_count = 0
+  integer, private :: decay_fold_replica = 1
+  integer, private :: decay_fold_replicas = 1
+  logical, private :: decay_fold_group_is_active = .false.
+  logical, private :: decay_fold_grid_is_pretrained = .false.
+  logical, private :: production_virtual_choice_is_cached = .false.
+  logical, private :: cached_production_virtual_choice = .false.
+  logical, private :: point_grids_are_accumulated = .false.
 
 ! functions and subroutines:
-  public :: mint
+  public :: mint, configure_decay_folding
+  public :: decay_fold_group_active, decay_fold_reuses_production
+  public :: virtual_sampling_fraction_for_contribution
+  public :: sample_virtual_for_contribution
   private :: initialise_mint, setup_basic_mint &
        &, update_accumulated_results, prepare_next_iteration &
        &, check_desired_accuracy, update_integration_grids &
@@ -138,6 +153,8 @@ module mint_module
        &, combine_special_channels, get_amount_of_points &
        &, add_point_to_grids &
        &, accumulate_the_point, compute_integrand, get_random_x &
+       &, resample_decay_fold_dimensions, load_virtual_approximations &
+       &, initialize_decay_fold_dimensions &
        &, start_iteration, reset_accumulated_grids &
        &, check_evenly_random_numbers, finalise_mint, write_results &
        &, write_channel_info, setup_imode_m1, setup_imode_0 &
@@ -205,6 +222,7 @@ contains
     born_dimensions = expected_born_dimensions
 
     allocate (icell(ndim), ncell(ndim), rand(ndim))
+    allocate (decay_fold_dimension(ndim))
     allocate (nhits(nintervals, ndim, nchans))
     allocate (nhits_in_grids(nchans), regridded(nchans))
     allocate (xgrid(0:nintervals, ndim, nchans))
@@ -246,9 +264,16 @@ contains
     ave_born_acc = 0d0
     even_iii = 1
     even_kkk = 1
+    call initialize_decay_fold_dimensions
     even_dng = 0d0
     even_current_dim = 0
-    bad_iteration = .false.
+    decay_fold_replica = 1
+    decay_fold_replicas = 1
+    decay_fold_group_is_active = .false.
+    decay_fold_grid_is_pretrained = .false.
+    production_virtual_choice_is_cached = .false.
+    cached_production_virtual_choice = .false.
+    point_grids_are_accumulated = .false.
     mint_state_initialized = .true.
   end subroutine initialize_mint_state
 
@@ -275,12 +300,119 @@ contains
     if (allocated(ave_born_acc)) deallocate (ave_born_acc)
     if (allocated(even_iii)) deallocate (even_iii)
     if (allocated(even_kkk)) deallocate (even_kkk)
+    if (allocated(decay_fold_dimension)) deallocate (decay_fold_dimension)
     even_dng = 0d0
     even_current_dim = 0
+    decay_fold_replica = 1
+    decay_fold_replicas = 1
+    decay_fold_group_is_active = .false.
+    decay_fold_grid_is_pretrained = .false.
+    production_virtual_choice_is_cached = .false.
+    cached_production_virtual_choice = .false.
+    point_grids_are_accumulated = .false.
     born_dimensions = 0
-    bad_iteration = .false.
     mint_state_initialized = .false.
   end subroutine finalize_mint_state
+
+  subroutine configure_decay_folding(canonical_dimension, first_decay, &
+                                      decay_dimension_count)
+    implicit none
+    integer, intent(in) :: canonical_dimension, first_decay
+    integer, intent(in) :: decay_dimension_count
+
+    if (canonical_dimension < 3 .or. first_decay < 1 .or. &
+        decay_dimension_count < 1) then
+      write (*, *) 'Invalid decay-fold phase-space layout:', &
+           canonical_dimension, first_decay, decay_dimension_count
+      stop 1
+    end if
+    decay_fold_canonical_dimension = canonical_dimension
+    decay_fold_first_dimension = first_decay
+    decay_fold_shared_count = decay_dimension_count
+  end subroutine configure_decay_folding
+
+  subroutine initialize_decay_fold_dimensions
+    implicit none
+    integer :: contribution, first_radiation, shared_dimension
+
+    decay_fold_dimension = .false.
+    if (DecayFold <= 1 .or. .not. has_nlo_contribution_bundle()) return
+    if (decay_fold_canonical_dimension < 3 .or. &
+        decay_fold_first_dimension < 1 .or. &
+        decay_fold_shared_count < 1) then
+      write (*, *) 'DecayFold requires configured decay-chain dimensions.'
+      stop 1
+    end if
+    if (decay_fold_canonical_dimension + &
+        3*(nlo_contribution_count() - 1) /= ndim) then
+      write (*, *) 'DecayFold has an inconsistent factorized dimension.'
+      stop 1
+    end if
+    shared_dimension = factorized_shared_dimension(ndim)
+    if (decay_fold_first_dimension + decay_fold_shared_count - 1 > &
+        shared_dimension) then
+      write (*, *) 'DecayFold variables extend beyond the shared phase space.'
+      stop 1
+    end if
+    decay_fold_dimension( &
+         decay_fold_first_dimension: &
+         decay_fold_first_dimension + decay_fold_shared_count - 1) = .true.
+    do contribution = 1, nlo_contribution_count()
+      if (.not. contribution_is_nlo_decay(contribution)) cycle
+      first_radiation = factorized_radiation_start( &
+           decay_fold_canonical_dimension, contribution)
+      if (first_radiation < 1 .or. first_radiation + 2 > ndim) then
+        write (*, *) 'DecayFold radiation block is outside the MINT layout.'
+        stop 1
+      end if
+      decay_fold_dimension(first_radiation:first_radiation + 2) = .true.
+    end do
+    if (.not. any(decay_fold_dimension)) then
+      write (*, *) 'DecayFold found no decay variables.'
+      stop 1
+    end if
+  end subroutine initialize_decay_fold_dimensions
+
+  logical function decay_fold_group_active()
+    implicit none
+    decay_fold_group_active = decay_fold_group_is_active
+  end function decay_fold_group_active
+
+  logical function decay_fold_reuses_production()
+    implicit none
+    decay_fold_reuses_production = decay_fold_group_is_active .and. &
+         decay_fold_replica > 1
+  end function decay_fold_reuses_production
+
+  logical function sample_virtual_for_contribution(contribution, kchan)
+    implicit none
+    integer, intent(in) :: contribution, kchan
+    double precision :: sampling_fraction
+    logical :: production_contribution
+
+    sampling_fraction = &
+         virtual_sampling_fraction_for_contribution(contribution, kchan)
+    production_contribution = .not. &
+         contribution_is_nlo_decay(contribution)
+    if (decay_fold_group_is_active .and. production_contribution .and. &
+        production_virtual_choice_is_cached) then
+      sample_virtual_for_contribution = cached_production_virtual_choice
+      return
+    end if
+    if (sampling_fraction >= 1d0) then
+      sample_virtual_for_contribution = .true.
+    else if (sampling_fraction <= 0d0) then
+      sample_virtual_for_contribution = .false.
+    else
+      sample_virtual_for_contribution = &
+           random_unit_interval(iconfig) <= sampling_fraction
+    end if
+    if (decay_fold_group_is_active .and. production_contribution) then
+      cached_production_virtual_choice = &
+           sample_virtual_for_contribution
+      production_virtual_choice_is_cached = .true.
+    end if
+  end function sample_virtual_for_contribution
 
   subroutine mint(fun)
     implicit none
@@ -316,6 +448,7 @@ contains
   subroutine initialise_mint
     implicit none
     call initialize_mint_state
+    decay_fold_grid_is_pretrained = imode .eq. -1
     if (imode .ne. 0) call read_grids_from_file
     call setup_basic_mint
     if (imode .eq. 0) then
@@ -525,6 +658,24 @@ contains
     end do
   end subroutine update_virtual_fraction
 
+  double precision function virtual_sampling_fraction_for_contribution( &
+       contribution, kchan)
+    implicit none
+    integer, intent(in) :: contribution, kchan
+    logical, external :: sdm_virtual_uses_analytic_provider
+
+    if (kchan < 1 .or. kchan > nchans) then
+      write (*, *) 'Invalid channel for virtual sampling fraction:', kchan
+      stop 1
+    end if
+
+    virtual_sampling_fraction_for_contribution = virtual_fraction(kchan)
+    if (.not. has_nlo_contribution_bundle()) return
+    if (sdm_virtual_uses_analytic_provider(contribution)) then
+      virtual_sampling_fraction_for_contribution = 1d0
+    end if
+  end function virtual_sampling_fraction_for_contribution
+
   subroutine combine_iterations
     implicit none
     integer i, kchan
@@ -581,40 +732,17 @@ contains
   subroutine check_fractional_uncertainty(efrac)
     implicit none
     double precision, dimension(nintegrals) :: efrac
-! If there was a large fluctation in this iteration, be careful with
-! including it in the accumalated results and plots.
+! A large per-iteration uncertainty is not evidence that the adaptive grids
+! are corrupt.  It is expected for high-dimensional decay-chain integrals and
+! must remain part of the statistically weighted result.  The historical
+! recovery discarded two iterations, reset all learned grids and virtual
+! fractions, and silently restarted MINT with virtual_fraction=1.  Besides
+! wasting the expensive points, that made every production point call
+! MadLoop.  Keep the sample and let the usual inverse-variance combination,
+! regridding and single factor-of-two point increase handle it.
     if (efrac(1) .gt. 0.3d0 .and. nit .gt. 3) then
-! Do not include the results in the plots
-      call HwU_accum_iter(.false., ntotcalls(1), HwU_values)
-! Do not include the results in the updating of the grids.
-      write (*, *) 'Large fluctuation ( >30 % ). Not including iteration in results.'
-! empty the accumulated results in the MC over integers
-      call empty_MC_integer
-! empty the accumulated results for the MINT grids (Cannot really
-! skip the increase of the upper bounding envelope. So, simply
-! continue here. Note that no matter how large the integrand for the
-! PS point, the upper bounding envelope is at most increased by a
-! factor 2, so this should be fine).
-      reset = .true.
-! double the number of points for the next iteration
-      if (double_points) ncalls0 = ncalls0*2
-      if (bad_iteration .and. imode .eq. 0 .and. double_points) then
-! 2nd bad iteration is a row. Reset grids
-        write (*, *) '2nd bad iteration in a row. Resetting grids and starting from scratch...'
-        if (double_points) then
-          if (imode .eq. 0) nint_used = min_inter ! reset number of intervals
-          ncalls0 = ncalls0/8   ! Start with larger number
-        end if
-        call reset_mint_grids
-        call reset_MC_grid  ! reset the grid for the integers
-        call initplot  ! Also reset all the plots
-        call setup_common
-        bad_iteration = .false.
-      else
-        bad_iteration = .true.
-      end if
-    else
-      bad_iteration = .false.
+      write (*, *) 'Iteration uncertainty remains above 30%; keeping '// &
+           'the iteration and the adapted grids.'
     end if
   end subroutine check_fractional_uncertainty
 
@@ -773,8 +901,9 @@ contains
     implicit none
     integer :: kdim, k_ord_virt, ithree, isix
     integer :: radiation_block, component, component_integral
+    integer :: contribution
     double precision, dimension(ndimmax) :: x
-    double precision :: virtual, born, grid_weight
+    double precision :: virtual, born, grid_weight, sampling_fraction
 ! accumulate the function in xacc(icell(kdim),kdim) to adjust the grid later
     do kdim = 1, ndim
       grid_weight = f(1)
@@ -806,15 +935,24 @@ contains
       end if
       if (f(ithree) .ne. 0d0) then
         born = f(isix)
-        ! virt_wgt_mint=(virtual-average_virtual*born)/virtual_fraction. Compensate:
+        sampling_fraction = virtual_fraction(ichan)
+        if (has_nlo_contribution_bundle() .and. k_ord_virt > 0) then
+          contribution = virtual_grid_contribution(k_ord_virt)
+          sampling_fraction = &
+               virtual_sampling_fraction_for_contribution( &
+               contribution, ichan)
+        end if
+        ! virt_wgt_mint=(virtual-average_virtual*born)/sampling_fraction.
+        ! Analytic decay providers use sampling_fraction=1 even while the
+        ! production virtual is sampled with virtual_fraction(ichan).
         if (use_poly_virtual) then
-          virtual = f(ithree)*virtual_fraction(ichan) + &
+          virtual = f(ithree)*sampling_fraction + &
                     polyfit(k_ord_virt)*f(isix)
           call add_point_polyfit(ichan, k_ord_virt, &
                                  x(1:born_dimensions), &
                                  virtual/born, born/wgt_mult)
         else
-          virtual = f(ithree)*virtual_fraction(ichan) + &
+          virtual = f(ithree)*sampling_fraction + &
                     average_virtual(k_ord_virt, ichan)*f(isix)
           call fill_ave_virt(x, k_ord_virt, virtual, born)
         end if
@@ -828,7 +966,8 @@ contains
     implicit none
     integer :: i
     double precision, dimension(ndimmax) :: x
-    call add_point_to_grids(x)
+    if (.not. point_grids_are_accumulated) call add_point_to_grids(x)
+    point_grids_are_accumulated = .false.
     do i = 1, nintegrals
       if (f(i) .ne. 0d0) non_zero_point(i) = non_zero_point(i) + 1
     end do
@@ -842,20 +981,141 @@ contains
 
   subroutine compute_integrand(fun, x, vol)
     implicit none
-    integer :: ifirst
-    double precision :: dummy, vol
-    double precision, dimension(nintegrals) :: f1
+    integer :: ifirst, replica
+    integer, dimension(ndimmax) :: base_icell, base_ncell
+    double precision :: dummy, vol, replica_vol
+    double precision, dimension(nintegrals) :: f1, folded_sum
+    double precision, dimension(ndimmax) :: base_x, replica_x
     double precision, dimension(ndimmax) :: x
     double precision, external :: fun
-    ! contribution to integral
+    logical :: any_replica_passed_cuts, replica_passed_cuts
+
+    point_grids_are_accumulated = .false.
     ifirst = 0
-    dummy = fun(x, vol, ifirst, f1)
-    f(1:nintegrals) = f1(1:nintegrals)
+    if (DecayFold <= 1 .or. .not. allocated(decay_fold_dimension) .or. &
+        .not. any(decay_fold_dimension) .or. &
+        (nit <= 1 .and. .not. decay_fold_grid_is_pretrained)) then
+      dummy = fun(x, vol, ifirst, f1)
+      f(1:nintegrals) = f1(1:nintegrals)
+      return
+    end if
+
+    ! Conditional decay-space folding: the MINT channel, production
+    ! coordinates, production radiation and production discrete choices are
+    ! one outer sample.  The decay coordinates form one shifted Latin fold:
+    ! every decay dimension visits each of DecayFold equal-probability
+    ! strata exactly once, but the dimensions share one replica index.  This
+    ! gives DecayFold joint decay samples rather than their Cartesian
+    ! product.  Average them before the outer point enters vtot/etot.
+    ! Histograms remain correlated correctly because HwU_add_points is
+    ! called only after this routine returns.
+    base_x = x
+    base_icell = 0
+    base_ncell = 0
+    base_icell(1:ndim) = icell(1:ndim)
+    base_ncell(1:ndim) = ncell(1:ndim)
+    folded_sum = 0d0
+    any_replica_passed_cuts = .false.
+    decay_fold_replicas = DecayFold
+    decay_fold_replica = 1
+    decay_fold_group_is_active = .true.
+    production_virtual_choice_is_cached = .false.
+    cached_production_virtual_choice = .false.
+    point_grids_are_accumulated = .true.
+
+    do replica = 1, decay_fold_replicas
+      decay_fold_replica = replica
+      replica_x = base_x
+      icell(1:ndim) = base_icell(1:ndim)
+      ncell(1:ndim) = base_ncell(1:ndim)
+      call resample_decay_fold_dimensions( &
+           base_icell, replica, replica_x, vol, replica_vol)
+      if (replica > 1) call load_virtual_approximations(replica_x)
+      new_point = .true.
+      pass_cuts_check = .false.
+      dummy = fun( &
+           replica_x, replica_vol/dble(decay_fold_replicas), ifirst, f1)
+      replica_passed_cuts = pass_cuts_check
+      f(1:nintegrals) = f1(1:nintegrals)
+      call add_point_to_grids(replica_x)
+      folded_sum = folded_sum + f(1:nintegrals)
+      any_replica_passed_cuts = any_replica_passed_cuts .or. &
+           replica_passed_cuts
+    end do
+
+    ! The virtual-ratio monitor is deliberately unweighted by the phase-space
+    ! Jacobian.  All physical MINT components already received the 1/fold
+    ! factor through replica_vol, whereas this diagnostic needs its explicit
+    ! arithmetic average.
+    folded_sum(4) = folded_sum(4)/dble(decay_fold_replicas)
+    f(1:nintegrals) = folded_sum
+    pass_cuts_check = any_replica_passed_cuts
+    x = base_x
+    icell(1:ndim) = base_icell(1:ndim)
+    ncell(1:ndim) = base_ncell(1:ndim)
+    decay_fold_replica = 1
+    decay_fold_replicas = 1
+    decay_fold_group_is_active = .false.
+    production_virtual_choice_is_cached = .false.
+    cached_production_virtual_choice = .false.
   end subroutine compute_integrand
+
+  subroutine resample_decay_fold_dimensions( &
+       base_icell, replica, x, base_vol, vol)
+    implicit none
+    integer, intent(in) :: base_icell(ndimmax)
+    integer, intent(in) :: replica
+    double precision, intent(inout) :: x(ndimmax)
+    double precision, intent(in) :: base_vol
+    double precision, intent(out) :: vol
+    integer :: base_stratum, cell, kdim, stratum
+    double precision :: draw, fold_fraction, new_dx, old_dx
+    double precision :: sampling_coordinate
+
+    ! Recover the uniform MINT coordinate which selected the original cell.
+    ! Its stratum supplies an independent random cyclic shift in every
+    ! dimension.  Advancing the common replica index then visits all strata
+    ! once in every decay dimension.  Each replica has the ordinary MINT
+    ! density; the caller supplies the single overall 1/DecayFold average.
+    vol = base_vol
+    do kdim = 1, ndim
+      if (.not. decay_fold_dimension(kdim)) cycle
+      old_dx = xgrid(base_icell(kdim), kdim, ichan) - &
+           xgrid(base_icell(kdim) - 1, kdim, ichan)
+      if (old_dx <= 0d0) then
+        write (*, *) 'DecayFold encountered a non-positive grid interval.'
+        stop 1
+      end if
+      sampling_coordinate = (dble(base_icell(kdim) - 1) + &
+           rand(kdim))/dble(nint_used)
+      base_stratum = min( &
+           int(sampling_coordinate*DecayFold), DecayFold - 1)
+      fold_fraction = sampling_coordinate*DecayFold - &
+           dble(base_stratum)
+      stratum = modulo(base_stratum + replica - 1, DecayFold)
+      sampling_coordinate = (dble(stratum) + fold_fraction)/ &
+           dble(DecayFold)
+      cell = min( &
+           int(sampling_coordinate*nint_used) + 1, nint_used)
+      draw = sampling_coordinate*nint_used - dble(cell - 1)
+      new_dx = xgrid(cell, kdim, ichan) - &
+           xgrid(cell - 1, kdim, ichan)
+      if (new_dx <= 0d0) then
+        write (*, *) 'DecayFold encountered a non-positive grid interval.'
+        stop 1
+      end if
+      vol = vol*new_dx/old_dx
+      icell(kdim) = cell
+      ncell(kdim) = cell
+      x(kdim) = xgrid(cell - 1, kdim, ichan) + draw*new_dx
+      if (replica > 1) &
+           nhits(cell, kdim, ichan) = nhits(cell, kdim, ichan) + 1
+    end do
+  end subroutine resample_decay_fold_dimensions
 
   subroutine get_random_x(x, vol)
     implicit none
-    integer :: kdim, k_ord_virt
+    integer :: kdim
     double precision :: vol, dx
     double precision, dimension(ndimmax) :: x
     call get_channel
@@ -874,6 +1134,14 @@ contains
       x(kdim) = xgrid(icell(kdim) - 1, kdim, ichan) + rand(kdim)*dx
       nhits(icell(kdim), kdim, ichan) = nhits(icell(kdim), kdim, ichan) + 1
     end do
+    call load_virtual_approximations(x)
+  end subroutine get_random_x
+
+  subroutine load_virtual_approximations(x)
+    implicit none
+    integer :: k_ord_virt
+    double precision, intent(in) :: x(ndimmax)
+
     do k_ord_virt = 0, n_ord_virt
       if (use_poly_virtual) then
         call get_polyfit(ichan, k_ord_virt, &
@@ -882,7 +1150,7 @@ contains
         call get_ave_virt(x, k_ord_virt)
       end if
     end do
-  end subroutine get_random_x
+  end subroutine load_virtual_approximations
 
   subroutine start_iteration
     implicit none

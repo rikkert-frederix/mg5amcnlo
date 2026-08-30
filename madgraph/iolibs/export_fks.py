@@ -3403,8 +3403,6 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             return layout
 
         born_layouts = {}
-        born_leaf_providers = {}
-        born_leaf_contexts = {}
         for identifier, component in components:
             provider = component['born']
             context = None
@@ -3419,17 +3417,13 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                 context = matches[0].get('context')
             born_layouts[component_positions[identifier]] = leaf_layout(
                 provider, context)
-            born_leaf_providers[component_positions[identifier]] = provider
-            born_leaf_contexts[component_positions[identifier]] = context
-        for variant in born_variants:
-            position = component_positions[variant['active_component']]
-            provider = variant.get(
-                'provider', plan['components'][
-                    variant['active_component']]['born'])
-            born_layouts[position] = leaf_layout(
-                provider, variant.get('context'))
-            born_leaf_providers[position] = provider
-            born_leaf_contexts[position] = variant.get('context')
+
+        # B-branch snapshots always come from the common Born decay tree and
+        # therefore follow the canonical component ordering above.  An active
+        # NLO-decay insertion can own an auxiliary Born provider with a
+        # different local leg order, but that provider only changes the
+        # density contraction; it must not relabel the cached phase-space
+        # momenta used to materialize cuts and observables.
 
         configurations_by_me = {}
         for configuration, info in enumerate(info_list, 1):
@@ -3608,20 +3602,20 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             provider = plan['components'][component_id]['born']
             provider_me = provider['matrix_element']
             provider_nexternal, _ = provider_me.get_nexternal_ninitial()
-            squared_orders, _ = provider_me.get_split_orders_mapping()
-            if len(squared_orders) != 1:
-                if getattr(matrix_element, 'contribution_bundle', False):
-                    raise fks_common.FKSProcessError(
-                        'A component Born leaf has several squared orders')
+            if getattr(matrix_element, 'contribution_bundle', False):
+                split_orders = list(matrix_element.born_me.get(
+                    'processes')[0].get('split_orders'))
+                local_order = fks_helas_objects.single_squared_order(
+                    provider_me, 'A component Born leaf', split_orders)
+            else:
+                squared_orders, _ = provider_me.get_split_orders_mapping()
                 # This value is unreachable in legacy LO/additive mode; keep
                 # a deterministic compatibility accessor for linking.
                 local_order = squared_orders[0] if squared_orders else []
-            else:
-                local_order = squared_orders[0]
-            if local_order and isinstance(local_order[0], tuple):
-                local_order = local_order[0]
-            split_orders = provider_me.get('processes')[0].get(
-                'split_orders')
+                if local_order and isinstance(local_order[0], tuple):
+                    local_order = local_order[0]
+                split_orders = provider_me.get('processes')[0].get(
+                    'split_orders')
             qcd_power = (local_order[split_orders.index('QCD')]
                          if 'QCD' in split_orders and local_order else 0)
             scale_pdg = (0 if component_id == 0 else

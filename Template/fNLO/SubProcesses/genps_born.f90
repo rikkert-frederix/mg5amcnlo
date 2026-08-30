@@ -119,8 +119,9 @@ contains
     point%external_masses => saved_external_masses
     saved_external_masses = 0d0
 
-    ! The decay map is channel-independent, but multichannel enhancement
-    ! still needs to know which generated Born channel is being integrated.
+    ! Production uses the shared factorized map.  Each forced decay uses the
+    ! unique decay subtree, propagator masses and widths of this Born channel.
+    ! Multichannel enhancement also needs the selected channel below.
     this_config = iconfig
     config_index = iconfig
     iconfig0 = iconfig

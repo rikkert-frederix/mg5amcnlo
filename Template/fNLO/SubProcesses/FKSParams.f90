@@ -12,12 +12,12 @@ module FKSParams
   public :: PrecisionVirtualAtRunTime, Min_virt_fraction
   public :: NHelForMCoverHels, SelectedContributionTypes
   public :: separate_flavour_configs
-  public :: use_poly_virtual, FKSParamReader
+  public :: use_poly_virtual, DecayFold, FKSParamReader
   character(len=64), parameter ::  paramFileName='FKS_params.dat'
   integer,parameter :: maxContribsSelected=100, maxContribType=15
   double precision :: IRPoleCheckThreshold,Virt_fraction, &
        PrecisionVirtualAtRunTime,Min_virt_fraction
-  integer  :: NHelForMCoverHels
+  integer  :: NHelForMCoverHels, DecayFold
   integer  :: SelectedContributionTypes(0:maxContribsSelected)
   logical :: separate_flavour_configs,use_poly_virtual
 
@@ -66,6 +66,11 @@ contains
              read(68,*,end=999) separate_flavour_configs
           else if (buff .eq. '#UsePolyVirtual') then
              read(68,*,end=999) use_poly_virtual
+          else if (buff .eq. '#DecayFold') then
+             read(68,*,end=999) DecayFold
+             if (DecayFold .lt. 1 .or. DecayFold .gt. 64) then
+                stop 'DecayFold must be between 1 and 64.'
+             endif
           else if (buff .eq. '#SelectedContributionTypes') then
              read(68,*,end=999) SelectedContributionTypes(0)
              if (SelectedContributionTypes(0) .lt. 0 .or. &
@@ -110,6 +115,7 @@ contains
     write(*,*) ' > MinVirtualFraction        = ',Min_virt_fraction
     write(*,*) ' > SeparateFlavourConfigs    = ',separate_flavour_configs
     write(*,*) ' > UsePolyVirtual            = ',use_poly_virtual
+    write(*,*) ' > DecayFold                 = ',DecayFold
     write(*,*) '==============================================================='
     return
 
@@ -130,6 +136,7 @@ contains
     Min_virt_fraction=0.005d0
     separate_flavour_configs=.false.
     use_poly_virtual=.true.
+    DecayFold=1
     SelectedContributionTypes(0)=0
     do i=1, maxContribsSelected
        SelectedContributionTypes(I)=-1

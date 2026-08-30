@@ -1,7 +1,10 @@
 include ../proc_characteristics
+-include virtual_libraries.inc
+ifneq ($(strip $(FNLO_VIRTUAL_LIBRARIES)),)
+madloop = true
+endif
 include ../../Source/make_opts
 include ../analyse_opts
--include virtual_libraries.inc
 
 LIBDIR = $(abspath ../../lib/)/
 ANADIR = ../../FixedOrderAnalysis/
@@ -297,7 +300,8 @@ analysis_HwU_pp_hjj.o: boostwdir2.o
 analysis_HwU_pp_tj.o: $(LIBDIR)run_state.mod
 analysis_HwU_pp_V.o analysis_HwU_pp_taptam.o \
 	analysis_HwU_pp_ttx_v2.o: $(LIBDIR)kin_functions_module.mod
-mint_module.o : FKSParams.o MC_integer.o polfit.o nlo_contribution_bundle.o
+mint_module.o : FKSParams.o MC_integer.o polfit.o nlo_contribution_bundle.o \
+	fks_random.o
 BinothLHA_OLP.o: process_dimensions.o FKSParams.o fks_singular.o
 BinothLHA.o: process_dimensions.o FKSParams.o splitorders_stuff.o cuts.o \
 	fks_singular.o nlo_contribution_bundle.o

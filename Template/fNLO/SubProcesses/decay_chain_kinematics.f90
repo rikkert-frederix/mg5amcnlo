@@ -1,7 +1,9 @@
 module decay_chain_kinematics
-  use process_dimensions, only: nexternal, nincoming, validate_process_dimensions
+  use process_dimensions, only: nexternal, nincoming, max_branch, &
+       validate_process_dimensions
   use fnlo_process_common, only: event_from_decay => from_decay, &
-       soft_counterevent
+       soft_counterevent, this_config, config_map, config_forest, &
+       config_sprop, config_mass, config_width
   use factorized_phase_space, only: factorized_measure_state, &
        store_factorized_block_momenta, store_factorized_kernel_momenta, &
        store_factorized_embedded_momenta, &
@@ -10,6 +12,7 @@ module decay_chain_kinematics
   use factorized_block_kinematics, only: &
        generate_nbody => generate_factorized_nbody, &
        generate_nbody_rest => generate_factorized_nbody_rest, &
+       generate_decay_tree_rest => generate_factorized_decay_tree_rest, &
        boost_nbody_from_rest => boost_factorized_block_from_rest, &
        boost_from_rest => boost_factorized_momentum_from_rest, &
        minkowski_square => factorized_minkowski_square
@@ -42,6 +45,7 @@ module decay_chain_kinematics
   public :: active_core_count, fks_leg_mass
   public :: map_core_color_pair
   public :: contract_visible_momenta
+  public :: decay_variable_start
   ! These Lorentz-covariant building blocks are also used by the dedicated
   ! NLO-decay phase-space path.  They do not depend on decay-chain metadata.
   public :: generate_nbody, generate_nbody_rest
@@ -254,7 +258,11 @@ contains
     logical, intent(out) :: pass
 
     integer :: child_count, child, identifier, child_kind
+    integer :: local_tree(2, -nexternal:-1)
+    integer :: local_propagator_ids(-nexternal:-1)
     double precision :: child_masses(nexternal)
+    double precision :: local_propagator_masses(-nexternal:-1)
+    double precision :: local_propagator_widths(-nexternal:-1)
     double precision :: rest_momenta(0:3, nexternal)
     double precision :: local_jacobian, local_weight
     type(factorized_measure_state) :: decay_measure
@@ -272,8 +280,13 @@ contains
 
     local_jacobian = 1d0
     local_weight = 1d0
-    call generate_nbody_rest(node_masses(node), child_count, &
-         child_masses, x, index, rest_momenta, local_jacobian, &
+    call build_decay_configuration_tree( &
+         node, child_count, local_tree, local_propagator_masses, &
+         local_propagator_widths, local_propagator_ids)
+    call generate_decay_tree_rest( &
+         node_masses(node), child_count, child_masses, local_tree, &
+         local_propagator_masses, local_propagator_widths, &
+         local_propagator_ids, x, index, rest_momenta, local_jacobian, &
          local_weight, pass)
     if (.not. pass) return
     node_rest_storage(:, :, node) = 0d0
@@ -292,6 +305,241 @@ contains
       if (.not. pass) return
     end do
   end subroutine sample_decay_node
+
+
+  subroutine build_decay_configuration_tree( &
+       node, child_count, local_tree, local_masses, local_widths, &
+       local_propagator_ids)
+    integer, intent(in) :: node, child_count
+    integer, intent(out) :: local_tree(2, -nexternal:-1)
+    double precision, intent(out) :: local_masses(-nexternal:-1)
+    double precision, intent(out) :: local_widths(-nexternal:-1)
+    integer, intent(out) :: local_propagator_ids(-nexternal:-1)
+
+    logical :: atomic_masks(nexternal - 1, nexternal)
+    logical :: node_mask(nexternal - 1), branch_mask(nexternal - 1)
+    logical :: used_children(nexternal), valid
+    integer :: child, branch, root_branch, root_matches
+    integer :: internal_count, local_root
+
+    if (this_config < 1 .or. this_config > config_map(0, 0)) then
+      call fail_kinematics( &
+           'the selected Born configuration is outside the generated range')
+    end if
+    if (child_count < 2 .or. child_count > nexternal) then
+      call fail_kinematics('a decay node has an invalid child count')
+    end if
+
+    local_tree = 0
+    local_masses = 0d0
+    local_widths = 0d0
+    local_propagator_ids = 0
+    atomic_masks = .false.
+    used_children = .false.
+    call mark_decay_node_visible_legs(node, node_mask)
+    do child = 1, child_count
+      call mark_decay_child_visible_legs(node, child, &
+                                          atomic_masks(:, child))
+      if (.not. any(atomic_masks(:, child))) then
+        call fail_kinematics('a decay child has no visible descendants')
+      end if
+    end do
+    if (.not. all(any(atomic_masks(:, 1:child_count), dim=2) .eqv. &
+         node_mask)) then
+      call fail_kinematics('decay-child visible masks are inconsistent')
+    end if
+
+    root_branch = 0
+    root_matches = 0
+    do branch = -max_branch, -1
+      if (all(config_forest(:, branch, this_config, 0) == 0)) cycle
+      call configuration_descendant_mask( &
+           branch, this_config, branch_mask, valid, 0)
+      if (.not. valid) cycle
+      if (all(branch_mask .eqv. node_mask)) then
+        root_branch = branch
+        root_matches = root_matches + 1
+      end if
+    end do
+    if (root_matches /= 1) then
+      call fail_kinematics( &
+           'the unique LO decay topology is absent from the selected Born '// &
+           'configuration')
+    end if
+
+    internal_count = 0
+    call copy_decay_configuration_subtree( &
+         root_branch, .false., child_count, atomic_masks, used_children, &
+         internal_count, local_root, local_tree, local_masses, &
+         local_widths, local_propagator_ids)
+    if (internal_count /= child_count - 1 .or. &
+        local_root /= -(child_count - 1) .or. &
+        .not. all(used_children(1:child_count))) then
+      call fail_kinematics( &
+           'the selected Born configuration does not contain one binary '// &
+           'topology for the decay node')
+    end if
+  end subroutine build_decay_configuration_tree
+
+
+  recursive subroutine copy_decay_configuration_subtree( &
+       source, allow_atomic, child_count, atomic_masks, used_children, &
+       internal_count, local_label, local_tree, local_masses, &
+       local_widths, local_propagator_ids)
+    integer, intent(in) :: source, child_count
+    logical, intent(in) :: allow_atomic
+    logical, intent(in) :: atomic_masks(nexternal - 1, nexternal)
+    logical, intent(inout) :: used_children(nexternal)
+    integer, intent(inout) :: internal_count
+    integer, intent(out) :: local_label
+    integer, intent(inout) :: local_tree(2, -nexternal:-1)
+    double precision, intent(inout) :: local_masses(-nexternal:-1)
+    double precision, intent(inout) :: local_widths(-nexternal:-1)
+    integer, intent(inout) :: local_propagator_ids(-nexternal:-1)
+
+    logical :: source_mask(nexternal - 1), valid
+    integer :: atomic_child, first_local, second_local
+
+    call configuration_descendant_mask( &
+         source, this_config, source_mask, valid, 0)
+    if (.not. valid) then
+      call fail_kinematics('a decay configuration subtree is malformed')
+    end if
+
+    if (allow_atomic) then
+      atomic_child = matching_atomic_child( &
+           source_mask, child_count, atomic_masks)
+      if (atomic_child > 0) then
+        if (used_children(atomic_child)) then
+          call fail_kinematics( &
+               'a decay topology uses one child more than once')
+        end if
+        used_children(atomic_child) = .true.
+        local_label = atomic_child
+        return
+      end if
+    end if
+    if (source >= 0 .or. source < -max_branch .or. &
+        source < -nexternal) then
+      call fail_kinematics( &
+           'a decay topology cannot be represented by generated branches')
+    end if
+    if (any(config_forest(:, source, this_config, 0) == 0)) then
+      call fail_kinematics( &
+           'factorized decay phase space requires a binary LO topology')
+    end if
+
+    call copy_decay_configuration_subtree( &
+         config_forest(1, source, this_config, 0), .true., child_count, &
+         atomic_masks, used_children, internal_count, first_local, &
+         local_tree, local_masses, local_widths, local_propagator_ids)
+    call copy_decay_configuration_subtree( &
+         config_forest(2, source, this_config, 0), .true., child_count, &
+         atomic_masks, used_children, internal_count, second_local, &
+         local_tree, local_masses, local_widths, local_propagator_ids)
+    internal_count = internal_count + 1
+    if (internal_count > child_count - 1) then
+      call fail_kinematics('a decay topology contains too many branches')
+    end if
+    local_label = -internal_count
+    local_tree(1, local_label) = first_local
+    local_tree(2, local_label) = second_local
+    local_masses(local_label) = &
+         config_mass(source, this_config, 0)
+    local_widths(local_label) = &
+         config_width(source, this_config, 0)
+    local_propagator_ids(local_label) = &
+         config_sprop(source, this_config, 0)
+  end subroutine copy_decay_configuration_subtree
+
+
+  integer function matching_atomic_child(mask, child_count, atomic_masks)
+    logical, intent(in) :: mask(nexternal - 1)
+    integer, intent(in) :: child_count
+    logical, intent(in) :: atomic_masks(nexternal - 1, nexternal)
+    integer :: child, matches
+
+    matching_atomic_child = 0
+    matches = 0
+    do child = 1, child_count
+      if (.not. all(mask .eqv. atomic_masks(:, child))) cycle
+      matching_atomic_child = child
+      matches = matches + 1
+    end do
+    if (matches > 1) then
+      call fail_kinematics( &
+           'two immediate decay children have identical visible content')
+    end if
+  end function matching_atomic_child
+
+
+  recursive subroutine configuration_descendant_mask( &
+       source, configuration, mask, valid, depth)
+    integer, intent(in) :: source, configuration, depth
+    logical, intent(out) :: mask(nexternal - 1), valid
+    logical :: child_mask(nexternal - 1), child_valid
+    integer :: child
+
+    mask = .false.
+    valid = .false.
+    if (depth > max_branch) return
+    if (source > 0) then
+      if (source > nexternal - 1) return
+      mask(source) = .true.
+      valid = .true.
+      return
+    end if
+    if (source >= 0 .or. source < -max_branch) return
+    if (all(config_forest(:, source, configuration, 0) == 0)) return
+    valid = .true.
+    do child = 1, 2
+      call configuration_descendant_mask( &
+           config_forest(child, source, configuration, 0), &
+           configuration, child_mask, child_valid, depth + 1)
+      if (.not. child_valid .or. any(mask .and. child_mask)) then
+        valid = .false.
+        mask = .false.
+        return
+      end if
+      mask = mask .or. child_mask
+    end do
+  end subroutine configuration_descendant_mask
+
+
+  recursive subroutine mark_decay_child_visible_legs(node, child, mask)
+    integer, intent(in) :: node, child
+    logical, intent(out) :: mask(nexternal - 1)
+    integer :: identifier, visible
+
+    mask = .false.
+    identifier = node_child_id(node, child)
+    if (node_child_kind(node, child) == decay_node_child) then
+      call mark_decay_node_visible_legs(identifier, mask)
+    else
+      visible = leaf_visible_leg(born_context(), identifier)
+      if (visible < 1 .or. visible > nexternal - 1) then
+        call fail_kinematics('a decay leaf has an invalid Born target')
+      end if
+      mask(visible) = .true.
+    end if
+  end subroutine mark_decay_child_visible_legs
+
+
+  recursive subroutine mark_decay_node_visible_legs(node, mask)
+    integer, intent(in) :: node
+    logical, intent(out) :: mask(nexternal - 1)
+    logical :: child_mask(nexternal - 1)
+    integer :: child
+
+    mask = .false.
+    do child = 1, node_child_count(node)
+      call mark_decay_child_visible_legs(node, child, child_mask)
+      if (any(mask .and. child_mask)) then
+        call fail_kinematics('decay nodes share a visible Born target')
+      end if
+      mask = mask .or. child_mask
+    end do
+  end subroutine mark_decay_node_visible_legs
 
 
   subroutine embed_decay_context(context, event_slot, core_momenta, &

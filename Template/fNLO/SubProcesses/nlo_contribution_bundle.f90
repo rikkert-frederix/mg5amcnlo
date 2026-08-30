@@ -378,8 +378,12 @@ contains
   logical function contribution_is_nlo_decay(contribution)
     integer, intent(in) :: contribution
     if (.not. initialized) call initialize_nlo_contribution_bundle()
+    if (.not. enabled) then
+      contribution_is_nlo_decay = .false.
+      return
+    end if
     call check_contribution(contribution)
-    contribution_is_nlo_decay = enabled .and. &
+    contribution_is_nlo_decay = &
          contribution_kind_values(contribution) == nlo_decay_contribution
   end function contribution_is_nlo_decay
 
@@ -387,9 +391,12 @@ contains
   integer function contribution_parent_pdg(contribution)
     integer, intent(in) :: contribution
     if (.not. initialized) call initialize_nlo_contribution_bundle()
+    if (.not. enabled) then
+      contribution_parent_pdg = 0
+      return
+    end if
     call check_contribution(contribution)
-    if (.not. enabled .or. &
-        contribution_kind_values(contribution) /= nlo_decay_contribution) then
+    if (contribution_kind_values(contribution) /= nlo_decay_contribution) then
       contribution_parent_pdg = 0
     else
       contribution_parent_pdg = contribution_parent_values(contribution)
@@ -400,9 +407,12 @@ contains
   integer function contribution_parent_occurrence(contribution)
     integer, intent(in) :: contribution
     if (.not. initialized) call initialize_nlo_contribution_bundle()
+    if (.not. enabled) then
+      contribution_parent_occurrence = 0
+      return
+    end if
     call check_contribution(contribution)
-    if (.not. enabled .or. &
-        contribution_kind_values(contribution) /= nlo_decay_contribution) then
+    if (contribution_kind_values(contribution) /= nlo_decay_contribution) then
       contribution_parent_occurrence = 0
     else
       contribution_parent_occurrence = &
@@ -414,9 +424,12 @@ contains
   integer function contribution_corrected_node(contribution)
     integer, intent(in) :: contribution
     if (.not. initialized) call initialize_nlo_contribution_bundle()
+    if (.not. enabled) then
+      contribution_corrected_node = 0
+      return
+    end if
     call check_contribution(contribution)
-    if (.not. enabled .or. &
-        contribution_kind_values(contribution) /= nlo_decay_contribution) then
+    if (contribution_kind_values(contribution) /= nlo_decay_contribution) then
       contribution_corrected_node = 0
     else
       contribution_corrected_node = contribution_node_values(contribution)
@@ -439,8 +452,12 @@ contains
   logical function active_contribution_is_production()
     integer :: contribution
     if (.not. initialized) call initialize_nlo_contribution_bundle()
+    if (.not. enabled) then
+      active_contribution_is_production = .false.
+      return
+    end if
     contribution = active_nlo_contribution()
-    active_contribution_is_production = enabled .and. &
+    active_contribution_is_production = &
          contribution_kind_values(contribution) == production_contribution
   end function active_contribution_is_production
 
@@ -448,8 +465,12 @@ contains
   logical function active_contribution_is_nlo_decay()
     integer :: contribution
     if (.not. initialized) call initialize_nlo_contribution_bundle()
+    if (.not. enabled) then
+      active_contribution_is_nlo_decay = .false.
+      return
+    end if
     contribution = active_nlo_contribution()
-    active_contribution_is_nlo_decay = enabled .and. &
+    active_contribution_is_nlo_decay = &
          contribution_kind_values(contribution) == nlo_decay_contribution
   end function active_contribution_is_nlo_decay
 

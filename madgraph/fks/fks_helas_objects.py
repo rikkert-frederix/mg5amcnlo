@@ -49,6 +49,35 @@ if madgraph.ordering:
     set = misc.OrderedSet
 
 
+def single_squared_order(matrix_element, description,
+                         reference_split_orders=None):
+    """Return one Born order, optionally in another block's order basis."""
+
+    squared_orders, _ = matrix_element.get_split_orders_mapping()
+    if not squared_orders and reference_split_orders:
+        # Pure-LO spectator decays do not normally request split-order
+        # bookkeeping.  A bundled virtual nevertheless needs their Born
+        # order in the same basis as the active NLO block so that its local
+        # interference order can be promoted to the full decay chain.
+        # Reconstruct that order directly from the spectator diagrams without
+        # mutating the spectator process definition.
+        amplitude_orders = \
+            matrix_element.get_split_orders_mapping_for_diagram_list(
+                matrix_element.get('diagrams'),
+                list(reference_split_orders))
+        squared_orders = [tuple(2 * value for value in order)
+                          for order, _ in amplitude_orders]
+    if len(squared_orders) != 1:
+        raise fks_common.FKSProcessError(
+            '%s requires exactly one squared coupling order' % description)
+    order = squared_orders[0]
+    # Loop mappings pair the interference order with the contributing
+    # loop-amplitude orders; tree mappings expose the order directly.
+    if order and isinstance(order[0], tuple):
+        order = order[0]
+    return tuple(order)
+
+
 #functions to be used in the ncores_for_proc_gen mode
 def async_generate_real(args):
     i = args[0]
@@ -520,25 +549,9 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
             leg.get('id') for leg in visible if leg.get('state')))
         return tuple(sorted(initial_states)), final_state
 
-    @staticmethod
-    def _single_squared_order(matrix_element, description):
-        """Return the sole squared coupling order of an fNLO component."""
-
-        squared_orders, _ = matrix_element.get_split_orders_mapping()
-        if len(squared_orders) != 1:
-            raise fks_common.FKSProcessError(
-                '%s requires exactly one squared coupling order' %
-                description)
-        order = squared_orders[0]
-        # Loop mappings pair the interference order with the contributing
-        # loop-amplitude orders; tree mappings expose the order directly.
-        if order and isinstance(order[0], tuple):
-            order = order[0]
-        return tuple(order)
-
     @classmethod
     def _global_virtual_orders(cls, plan, active_component,
-                               local_virtual_orders):
+                               local_virtual_orders, split_orders):
         """Dress one local virtual insertion with all LO spectators.
 
         The runtime amplitude-order slots describe the complete decay chain,
@@ -551,9 +564,9 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
         for component_id, component in plan['components'].items():
             if component_id == active_component:
                 continue
-            order = cls._single_squared_order(
+            order = single_squared_order(
                 component['born']['matrix_element'],
-                'A spectator density-matrix component')
+                'A spectator density-matrix component', split_orders)
             if spectator is None:
                 spectator = [0] * len(order)
             if len(order) != len(spectator):
@@ -736,7 +749,8 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
                               isinstance(order[0], tuple)) else tuple(order)
                         for order in squared_orders]
                     virtual_orders = self._global_virtual_orders(
-                        member_plan, active_component, virtual_orders)
+                        member_plan, active_component, virtual_orders,
+                        virtual.get('processes')[0].get('split_orders'))
                 production.bundle_contributions.append({
                     'id': contribution_id,
                     'kind': ('PRODUCTION' if contribution_id == 1

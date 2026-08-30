@@ -961,6 +961,14 @@ def _build_decay_metadata(assignment, model):
         'fks_maps': [],
         'color_links': []}
     for attachment in assignment['attachments']:
+        diagram_count = len(attachment['decay_me'].get('diagrams'))
+        if diagram_count != 1:
+            process = attachment['decay_me'].get('processes')[0]
+            raise fks_common.FKSProcessError(
+                'Factorized fNLO decay phase space requires exactly one LO '
+                'diagram/topology for every concrete decay; found %d for %s' %
+                (diagram_count,
+                 process.nice_string().replace('\n', ' ')))
         process = attachment['decay_me'].get('processes')[0]
         attachment['root_node_id'] = _append_decay_tree(
             process, 0, metadata)

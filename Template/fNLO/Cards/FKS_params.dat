@@ -103,6 +103,16 @@
 .False.
 ! Default :: .True.
 !
+! For factorized NLO decay chains, fold all decay variables jointly this
+! many times while keeping the production variables and its discrete
+! FKS/virtual choices fixed.  The replicas form one shifted, stratified
+! decay-space fold, not a Cartesian fold per decay or per dimension.  MINT
+! receives their average as one outer production point.  The first grid
+! iteration is deliberately left unfolded while its grids adapt.
+#DecayFold
+1
+! Default :: 1
+!
 ! ==========================================================================
 ! Combination of matrix elements
 ! ==========================================================================

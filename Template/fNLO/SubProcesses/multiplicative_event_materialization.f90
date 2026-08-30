@@ -201,6 +201,12 @@ contains
       tolerance = 1d-8*max(1d0, parent_mass2)
       if (abs(factorized_minkowski_square(new_parent) - parent_mass2) > &
           tolerance) then
+        write (*, '(a,i0,a,i0,a,es24.16,a,es24.16)') &
+             'ERROR in multiplicative_event_materialization: component ', &
+             workspace%component_ids(component_position), ' branch ', &
+             branch, ' has block mass^2 ', parent_mass2, &
+             ' but parent mass^2 ', &
+             factorized_minkowski_square(new_parent)
         call fail_materialization( &
              'combined branches disagree on a resonance mass')
       end if

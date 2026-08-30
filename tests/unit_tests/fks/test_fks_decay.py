@@ -12,6 +12,7 @@ from __future__ import absolute_import
 
 import copy
 import os
+import re
 import sys
 import tempfile
 
@@ -227,17 +228,15 @@ class TestFKSDecayChains(unittest.TestCase):
             'NLO_DECAY_WIDTH_VARIATION 6 2.0000000000000000e+00 '
             '1.4299999999999999e+00\n', varied_card_text)
 
-    def test_qcd_decay_order_is_stored_per_node(self):
+    def test_multi_diagram_decay_node_is_rejected(self):
         command = self.generate(
             'u u~ > t t~ [real=QCD], '
             '(t > w+ b, w+ > u d~ g)')
-        helas = fks_helas_objects.FKSHelasMultiProcess(
-            command._fks_multi_proc, loop_optimized=False)
-        matrix_element = helas['matrix_elements'][0]
-        self.assertEqual(
-            [(node['pdg'], node['qcd_order'])
-             for node in matrix_element.decay_metadata['nodes']],
-            [(6, 0), (24, 1)])
+        with self.assertRaisesRegex(
+                fks_common.FKSProcessError,
+                'exactly one LO diagram/topology'):
+            fks_helas_objects.FKSHelasMultiProcess(
+                command._fks_multi_proc, loop_optimized=False)
 
     def test_lo_spin_density_components_are_independent(self):
         command = self.generate(
@@ -2039,6 +2038,24 @@ class TestFKSDecayChains(unittest.TestCase):
              matrix_element.bundle_contributions],
             ['PRODUCTION', 'NLO_DECAY', 'NLO_DECAY'])
 
+    def test_full_nlo_bundle_promotes_lo_nested_decay_orders(self):
+        command = self.generate(
+            'u u~ > t t~ [QCD], '
+            '(t > w+ b QED=1 [QCD], w+ > e+ ve), '
+            '(t~ > w- b~ QED=1 [QCD], w- > e- ve~)')
+        matrix_element = fks_helas_objects.FKSHelasMultiProcess(
+            command._fks_multi_proc,
+            loop_optimized=True)['matrix_elements'][0]
+
+        # The purely LO W decays do not request split-order bookkeeping of
+        # their own.  Their electroweak Born powers must nevertheless be
+        # included when each local virtual order is promoted to the complete
+        # dileptonic decay chain.
+        self.assertEqual(
+            [entry['virtual_orders'] for entry in
+             matrix_element.bundle_contributions],
+            [[(6, 8)], [(6, 8)], [(6, 8)]])
+
     def test_full_nlo_bundle_rejects_mismatched_added_decay_trees(self):
         command = self.generate(
             'u u~ > t t~ [real=QCD], '
@@ -2055,8 +2072,8 @@ class TestFKSDecayChains(unittest.TestCase):
     def test_full_nlo_bundle_exports_virtual_dispatchers(self):
         command = self.generate(
             'u u~ > t t~ [QCD], '
-            '(t > w+ b QED=1 [QCD]), '
-            '(t~ > w- b~ QED=1 [QCD])')
+            '(t > w+ b QED=1 [QCD], w+ > e+ ve), '
+            '(t~ > w- b~ QED=1 [QCD], w- > e- ve~)')
         command.exec_cmd(
             'set loop_optimized_output False',
             printcmd=False, precmd=True)
@@ -2074,13 +2091,90 @@ class TestFKSDecayChains(unittest.TestCase):
                 os.path.isdir(os.path.join(subprocess_root, name))]
             self.assertEqual(len(subprocesses), 1)
             subprocess_dir = subprocesses[0]
+            with open(os.path.join(
+                    subprocess_dir,
+                    'factorized_block_kinematics.f90')) as stream:
+                phase_space_source = stream.read().lower()
+            self.assertIn(
+                'subroutine generate_factorized_decay_tree_rest',
+                phase_space_source)
+            self.assertIn(
+                'subroutine sample_breit_wigner_invariant',
+                phase_space_source)
+            self.assertIn(
+                'subroutine sample_logarithmic_invariant',
+                phase_space_source)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'decay_chain_kinematics.f90')) as stream:
+                decay_kinematics_source = stream.read().lower()
+            self.assertIn(
+                'call build_decay_configuration_tree',
+                decay_kinematics_source)
+            self.assertIn(
+                'recursive subroutine mark_decay_child_visible_legs',
+                decay_kinematics_source)
+            self.assertIn(
+                'config_width(source, this_config, 0)',
+                decay_kinematics_source)
+            with open(os.path.join(
+                    subprocess_dir, 'check_poles.f90')) as stream:
+                pole_check_source = stream.read().lower()
+            self.assertIn(
+                'call fill_configurations_common()', pole_check_source)
+            self.assertIn('this_config = iconfig', pole_check_source)
             with open(os.path.join(subprocess_dir, 'born.f')) as stream:
                 born_source = stream.read()
+            self.assertIn(
+                'LOGICAL SDM_INSERTION_CACHE_VALID', born_source)
+            self.assertIn(
+                'SDM_INSERTION_RHO=SDM_INSERTION_CACHE_RHO', born_source)
             for contribution in [2, 3]:
                 self.assertRegex(
                     born_source,
                     r'CALL SDM_DECAY_[0-9]+_BORN_CONTRIBUTION_%d' %
                     contribution)
+            real_sources = []
+            for name in os.listdir(subprocess_dir):
+                if re.match(r'matrix_[0-9]+\.f$', name):
+                    with open(os.path.join(subprocess_dir, name)) as stream:
+                        real_sources.append(stream.read())
+            self.assertTrue(real_sources)
+            self.assertIn(
+                'LOGICAL SDM_INSERTION_CACHE_VALID',
+                '\n'.join(real_sources))
+            color_sources = []
+            for name in os.listdir(subprocess_dir):
+                if re.match(r'b_sf_[0-9]+\.f$', name):
+                    with open(os.path.join(subprocess_dir, name)) as stream:
+                        color_sources.append(stream.read())
+            self.assertTrue(color_sources)
+            self.assertIn(
+                'LOGICAL SDM_COLOR_CACHE_VALID', '\n'.join(color_sources))
+            with open(os.path.join(
+                    subprocess_dir,
+                    'spin_density_block_accessors.f')) as stream:
+                block_accessors = ' '.join(
+                    stream.read().replace('$', ' ').split())
+            born_layouts = block_accessors.split(
+                'IF (BRANCH.EQ.0) THEN', 1)[1].split(
+                    'ELSE IF (BRANCH.EQ.1) THEN', 1)[0]
+            antitop_layout = born_layouts.split('CASE (2)', 1)[1].split(
+                'CASE (3)', 1)[0]
+            top_layout = born_layouts.split('CASE (4)', 1)[1].split(
+                'CASE (5)', 1)[0]
+            self.assertIn(
+                'TARGET_KIND(2)=1 TARGET_ID(2)=2 PDG(2)=-24',
+                antitop_layout)
+            self.assertIn(
+                'TARGET_KIND(3)=0 TARGET_ID(3)=3 PDG(3)=-5',
+                antitop_layout)
+            self.assertIn(
+                'TARGET_KIND(2)=1 TARGET_ID(2)=4 PDG(2)=24',
+                top_layout)
+            self.assertIn(
+                'TARGET_KIND(3)=0 TARGET_ID(3)=6 PDG(3)=5',
+                top_layout)
             self.assertEqual(sorted(
                 name for name in os.listdir(subprocess_dir)
                 if name.startswith('VContribution') and
@@ -2113,6 +2207,14 @@ class TestFKSDecayChains(unittest.TestCase):
                 'SUBROUTINE SDM_VIRTUAL_CONTRIBUTION_1', 1)[1].split(
                     'SUBROUTINE SDM_VIRTUAL_CONTRIBUTION_2', 1)[0]
             self.assertNotIn('TDV_', production_contraction)
+            self.assertIn(
+                'LOGICAL SDM_VIRTUAL_CACHE_VALID', production_contraction)
+            self.assertIn(
+                'SDM_VIRTUAL_CACHE_HIT=ALL(SDM_INSERTION_P.EQ.',
+                production_contraction)
+            self.assertIn(
+                'SDM_INSERTION_RHO=SDM_VIRTUAL_CACHE_RHO',
+                production_contraction)
             flat_contractions = ' '.join(
                 contractions.replace('$', ' ').split())
             for contribution, parent in [(2, 6), (3, -6)]:
@@ -2123,7 +2225,7 @@ class TestFKSDecayChains(unittest.TestCase):
                     'CALL TDV_VALIDATE_AGAINST_MADLOOP(%d,' % contribution,
                     flat_contractions)
                 self.assertIn(
-                    'CALL TDV_EVALUATE_TWO_BODY_TOP(%d,' % parent,
+                    'CALL TDV_EVALUATE_TWO_BODY_TOP_W(%d,' % parent,
                     flat_contractions)
             for contribution in [1, 2, 3]:
                 self.assertIn(
@@ -2159,9 +2261,9 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn('COUNT 3\n', metadata)
             self.assertIn('VIRTUAL_GRIDS 3\n', metadata)
             self.assertEqual(metadata.count('\nVIRTUAL_GRID '), 3)
-            self.assertIn('VIRTUAL_GRID 1 1 6 4\n', metadata)
-            self.assertIn('VIRTUAL_GRID 2 2 6 4\n', metadata)
-            self.assertIn('VIRTUAL_GRID 3 3 6 4\n', metadata)
+            self.assertIn('VIRTUAL_GRID 1 1 6 8\n', metadata)
+            self.assertIn('VIRTUAL_GRID 2 2 6 8\n', metadata)
+            self.assertIn('VIRTUAL_GRID 3 3 6 8\n', metadata)
             with open(os.path.join(
                     subprocess_dir, 'BinothLHA.f90')) as stream:
                 virtual_backend = stream.read().lower()
@@ -2176,6 +2278,13 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertNotIn('FNLO_CUTTOOLS_LIBRARY', makefile)
             self.assertIn(
                 '$(filter-out -fno-automatic,$(FFLAGS))', makefile)
+            self.assertLess(
+                makefile.index('-include virtual_libraries.inc'),
+                makefile.index('include ../../Source/make_opts'))
+            self.assertIn(
+                'ifneq ($(strip $(FNLO_VIRTUAL_LIBRARIES)),)',
+                makefile)
+            self.assertIn('madloop = true', makefile)
             for filename in [
                     'top_decay_virtual_cdr.f90',
                     'top_decay_virtual_dispatch.f90']:
@@ -2230,9 +2339,9 @@ class TestFKSDecayChains(unittest.TestCase):
                 singular_source = ' '.join(
                     stream.read().lower().replace('&', ' ').split())
             self.assertIn(
-                'if (sdm_virtual_uses_analytic_provider( '
-                'active_nlo_contribution())) '
-                'virtual_sampling_fraction = 1d0', singular_source)
+                'virtual_sampling_fraction = '
+                'virtual_sampling_fraction_for_contribution( '
+                'active_nlo_contribution(), ichan)', singular_source)
             self.assertNotIn('contribution_parent_pdg', singular_source)
             with open(os.path.join(
                     process_dir, 'SubProcesses',
@@ -2246,7 +2355,29 @@ class TestFKSDecayChains(unittest.TestCase):
                 'if (sdm_virtual_uses_analytic_provider(contribution)) cycle',
                 mint_source)
             self.assertIn(
+                'double precision function '
+                'virtual_sampling_fraction_for_contribution', mint_source)
+            self.assertIn(
+                'virtual = f(ithree)*sampling_fraction', mint_source)
+            self.assertIn(
+                'iteration uncertainty remains above 30%; keeping',
+                mint_source)
+            self.assertNotIn(
+                'resetting grids and starting from scratch', mint_source)
+            self.assertIn(
                 'first grid iteration total points:', mint_source)
+            self.assertIn('conditional decay-space folding', mint_source)
+            self.assertIn(
+                'replica_vol/dble(decay_fold_replicas)', mint_source)
+            self.assertIn(
+                'folded_sum(4) = folded_sum(4)/'
+                'dble(decay_fold_replicas)', mint_source)
+            self.assertIn(
+                'production_virtual_choice_is_cached', mint_source)
+            with open(os.path.join(
+                    process_dir, 'Cards', 'FKS_params.dat')) as stream:
+                fks_card = stream.read()
+            self.assertIn('#DecayFold', fks_card)
             with open(os.path.join(
                     process_dir, 'SubProcesses',
                     'nlo_contribution_bundle.f90')) as stream:
@@ -2254,6 +2385,15 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn(
                 'integer function virtual_grid_contribution',
                 bundle_source)
+            active_production = bundle_source.split(
+                'logical function active_contribution_is_production',
+                1)[1].split(
+                    'end function active_contribution_is_production',
+                    1)[0]
+            self.assertIn('if (.not. enabled) then', active_production)
+            self.assertIn(
+                'active_contribution_is_production = .false.',
+                active_production)
             for card_path in [
                     os.path.join(process_dir, 'Cards',
                                  'MadLoopParams.dat'),
