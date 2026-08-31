@@ -8,6 +8,10 @@ module factorized_phase_space
   integer, allocatable, save :: block_particle_count(:, :)
   logical, allocatable, save :: block_is_valid(:, :)
   integer(kind=8), allocatable, save :: block_momentum_revision(:, :)
+  double precision, allocatable, save :: identity_momenta(:, :, :, :)
+  integer, allocatable, save :: identity_particle_count(:, :)
+  integer(kind=8), allocatable, save :: identity_revision(:, :)
+  logical, allocatable, save :: identity_is_valid(:, :)
   integer(kind=8), save :: next_block_momentum_revision = 0_8
   integer(kind=8), save :: current_phase_space_revision = 0_8
 
@@ -97,6 +101,7 @@ module factorized_phase_space
   public :: fetch_factorized_block_momenta
   public :: factorized_block_momentum_revision
   public :: factorized_phase_space_revision
+  public :: factorized_cache_real_equal
   public :: store_factorized_embedded_momenta
   public :: fetch_factorized_embedded_momenta
   public :: store_factorized_kernel_momenta
@@ -121,6 +126,19 @@ module factorized_phase_space
   public :: restore_factorized_branch_snapshot
 
 contains
+
+  pure elemental logical function factorized_cache_real_equal(first, second)
+    double precision, intent(in) :: first, second
+    double precision, parameter :: ulp_allowance = 64d0
+
+    ! Reconstructing an invariant CORE scale from separately boosted decay
+    ! products can move its final bits.  Cache identities should survive that
+    ! roundoff, while physical DECAYED-scale changes remain many orders of
+    ! magnitude larger than this local machine-precision window.
+    factorized_cache_real_equal = first == second .or. &
+         abs(first - second) <= ulp_allowance*epsilon(1d0)* &
+         max(1d0, abs(first), abs(second))
+  end function factorized_cache_real_equal
 
   subroutine reset_factorized_phase_space()
     call ensure_storage()
@@ -183,19 +201,35 @@ contains
     end if
     ! Projected FKS slots often contain exactly the same reduced block.  Give
     ! those copies one identity so density caches can reuse their matrix
-    ! element without weakening the cache to a numerical tolerance.
+    ! element.  The narrow ULP window also recognizes the same block after
+    ! algebraically equivalent boost/reconstruction paths.
     matching_revision = 0_8
     do candidate_slot = soft_counterevent, real_event
       if (candidate_slot == event_slot) cycle
       if (.not. block_is_valid(block, candidate_slot)) cycle
       if (block_particle_count(block, candidate_slot) /= particle_count) &
            cycle
-      if (all(block_momenta(:, 1:particle_count, block, candidate_slot) == &
-              momenta(0:3, 1:particle_count))) then
+      if (all(factorized_cache_real_equal( &
+              block_momenta(:, 1:particle_count, block, candidate_slot), &
+              momenta(0:3, 1:particle_count)))) then
         matching_revision = block_momentum_revision(block, candidate_slot)
         exit
       end if
     end do
+    if (matching_revision == 0_8) then
+      do candidate_slot = soft_counterevent, real_event
+        if (.not. identity_is_valid(block, candidate_slot)) cycle
+        if (identity_particle_count(block, candidate_slot) /= &
+            particle_count) cycle
+        if (all(factorized_cache_real_equal( &
+                identity_momenta(:, 1:particle_count, block, &
+                                 candidate_slot), &
+                momenta(0:3, 1:particle_count)))) then
+          matching_revision = identity_revision(block, candidate_slot)
+          exit
+        end if
+      end do
+    end if
 
     block_momenta(:, 1:particle_count, block, event_slot) = &
          momenta(0:3, 1:particle_count)
@@ -211,10 +245,18 @@ contains
         ! safer than allowing a stale density-matrix cache entry to match.
         next_block_momentum_revision = 1_8
         block_momentum_revision = 0_8
+        identity_is_valid = .false.
+        identity_revision = 0_8
       end if
       block_momentum_revision(block, event_slot) = &
            next_block_momentum_revision
     end if
+    identity_momenta(:, 1:particle_count, block, event_slot) = &
+         momenta(0:3, 1:particle_count)
+    identity_particle_count(block, event_slot) = particle_count
+    identity_revision(block, event_slot) = &
+         block_momentum_revision(block, event_slot)
+    identity_is_valid(block, event_slot) = .true.
   end subroutine store_factorized_block_momenta
 
 
@@ -723,6 +765,14 @@ contains
                             soft_counterevent:real_event))
     allocate(block_momentum_revision(0:nexternal, &
                                      soft_counterevent:real_event))
+    allocate(identity_momenta(0:3, nexternal, 0:nexternal, &
+                              soft_counterevent:real_event))
+    allocate(identity_particle_count(0:nexternal, &
+                                     soft_counterevent:real_event))
+    allocate(identity_revision(0:nexternal, &
+                               soft_counterevent:real_event))
+    allocate(identity_is_valid(0:nexternal, &
+                               soft_counterevent:real_event))
     allocate(embedded_momenta(0:3, nexternal, 0:nexternal, &
                               soft_counterevent:real_event))
     allocate(embedded_particle_count(0:nexternal, &
@@ -752,6 +802,10 @@ contains
     block_particle_count = 0
     block_is_valid = .false.
     block_momentum_revision = 0_8
+    identity_momenta = 0d0
+    identity_particle_count = 0
+    identity_revision = 0_8
+    identity_is_valid = .false.
     embedded_momenta = 0d0
     embedded_particle_count = 0
     embedded_is_valid = .false.

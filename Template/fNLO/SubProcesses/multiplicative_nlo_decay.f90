@@ -25,6 +25,14 @@ module multiplicative_nlo_decay
     type(factorized_branch_snapshot), allocatable :: snapshots(:, :)
   end type multiplicative_nlo_workspace
 
+  type, public :: multiplicative_component_cache
+    logical :: valid = .false.
+    integer :: component_position = 0
+    integer :: weight_count = 0
+    double precision :: vegas_weight = 0d0
+    type(spin_density_branch_result) :: branch
+  end type multiplicative_component_cache
+
   public :: initialize_multiplicative_workspace
   public :: initialize_generated_multiplicative_workspace
   public :: prepare_generated_multiplicative_workspace
@@ -39,6 +47,9 @@ module multiplicative_nlo_decay
   public :: add_multiplicative_block_density
   public :: complete_multiplicative_zero_branches
   public :: contract_multiplicative_leaf
+  public :: invalidate_multiplicative_component_cache
+  public :: store_multiplicative_component_cache
+  public :: restore_multiplicative_component_cache
 
   interface
     integer function sdm_branch_component_count()
@@ -452,6 +463,69 @@ contains
          workspace%branches, workspace%branch_by_component, &
          workspace%weight_count, result)
   end subroutine contract_multiplicative_leaf
+
+
+  subroutine invalidate_multiplicative_component_cache(cache)
+    type(multiplicative_component_cache), intent(inout) :: cache
+
+    cache%valid = .false.
+    cache%component_position = 0
+    cache%weight_count = 0
+    cache%vegas_weight = 0d0
+    cache%branch%has_bornlike = .false.
+    cache%branch%has_real = .false.
+  end subroutine invalidate_multiplicative_component_cache
+
+
+  subroutine store_multiplicative_component_cache( &
+       workspace, component_position, vegas_weight, cache)
+    type(multiplicative_nlo_workspace), intent(in) :: workspace
+    integer, intent(in) :: component_position
+    double precision, intent(in) :: vegas_weight
+    type(multiplicative_component_cache), intent(inout) :: cache
+
+    call validate_workspace(workspace)
+    if (component_position < 1 .or. &
+        component_position > workspace%component_count .or. &
+        vegas_weight <= 0d0) then
+      call fail_multiplicative_nlo( &
+           'cannot cache an invalid folded production component')
+    end if
+    cache%branch = workspace%branches(component_position)
+    cache%component_position = component_position
+    cache%weight_count = workspace%weight_count
+    cache%vegas_weight = vegas_weight
+    cache%valid = .true.
+  end subroutine store_multiplicative_component_cache
+
+
+  subroutine restore_multiplicative_component_cache( &
+       workspace, component_position, vegas_weight, cache)
+    type(multiplicative_nlo_workspace), intent(inout) :: workspace
+    integer, intent(in) :: component_position
+    double precision, intent(in) :: vegas_weight
+    type(multiplicative_component_cache), intent(in) :: cache
+    double precision :: rescaling
+
+    call validate_workspace(workspace)
+    if (.not. cache%valid .or. &
+        cache%component_position /= component_position .or. &
+        cache%weight_count /= workspace%weight_count .or. &
+        cache%vegas_weight <= 0d0 .or. vegas_weight <= 0d0) then
+      call fail_multiplicative_nlo( &
+           'a folded production component cache has the wrong context')
+    end if
+    rescaling = vegas_weight/cache%vegas_weight
+    workspace%branches(component_position) = cache%branch
+    if (workspace%branches(component_position)%has_bornlike) then
+      workspace%branches(component_position)%bornlike = &
+           rescaling*workspace%branches(component_position)%bornlike
+    end if
+    if (workspace%branches(component_position)%has_real) then
+      workspace%branches(component_position)%real = &
+           rescaling*workspace%branches(component_position)%real
+    end if
+  end subroutine restore_multiplicative_component_cache
 
 
   subroutine validate_workspace(workspace)

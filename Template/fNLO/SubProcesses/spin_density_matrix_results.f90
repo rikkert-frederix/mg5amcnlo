@@ -57,6 +57,8 @@ module spin_density_matrix_results
   type :: spin_density_cache_entry
     integer(kind=8) :: momentum_revision = 0_8
     integer :: open_size = 0
+    integer :: qcd_power = 0
+    double precision :: strong_coupling = 0d0
     logical :: valid = .false.
     complex(kind=8), allocatable :: value(:, :, :)
   end type spin_density_cache_entry
@@ -89,32 +91,46 @@ contains
   end subroutine initialize_spin_density_block
 
 
-  subroutine load_cached_lo_density(result, available)
+  subroutine load_cached_lo_density( &
+       result, qcd_power, strong_coupling, available)
     type(spin_density_block_result), intent(inout) :: result
+    integer, intent(in) :: qcd_power
+    double precision, intent(in) :: strong_coupling
     logical, intent(out) :: available
+    double precision :: coupling_rescaling
     integer(kind=8) :: revision
     integer :: cached_slot
 
     call ensure_cache()
     call validate_result_identity(result)
+    call validate_coupling_key(qcd_power, strong_coupling)
     revision = factorized_block_momentum_revision( &
          result%event_slot, result%block)
     call find_cached_lo_slot( &
-         result%block, result%open_size, revision, cached_slot, available)
+         result%block, result%open_size, qcd_power, revision, &
+         cached_slot, available)
     if (.not. available) return
+    coupling_rescaling = coupling_cache_rescaling( &
+         qcd_power, lo_cache(result%block, cached_slot)%strong_coupling, &
+         strong_coupling)
     allocate(result%lo(1, result%open_size, result%open_size))
-    result%lo = lo_cache(result%block, cached_slot)%value
+    result%lo = coupling_rescaling* &
+         lo_cache(result%block, cached_slot)%value
     result%has_lo = .true.
   end subroutine load_cached_lo_density
 
 
-  subroutine record_lo_density(result, density)
+  subroutine record_lo_density( &
+       result, density, qcd_power, strong_coupling)
     type(spin_density_block_result), intent(inout) :: result
     complex(kind=8), intent(in) :: density(:, :, :)
+    integer, intent(in) :: qcd_power
+    double precision, intent(in) :: strong_coupling
     integer(kind=8) :: revision
 
     call ensure_cache()
     call validate_result_identity(result)
+    call validate_coupling_key(qcd_power, strong_coupling)
     if (size(density, 1) /= 1 .or. &
         size(density, 2) /= result%open_size .or. &
         size(density, 3) /= result%open_size) then
@@ -137,32 +153,43 @@ contains
       entry%value = density
       entry%momentum_revision = revision
       entry%open_size = result%open_size
+      entry%qcd_power = qcd_power
+      entry%strong_coupling = strong_coupling
       entry%valid = .true.
     end associate
   end subroutine record_lo_density
 
 
   subroutine fetch_cached_lo_density( &
-       event_slot, block, open_size, density, available)
-    integer, intent(in) :: event_slot, block, open_size
+       event_slot, block, open_size, qcd_power, strong_coupling, &
+       density, available)
+    integer, intent(in) :: event_slot, block, open_size, qcd_power
+    double precision, intent(in) :: strong_coupling
     complex(kind=8), intent(out) :: density(1, open_size, open_size)
     logical, intent(out) :: available
+    double precision :: coupling_rescaling
     integer(kind=8) :: revision
     integer :: cached_slot
 
     call ensure_cache()
     call validate_identity(event_slot, block, open_size)
+    call validate_coupling_key(qcd_power, strong_coupling)
     revision = factorized_block_momentum_revision(event_slot, block)
     call find_cached_lo_slot( &
-         block, open_size, revision, cached_slot, available)
+         block, open_size, qcd_power, revision, cached_slot, available)
     density = (0d0, 0d0)
-    if (available) density = lo_cache(block, cached_slot)%value
+    if (available) then
+      coupling_rescaling = coupling_cache_rescaling( &
+           qcd_power, lo_cache(block, cached_slot)%strong_coupling, &
+           strong_coupling)
+      density = coupling_rescaling*lo_cache(block, cached_slot)%value
+    end if
   end subroutine fetch_cached_lo_density
 
 
   subroutine find_cached_lo_slot( &
-       block, open_size, revision, cached_slot, available)
-    integer, intent(in) :: block, open_size
+       block, open_size, qcd_power, revision, cached_slot, available)
+    integer, intent(in) :: block, open_size, qcd_power
     integer(kind=8), intent(in) :: revision
     integer, intent(out) :: cached_slot
     logical, intent(out) :: available
@@ -175,11 +202,41 @@ contains
       if (.not. lo_cache(block, event_slot)%valid) cycle
       if (lo_cache(block, event_slot)%momentum_revision /= revision) cycle
       if (lo_cache(block, event_slot)%open_size /= open_size) cycle
+      if (lo_cache(block, event_slot)%qcd_power /= qcd_power) cycle
       cached_slot = event_slot
       available = .true.
       return
     end do
   end subroutine find_cached_lo_slot
+
+
+  pure double precision function coupling_cache_rescaling( &
+       qcd_power, cached_coupling, requested_coupling)
+    integer, intent(in) :: qcd_power
+    double precision, intent(in) :: cached_coupling, requested_coupling
+
+    if (qcd_power == 0) then
+      coupling_cache_rescaling = 1d0
+    else
+      coupling_cache_rescaling = &
+           (requested_coupling/cached_coupling)**qcd_power
+    end if
+  end function coupling_cache_rescaling
+
+
+  subroutine validate_coupling_key(qcd_power, strong_coupling)
+    integer, intent(in) :: qcd_power
+    double precision, intent(in) :: strong_coupling
+
+    if (qcd_power < 0) then
+      call fail_spin_density_results( &
+           'an LO density has a negative QCD coupling power')
+    end if
+    if (qcd_power > 0 .and. strong_coupling <= 0d0) then
+      call fail_spin_density_results( &
+           'an LO density has an invalid strong coupling')
+    end if
+  end subroutine validate_coupling_key
 
 
   subroutine set_spin_density_insertion(result, kind, order, density)

@@ -10,7 +10,9 @@ module driver_mintfo_module
                          first_bundle_component_integral, &
                          configure_decay_folding, &
                          decay_fold_group_active, &
-                         decay_fold_reuses_production
+                         decay_fold_reuses_production, &
+                         record_decay_fold_production_cache, &
+                         record_decay_fold_conditional_sector
   use mint_module, only: ans_result => ans, unc_result => unc
   use FKSParams, only: min_virt_fraction, virt_fraction, FKSParamReader
   use weight_lines, only: icontr, iwgt, deallocate_weight_lines
@@ -42,13 +44,15 @@ module driver_mintfo_module
   use setscales_module, only: set_alphas
   use split_orders, only: check_amp_split
   use cuts_module, only: passcuts, passcuts_multiplicative
-  use mc_integer_module, only: get_mc_integer, fill_mc_integer
+  use mc_integer_module, only: get_mc_integer, fill_mc_integer, &
+       mc_integer_interval_volume
   use timing_state, only: reset_timing_state, tBorn, tIS, tReal, &
                           tCount, tf_nb, tf_all, t_as, tr_s, tr_pdf, t_plot, &
                           t_cuts, t_isum, tOLP, tGenPS, t_coupl
   use fks_contributions_module, only: compute_prefactors_nbody, &
        compute_prefactors_n1body, include_multichannel_enhance, &
        compute_born, compute_decay_width_counterterm, &
+       record_multiplicative_spectator_born_densities, &
        compute_nbody_noborn, compute_soft_counter_term, &
        compute_soft_collinear_ct_impl, compute_collinear_counter_term, &
        compute_real_emission
@@ -58,7 +62,8 @@ module driver_mintfo_module
        reset_luminosity_cache
   use fks_singular_module, only: fill_configurations_common, setfksfactor
   use madfks_plot_module, only: topout_impl, outfun_multiplicative_impl
-  use decay_chain_parameters, only: multiplicative_nlo_enabled
+  use decay_chain_parameters, only: multiplicative_nlo_enabled, &
+       use_decayed_production_ren_scale_momenta
   use spin_density_fks_matrices, only: &
        set_spin_density_fks_collection, reset_spin_density_fks_matrices
   use spin_density_weight_lines, only: clear_spin_density_weight_lines, &
@@ -66,12 +71,16 @@ module driver_mintfo_module
   use spin_density_matrix_results, only: spin_density_bornlike_branch, &
        spin_density_real_branch
   use multiplicative_nlo_decay, only: multiplicative_nlo_workspace, &
+       multiplicative_component_cache, &
        prepare_generated_multiplicative_workspace, &
        set_multiplicative_weight_count, reset_multiplicative_leaf_iterator, &
        next_multiplicative_leaf, capture_multiplicative_snapshot, &
        set_multiplicative_real_configuration, &
        multiplicative_leaf_has_snapshots, &
        complete_multiplicative_zero_branches, &
+       invalidate_multiplicative_component_cache, &
+       store_multiplicative_component_cache, &
+       restore_multiplicative_component_cache, &
        contract_multiplicative_leaf
   use multiplicative_event_materialization, only: &
        multiplicative_leaf_particle_capacity, &
@@ -397,15 +406,22 @@ contains
     double precision :: vegas_variables(99)
     integer :: nfks_born, nfks_picked
     integer :: amplitude_order, picked_integer, radiation_block
+    integer :: conditional_integer, conditional_dimension
     integer :: nbody_contribution, nbody_contribution_max
     integer :: selected_contribution
-    logical :: passcuts_nbody
+    logical :: passcuts_nbody, conditional_decay_integer
     logical :: nplusone_evaluated, skip_nplusone
     integer, save :: folded_picked_integer = 0
     double precision, save :: folded_integer_volume = 0d0
     logical, save :: folded_integer_is_valid = .false.
+    integer, save :: folded_selected_contribution = 0
+    double precision, save :: folded_contribution_volume = 0d0
 
-    call reset_luminosity_cache()
+    ! Bjorken x and CORE factorization scales are production data.  Preserve
+    ! their PDF working set across decay replicas; genuinely DECAYED scales
+    ! miss the numerical cache key and are evaluated normally.
+    if (.not. decay_fold_reuses_production()) &
+         call reset_luminosity_cache()
     if (multiplicative_nlo_enabled()) then
       sigint_impl = sigint_multiplicative_impl( &
            xx, vegas_wgt, ifl, f, ini_fin_fks, nndim, nbody, &
@@ -431,28 +447,59 @@ contains
     wgt_me_real = 0d0
     nplusone_evaluated = .false.
     skip_nplusone = .false.
+    conditional_decay_integer = .false.
+    conditional_integer = 0
+    conditional_dimension = 0
 
     if (decay_fold_reuses_production() .and. &
         folded_integer_is_valid) then
-      picked_integer = folded_picked_integer
-      volume = folded_integer_volume
+      selected_contribution = folded_selected_contribution
+      if (contribution_is_nlo_decay(selected_contribution)) then
+        conditional_dimension = additive_mc_dimension( &
+             selected_contribution, ini_fin_fks(ichan))
+        call get_mc_integer(conditional_dimension, &
+             contribution_channel_count( &
+                  selected_contribution, ini_fin_fks(ichan)), &
+             conditional_integer, volume)
+        volume = volume*folded_contribution_volume
+        nfks_picked = contribution_channel_configuration( &
+             selected_contribution, ini_fin_fks(ichan), &
+             conditional_integer)
+        conditional_decay_integer = .true.
+        call record_decay_fold_conditional_sector()
+      else
+        picked_integer = folded_picked_integer
+        volume = folded_integer_volume
+        nfks_picked = fks_channel_configuration( &
+             ini_fin_fks(ichan), picked_integer)
+      end if
     else
       call get_mc_integer(max(ini_fin_fks(ichan), 1), &
                           fks_channel_count(ini_fin_fks(ichan)), &
                           picked_integer, volume)
+      nfks_picked = fks_channel_configuration(ini_fin_fks(ichan), &
+                                              picked_integer)
+      selected_contribution = 1
+      if (has_nlo_contribution_bundle()) &
+           selected_contribution = contribution_for_fks(nfks_picked)
       if (decay_fold_group_active()) then
         folded_picked_integer = picked_integer
         folded_integer_volume = volume
+        folded_selected_contribution = selected_contribution
+        if (contribution_is_nlo_decay(selected_contribution)) then
+          folded_contribution_volume = &
+               additive_contribution_probability( &
+                    selected_contribution, ini_fin_fks(ichan))
+        else
+          folded_contribution_volume = volume
+        end if
         folded_integer_is_valid = .true.
       else
         folded_integer_is_valid = .false.
+        folded_selected_contribution = 0
+        folded_contribution_volume = 0d0
       end if
     end if
-    nfks_picked = fks_channel_configuration(ini_fin_fks(ichan), &
-                                            picked_integer)
-    selected_contribution = 1
-    if (has_nlo_contribution_bundle()) &
-         selected_contribution = contribution_for_fks(nfks_picked)
 
     if (abrv /= 'real') then
       nbody = .true.
@@ -553,8 +600,13 @@ contains
     end if
 
     call get_wgt_no_nbody(sampled_weight)
-    call fill_mc_integer(max(ini_fin_fks(ichan), 1), picked_integer, &
-                         abs(sampled_weight)*volume)
+    if (conditional_decay_integer) then
+      call fill_mc_integer(conditional_dimension, conditional_integer, &
+                           abs(sampled_weight)*volume)
+    else
+      call fill_mc_integer(max(ini_fin_fks(ichan), 1), picked_integer, &
+                           abs(sampled_weight)*volume)
+    end if
 
     call fill_plots()
     call fill_mint_function(f)
@@ -651,6 +703,7 @@ contains
     double precision, intent(inout) :: wgt_me_born, wgt_me_real
 
     type(multiplicative_nlo_workspace), save :: workspace
+    type(multiplicative_component_cache), save :: folded_production_cache
     complex(kind=8), allocatable, save :: contracted_weights(:)
     double precision, allocatable, save :: leaf_weights(:), total_weights(:)
     double precision, allocatable, save :: leaf_momenta(:, :)
@@ -667,7 +720,7 @@ contains
     integer :: production_position, radiation_block, weight
     integer(kind=8) :: leaf_mask, leaves_seen
     logical :: available, leaf_is_materialized, pass_leaf
-    logical :: production_contribution
+    logical :: production_contribution, reuse_folded_production
     logical, save :: folded_production_integer_is_valid = .false.
     real :: plot_time_before, plot_time_after
 
@@ -702,6 +755,20 @@ contains
     call reset_spin_density_fks_matrices()
     call set_spin_density_fks_collection(.true.)
     call prepare_generated_multiplicative_workspace(workspace)
+
+    ! A production component can be shared by all decay replicas only when
+    ! its scales are functions of the fixed production core.  DECAYED scale
+    ! choices deliberately retain the complete evaluation path.
+    reuse_folded_production = decay_fold_reuses_production() .and. &
+         folded_production_cache%valid .and. &
+         .not. use_decayed_production_ren_scale_momenta()
+    if (.not. decay_fold_reuses_production() .or. &
+        use_decayed_production_ren_scale_momenta()) then
+      call invalidate_multiplicative_component_cache( &
+           folded_production_cache)
+    end if
+    if (decay_fold_group_active()) &
+         call record_decay_fold_production_cache(reuse_folded_production)
 
     contribution_count = nlo_contribution_count()
     if (workspace%corrected_count /= contribution_count) then
@@ -797,16 +864,24 @@ contains
       ! counterevent.  It contributes only to R, so leave its B density and
       ! snapshot absent here; they are completed as an exact zero below.
       if (event_momenta(0, 1, soft_counterevent) > 0d0) then
-        call compute_prefactors_nbody(vegas_wgt)
         call set_alphas( &
              event_momenta(0:3, 1:nexternal, soft_counterevent))
-        ! The multiplicative contraction contains every physical block, so
-        ! attach the global Born SDE partition exactly once, on production.
-        if (production_contribution) call include_multichannel_enhance(1)
-        call compute_born()
-        call begin_bundle_virtual_tricks()
-        call compute_nbody_noborn()
-        call finish_bundle_virtual_tricks()
+        if (production_contribution .and. reuse_folded_production) then
+          ! Rebuild only the cheap Born densities of the newly sampled decay
+          ! blocks.  The expensive production B/R component is restored after
+          ! the current decay lines have been PDF/alpha_s dressed.
+          call record_multiplicative_spectator_born_densities( &
+               component_position)
+        else
+          call compute_prefactors_nbody(vegas_wgt)
+          ! The multiplicative contraction contains every physical block, so
+          ! attach the global Born SDE partition exactly once, on production.
+          if (production_contribution) call include_multichannel_enhance(1)
+          call compute_born()
+          call begin_bundle_virtual_tricks()
+          call compute_nbody_noborn()
+          call finish_bundle_virtual_tricks()
+        end if
 
         if (production_contribution) then
           production_boost(spin_density_bornlike_branch) = &
@@ -846,24 +921,27 @@ contains
                ybst_til_tolab(real_event)
         end if
 
-        call compute_prefactors_n1body(vegas_wgt)
-        if (event_momenta(0, 1, soft_counterevent) > 0d0) then
-          call set_alphas( &
-               event_momenta(0:3, 1:nexternal, soft_counterevent))
-          if (production_contribution) call include_multichannel_enhance(3)
-          call compute_soft_counter_term()
-          if (event_momenta(0, 1, soft_collinear_counterevent) > 0d0) then
-            call compute_soft_collinear_ct_impl()
+        if (.not. (production_contribution .and. &
+                   reuse_folded_production)) then
+          call compute_prefactors_n1body(vegas_wgt)
+          if (event_momenta(0, 1, soft_counterevent) > 0d0) then
+            call set_alphas( &
+                 event_momenta(0:3, 1:nexternal, soft_counterevent))
+            if (production_contribution) call include_multichannel_enhance(3)
+            call compute_soft_counter_term()
+            if (event_momenta(0, 1, soft_collinear_counterevent) > 0d0) then
+              call compute_soft_collinear_ct_impl()
+            end if
           end if
+          if (event_momenta(0, 1, collinear_counterevent) > 0d0) then
+            call set_alphas( &
+                 event_momenta(0:3, 1:nexternal, collinear_counterevent))
+            call compute_collinear_counter_term()
+          end if
+          call set_alphas(momentum)
+          if (production_contribution) call include_multichannel_enhance(2)
+          call compute_real_emission()
         end if
-        if (event_momenta(0, 1, collinear_counterevent) > 0d0) then
-          call set_alphas( &
-               event_momenta(0:3, 1:nexternal, collinear_counterevent))
-          call compute_collinear_counter_term()
-        end if
-        call set_alphas(momentum)
-        if (production_contribution) call include_multichannel_enhance(2)
-        call compute_real_emission()
       end if
       nbody = .true.
     end do
@@ -930,6 +1008,16 @@ contains
     call set_multiplicative_weight_count(workspace, iwgt)
     call aggregate_spin_density_weight_lines(workspace)
     call complete_multiplicative_zero_branches(workspace)
+    if (reuse_folded_production) then
+      call restore_multiplicative_component_cache( &
+           workspace, production_position, vegas_wgt, &
+           folded_production_cache)
+    else if (decay_fold_group_active() .and. &
+             .not. use_decayed_production_ren_scale_momenta()) then
+      call store_multiplicative_component_cache( &
+           workspace, production_position, vegas_wgt, &
+           folded_production_cache)
+    end if
 
     if (allocated(contracted_weights)) then
       if (size(contracted_weights) /= iwgt) then
@@ -1059,6 +1147,40 @@ contains
       multiplicative_mc_dimension = contribution + 2
     end if
   end function multiplicative_mc_dimension
+
+
+  integer function additive_mc_dimension(contribution, category)
+    implicit none
+    integer, intent(in) :: contribution, category
+
+    ! Keep separate conditional grids for the two outer initial/final channel
+    ! partitions: their local configuration counts need not be identical.
+    ! Dimensions one and two remain the legacy global FKS grids.
+    additive_mc_dimension = 2 + 2*(contribution - 1) + &
+         min(2, max(category, 1))
+  end function additive_mc_dimension
+
+
+  double precision function additive_contribution_probability( &
+       contribution, category)
+    integer, intent(in) :: contribution, category
+    integer :: configuration, dimension, position
+
+    dimension = max(category, 1)
+    additive_contribution_probability = 0d0
+    do position = 1, fks_channel_count(category)
+      configuration = fks_channel_configuration(category, position)
+      if (contribution_for_fks(configuration) /= contribution) cycle
+      additive_contribution_probability = &
+           additive_contribution_probability + &
+           mc_integer_interval_volume(dimension, position)
+    end do
+    if (additive_contribution_probability <= 0d0 .or. &
+        additive_contribution_probability > 1d0 + 64d0*epsilon(1d0)) then
+      call fail_driver( &
+           'an additive folded contribution has invalid probability')
+    end if
+  end function additive_contribution_probability
 
 
   subroutine fill_multiplicative_mint_function( &

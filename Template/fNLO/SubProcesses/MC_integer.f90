@@ -24,6 +24,7 @@ module mc_integer_module
   public :: fill_mc_integer
   public :: empty_mc_integer
   public :: regrid_mc_integer
+  public :: mc_integer_interval_volume
 
 contains
 
@@ -187,6 +188,26 @@ contains
     end if
     vol = grid(iint, this_dim) - grid(iint - 1, this_dim)
   end subroutine get_mc_integer
+
+
+  double precision function mc_integer_interval_volume(this_dim, iint)
+    integer, intent(in) :: this_dim, iint
+
+    if (.not. allocated(grid) .or. this_dim < 1 .or. &
+        this_dim > dimension_capacity) then
+      write (*, *) 'ERROR in mc_integer_interval_volume: invalid dimension', &
+           this_dim
+      stop 1
+    end if
+    if (nintervals(this_dim) < 1 .or. iint < 1 .or. &
+        iint > nintervals(this_dim)) then
+      write (*, *) 'ERROR in mc_integer_interval_volume: invalid interval', &
+           this_dim, iint
+      stop 1
+    end if
+    mc_integer_interval_volume = &
+         grid(iint, this_dim) - grid(iint - 1, this_dim)
+  end function mc_integer_interval_volume
 
 
   subroutine warn_and_set_flat_grid(this_dim, grid_file_open)

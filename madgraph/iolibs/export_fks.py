@@ -3626,6 +3626,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                 'SUBROUTINE SDM_COMPONENT_BORN_DENSITY_%d(EVENT_SLOT,' %
                 position,
                 '     $ OPEN_SIZE,QCD_POWER,SCALE_PDG,RHO)',
+                'USE FKS_MODEL_STATE_MODULE, ONLY: STRONG_COUPLING',
                 'USE SPIN_DENSITY_MATRIX_RESULTS, ONLY:',
                 '     $ FETCH_CACHED_LO_DENSITY',
                 'IMPLICIT NONE',
@@ -3640,6 +3641,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                 'LOGICAL CACHED_RHO_AVAILABLE',
                 'CALL FETCH_CACHED_LO_DENSITY(EVENT_SLOT,%d,%d,' % (
                     component_id, open_size),
+                '     $ %d,STRONG_COUPLING,' % qcd_power,
                 '     $ CACHED_RHO,CACHED_RHO_AVAILABLE)',
                 'IF (CACHED_RHO_AVAILABLE) THEN',
                 '  LOCAL_RHO=(0D0,0D0)',
@@ -3894,7 +3896,8 @@ C     Legacy processes obtain their channel weights from SBORN itself.
         block_count = len(block_ids)
         uses = [
             'USE FACTORIZED_PHASE_SPACE, ONLY:',
-            '     $ FACTORIZED_BLOCK_MOMENTUM_REVISION',
+            '     $ FACTORIZED_BLOCK_MOMENTUM_REVISION,',
+            '     $ FACTORIZED_CACHE_REAL_EQUAL',
             'USE FKS_MODEL_STATE_MODULE, ONLY: STRONG_COUPLING',
             'USE RUN_STATE, ONLY: MUR2_CURRENT,QES2_CURRENT',
             'USE SPIN_DENSITY_FKS_MATRICES, ONLY:',
@@ -3927,9 +3930,9 @@ C     Legacy processes obtain their channel weights from SBORN itself.
         if extra_key is not None:
             conditions.append('%s.EQ.%s' % (extra_key[1], extra_key[0]))
         conditions.extend([
-            'SDM_CACHED_G.EQ.STRONG_COUPLING',
-            'SDM_CACHED_MUR2.EQ.MUR2_CURRENT',
-            'SDM_CACHED_QES2.EQ.QES2_CURRENT'])
+            'FACTORIZED_CACHE_REAL_EQUAL(SDM_CACHED_G,STRONG_COUPLING)',
+            'FACTORIZED_CACHE_REAL_EQUAL(SDM_CACHED_MUR2,MUR2_CURRENT)',
+            'FACTORIZED_CACHE_REAL_EQUAL(SDM_CACHED_QES2,QES2_CURRENT)'])
         lookup = [
             'DO SDM_BLOCK=1,%d' % block_count,
             '  SDM_REVISIONS(SDM_BLOCK)=',
@@ -4043,6 +4046,8 @@ C     Legacy processes obtain their channel weights from SBORN itself.
             'END',
             '',
             'SUBROUTINE SBORN_FACTORIZED_CHANNEL_WEIGHTS(P)',
+            'USE FACTORIZED_PHASE_SPACE, ONLY:',
+            '     $ FACTORIZED_CACHE_REAL_EQUAL',
             'USE FKS_MODEL_STATE_MODULE, ONLY: STRONG_COUPLING',
             'USE RUN_STATE, ONLY: MUR2_CURRENT,QES2_CURRENT',
             'IMPLICIT NONE',
@@ -4064,9 +4069,12 @@ C     Legacy processes obtain their channel weights from SBORN itself.
             'COMMON /TO_AMPS/ AMP2S,JAMP2S',
             'SDM_CACHE_HIT=.FALSE.',
             'IF (SDM_CACHE_VALID) THEN',
-            '  SDM_CACHE_HIT=SDM_CACHED_G.EQ.STRONG_COUPLING.AND.',
-            '     $ SDM_CACHED_MUR2.EQ.MUR2_CURRENT.AND.',
-            '     $ SDM_CACHED_QES2.EQ.QES2_CURRENT.AND.',
+            '  SDM_CACHE_HIT=FACTORIZED_CACHE_REAL_EQUAL(',
+            '     $ SDM_CACHED_G,STRONG_COUPLING).AND.',
+            '     $ FACTORIZED_CACHE_REAL_EQUAL(',
+            '     $ SDM_CACHED_MUR2,MUR2_CURRENT).AND.',
+            '     $ FACTORIZED_CACHE_REAL_EQUAL(',
+            '     $ SDM_CACHED_QES2,QES2_CURRENT).AND.',
             '     $ ALL(SDM_CACHED_P.EQ.P)',
             'ENDIF',
             'IF (SDM_CACHE_HIT) THEN',
@@ -4429,6 +4437,8 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
             'SUBROUTINE %s(EVENT_SLOT,ANS,PREC_ASKED,' % subroutine_name,
             '     $ PREC_FOUND,RET_CODE)',
             'USE SPIN_DENSITY_MATRIX_RESULTS',
+            'USE FACTORIZED_PHASE_SPACE, ONLY:',
+            '     $ FACTORIZED_CACHE_REAL_EQUAL',
             'USE SPIN_DENSITY_FKS_MATRICES, ONLY:',
             '     $ SPIN_DENSITY_FKS_COLLECTION_ENABLED,',
             '     $ SET_SPIN_DENSITY_VIRTUAL_MATRIX']

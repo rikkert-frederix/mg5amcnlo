@@ -20,6 +20,7 @@ import copy
 import re
 
 from madgraph import MadGraph5Error
+from madgraph.fks import fks_helas_objects
 
 
 def _fortran_name(label):
@@ -314,6 +315,20 @@ class SpinDensityExporter(object):
         particle = process.get('model').get_particle(initial[0].get('id'))
         return (abs(particle.get('color')) *
                 matrix_element.get('identical_particle_factor'))
+
+    @staticmethod
+    def _provider_qcd_power(plan, provider):
+        """Return the unique squared-matrix-element power of g_s."""
+
+        matrix_element = provider['matrix_element']
+        production = plan['components'][0]['born']['matrix_element']
+        split_orders = list(production.get(
+            'processes')[0].get('split_orders'))
+        order = fks_helas_objects.single_squared_order(
+            matrix_element, 'A spin-density LO provider', split_orders)
+        if 'QCD' not in split_orders:
+            return 0
+        return order[split_orders.index('QCD')]
 
     def write_provider(self, writer, plan, provider):
         """Write one full complex tree-level spin-density provider.
@@ -1353,11 +1368,174 @@ class SpinDensityExporter(object):
                     for position, component_id in
                     enumerate(sorted(providers), 1))
 
-    def _lo_block_lines(self, component_id, position, provider,
-                        event_slot, rho_name=None, corr_leg='0'):
+    def _tree_message_layout(self, plan, providers):
+        """Return the validated decay-forest layout for message passing.
+
+        Every direct decay density is a factor joining its parent resonance
+        to its immediate resonant children.  Eliminating those child indices
+        from the leaves upwards is exactly the same contraction as the old
+        Cartesian pair of global spin-state sums, but its cost grows with the
+        local node dimensions rather than with their full product.
+        """
+
+        nodes = dict((node['id'], node)
+                     for node in plan['topology']['nodes'])
+        node_ids = set(nodes)
+        expected_components = set([0]) | node_ids
+        if set(providers) != expected_components:
+            raise MadGraph5Error(
+                'A density contraction does not match its decay forest')
+
+        children = {}
+        child_nodes = set()
+        for node_id, node in nodes.items():
+            local_children = tuple(
+                target for kind, target in node['children']
+                if kind == 'NODE')
+            children[node_id] = local_children
+            child_nodes.update(local_children)
+        roots = tuple(sorted(node_ids - child_nodes))
+        if not roots:
+            raise MadGraph5Error('A density contraction has no root nodes')
+
+        dimensions = dict(
+            (node_id, len(self._node_helicities(plan, node_id)))
+            for node_id in nodes)
+        if set(providers[0]['open_nodes']) != set(roots):
+            raise MadGraph5Error(
+                'The production density does not open the decay roots')
+        for node_id in sorted(nodes):
+            expected = set([node_id]) | set(children[node_id])
+            if set(providers[node_id]['open_nodes']) != expected:
+                raise MadGraph5Error(
+                    'Decay density %d does not open its local tree edges' %
+                    node_id)
+            for open_node, dimension in zip(
+                    providers[node_id]['open_nodes'],
+                    providers[node_id]['open_dimensions']):
+                if dimensions[open_node] != dimension:
+                    raise MadGraph5Error(
+                        'Decay density %d has an inconsistent spin size' %
+                        node_id)
+
+        postorder = []
+        visited = set()
+
+        def visit(node_id):
+            if node_id in visited:
+                return
+            visited.add(node_id)
+            for child in children[node_id]:
+                visit(child)
+            postorder.append(node_id)
+
+        for root in roots:
+            visit(root)
+        if visited != node_ids:
+            raise MadGraph5Error('The density decay forest is disconnected')
+        return dimensions, children, roots, tuple(postorder)
+
+    @staticmethod
+    def _loop_state_index(provider, side):
+        terms = []
+        stride = 1
+        for node_id, dimension in zip(
+                provider['open_nodes'], provider['open_dimensions']):
+            terms.append('(SDM_%s_%d-1)*%d' % (side, node_id, stride))
+            stride *= dimension
+        return '1' + ''.join('+%s' % term for term in terms)
+
+    def _tree_message_declarations(self, plan, providers):
+        dimensions, _, _, _ = self._tree_message_layout(plan, providers)
+        declarations = []
+        for node_id in sorted(dimensions):
+            declarations.append('INTEGER SDM_L_%d,SDM_R_%d' %
+                                (node_id, node_id))
+            declarations.append(
+                'COMPLEX*16 SDM_TREE_MESSAGE_%d(%d,%d)' %
+                (node_id, dimensions[node_id], dimensions[node_id]))
+        declarations.append('COMPLEX*16 SDM_TREE_TERM')
+        return declarations
+
+    def _tree_message_contraction(self, plan, providers, output, accessor):
+        """Generate one exact bottom-up contraction of the decay forest.
+
+        ``accessor`` receives a component id, its generated position and the
+        flattened left/right open-spin indices and returns a Fortran complex
+        expression for that one local density factor.
+        """
+
+        dimensions, children, roots, postorder = \
+            self._tree_message_layout(plan, providers)
+        positions = self._block_position_map(providers)
+        code = []
+
+        for node_id in postorder:
+            provider = providers[node_id]
+            code.append('SDM_TREE_MESSAGE_%d=(0D0,0D0)' % node_id)
+            loop_nodes = (node_id,) + children[node_id]
+            indent = ''
+            for loop_node in loop_nodes:
+                code.append('%sDO SDM_L_%d=1,%d' %
+                            (indent, loop_node, dimensions[loop_node]))
+                indent += '  '
+                code.append('%sDO SDM_R_%d=1,%d' %
+                            (indent, loop_node, dimensions[loop_node]))
+                indent += '  '
+            left = self._loop_state_index(provider, 'L')
+            right = self._loop_state_index(provider, 'R')
+            code.append('%sSDM_TREE_TERM=%s' % (
+                indent, accessor(node_id, positions[node_id], left, right)))
+            for child in children[node_id]:
+                code.append(
+                    '%sSDM_TREE_TERM=SDM_TREE_TERM*' % indent +
+                    'SDM_TREE_MESSAGE_%d(SDM_L_%d,SDM_R_%d)' %
+                    (child, child, child))
+            code.append(
+                '%sSDM_TREE_MESSAGE_%d(SDM_L_%d,SDM_R_%d)=' %
+                (indent, node_id, node_id, node_id) +
+                'SDM_TREE_MESSAGE_%d(SDM_L_%d,SDM_R_%d)+' %
+                (node_id, node_id, node_id) + 'SDM_TREE_TERM')
+            for _ in reversed(loop_nodes):
+                indent = indent[:-2]
+                code.append('%sENDDO' % indent)
+                indent = indent[:-2]
+                code.append('%sENDDO' % indent)
+
+        production = providers[0]
+        code.append('%s=(0D0,0D0)' % output)
+        indent = ''
+        for root in roots:
+            code.append('%sDO SDM_L_%d=1,%d' %
+                        (indent, root, dimensions[root]))
+            indent += '  '
+            code.append('%sDO SDM_R_%d=1,%d' %
+                        (indent, root, dimensions[root]))
+            indent += '  '
+        left = self._loop_state_index(production, 'L')
+        right = self._loop_state_index(production, 'R')
+        code.append('%sSDM_TREE_TERM=%s' % (
+            indent, accessor(0, positions[0], left, right)))
+        for root in roots:
+            code.append(
+                '%sSDM_TREE_TERM=SDM_TREE_TERM*' % indent +
+                'SDM_TREE_MESSAGE_%d(SDM_L_%d,SDM_R_%d)' %
+                (root, root, root))
+        code.append('%s%s=%s+SDM_TREE_TERM' % (indent, output, output))
+        for _ in reversed(roots):
+            indent = indent[:-2]
+            code.append('%sENDDO' % indent)
+            indent = indent[:-2]
+            code.append('%sENDDO' % indent)
+        return code
+
+    def _lo_block_lines(self, plan, component_id, position, provider,
+                        event_slot, rho_name=None, corr_leg='0',
+                        strong_coupling='STRONG_COUPLING'):
         """Load one LO block from cache, evaluating its provider on a miss."""
 
         nexternal, _ = provider['matrix_element'].get_nexternal_ninitial()
+        qcd_power = self._provider_qcd_power(plan, provider)
         momentum = 'SDM_P_%d' % component_id
         rho = rho_name or 'SDM_LO_RHO_%d' % component_id
         return [
@@ -1365,14 +1543,16 @@ class SpinDensityExporter(object):
             '     $ %s,%d,%d)' % (
                 str(event_slot), component_id, provider['open_size']),
             'CALL LOAD_CACHED_LO_DENSITY(SDM_BLOCKS(%d),' % position,
-            '     $ SDM_LO_AVAILABLE_%d)' % component_id,
+            '     $ %d,%s,SDM_LO_AVAILABLE_%d)' % (
+                qcd_power, strong_coupling, component_id),
             'IF (.NOT.SDM_LO_AVAILABLE_%d) THEN' % component_id,
             '  CALL GET_FACTORIZED_BLOCK_MOMENTA(%s,%d,%d,%s)' % (
                 str(event_slot), component_id, nexternal, momentum),
             '  CALL %s(%s,%s,%s)' % (
                 provider['fortran_name'], momentum, corr_leg, rho),
             '  CALL RECORD_LO_DENSITY(SDM_BLOCKS(%d),' % position,
-            '     $ %s(1:1,:,:))' % rho,
+            '     $ %s(1:1,:,:),%d,%s)' % (
+                rho, qcd_power, strong_coupling),
             'ENDIF']
 
     def contraction_lines(self, plan, context, context_kind,
@@ -1383,8 +1563,6 @@ class SpinDensityExporter(object):
         """Return a tree contraction with at most one explicit insertion."""
 
         self.prepare_plan(plan)
-        dimensions, state_count, states = self._contraction_layout(plan)
-        node_count = len(plan['topology']['nodes'])
         baseline = dict(
             (component_id, component['born'])
             for component_id, component in plan['components'].items())
@@ -1399,21 +1577,17 @@ class SpinDensityExporter(object):
             override_provider is not baseline.get(active_component))
         active_position = (positions[active_component]
                            if active_component is not None else 0)
+        contraction_providers = dict(baseline)
+        if active_provider is not None:
+            contraction_providers[active_component] = active_provider
 
         declarations = [
-            'INTEGER SDM_STATE,SDM_STATE2,SDM_CORR_LEG',
-            'INTEGER SDM_LEFT(%d),SDM_RIGHT(%d)' % (
-                component_count, component_count),
-            'INTEGER SDM_NODE_STATE(%d,%d)' % (
-                max(1, node_count), max(1, state_count)),
+            'INTEGER SDM_CORR_LEG',
             'TYPE(SPIN_DENSITY_BLOCK_RESULT) SDM_BLOCKS(%d)' %
             component_count,
             'COMPLEX*16 %s(2)' % result_name]
-        for node_id in sorted(states):
-            declarations.append(
-                'DATA (SDM_NODE_STATE(%d,SDM_STATE),SDM_STATE=1,%d) '
-                '/%s/' % (node_id, state_count,
-                          ','.join(map(str, states[node_id]))))
+        declarations.extend(self._tree_message_declarations(
+            plan, contraction_providers))
         for component_id, provider in sorted(baseline.items()):
             nexternal, _ = provider['matrix_element'].get_nexternal_ninitial()
             declarations.extend([
@@ -1470,10 +1644,12 @@ class SpinDensityExporter(object):
                 # density and its spin-correlated insertion in one call.
                 code.extend([
                     'CALL LOAD_CACHED_LO_DENSITY(SDM_BLOCKS(%d),' % position,
+                    '     $ %d,STRONG_COUPLING,' %
+                    self._provider_qcd_power(plan, provider),
                     '     $ SDM_LO_AVAILABLE_%d)' % component_id])
                 continue
             code.extend(self._lo_block_lines(
-                component_id, position, provider, event_slot))
+                plan, component_id, position, provider, event_slot))
 
         if active_provider is not None and (
                 uses_ordinary_insertion or
@@ -1490,7 +1666,8 @@ class SpinDensityExporter(object):
                 '     $ SDM_INSERTION_CACHE_P).AND.',
                 '     $ SDM_CORR_LEG.EQ.SDM_INSERTION_CACHE_CORR_LEG',
                 '  SDM_INSERTION_CACHE_HIT=SDM_INSERTION_CACHE_HIT.AND.',
-                '     $ STRONG_COUPLING.EQ.SDM_INSERTION_CACHE_G',
+                '     $ FACTORIZED_CACHE_REAL_EQUAL(STRONG_COUPLING,',
+                '     $ SDM_INSERTION_CACHE_G)',
                 'ENDIF',
                 'IF (SDM_INSERTION_CACHE_HIT) THEN',
                 '  SDM_INSERTION_RHO=SDM_INSERTION_CACHE_RHO',
@@ -1509,7 +1686,9 @@ class SpinDensityExporter(object):
                     'IF (.NOT.SDM_LO_AVAILABLE_%d) THEN' % active_component,
                     '  CALL RECORD_LO_DENSITY(SDM_BLOCKS(%d),' %
                     active_position,
-                    '     $ SDM_INSERTION_RHO(1:1,:,:))',
+                    '     $ SDM_INSERTION_RHO(1:1,:,:),%d,' %
+                    self._provider_qcd_power(plan, active_provider),
+                    '     $ STRONG_COUPLING)',
                     'ENDIF'])
             if uses_ordinary_insertion and correlation_component is None:
                 insertion_kind = 'SPIN_DENSITY_REAL_INSERTION'
@@ -1523,33 +1702,31 @@ class SpinDensityExporter(object):
                 '     $ %s,%d,' % (insertion_kind, insertion_order),
                 '     $ SDM_INSERTION_RHO)'])
 
-        code.extend([
-            'DO SDM_STATE=1,%d' % state_count,
-            '  DO SDM_STATE2=1,%d' % state_count])
-        for component_id, provider in sorted(baseline.items()):
-            position = positions[component_id]
-            code.extend([
-                '    SDM_LEFT(%d)=%s' % (
-                    position, self._state_index(provider, 'SDM_STATE')),
-                '    SDM_RIGHT(%d)=%s' % (
-                    position, self._state_index(
-                        provider, 'SDM_STATE2'))])
         ordinary_position = active_position if uses_ordinary_insertion else 0
         ordinary_rank = 1 if ordinary_position else 0
-        code.extend([
-            '    %s(1)=%s(1)+' % (result_name, result_name),
-            '     $ STRICT_SPIN_DENSITY_PRODUCT(SDM_BLOCKS,%d,%d,' % (
-                ordinary_position, ordinary_rank),
-            '     $ SDM_LEFT,SDM_RIGHT)'])
+
+        def block_accessor(ranks):
+            def accessor(component_id, position, left, right):
+                rank = ranks.get(component_id, 0)
+                if rank == 0:
+                    return 'SDM_BLOCKS(%d)%%LO(1,%s,%s)' % (
+                        position, left, right)
+                return 'SDM_BLOCKS(%d)%%INSERTION(%s,%s,%s)' % (
+                    position, str(rank), left, right)
+            return accessor
+
+        ordinary_ranks = {}
+        if ordinary_position:
+            ordinary_ranks[active_component] = ordinary_rank
+        code.extend(self._tree_message_contraction(
+            plan, contraction_providers, '%s(1)' % result_name,
+            block_accessor(ordinary_ranks)))
         if correlation_component is not None:
-            code.extend([
-                '    %s(2)=%s(2)+' % (result_name, result_name),
-                '     $ STRICT_SPIN_DENSITY_PRODUCT(SDM_BLOCKS,%d,2,' %
-                active_position,
-                '     $ SDM_LEFT,SDM_RIGHT)'])
+            code.extend(self._tree_message_contraction(
+                plan, contraction_providers, '%s(2)' % result_name,
+                block_accessor({correlation_component: 2})))
         else:
-            code.append('    %s(2)=%s(1)' % (result_name, result_name))
-        code.extend(['  ENDDO', 'ENDDO'])
+            code.append('%s(2)=%s(1)' % (result_name, result_name))
         return declarations, code
 
     def branch_contraction_lines(
@@ -1565,48 +1742,30 @@ class SpinDensityExporter(object):
         """
 
         self.prepare_plan(plan)
-        _, state_count, states = self._contraction_layout(plan)
-        node_count = len(plan['topology']['nodes'])
         providers = dict(
             (component_id, component['born'])
             for component_id, component in plan['components'].items())
-        positions = self._block_position_map(providers)
-        component_count = len(providers)
 
-        declarations = [
-            'INTEGER SDM_STATE,SDM_STATE2,SDM_WEIGHT',
-            'INTEGER SDM_LEFT(%d),SDM_RIGHT(%d)' % (
-                component_count, component_count),
-            'INTEGER SDM_NODE_STATE(%d,%d)' % (
-                max(1, node_count), max(1, state_count))]
-        for node_id in sorted(states):
-            declarations.append(
-                'DATA (SDM_NODE_STATE(%d,SDM_STATE),SDM_STATE=1,%d) '
-                '/%s/' % (node_id, state_count,
-                          ','.join(map(str, states[node_id]))))
+        declarations = ['INTEGER SDM_WEIGHT']
+        declarations.extend(self._tree_message_declarations(plan, providers))
+
+        def branch_accessor(component_id, position, left, right):
+            return (
+                'MERGE(%s(%d)%%REAL(SDM_WEIGHT,%s,%s),' %
+                (branch_results, position, left, right) +
+                '%s(%d)%%BORNLIKE(SDM_WEIGHT,%s,%s),' %
+                (branch_results, position, left, right) +
+                '%s(%d).EQ.SPIN_DENSITY_REAL_BRANCH)' %
+                (branch_choices, position))
 
         code = [
             '%s=(0D0,0D0)' % result_name,
-            'DO SDM_STATE=1,%d' % state_count,
-            '  DO SDM_STATE2=1,%d' % state_count]
-        for component_id, provider in sorted(providers.items()):
-            position = positions[component_id]
-            code.extend([
-                '    SDM_LEFT(%d)=%s' % (
-                    position, self._state_index(provider, 'SDM_STATE')),
-                '    SDM_RIGHT(%d)=%s' % (
-                    position, self._state_index(
-                        provider, 'SDM_STATE2'))])
-        code.extend([
-            '    DO SDM_WEIGHT=1,%s' % weight_count,
-            '      %s(SDM_WEIGHT)=%s(SDM_WEIGHT)+' % (
-                result_name, result_name),
-            '     $ SPIN_DENSITY_BRANCH_PRODUCT(%s,%s,' % (
-                branch_results, branch_choices),
-            '     $ SDM_WEIGHT,SDM_LEFT,SDM_RIGHT)',
-            '    ENDDO',
-            '  ENDDO',
-            'ENDDO'])
+            'DO SDM_WEIGHT=1,%s' % weight_count]
+        contraction = self._tree_message_contraction(
+            plan, providers, '%s(SDM_WEIGHT)' % result_name,
+            branch_accessor)
+        code.extend(['  ' + line for line in contraction])
+        code.append('ENDDO')
         return declarations, code
 
     def virtual_contraction_lines(self, plan, variant,
@@ -1615,12 +1774,12 @@ class SpinDensityExporter(object):
         """Contract one loop insertion with cached LO spectators."""
 
         self.prepare_plan(plan)
-        _, state_count, states = self._contraction_layout(plan)
-        node_count = len(plan['topology']['nodes'])
         active = variant['active_component']
         providers = dict(
             (component_id, component['born'])
             for component_id, component in plan['components'].items())
+        contraction_providers = dict(providers)
+        contraction_providers[active] = variant
         positions = self._block_position_map(providers)
         component_count = len(providers)
         active_position = positions[active]
@@ -1628,11 +1787,7 @@ class SpinDensityExporter(object):
         analytic_top_decay = variant.get('analytic_top_decay')
 
         declarations = [
-            'INTEGER SDM_STATE,SDM_STATE2,SDM_K,SDM_RET_CODE',
-            'INTEGER SDM_LEFT(%d),SDM_RIGHT(%d)' % (
-                component_count, component_count),
-            'INTEGER SDM_NODE_STATE(%d,%d)' % (
-                max(1, node_count), max(1, state_count)),
+            'INTEGER SDM_K,SDM_RET_CODE',
             'TYPE(SPIN_DENSITY_BLOCK_RESULT) SDM_BLOCKS(%d)' %
             component_count,
             'DOUBLE PRECISION SDM_PRECISION',
@@ -1667,11 +1822,8 @@ class SpinDensityExporter(object):
                 '     $ SDM_VIRTUAL_CACHE_RET_CODE,',
                 '     $ SDM_VIRTUAL_CACHE_RHO',
                 'DATA SDM_VIRTUAL_CACHE_VALID/.FALSE./'])
-        for node_id in sorted(states):
-            declarations.append(
-                'DATA (SDM_NODE_STATE(%d,SDM_STATE),SDM_STATE=1,%d) '
-                '/%s/' % (node_id, state_count,
-                          ','.join(map(str, states[node_id]))))
+        declarations.extend(self._tree_message_declarations(
+            plan, contraction_providers))
         for component_id, provider in sorted(providers.items()):
             local_nexternal, _ = provider[
                 'matrix_element'].get_nexternal_ninitial()
@@ -1698,7 +1850,8 @@ class SpinDensityExporter(object):
                         provider['open_size'])])
             else:
                 code.extend(self._lo_block_lines(
-                    component_id, position, provider, event_slot))
+                    plan, component_id, position, provider, event_slot,
+                    strong_coupling='G'))
         code.extend([
             'CALL GET_FACTORIZED_BLOCK_MOMENTA(%s,%d,%d,' % (
                 str(event_slot), active, nexternal),
@@ -1713,8 +1866,10 @@ class SpinDensityExporter(object):
                 '     $ %s.EQ.SDM_VIRTUAL_CACHE_PREC_ASKED' %
                 precision_asked,
                 '  SDM_VIRTUAL_CACHE_HIT=SDM_VIRTUAL_CACHE_HIT.AND.',
-                '     $ MU_R.EQ.SDM_VIRTUAL_CACHE_MU_R.AND.',
-                '     $ G.EQ.SDM_VIRTUAL_CACHE_G',
+                '     $ FACTORIZED_CACHE_REAL_EQUAL(MU_R,',
+                '     $ SDM_VIRTUAL_CACHE_MU_R).AND.',
+                '     $ FACTORIZED_CACHE_REAL_EQUAL(G,',
+                '     $ SDM_VIRTUAL_CACHE_G)',
                 'ENDIF',
                 'IF (SDM_VIRTUAL_CACHE_HIT) THEN',
                 '  SDM_INSERTION_RHO=SDM_VIRTUAL_CACHE_RHO',
@@ -1741,26 +1896,20 @@ class SpinDensityExporter(object):
             active_position,
             '     $ SPIN_DENSITY_VIRTUAL_INSERTION,1,',
             '     $ SDM_INSERTION_RHO)',
-            'DO SDM_STATE=1,%d' % state_count,
-            '  DO SDM_STATE2=1,%d' % state_count])
-        for component_id, provider in sorted(providers.items()):
-            position = positions[component_id]
-            code.extend([
-                '    SDM_LEFT(%d)=%s' % (
-                    position, self._state_index(provider, 'SDM_STATE')),
-                '    SDM_RIGHT(%d)=%s' % (
-                    position, self._state_index(
-                        provider, 'SDM_STATE2'))])
-        code.extend([
-            '    DO SDM_K=1,3',
-            '      %s(SDM_K)=%s(SDM_K)+' % (
-                result_name, result_name),
-            '     $ STRICT_SPIN_DENSITY_PRODUCT(SDM_BLOCKS,%d,SDM_K,' %
-            active_position,
-            '     $ SDM_LEFT,SDM_RIGHT)',
-            '    ENDDO',
-            '  ENDDO',
-            'ENDDO'])
+            'DO SDM_K=1,3'])
+
+        def virtual_accessor(component_id, position, left, right):
+            if component_id == active:
+                return 'SDM_BLOCKS(%d)%%INSERTION(SDM_K,%s,%s)' % (
+                    position, left, right)
+            return 'SDM_BLOCKS(%d)%%LO(1,%s,%s)' % (
+                position, left, right)
+
+        contraction = self._tree_message_contraction(
+            plan, contraction_providers, '%s(SDM_K)' % result_name,
+            virtual_accessor)
+        code.extend(['  ' + line for line in contraction])
+        code.append('ENDDO')
         return declarations, code
 
     def color_contraction_lines(self, plan, variant,
@@ -1769,12 +1918,12 @@ class SpinDensityExporter(object):
         """Contract one colour insertion with cached LO spectators."""
 
         self.prepare_plan(plan)
-        _, state_count, states = self._contraction_layout(plan)
-        node_count = len(plan['topology']['nodes'])
         active = variant['active_component']
         providers = dict(
             (component_id, component['born'])
             for component_id, component in plan['components'].items())
+        contraction_providers = dict(providers)
+        contraction_providers[active] = variant['provider']
         positions = self._block_position_map(providers)
         component_count = len(providers)
         active_position = positions[active]
@@ -1783,11 +1932,6 @@ class SpinDensityExporter(object):
             'matrix_element'].get_nexternal_ninitial()
 
         declarations = [
-            'INTEGER SDM_STATE,SDM_STATE2',
-            'INTEGER SDM_LEFT(%d),SDM_RIGHT(%d)' % (
-                component_count, component_count),
-            'INTEGER SDM_NODE_STATE(%d,%d)' % (
-                max(1, node_count), max(1, state_count)),
             'TYPE(SPIN_DENSITY_BLOCK_RESULT) SDM_BLOCKS(%d)' %
             component_count,
             'COMPLEX*16 %s' % result_name,
@@ -1804,11 +1948,8 @@ class SpinDensityExporter(object):
             'SAVE SDM_COLOR_CACHE_VALID,SDM_COLOR_CACHE_P,',
             '     $ SDM_COLOR_CACHE_G,SDM_COLOR_CACHE_RHO',
             'DATA SDM_COLOR_CACHE_VALID/.FALSE./']
-        for node_id in sorted(states):
-            declarations.append(
-                'DATA (SDM_NODE_STATE(%d,SDM_STATE),SDM_STATE=1,%d) '
-                '/%s/' % (node_id, state_count,
-                          ','.join(map(str, states[node_id]))))
+        declarations.extend(self._tree_message_declarations(
+            plan, contraction_providers))
         for component_id, provider in sorted(providers.items()):
             local_nexternal, _ = provider[
                 'matrix_element'].get_nexternal_ninitial()
@@ -1832,7 +1973,7 @@ class SpinDensityExporter(object):
                         provider['open_size'])])
             else:
                 code.extend(self._lo_block_lines(
-                    component_id, position, provider, event_slot))
+                    plan, component_id, position, provider, event_slot))
         code.extend([
             'CALL GET_FACTORIZED_BLOCK_MOMENTA(%s,%d,%d,' % (
                 str(event_slot), active, nexternal),
@@ -1841,7 +1982,8 @@ class SpinDensityExporter(object):
             'IF (SDM_COLOR_CACHE_HIT) THEN',
             '  SDM_COLOR_CACHE_HIT=ALL(SDM_INSERTION_P.EQ.',
             '     $ SDM_COLOR_CACHE_P).AND.',
-            '     $ STRONG_COUPLING.EQ.SDM_COLOR_CACHE_G',
+            '     $ FACTORIZED_CACHE_REAL_EQUAL(STRONG_COUPLING,',
+            '     $ SDM_COLOR_CACHE_G)',
             'ENDIF',
             'IF (SDM_COLOR_CACHE_HIT) THEN',
             '  SDM_COLOR_RHO=SDM_COLOR_CACHE_RHO',
@@ -1857,22 +1999,15 @@ class SpinDensityExporter(object):
             'CALL SET_SPIN_DENSITY_INSERTION(SDM_BLOCKS(%d),' %
             active_position,
             '     $ SPIN_DENSITY_COLOR_INSERTION,0,',
-            '     $ SDM_COLOR_INSERTION)',
-            'DO SDM_STATE=1,%d' % state_count,
-            '  DO SDM_STATE2=1,%d' % state_count])
-        for component_id, provider in sorted(providers.items()):
-            position = positions[component_id]
-            code.extend([
-                '    SDM_LEFT(%d)=%s' % (
-                    position, self._state_index(provider, 'SDM_STATE')),
-                '    SDM_RIGHT(%d)=%s' % (
-                    position, self._state_index(
-                        provider, 'SDM_STATE2'))])
-        code.extend([
-            '    %s=%s+' % (result_name, result_name),
-            '     $ STRICT_SPIN_DENSITY_PRODUCT(SDM_BLOCKS,%d,1,' %
-            active_position,
-            '     $ SDM_LEFT,SDM_RIGHT)',
-            '  ENDDO',
-            'ENDDO'])
+            '     $ SDM_COLOR_INSERTION)'])
+
+        def color_accessor(component_id, position, left, right):
+            if component_id == active:
+                return 'SDM_BLOCKS(%d)%%INSERTION(1,%s,%s)' % (
+                    position, left, right)
+            return 'SDM_BLOCKS(%d)%%LO(1,%s,%s)' % (
+                position, left, right)
+
+        code.extend(self._tree_message_contraction(
+            plan, contraction_providers, result_name, color_accessor))
         return declarations, code

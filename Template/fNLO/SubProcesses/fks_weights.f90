@@ -45,6 +45,7 @@ module fks_weights_module
        spin_density_weight_line_is_production, &
        evaluate_spin_density_weight_line, &
        spin_density_weight_line_multiplier
+  use factorized_phase_space, only: factorized_cache_real_equal
   implicit none
   private
 
@@ -114,7 +115,7 @@ contains
   double precision function cached_dlum(bjorken_x)
     use FKSParams, only: separate_flavour_configs
     double precision, intent(in) :: bjorken_x(2)
-    integer :: channel, entry, store_entry
+    integer :: channel, entry, hit_entry, store_entry
     integer(kind=8) :: bits, hash
 
     ! Separate-flavour mode consumes the individual subprocess luminosities
@@ -138,16 +139,28 @@ contains
     store_entry = int(iand(hash, &
          int(luminosity_cache_capacity - 1, kind=8))) + 1
 
-    entry = store_entry
-    if (luminosity_cache_valid(entry)) then
-      if (luminosity_cache_channel(entry) == channel .and. &
-          all(luminosity_cache_x(:, entry) == bjorken_x) .and. &
-          all(luminosity_cache_q2(:, entry) == q2fact)) then
-        cached_dlum = luminosity_cache_value(entry)
-        subproc_iproc = luminosity_cache_iproc(entry)
-        subproc_pd = luminosity_cache_pd(:, entry)
-        return
-      end if
+    hit_entry = 0
+    if (luminosity_cache_entry_matches( &
+            store_entry, channel, bjorken_x)) then
+      hit_entry = store_entry
+    else
+      ! The direct hash uses the exact floating-point bits.  Equivalent CORE
+      ! reconstructions can differ by a few ULPs and therefore hash to another
+      ! slot, so scan the small point-local working set before declaring a
+      ! miss.  Exact repeated keys still take the constant-time path above.
+      do entry = 1, luminosity_cache_capacity
+        if (entry == store_entry) cycle
+        if (.not. luminosity_cache_entry_matches( &
+                entry, channel, bjorken_x)) cycle
+        hit_entry = entry
+        exit
+      end do
+    end if
+    if (hit_entry /= 0) then
+      cached_dlum = luminosity_cache_value(hit_entry)
+      subproc_iproc = luminosity_cache_iproc(hit_entry)
+      subproc_pd = luminosity_cache_pd(:, hit_entry)
+      return
     end if
 
     cached_dlum = dlum(bjorken_x)
@@ -162,6 +175,23 @@ contains
     luminosity_cache_pd(:, store_entry) = subproc_pd
     luminosity_cache_valid(store_entry) = .true.
   end function cached_dlum
+
+
+  logical function luminosity_cache_entry_matches( &
+       entry, channel, bjorken_x)
+    integer, intent(in) :: entry, channel
+    double precision, intent(in) :: bjorken_x(2)
+
+    luminosity_cache_entry_matches = &
+         luminosity_cache_valid(entry) .and. &
+         luminosity_cache_channel(entry) == channel
+    if (.not. luminosity_cache_entry_matches) return
+    luminosity_cache_entry_matches = &
+         all(factorized_cache_real_equal( &
+             luminosity_cache_x(:, entry), bjorken_x)) .and. &
+         all(factorized_cache_real_equal( &
+             luminosity_cache_q2(:, entry), q2fact))
+  end function luminosity_cache_entry_matches
 
   subroutine begin_bundle_virtual_tricks()
     if (.not. has_nlo_contribution_bundle()) return

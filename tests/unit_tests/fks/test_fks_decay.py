@@ -289,7 +289,9 @@ class TestFKSDecayChains(unittest.TestCase):
                 'GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,1,3,',
                 flat_born)
             self.assertIn('SUBROUTINE SBORN_FACTORIZED(', flat_born)
-            self.assertIn('STRICT_SPIN_DENSITY_PRODUCT(', flat_born)
+            self.assertIn('SDM_TREE_MESSAGE_', flat_born)
+            self.assertIn('SDM_TREE_TERM=', flat_born)
+            self.assertNotIn('SDM_STATE', flat_born)
             self.assertIn('LOAD_CACHED_LO_DENSITY(', flat_born)
             self.assertIn('SET_SPIN_DENSITY_INSERTION(', flat_born)
             self.assertNotIn('SDM_BLOCK_AVAILABLE', born_source)
@@ -1178,7 +1180,9 @@ class TestFKSDecayChains(unittest.TestCase):
                 flat_real)
             self.assertIn('SUBROUTINE SBORN_FACTORIZED(', flat_born)
             self.assertIn('SUBROUTINE SMATRIX1_FACTORIZED(', flat_real)
-            self.assertIn('STRICT_SPIN_DENSITY_PRODUCT(', flat_real)
+            self.assertIn('SDM_TREE_MESSAGE_', flat_real)
+            self.assertIn('SDM_TREE_TERM=', flat_real)
+            self.assertNotIn('SDM_STATE', flat_real)
             self.assertIn(
                 'SPIN_DENSITY_REAL_INSERTION,1', flat_real)
             self.assertNotIn('SDM_BLOCK_AVAILABLE', real_source)
@@ -1671,14 +1675,32 @@ class TestFKSDecayChains(unittest.TestCase):
                     'call capture_multiplicative_snapshot'), 2)
             self.assertIn(
                 'if (multiplicative_nlo_enabled()) return', driver_source)
+            lower_driver_source = driver_source.lower()
+            self.assertIn(
+                'type(multiplicative_component_cache), save :: '
+                'folded_production_cache', lower_driver_source)
+            self.assertIn('reuse_folded_production', lower_driver_source)
+            self.assertIn(
+                'record_multiplicative_spectator_born_densities',
+                lower_driver_source)
+            self.assertIn(
+                'restore_multiplicative_component_cache',
+                lower_driver_source)
+            self.assertIn(
+                'additive_contribution_probability', lower_driver_source)
+            self.assertIn('conditional_decay_integer', lower_driver_source)
             with open(os.path.join(
                     subprocess_dir, 'fks_contributions.f90')) as stream:
                 contribution_source = stream.read().lower()
             self.assertIn(
-                'record_spectator_born_densities', contribution_source)
-            self.assertIn(
-                'component == spin_density_active_component_position()',
+                'record_multiplicative_spectator_born_densities',
                 contribution_source)
+            self.assertIn(
+                'production_component = '
+                'spin_density_active_component_position()',
+                contribution_source)
+            self.assertIn('component == production_component',
+                          contribution_source)
             self.assertNotIn(
                 'sdm_component_is_corrected', contribution_source)
             with open(os.path.join(
@@ -1716,6 +1738,15 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn(
                 'grid_weight = abs(f(component_integral))',
                 mint_source)
+            self.assertIn(
+                'initialize_decay_fold_permutations', mint_source)
+            self.assertIn('update_adaptive_decay_fold', mint_source)
+            self.assertIn(
+                'decay_fold_permutation(replica, kdim)', mint_source)
+            self.assertIn('DecayFold telemetry: groups=', mint_source)
+            self.assertIn(
+                'allocate (decay_fold_permutation(max(1, DecayFold), ndim))',
+                mint_source)
             real_sources = []
             for filename in os.listdir(subprocess_dir):
                 if filename.startswith('matrix_') and filename.endswith('.f'):
@@ -1728,7 +1759,8 @@ class TestFKSDecayChains(unittest.TestCase):
                 for source in real_sources))
             self.assertTrue(all(
                 'SET_SPIN_DENSITY_INSERTION' in source and
-                'STRICT_SPIN_DENSITY_PRODUCT' in source and
+                'SDM_TREE_MESSAGE_' in source and
+                'SDM_TREE_TERM=' in source and
                 'SPIN_DENSITY_REAL_INSERTION,1' in
                 ' '.join(source.replace('$', ' ').split()).replace(' ,', ',')
                 for source in real_sources))
@@ -1793,9 +1825,11 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn(
                 'TYPE(SPIN_DENSITY_BRANCH_RESULT) SDM_BRANCHES(',
                 flat_contraction)
-            self.assertIn(
-                'SPIN_DENSITY_BRANCH_PRODUCT(SDM_BRANCHES,SDM_BRANCH_CHOICE,',
-                flat_contraction)
+            self.assertIn('SDM_TREE_MESSAGE_', flat_contraction)
+            self.assertIn('SDM_TREE_TERM=', flat_contraction)
+            self.assertNotIn(
+                'SPIN_DENSITY_BRANCH_PRODUCT(', flat_contraction)
+            self.assertNotIn('SDM_STATE', flat_contraction)
             with open(os.path.join(
                     subprocess_dir,
                     'spin_density_branch_dimensions.inc')) as stream:
@@ -1821,6 +1855,7 @@ class TestFKSDecayChains(unittest.TestCase):
                           flat_accessors)
             self.assertIn('CALL FETCH_CACHED_LO_DENSITY(',
                           flat_accessors)
+            self.assertIn('STRONG_COUPLING', flat_accessors)
             component_accessors = flat_accessors.split(
                 'SUBROUTINE SDM_COMPONENT_BORN_DENSITY(', 1)[1]
             self.assertIn(
@@ -1858,6 +1893,13 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn(
                 'workspace%branches(component)%has_real',
                 workspace_source)
+            self.assertIn(
+                'type, public :: multiplicative_component_cache',
+                workspace_source)
+            self.assertIn(
+                'store_multiplicative_component_cache', workspace_source)
+            self.assertIn(
+                'restore_multiplicative_component_cache', workspace_source)
             with open(os.path.join(
                     subprocess_dir,
                     'multiplicative_event_materialization.f90')) as stream:
@@ -1878,6 +1920,28 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn(
                 'spin_density_branch_leaf_count = shiftl(1_8, block_count)',
                 result_source)
+            self.assertIn('integer :: qcd_power = 0', result_source)
+            self.assertIn('coupling_cache_rescaling', result_source)
+            self.assertIn(
+                '(requested_coupling/cached_coupling)**qcd_power',
+                result_source)
+            with open(os.path.join(
+                    subprocess_dir,
+                    'factorized_phase_space.f90')) as stream:
+                factorized_source = stream.read().lower()
+            self.assertIn(
+                'pure elemental logical function '
+                'factorized_cache_real_equal', factorized_source)
+            self.assertIn('identity_momenta', factorized_source)
+            self.assertIn('identity_revision', factorized_source)
+            with open(os.path.join(
+                    subprocess_dir, 'fks_weights.f90')) as stream:
+                weight_source = stream.read().lower()
+            self.assertIn(
+                'logical function luminosity_cache_entry_matches',
+                weight_source)
+            self.assertIn(
+                'do entry = 1, luminosity_cache_capacity', weight_source)
             with open(os.path.join(
                     subprocess_dir,
                     'decay_chain_parameters.f90')) as stream:
@@ -2156,6 +2220,11 @@ class TestFKSDecayChains(unittest.TestCase):
                     'spin_density_block_accessors.f')) as stream:
                 block_accessors = ' '.join(
                     stream.read().replace('$', ' ').split())
+            self.assertIn(
+                'USE FKS_MODEL_STATE_MODULE, ONLY: STRONG_COUPLING',
+                block_accessors)
+            self.assertIn('QCD_POWER=4', block_accessors)
+            self.assertIn('QCD_POWER=0', block_accessors)
             born_layouts = block_accessors.split(
                 'IF (BRANCH.EQ.0) THEN', 1)[1].split(
                     'ELSE IF (BRANCH.EQ.1) THEN', 1)[0]
@@ -2203,6 +2272,9 @@ class TestFKSDecayChains(unittest.TestCase):
                     subprocess_dir,
                     'spin_density_virtual_contributions.f')) as stream:
                 contractions = stream.read()
+            self.assertIn('SDM_TREE_MESSAGE_', contractions)
+            self.assertIn('SDM_TREE_TERM=', contractions)
+            self.assertNotIn('SDM_STATE', contractions)
             production_contraction = contractions.split(
                 'SUBROUTINE SDM_VIRTUAL_CONTRIBUTION_1', 1)[1].split(
                     'SUBROUTINE SDM_VIRTUAL_CONTRIBUTION_2', 1)[0]
@@ -2374,10 +2446,16 @@ class TestFKSDecayChains(unittest.TestCase):
                 'dble(decay_fold_replicas)', mint_source)
             self.assertIn(
                 'production_virtual_choice_is_cached', mint_source)
+            self.assertIn(
+                'initialize_decay_fold_permutations', mint_source)
+            self.assertIn('update_adaptive_decay_fold', mint_source)
+            self.assertIn('decayfold adaptive:', mint_source)
+            self.assertIn('decayfold telemetry:', mint_source)
             with open(os.path.join(
                     process_dir, 'Cards', 'FKS_params.dat')) as stream:
                 fks_card = stream.read()
             self.assertIn('#DecayFold', fks_card)
+            self.assertIn('#DecayFoldAdaptive', fks_card)
             with open(os.path.join(
                     process_dir, 'SubProcesses',
                     'nlo_contribution_bundle.f90')) as stream:

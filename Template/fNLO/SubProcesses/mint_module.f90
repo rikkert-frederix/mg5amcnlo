@@ -124,13 +124,24 @@ module mint_module
   integer, private :: even_current_dim = 0
   integer, allocatable, private :: even_iii(:), even_kkk(:)
   logical, allocatable, private :: decay_fold_dimension(:)
+  integer, allocatable, private :: decay_fold_permutation(:, :)
   integer, private :: decay_fold_canonical_dimension = 0
   integer, private :: decay_fold_first_dimension = 0
   integer, private :: decay_fold_shared_count = 0
   integer, private :: decay_fold_replica = 1
   integer, private :: decay_fold_replicas = 1
+  integer, private :: effective_decay_fold = 1
   logical, private :: decay_fold_group_is_active = .false.
   logical, private :: decay_fold_grid_is_pretrained = .false.
+  integer(kind=8), private :: decay_fold_stat_groups = 0_8
+  integer(kind=8), private :: decay_fold_total_groups = 0_8
+  integer(kind=8), private :: decay_fold_total_replicas = 0_8
+  integer(kind=8), private :: decay_fold_production_cache_hits = 0_8
+  integer(kind=8), private :: decay_fold_production_cache_misses = 0_8
+  integer(kind=8), private :: decay_fold_conditional_sectors = 0_8
+  double precision, private :: decay_fold_within_variance_sum = 0d0
+  double precision, private :: decay_fold_outer_mean = 0d0
+  double precision, private :: decay_fold_outer_m2 = 0d0
   logical, private :: production_virtual_choice_is_cached = .false.
   logical, private :: cached_production_virtual_choice = .false.
   logical, private :: point_grids_are_accumulated = .false.
@@ -138,6 +149,8 @@ module mint_module
 ! functions and subroutines:
   public :: mint, configure_decay_folding
   public :: decay_fold_group_active, decay_fold_reuses_production
+  public :: record_decay_fold_production_cache
+  public :: record_decay_fold_conditional_sector
   public :: virtual_sampling_fraction_for_contribution
   public :: sample_virtual_for_contribution
   private :: initialise_mint, setup_basic_mint &
@@ -155,6 +168,8 @@ module mint_module
        &, accumulate_the_point, compute_integrand, get_random_x &
        &, resample_decay_fold_dimensions, load_virtual_approximations &
        &, initialize_decay_fold_dimensions &
+       &, initialize_decay_fold_permutations &
+       &, update_adaptive_decay_fold, record_decay_fold_statistics &
        &, start_iteration, reset_accumulated_grids &
        &, check_evenly_random_numbers, finalise_mint, write_results &
        &, write_channel_info, setup_imode_m1, setup_imode_0 &
@@ -223,6 +238,7 @@ contains
 
     allocate (icell(ndim), ncell(ndim), rand(ndim))
     allocate (decay_fold_dimension(ndim))
+    allocate (decay_fold_permutation(max(1, DecayFold), ndim))
     allocate (nhits(nintervals, ndim, nchans))
     allocate (nhits_in_grids(nchans), regridded(nchans))
     allocate (xgrid(0:nintervals, ndim, nchans))
@@ -264,16 +280,27 @@ contains
     ave_born_acc = 0d0
     even_iii = 1
     even_kkk = 1
+    decay_fold_permutation = 0
     call initialize_decay_fold_dimensions
     even_dng = 0d0
     even_current_dim = 0
     decay_fold_replica = 1
     decay_fold_replicas = 1
+    effective_decay_fold = max(1, min(DecayFold, 2))
     decay_fold_group_is_active = .false.
     decay_fold_grid_is_pretrained = .false.
     production_virtual_choice_is_cached = .false.
     cached_production_virtual_choice = .false.
     point_grids_are_accumulated = .false.
+    decay_fold_stat_groups = 0_8
+    decay_fold_total_groups = 0_8
+    decay_fold_total_replicas = 0_8
+    decay_fold_production_cache_hits = 0_8
+    decay_fold_production_cache_misses = 0_8
+    decay_fold_conditional_sectors = 0_8
+    decay_fold_within_variance_sum = 0d0
+    decay_fold_outer_mean = 0d0
+    decay_fold_outer_m2 = 0d0
     mint_state_initialized = .true.
   end subroutine initialize_mint_state
 
@@ -301,15 +328,27 @@ contains
     if (allocated(even_iii)) deallocate (even_iii)
     if (allocated(even_kkk)) deallocate (even_kkk)
     if (allocated(decay_fold_dimension)) deallocate (decay_fold_dimension)
+    if (allocated(decay_fold_permutation)) &
+         deallocate (decay_fold_permutation)
     even_dng = 0d0
     even_current_dim = 0
     decay_fold_replica = 1
     decay_fold_replicas = 1
+    effective_decay_fold = 1
     decay_fold_group_is_active = .false.
     decay_fold_grid_is_pretrained = .false.
     production_virtual_choice_is_cached = .false.
     cached_production_virtual_choice = .false.
     point_grids_are_accumulated = .false.
+    decay_fold_stat_groups = 0_8
+    decay_fold_total_groups = 0_8
+    decay_fold_total_replicas = 0_8
+    decay_fold_production_cache_hits = 0_8
+    decay_fold_production_cache_misses = 0_8
+    decay_fold_conditional_sectors = 0_8
+    decay_fold_within_variance_sum = 0d0
+    decay_fold_outer_mean = 0d0
+    decay_fold_outer_m2 = 0d0
     born_dimensions = 0
     mint_state_initialized = .false.
   end subroutine finalize_mint_state
@@ -383,6 +422,29 @@ contains
     decay_fold_reuses_production = decay_fold_group_is_active .and. &
          decay_fold_replica > 1
   end function decay_fold_reuses_production
+
+  subroutine record_decay_fold_production_cache(reused)
+    implicit none
+    logical, intent(in) :: reused
+
+    if (.not. decay_fold_group_is_active) return
+    if (reused) then
+      decay_fold_production_cache_hits = &
+           decay_fold_production_cache_hits + 1_8
+    else
+      decay_fold_production_cache_misses = &
+           decay_fold_production_cache_misses + 1_8
+    end if
+  end subroutine record_decay_fold_production_cache
+
+  subroutine record_decay_fold_conditional_sector()
+    implicit none
+
+    if (.not. decay_fold_group_is_active .or. &
+        decay_fold_replica <= 1) return
+    decay_fold_conditional_sectors = &
+         decay_fold_conditional_sectors + 1_8
+  end subroutine record_decay_fold_conditional_sector
 
   logical function sample_virtual_for_contribution(contribution, kchan)
     implicit none
@@ -513,6 +575,7 @@ contains
   subroutine prepare_next_iteration
     implicit none
     integer :: kchan, kdim, k_ord_virt
+    call update_adaptive_decay_fold
     if (double_points) then
 ! Double the number of intervals in the grids if not yet reach the maximum
       if (2*nint_used .le. nintervals) then
@@ -984,6 +1047,7 @@ contains
     integer :: ifirst, replica
     integer, dimension(ndimmax) :: base_icell, base_ncell
     double precision :: dummy, vol, replica_vol
+    double precision :: fold_mean, fold_m2, fold_value, fold_delta
     double precision, dimension(nintegrals) :: f1, folded_sum
     double precision, dimension(ndimmax) :: base_x, replica_x
     double precision, dimension(ndimmax) :: x
@@ -1002,11 +1066,10 @@ contains
 
     ! Conditional decay-space folding: the MINT channel, production
     ! coordinates, production radiation and production discrete choices are
-    ! one outer sample.  The decay coordinates form one shifted Latin fold:
-    ! every decay dimension visits each of DecayFold equal-probability
-    ! strata exactly once, but the dimensions share one replica index.  This
-    ! gives DecayFold joint decay samples rather than their Cartesian
-    ! product.  Average them before the outer point enters vtot/etot.
+    ! one outer sample.  Every decay dimension independently permutes the
+    ! same equal-probability strata.  This gives a Latin fold without the
+    ! fixed diagonal correlations of a shared cyclic shift.  Average the
+    ! replicas before the outer point enters vtot/etot.
     ! Histograms remain correlated correctly because HwU_add_points is
     ! called only after this routine returns.
     base_x = x
@@ -1016,12 +1079,19 @@ contains
     base_ncell(1:ndim) = ncell(1:ndim)
     folded_sum = 0d0
     any_replica_passed_cuts = .false.
-    decay_fold_replicas = DecayFold
+    if (DecayFoldAdaptive) then
+      decay_fold_replicas = effective_decay_fold
+    else
+      decay_fold_replicas = DecayFold
+    end if
     decay_fold_replica = 1
     decay_fold_group_is_active = .true.
     production_virtual_choice_is_cached = .false.
     cached_production_virtual_choice = .false.
     point_grids_are_accumulated = .true.
+    fold_mean = 0d0
+    fold_m2 = 0d0
+    call initialize_decay_fold_permutations(base_icell)
 
     do replica = 1, decay_fold_replicas
       decay_fold_replica = replica
@@ -1035,6 +1105,13 @@ contains
       pass_cuts_check = .false.
       dummy = fun( &
            replica_x, replica_vol/dble(decay_fold_replicas), ifirst, f1)
+      ! f1 already contains the explicit 1/F replica weight.  Undo it only
+      ! for the within-fold variance estimator; the physical sum below is
+      ! left untouched.
+      fold_value = f1(2)*dble(decay_fold_replicas)
+      fold_delta = fold_value - fold_mean
+      fold_mean = fold_mean + fold_delta/dble(replica)
+      fold_m2 = fold_m2 + fold_delta*(fold_value - fold_mean)
       replica_passed_cuts = pass_cuts_check
       f(1:nintegrals) = f1(1:nintegrals)
       call add_point_to_grids(replica_x)
@@ -1048,6 +1125,8 @@ contains
     ! factor through replica_vol, whereas this diagnostic needs its explicit
     ! arithmetic average.
     folded_sum(4) = folded_sum(4)/dble(decay_fold_replicas)
+    call record_decay_fold_statistics( &
+         folded_sum(2), fold_m2, decay_fold_replicas)
     f(1:nintegrals) = folded_sum
     pass_cuts_check = any_replica_passed_cuts
     x = base_x
@@ -1060,6 +1139,52 @@ contains
     cached_production_virtual_choice = .false.
   end subroutine compute_integrand
 
+  subroutine record_decay_fold_statistics(point_value, within_m2, replicas)
+    implicit none
+    double precision, intent(in) :: point_value, within_m2
+    integer, intent(in) :: replicas
+    double precision :: delta
+
+    if (replicas <= 1) return
+    decay_fold_stat_groups = decay_fold_stat_groups + 1_8
+    decay_fold_total_groups = decay_fold_total_groups + 1_8
+    decay_fold_total_replicas = decay_fold_total_replicas + &
+         int(replicas, kind=8)
+    decay_fold_within_variance_sum = &
+         decay_fold_within_variance_sum + &
+         within_m2/dble(replicas - 1)/dble(replicas)
+    delta = point_value - decay_fold_outer_mean
+    decay_fold_outer_mean = decay_fold_outer_mean + &
+         delta/dble(decay_fold_stat_groups)
+    decay_fold_outer_m2 = decay_fold_outer_m2 + &
+         delta*(point_value - decay_fold_outer_mean)
+  end subroutine record_decay_fold_statistics
+
+  subroutine update_adaptive_decay_fold()
+    implicit none
+    integer :: old_fold
+    double precision :: outer_variance, within_variance, fraction
+
+    if (.not. DecayFoldAdaptive .or. DecayFold <= 1) return
+    if (decay_fold_stat_groups < 32_8) return
+    outer_variance = decay_fold_outer_m2/ &
+         dble(decay_fold_stat_groups - 1_8)
+    within_variance = decay_fold_within_variance_sum/ &
+         dble(decay_fold_stat_groups)
+    fraction = within_variance/max(outer_variance, tiny(1d0))
+    fraction = max(0d0, min(1d0, fraction))
+    old_fold = effective_decay_fold
+    if (fraction > 0.35d0 .and. effective_decay_fold < DecayFold) then
+      effective_decay_fold = min(DecayFold, 2*effective_decay_fold)
+    else if (fraction < 0.08d0 .and. effective_decay_fold > 2) then
+      effective_decay_fold = max(2, effective_decay_fold/2)
+    end if
+    write (*, '(a,i0,a,f6.3,a,i0,a,i0)') &
+         'DecayFold adaptive: ', decay_fold_stat_groups, &
+         ' groups, decay variance fraction ', fraction, ', replicas ', &
+         old_fold, ' -> ', effective_decay_fold
+  end subroutine update_adaptive_decay_fold
+
   subroutine resample_decay_fold_dimensions( &
        base_icell, replica, x, base_vol, vol)
     implicit none
@@ -1068,14 +1193,14 @@ contains
     double precision, intent(inout) :: x(ndimmax)
     double precision, intent(in) :: base_vol
     double precision, intent(out) :: vol
-    integer :: base_stratum, cell, kdim, stratum
+    integer :: cell, kdim, stratum
     double precision :: draw, fold_fraction, new_dx, old_dx
     double precision :: sampling_coordinate
 
     ! Recover the uniform MINT coordinate which selected the original cell.
-    ! Its stratum supplies an independent random cyclic shift in every
-    ! dimension.  Advancing the common replica index then visits all strata
-    ! once in every decay dimension.  Each replica has the ordinary MINT
+    ! Its stratum supplies an independent Latin permutation in every
+    ! dimension.  Advancing the replica index then visits all strata once
+    ! in every decay dimension.  Each replica has the ordinary MINT
     ! density; the caller supplies the single overall 1/DecayFold average.
     vol = base_vol
     do kdim = 1, ndim
@@ -1088,13 +1213,12 @@ contains
       end if
       sampling_coordinate = (dble(base_icell(kdim) - 1) + &
            rand(kdim))/dble(nint_used)
-      base_stratum = min( &
-           int(sampling_coordinate*DecayFold), DecayFold - 1)
-      fold_fraction = sampling_coordinate*DecayFold - &
-           dble(base_stratum)
-      stratum = modulo(base_stratum + replica - 1, DecayFold)
+      fold_fraction = sampling_coordinate*decay_fold_replicas - &
+           dble(min(int(sampling_coordinate*decay_fold_replicas), &
+                    decay_fold_replicas - 1))
+      stratum = decay_fold_permutation(replica, kdim)
       sampling_coordinate = (dble(stratum) + fold_fraction)/ &
-           dble(DecayFold)
+           dble(decay_fold_replicas)
       cell = min( &
            int(sampling_coordinate*nint_used) + 1, nint_used)
       draw = sampling_coordinate*nint_used - dble(cell - 1)
@@ -1112,6 +1236,51 @@ contains
            nhits(cell, kdim, ichan) = nhits(cell, kdim, ichan) + 1
     end do
   end subroutine resample_decay_fold_dimensions
+
+  subroutine initialize_decay_fold_permutations(base_icell)
+    integer, intent(in) :: base_icell(ndimmax)
+    integer(kind=8), parameter :: park_miller_modulus = 2147483647_8
+    integer(kind=8) :: seed
+    integer :: base_stratum, cell, kdim, replica, swap_index, value
+    double precision :: sampling_coordinate
+
+    decay_fold_permutation = 0
+    do kdim = 1, ndim
+      if (.not. decay_fold_dimension(kdim)) cycle
+      do replica = 1, decay_fold_replicas
+        decay_fold_permutation(replica, kdim) = replica - 1
+      end do
+      seed = 1_8 + modulo( &
+           int(rand(kdim)*2147483000d0, kind=8) + &
+           104729_8*int(kdim, kind=8) + &
+           1009_8*int(base_icell(kdim), kind=8) + &
+           9176_8*int(iconfig, kind=8), park_miller_modulus - 1_8)
+      do replica = decay_fold_replicas, 2, -1
+        seed = modulo(16807_8*seed, park_miller_modulus)
+        swap_index = 1 + int(modulo(seed, int(replica, kind=8)))
+        value = decay_fold_permutation(replica, kdim)
+        decay_fold_permutation(replica, kdim) = &
+             decay_fold_permutation(swap_index, kdim)
+        decay_fold_permutation(swap_index, kdim) = value
+      end do
+
+      ! Retain the original MINT point as replica one.  The remaining strata
+      ! still form an independently randomized permutation in every decay
+      ! dimension, avoiding the fixed diagonal correlations of cyclic shifts.
+      sampling_coordinate = (dble(base_icell(kdim) - 1) + &
+           rand(kdim))/dble(nint_used)
+      base_stratum = min( &
+           int(sampling_coordinate*decay_fold_replicas), &
+           decay_fold_replicas - 1)
+      do cell = 1, decay_fold_replicas
+        if (decay_fold_permutation(cell, kdim) /= base_stratum) cycle
+        value = decay_fold_permutation(1, kdim)
+        decay_fold_permutation(1, kdim) = base_stratum
+        decay_fold_permutation(cell, kdim) = value
+        exit
+      end do
+    end do
+  end subroutine initialize_decay_fold_permutations
 
   subroutine get_random_x(x, vol)
     implicit none
@@ -1166,6 +1335,10 @@ contains
     kpoint_iter = 0
     non_zero_point(1:nintegrals) = 0
     pass_cuts_point = 0
+    decay_fold_stat_groups = 0_8
+    decay_fold_within_variance_sum = 0d0
+    decay_fold_outer_mean = 0d0
+    decay_fold_outer_m2 = 0d0
   end subroutine start_iteration
 
   subroutine reset_accumulated_grids
@@ -1221,6 +1394,15 @@ contains
     end do
     call write_grids_to_file
     call write_results
+    if (decay_fold_total_groups > 0_8) then
+      write (*, '(a,i0,a,i0)') 'DecayFold telemetry: groups=', &
+           decay_fold_total_groups, ', replicas=', decay_fold_total_replicas
+      write (*, '(a,i0,a,i0,a,i0)') &
+           'DecayFold reuse: production hits=', &
+           decay_fold_production_cache_hits, ', misses=', &
+           decay_fold_production_cache_misses, ', conditional sectors=', &
+           decay_fold_conditional_sectors
+    end if
   end subroutine finalise_mint
 
   subroutine write_results

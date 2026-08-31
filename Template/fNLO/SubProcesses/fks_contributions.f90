@@ -88,6 +88,7 @@ module fks_contributions_module
   public :: compute_soft_counter_term, compute_collinear_counter_term
   public :: compute_soft_collinear_ct_impl
   public :: compute_prefactors_nbody, compute_prefactors_n1body
+  public :: record_multiplicative_spectator_born_densities
   public :: include_multichannel_enhance
 
   interface
@@ -258,15 +259,18 @@ contains
       end if
     end do
 
-    call record_spectator_born_densities()
+    call record_multiplicative_spectator_born_densities()
     call cpu_time(tAfter)
     tBorn = tBorn + (tAfter - tBefore)
     return
   end subroutine compute_born
 
 
-  subroutine record_spectator_born_densities()
+  subroutine record_multiplicative_spectator_born_densities( &
+       excluded_component)
+    integer, intent(in), optional :: excluded_component
     integer :: component, component_count, open_size, maximum_open_size
+    integer :: production_component
     integer :: qcd_power, scale_pdg, block
     double precision :: jacobian, phase_space_weight, measure
     logical :: available
@@ -283,12 +287,21 @@ contains
       write (*, *) 'ERROR: invalid spectator density layout'
       stop 1
     end if
+    production_component = spin_density_active_component_position()
+    if (present(excluded_component)) production_component = &
+         excluded_component
+    if (production_component < 1 .or. &
+        production_component > component_count) then
+      write (*, *) 'ERROR: invalid spectator density exclusion', &
+           production_component
+      stop 1
+    end if
     allocate(raw_density(2, maximum_open_size, maximum_open_size))
     do component = 1, component_count
       ! Production defines the common global Born embedding.  Record every
       ! other block here, including NLO-corrected decays; their own FKS
       ! contributions subsequently add only the local NLO increment.
-      if (component == spin_density_active_component_position()) cycle
+      if (component == production_component) cycle
       raw_density = (0d0, 0d0)
       call sdm_component_born_density( &
            component, soft_counterevent, open_size, qcd_power, &
@@ -329,7 +342,7 @@ contains
       deallocate(density_coefficients)
     end do
     deallocate(raw_density)
-  end subroutine record_spectator_born_densities
+  end subroutine record_multiplicative_spectator_born_densities
 
 
   subroutine compute_decay_width_counterterm
