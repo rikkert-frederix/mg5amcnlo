@@ -14,6 +14,8 @@ module nlo_decay_kinematics
        store_factorized_embedded_momenta, &
        fetch_factorized_embedded_momenta, &
        store_factorized_base_measure, compose_factorized_base_measure
+  use decay_chain_metadata, only: has_decay_chain_metadata
+  use decay_chain_kinematics, only: generate_canonical_decay_node_rest
   use decay_chain_parameters, only: decay_dummy_width_ratio, &
                                     decay_physical_width
   use nlo_decay_metadata, only: initialize_nlo_decay_metadata, &
@@ -533,8 +535,15 @@ contains
 
     local_jacobian = 1d0
     local_weight = 1d0
-    call generate_nbody_rest(node_masses(node), child_count, child_masses, &
-         x, index, rest_momenta, local_jacobian, local_weight, pass)
+    if (has_decay_chain_metadata()) then
+      call generate_canonical_decay_node_rest( &
+           node, node_masses(node), child_count, child_masses, x, index, &
+           rest_momenta, local_jacobian, local_weight, pass)
+    else
+      call generate_nbody_rest( &
+           node_masses(node), child_count, child_masses, x, index, &
+           rest_momenta, local_jacobian, local_weight, pass)
+    end if
     if (.not. pass) return
     node_rest_storage(:, :, node) = 0d0
     node_rest_storage(:, 1:child_count, node) = &

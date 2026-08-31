@@ -81,7 +81,8 @@ module fks_weights_module
   integer, parameter, public :: averaged_born_contribution = 15
 
   public :: add_wgt, include_pdf_and_alphas
-  public :: reweight_scale, reweight_pdf, get_wgt_no_nbody
+  public :: reweight_scale, reweight_pdf, get_wgt_no_nbody, &
+       get_wgt_no_nbody_component
   public :: fill_plots, fill_mint_function
   public :: begin_bundle_virtual_tricks, finish_bundle_virtual_tricks
   public :: reset_luminosity_cache
@@ -994,6 +995,26 @@ contains
     end do
     return
   end subroutine get_wgt_no_nbody
+
+  subroutine get_wgt_no_nbody_component(component, sig)
+! Sums the central resolved weights belonging to one bundle component.
+    use weight_lines
+    implicit none
+    integer, intent(in) :: component
+    double precision, intent(out) :: sig
+    integer :: i
+
+    sig = 0d0
+    if (icontr == 0) return
+    do i = 1, icontr
+      if (bundle_component(i) /= component) cycle
+      select case (itype(i))
+      case (real_contribution, soft_contribution, &
+            collinear_contribution, soft_collinear_contribution)
+        sig = sig + wgts(1, i)
+      end select
+    end do
+  end subroutine get_wgt_no_nbody_component
 
   subroutine fill_plots
 ! Calls the analysis routine (which fill plots) for all the

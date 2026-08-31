@@ -1267,7 +1267,11 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertNotIn('visible', sampler)
             self.assertNotIn('boost_nbody_from_rest', sampler)
             self.assertIn('factorized_block_kinematics', kinematics)
-            self.assertNotIn('use decay_chain_kinematics', kinematics)
+            self.assertIn('use decay_chain_kinematics', kinematics)
+            self.assertIn(
+                'generate_canonical_decay_node_rest', kinematics)
+            self.assertIn(
+                'if (has_decay_chain_metadata()) then', kinematics)
             self.assertIn('store_factorized_block_momenta', kinematics)
             self.assertIn('store_factorized_kernel_momenta', kinematics)
             self.assertIn('store_factorized_base_measure', kinematics)
@@ -1639,6 +1643,9 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn(
                 'event_momenta(0, 1, soft_counterevent) > 0d0',
                 driver_source)
+            self.assertIn(
+                'call require_multiplicative_born_alignment',
+                driver_source.lower())
             self.assertGreaterEqual(
                 driver_source.count(
                     'call generate_momenta_reusing_born('), 2)
@@ -1686,9 +1693,38 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn(
                 'restore_multiplicative_component_cache',
                 lower_driver_source)
-            self.assertIn(
+            self.assertNotIn(
                 'additive_contribution_probability', lower_driver_source)
-            self.assertIn('conditional_decay_integer', lower_driver_source)
+            self.assertNotIn(
+                'conditional_decay_integer', lower_driver_source)
+            self.assertIn(
+                'do nbody_contribution = 1, contribution_count',
+                lower_driver_source)
+            self.assertIn(
+                'integer, allocatable, save :: contribution_integers',
+                lower_driver_source)
+            self.assertIn(
+                'category = 0', lower_driver_source)
+            self.assertIn(
+                'resolved_partition = 0.5d0', lower_driver_source)
+            self.assertIn(
+                'call get_wgt_no_nbody_component', lower_driver_source)
+            self.assertIn(
+                'abs(sampled_weight)*contribution_volumes',
+                lower_driver_source)
+            with open(os.path.join(
+                    subprocess_dir, 'fks_weights.f90')) as stream:
+                weight_source = stream.read().lower()
+            component_getter = weight_source.split(
+                'subroutine get_wgt_no_nbody_component', 1)[1].split(
+                    'end subroutine get_wgt_no_nbody_component', 1)[0]
+            self.assertIn(
+                'bundle_component(i) /= component', component_getter)
+            for resolved_type in [
+                    'real_contribution', 'soft_contribution',
+                    'collinear_contribution',
+                    'soft_collinear_contribution']:
+                self.assertIn(resolved_type, component_getter)
             with open(os.path.join(
                     subprocess_dir, 'fks_contributions.f90')) as stream:
                 contribution_source = stream.read().lower()
@@ -1900,6 +1936,39 @@ class TestFKSDecayChains(unittest.TestCase):
                 'store_multiplicative_component_cache', workspace_source)
             self.assertIn(
                 'restore_multiplicative_component_cache', workspace_source)
+            self.assertIn(
+                'subroutine require_multiplicative_born_alignment',
+                workspace_source)
+            self.assertIn(
+                'an nlo decay born point is not aligned with its snapshot',
+                workspace_source)
+            self.assertIn(
+                'current%base%phase_space_weight -', workspace_source)
+            with open(os.path.join(
+                    subprocess_dir, 'decay_chain_metadata.f90')) as stream:
+                decay_metadata_source = stream.read().lower()
+            self.assertIn(
+                'logical function has_decay_chain_metadata',
+                decay_metadata_source)
+            with open(os.path.join(
+                    subprocess_dir, 'decay_chain_kinematics.f90')) as stream:
+                decay_kinematics_source = stream.read().lower()
+            self.assertIn(
+                'subroutine generate_canonical_decay_node_rest',
+                decay_kinematics_source)
+            with open(os.path.join(
+                    subprocess_dir, 'nlo_decay_kinematics.f90')) as stream:
+                nlo_decay_kinematics_source = stream.read().lower()
+            nlo_decay_sampler = nlo_decay_kinematics_source.split(
+                'recursive subroutine sample_nlo_decay_node', 1)[1]
+            nlo_decay_sampler = nlo_decay_sampler.split(
+                'end subroutine sample_nlo_decay_node', 1)[0]
+            self.assertIn(
+                'call generate_canonical_decay_node_rest',
+                nlo_decay_sampler)
+            self.assertIn(
+                'if (has_decay_chain_metadata()) then',
+                nlo_decay_sampler)
             with open(os.path.join(
                     subprocess_dir,
                     'multiplicative_event_materialization.f90')) as stream:

@@ -17,7 +17,8 @@ module decay_chain_kinematics
        boost_from_rest => boost_factorized_momentum_from_rest, &
        minkowski_square => factorized_minkowski_square
   use phase_space_kinematics, only: phase_space_lambda
-  use decay_chain_metadata, only: has_decay_chains, decay_node_count, &
+  use decay_chain_metadata, only: has_decay_chains, &
+       has_decay_chain_metadata, decay_node_count, &
        decay_leaf_count, decay_random_dimension, born_context, &
        context_for_fks, context_core_count, &
        core_target_kind, core_target_id, core_leg_pdg, &
@@ -46,6 +47,7 @@ module decay_chain_kinematics
   public :: map_core_color_pair
   public :: contract_visible_momenta
   public :: decay_variable_start
+  public :: generate_canonical_decay_node_rest
   ! These Lorentz-covariant building blocks are also used by the dedicated
   ! NLO-decay phase-space path.  They do not depend on decay-chain metadata.
   public :: generate_nbody, generate_nbody_rest
@@ -65,7 +67,7 @@ contains
 
     if (initialized) return
     call validate_process_dimensions()
-    if (.not. has_decay_chains()) then
+    if (.not. has_decay_chain_metadata()) then
       return
     end if
 
@@ -258,11 +260,7 @@ contains
     logical, intent(out) :: pass
 
     integer :: child_count, child, identifier, child_kind
-    integer :: local_tree(2, -nexternal:-1)
-    integer :: local_propagator_ids(-nexternal:-1)
     double precision :: child_masses(nexternal)
-    double precision :: local_propagator_masses(-nexternal:-1)
-    double precision :: local_propagator_widths(-nexternal:-1)
     double precision :: rest_momenta(0:3, nexternal)
     double precision :: local_jacobian, local_weight
     type(factorized_measure_state) :: decay_measure
@@ -280,14 +278,9 @@ contains
 
     local_jacobian = 1d0
     local_weight = 1d0
-    call build_decay_configuration_tree( &
-         node, child_count, local_tree, local_propagator_masses, &
-         local_propagator_widths, local_propagator_ids)
-    call generate_decay_tree_rest( &
-         node_masses(node), child_count, child_masses, local_tree, &
-         local_propagator_masses, local_propagator_widths, &
-         local_propagator_ids, x, index, rest_momenta, local_jacobian, &
-         local_weight, pass)
+    call generate_canonical_decay_node_rest( &
+         node, node_masses(node), child_count, child_masses, x, index, &
+         rest_momenta, local_jacobian, local_weight, pass)
     if (.not. pass) return
     node_rest_storage(:, :, node) = 0d0
     node_rest_storage(:, 1:child_count, node) = &
@@ -305,6 +298,47 @@ contains
       if (.not. pass) return
     end do
   end subroutine sample_decay_node
+
+
+  subroutine generate_canonical_decay_node_rest( &
+       node, parent_mass, child_count, child_masses, x, index, &
+       rest_momenta, jacobian, phase_space_weight, pass)
+    ! Generate one decay block with the same configuration-aware map used by
+    ! the canonical Born decay tree.  NLO-decay contexts call this routine as
+    ! well: sharing random variables is not sufficient unless they interpret
+    ! those variables with precisely the same phase-space map.
+    integer, intent(in) :: node, child_count, index
+    double precision, intent(in) :: parent_mass
+    double precision, intent(in) :: child_masses(:), x(99)
+    double precision, intent(out) :: rest_momenta(0:, :)
+    double precision, intent(inout) :: jacobian, phase_space_weight
+    logical, intent(out) :: pass
+    integer :: local_tree(2, -nexternal:-1)
+    integer :: local_propagator_ids(-nexternal:-1)
+    double precision :: local_propagator_masses(-nexternal:-1)
+    double precision :: local_propagator_widths(-nexternal:-1)
+
+    call initialize_decay_chain_kinematics()
+    if (.not. has_decay_chain_metadata()) then
+      call fail_kinematics( &
+           'a canonical decay-node map requires decay-chain metadata')
+    end if
+    if (node < 1 .or. node > decay_node_count() .or. &
+        child_count /= node_child_count(node) .or. &
+        child_count < 2 .or. size(child_masses) < child_count .or. &
+        size(rest_momenta, 1) < 4 .or. &
+        size(rest_momenta, 2) < child_count) then
+      call fail_kinematics('a canonical decay-node map has invalid shape')
+    end if
+    call build_decay_configuration_tree( &
+         node, child_count, local_tree, local_propagator_masses, &
+         local_propagator_widths, local_propagator_ids)
+    call generate_decay_tree_rest( &
+         parent_mass, child_count, child_masses, local_tree, &
+         local_propagator_masses, local_propagator_widths, &
+         local_propagator_ids, x, index, rest_momenta, jacobian, &
+         phase_space_weight, pass)
+  end subroutine generate_canonical_decay_node_rest
 
 
   subroutine build_decay_configuration_tree( &

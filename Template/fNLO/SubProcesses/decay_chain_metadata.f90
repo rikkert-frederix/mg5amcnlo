@@ -56,7 +56,8 @@ module decay_chain_metadata
   integer, allocatable, save :: color_generated_index(:)
 
   public :: initialize_decay_chain_metadata
-  public :: has_decay_chains, decay_node_count, decay_leaf_count
+  public :: has_decay_chains, has_decay_chain_metadata
+  public :: decay_node_count, decay_leaf_count
   public :: decay_random_dimension, real_phase_space_dimension
   public :: born_context, context_for_fks, context_core_count
   public :: core_target_kind, core_target_id
@@ -339,6 +340,16 @@ contains
            active_contribution_is_production()
     end if
   end function has_decay_chains
+
+
+  logical function has_decay_chain_metadata()
+    ! HAS_DECAY_CHAINS selects the active production kinematics path and is
+    ! intentionally false while an NLO decay contribution is active.  The
+    ! underlying Born decay forest remains available in that context and is
+    ! needed to keep its local map aligned with the production Born map.
+    call require_initialized()
+    has_decay_chain_metadata = enabled
+  end function has_decay_chain_metadata
 
 
   integer function decay_node_count()
@@ -810,8 +821,8 @@ contains
 
   subroutine require_enabled()
     call require_initialized()
-    if (.not. has_decay_chains()) then
-      call fail_metadata('no active decay-chain metadata are present')
+    if (.not. enabled) then
+      call fail_metadata('decay-chain metadata are unavailable')
     end if
   end subroutine require_enabled
 

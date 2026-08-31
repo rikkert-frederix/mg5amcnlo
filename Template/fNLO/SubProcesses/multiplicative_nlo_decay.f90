@@ -41,6 +41,7 @@ module multiplicative_nlo_decay
   public :: next_multiplicative_leaf
   public :: store_multiplicative_snapshot
   public :: capture_multiplicative_snapshot
+  public :: require_multiplicative_born_alignment
   public :: set_multiplicative_real_configuration
   public :: multiplicative_leaf_has_snapshots
   public :: restore_multiplicative_leaf
@@ -298,6 +299,69 @@ contains
          workspace%snapshots(branch, component_position))
     workspace%has_snapshot(branch, component_position) = .true.
   end subroutine capture_multiplicative_snapshot
+
+
+  subroutine require_multiplicative_born_alignment( &
+       workspace, component_position, event_slot)
+    ! A decay correction is generated through its dedicated NLO context,
+    ! whereas the reusable Born density and B snapshot are generated through
+    ! the production decay tree.  They must describe the identical local
+    ! phase-space point.  Otherwise an R counterterm cancels a Born-like leaf
+    ! carrying unrelated decay angles, which is invisible to inclusive rates
+    ! but destroys local cancellation in differential observables.
+    type(multiplicative_nlo_workspace), intent(in) :: workspace
+    integer, intent(in) :: component_position, event_slot
+    type(factorized_branch_snapshot) :: current
+    double precision :: momentum_scale, tolerance
+    double precision :: jacobian_tolerance, phase_space_tolerance
+
+    call validate_component_and_branch( &
+         workspace, component_position, spin_density_bornlike_branch)
+    if (.not. workspace%has_snapshot( &
+        spin_density_bornlike_branch, component_position)) then
+      call fail_multiplicative_nlo( &
+           'a decay block has no canonical Born snapshot')
+    end if
+    call capture_factorized_branch_snapshot( &
+         event_slot, workspace%component_ids(component_position), current)
+    call validate_multiplicative_snapshot( &
+         workspace, component_position, spin_density_bornlike_branch, &
+         current)
+    associate(canonical => workspace%snapshots( &
+              spin_density_bornlike_branch, component_position))
+      if (current%block_count /= canonical%block_count .or. &
+          current%embedded_count /= canonical%embedded_count .or. &
+          current%has_base_measure .neqv. canonical%has_base_measure) then
+        call fail_multiplicative_nlo( &
+             'an NLO decay Born map differs from the canonical decay map')
+      end if
+      momentum_scale = max(1d0, maxval(abs(canonical%block_momenta( &
+           :, 1:canonical%block_count))))
+      tolerance = 4096d0*epsilon(1d0)*momentum_scale
+      if (any(abs(current%block_momenta(:, 1:current%block_count) - &
+                  canonical%block_momenta(:, 1:canonical%block_count)) > &
+              tolerance)) then
+        call fail_multiplicative_nlo( &
+             'an NLO decay Born point is not aligned with its snapshot')
+      end if
+      if (current%has_base_measure) then
+        jacobian_tolerance = 4096d0*epsilon(1d0)*max( &
+             1d0, abs(current%base%jacobian), &
+             abs(canonical%base%jacobian))
+        phase_space_tolerance = 4096d0*epsilon(1d0)*max( &
+             1d0, abs(current%base%phase_space_weight), &
+             abs(canonical%base%phase_space_weight))
+        if (abs(current%base%jacobian - canonical%base%jacobian) > &
+              jacobian_tolerance .or. &
+            abs(current%base%phase_space_weight - &
+                canonical%base%phase_space_weight) > &
+              phase_space_tolerance) then
+          call fail_multiplicative_nlo( &
+               'an NLO decay Born measure is not aligned with its snapshot')
+        end if
+      end if
+    end associate
+  end subroutine require_multiplicative_born_alignment
 
 
   subroutine validate_multiplicative_snapshot( &
