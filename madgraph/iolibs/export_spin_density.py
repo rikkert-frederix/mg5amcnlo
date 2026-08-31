@@ -152,6 +152,12 @@ class SpinDensityExporter(object):
             return None
         result = dict(layout)
         result['open_size'] = expected_open_size
+        model = processes[0].get('model')
+        bottom_pdg = 5 if layout['parent_pdg'] > 0 else -5
+        bottom = model.get_particle(bottom_pdg)
+        bottom_mass = bottom.get('mass').upper()
+        result['bottom_mass_fortran'] = (
+            '0D0' if bottom_mass == 'ZERO' else bottom_mass)
         return result
 
     @staticmethod
@@ -247,7 +253,8 @@ class SpinDensityExporter(object):
                 layout['parent_pdg'],
                 '     $ TDV_VALIDATION_P(:,1),TDV_VALIDATION_P(:,2),',
                 '     $ TDV_VALIDATION_P(:,3),TDV_VALIDATION_P(:,4),',
-                '     $ MDL_MT,MDL_MB,MDL_MW,MDL_WW,MU_R,',
+                '     $ MDL_MT,%s,MDL_MW,MDL_WW,MU_R,' %
+                layout['bottom_mass_fortran'],
                 '     $ G**2/(4D0*3.1415926535897932385D0),GC_11,',
                 '     $ TDV_ANALYTIC_RHO,TDV_ANALYTIC_AVAILABLE)'])
         else:
@@ -260,7 +267,8 @@ class SpinDensityExporter(object):
                 'CALL %s(%d,TDV_VALIDATION_P(:,1),' % (
                     evaluator, layout['parent_pdg']),
                 '     $ TDV_VALIDATION_P(:,2),TDV_VALIDATION_P(:,3),',
-                '     $ MDL_MT,MDL_MB,MDL_MW,MU_R,',
+                '     $ MDL_MT,%s,MDL_MW,MU_R,' %
+                layout['bottom_mass_fortran'],
                 '     $ G**2/(4D0*3.1415926535897932385D0),GC_11,',
                 '     $ TDV_ANALYTIC_RHO,TDV_ANALYTIC_AVAILABLE)'])
         lines.extend([

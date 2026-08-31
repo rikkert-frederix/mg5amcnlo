@@ -2504,14 +2504,16 @@ class TestFKSDecayChains(unittest.TestCase):
         command.exec_cmd(
             'import model loop_sm', printcmd=False, precmd=True)
 
-        def process(parent, daughters):
+        def process(parent, daughters, model=None):
+            if model is None:
+                model = command._curr_model
             legs = [base_objects.Leg({
                 'id': parent, 'number': 1, 'state': False})]
             legs.extend(base_objects.Leg({
                 'id': pdg, 'number': number, 'state': True})
                 for pdg, number in daughters)
             return base_objects.Process({
-                'model': command._curr_model,
+                'model': model,
                 'legs': base_objects.LegList(legs)})
 
         top_layout = export_spin_density.SpinDensityExporter.\
@@ -2535,6 +2537,31 @@ class TestFKSDecayChains(unittest.TestCase):
             'bottom_leg': 4,
             'charged_lepton_leg': 2,
             'neutrino_leg': 3})
+
+        variant = {
+            'matrix_element': {'processes': [process(
+                6, [(12, 2), (5, 3), (-11, 4)])]},
+            'open_legs': [1],
+            'open_size': 2}
+        analytic = export_spin_density.SpinDensityExporter.\
+            _analytic_top_decay_info(variant)
+        self.assertEqual(analytic['bottom_mass_fortran'], 'MDL_MB')
+
+        massless = MasterCmd()
+        massless.exec_cmd(
+            'import model loop_sm-no_b_mass', printcmd=False, precmd=True)
+        variant['matrix_element'] = {'processes': [process(
+            6, [(12, 2), (5, 3), (-11, 4)], massless._curr_model)]}
+        analytic = export_spin_density.SpinDensityExporter.\
+            _analytic_top_decay_info(variant)
+        self.assertEqual(analytic['bottom_mass_fortran'], '0D0')
+        virtual_lines = export_spin_density.SpinDensityExporter.\
+            _analytic_top_decay_lines({
+                'contribution_id': 2,
+                'fortran_name': 'SDM_DECAY_VIRTUAL'},
+                analytic, 'PREC_ASKED')
+        self.assertIn(
+            '     $ MDL_MT,0D0,MDL_MW,MDL_WW,MU_R,', virtual_lines)
 
     def test_full_nlo_bundle_exports_three_body_top_virtuals(self):
         command = self.generate(
@@ -2563,6 +2590,13 @@ class TestFKSDecayChains(unittest.TestCase):
                     'spin_density_virtual_contributions.f')) as stream:
                 contractions = ' '.join(
                     stream.read().replace('$', ' ').split())
+            with open(os.path.join(
+                    subprocess_dir, 'sborn_sf.f')) as stream:
+                color_born = stream.read()
+            self.assertIn("INCLUDE 'coupl.inc'", color_born)
+            self.assertIn("INCLUDE 'orders.inc'", color_born)
+            self.assertNotIn("INCLUDE 'COUPL.INC'", color_born)
+            self.assertNotIn("INCLUDE 'ORDERS.INC'", color_born)
 
             self.assertEqual(
                 contractions.count(
