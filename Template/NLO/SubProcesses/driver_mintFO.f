@@ -162,6 +162,7 @@ c at the NLO)
       write(*,*) "about to integrate ", ndim,ncalls0,itmax
 c PineAPPL
       if (imode.eq.0) pineappl=.False. ! overwrite when starting completely fresh
+      call check_fo_migration_damping_settings(pineappl,ickkw)
       if(pineappl) then
          write(6,*) "Initializing PineAPPL ..."
 c     Set flavor map, starting from all possible
@@ -336,6 +337,7 @@ c timing statistics
       use weight_lines
       use extra_weights
       use mint_module
+      use FKSParams
       implicit none
       include 'nexternal.inc'
       include 'nFKSconfigs.inc'
@@ -503,7 +505,21 @@ c The n+1-body contributions (including counter terms)
            call set_cms_stuff(ione)
            call compute_collinear_counter_term(0d0)
          endif
-         if (passcuts_n1body) then
+         if (NFOMigrationDampingProfiles.gt.0 .and.
+     $       (passcuts_n1body .or. passcuts_nbody .or.
+     $        passcuts_coll)) then
+c The split real weight is Delta*R on event kinematics plus a partition
+c of (1-Delta)*R over the soft and collinear mapped Born kinematics.  R
+c must therefore be evaluated whenever any of the three passes its cuts.
+c Each component is retained only with the cuts on its own kinematics.
+            pass_cuts_check=.true.
+            call set_cms_stuff(mohdr)
+            call set_alphaS(p)
+            call include_multichannel_enhance(2)
+            call compute_real_emission_migration(p,passcuts_n1body,
+     $           passcuts_nbody,passcuts_coll)
+         elseif (NFOMigrationDampingProfiles.eq.0 .and.
+     $           passcuts_n1body) then
             pass_cuts_check=.true.
             call set_cms_stuff(mohdr)
             call set_alphaS(p)
@@ -525,6 +541,12 @@ c Include the bias weight specified in the bias_weight_function
          if (do_rwgt_scale .and. ickkw.eq.-1) call reweight_scale_NNLL
          if (do_rwgt_pdf) call reweight_pdf
       endif
+
+c Append all requested damping profiles after the normal central,
+c scale and PDF weights.  The central MINT integrand remains ordinary
+c undamped NLO, so all profiles are compared with identical sampling.
+      if (NFOMigrationDampingProfiles.gt.0)
+     $     call add_fo_migration_damping_weights
       
       if (pineappl) then
          if (sum) then
@@ -549,6 +571,50 @@ c Importance sampling for FKS configurations
 c Finalize PS point
       call fill_plots
       call fill_mint_function(f)
+      return
+      end
+
+
+      subroutine check_fo_migration_damping_settings(pineappl,ickkw)
+c Reject combinations for which this deliberately small experimental
+c implementation cannot preserve its paired real/projected-real weights.
+      use FKSParams
+      implicit none
+      logical pineappl,has_real,has_projected
+      integer ickkw,i
+      if (NFOMigrationDampingProfiles.eq.0) return
+      if (pineappl) then
+         write(*,*) 'ERROR: FO migration damping is not implemented '/
+     $        /'for PineAPPL output.'
+         stop 1
+      endif
+      if (ickkw.eq.-1) then
+         write(*,*) 'ERROR: FO migration damping cannot be combined '/
+     $        /'with the dedicated NNLL jet-veto mode (ickkw=-1).'
+         stop 1
+      endif
+      do i=1,VetoedContributionTypes(0)
+         if (VetoedContributionTypes(i).eq.1 .or.
+     $       VetoedContributionTypes(i).eq.11) then
+            write(*,*) 'ERROR: FO migration damping needs both '/
+     $           /'contribution types 1 and 11.'
+            stop 1
+         endif
+      enddo
+      if (SelectedContributionTypes(0).gt.0) then
+         has_real=.false.
+         has_projected=.false.
+         do i=1,SelectedContributionTypes(0)
+            if (SelectedContributionTypes(i).eq.1) has_real=.true.
+            if (SelectedContributionTypes(i).eq.11)
+     $           has_projected=.true.
+         enddo
+         if (.not.has_real .or. .not.has_projected) then
+            write(*,*) 'ERROR: FO migration damping needs selected '/
+     $           /'contribution types 1 and 11.'
+            stop 1
+         endif
+      endif
       return
       end
 

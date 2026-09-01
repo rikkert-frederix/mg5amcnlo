@@ -613,6 +613,171 @@ C wrt the hard matrix element. Relevant for lepton collisions.
       return
       end
 
+
+      subroutine get_fks_sector_t(p,t_fks,soft_fraction,
+     $     coll_fraction,active,ierr)
+c Return the process-independent resolution variable for the current
+c QCD FKS sector.  The native xi, y and sqrtshat variables refer to the
+c real partonic centre-of-mass construction.  In particular,
+c
+c   E_i = xi_i_fks_ev * sqrtshat_ev/2 .
+c
+c For a soft singularity S and a collinear singularity C, this routine
+c implements
+c
+c   t = sqrtshat_ev/2 * xi**S * sqrt(chi),
+c
+c with chi=2*(1-y_ij) in a massless collinear sector.  In a soft-only
+c sector with a massive sister, chi is evaluated from the reduced momentum
+c p_i_fks_ev=p_i/xi and p_j in their common generated frame; the reduced
+c momentum stays finite at xi=0.
+c
+c The singularity flags are properties of the generated FKS sector:
+c need_color_links is the native MadFKS QCD single-soft flag, while an
+c already-generated QCD FKS pair has a collinear pole precisely when
+c both members are massless.  A quark in g -> q qbar is consequently
+c collinear-only; radiation from a massive quark is soft-only.
+c
+c soft_fraction and coll_fraction form a smooth history partition for
+c assigning the projected real weight to the soft (counterevent 0) and
+c collinear (counterevent 1) maps.  In a pure soft/collinear sector the
+c corresponding fraction is one.  In a mixed sector they approach one in
+c the respective single-unresolved limit and sum to one point by point.
+c
+c On an inapplicable sector or on invalid kinematics active is false.
+c The caller must then use the identity damping factor, Delta=1; it must
+c never interpret the returned zero value of t_fks as an unresolved
+c event.  ierr is nonzero only for invalid kinematics.
+      implicit none
+      include 'nexternal.inc'
+      include 'orders.inc'
+      include 'coupl.inc'
+      double precision p(0:3,nexternal),t_fks,soft_fraction
+     $     ,coll_fraction
+      logical active,has_soft,has_coll
+      integer ierr,k,iqcd
+      integer i_fks,j_fks
+      common/fks_indices/i_fks,j_fks
+      double precision xi_i_fks_ev,y_ij_fks_ev
+      double precision p_i_fks_ev(0:3),p_i_fks_cnt(0:3,-2:2)
+      common/fksvariables/xi_i_fks_ev,y_ij_fks_ev,
+     $     p_i_fks_ev,p_i_fks_cnt
+      logical need_color_links,need_charge_links
+      common/c_need_links/need_color_links,need_charge_links
+      logical split_type(nsplitorders)
+      common/c_split_type/split_type
+      double precision sqrtshat_ev,shat_ev
+      common/parton_cms_ev/sqrtshat_ev,shat_ev
+      double precision pmass(nexternal),zero
+      double precision yuse,chi,den,dotred,r,beta,chimin,dsoft,dcoll
+     $     ,dscale,rs,rc
+      parameter (zero=0d0)
+      include 'pmass.inc'
+
+      t_fks=0d0
+      soft_fraction=0d0
+      coll_fraction=0d0
+      active=.false.
+      ierr=0
+
+c Use a variable index so that a generated non-QCD process with
+c qcd_pos=-1 can compile this routine without a constant-bound warning.
+      iqcd=qcd_pos
+      if (iqcd.lt.1 .or. iqcd.gt.nsplitorders) return
+      if (.not.split_type(iqcd)) return
+
+      has_soft=need_color_links
+      has_coll=pmass(i_fks).eq.0d0 .and.
+     $         pmass(j_fks).eq.0d0
+      if (.not.has_soft .and. .not.has_coll) return
+
+      if (sqrtshat_ev.ne.sqrtshat_ev .or.
+     $    sqrtshat_ev.le.0d0 .or.
+     $    sqrtshat_ev.gt.huge(1d0)) goto 900
+      if (y_ij_fks_ev.ne.y_ij_fks_ev .or.
+     $    y_ij_fks_ev.lt.-1.0000000001d0 .or.
+     $    y_ij_fks_ev.gt. 1.0000000001d0) goto 900
+      yuse=max(-1d0,min(1d0,y_ij_fks_ev))
+      active=.true.
+
+      if (has_coll) then
+c Native 1-y is more accurate than a four-vector dot product close to
+c a massless collinear limit, and is sector-relative for either beam.
+         chi=2d0*max(0d0,1d0-yuse)
+      else
+c Soft-only massive-sister branch.  Return the exact soft limit before
+c forming any ratio; p_i_fks_ev itself is finite there.
+         if (xi_i_fks_ev.ne.xi_i_fks_ev .or.
+     $       xi_i_fks_ev.lt.0d0 .or.
+     $       xi_i_fks_ev.gt.huge(1d0)) goto 900
+         if (xi_i_fks_ev.eq.0d0) then
+            soft_fraction=1d0
+            return
+         endif
+         if (p_i_fks_ev(0).ne.p_i_fks_ev(0) .or.
+     $       p_i_fks_ev(0).le.0d0 .or.
+     $       p(0,j_fks).ne.p(0,j_fks) .or.
+     $       p(0,j_fks).le.0d0) goto 900
+         den=p_i_fks_ev(0)*p(0,j_fks)
+         if (den.ne.den .or. den.le.0d0 .or.
+     $       den.gt.huge(1d0)) goto 900
+         dotred=den
+         do k=1,3
+            dotred=dotred-p_i_fks_ev(k)*p(k,j_fks)
+         enddo
+         chi=2d0*dotred/den
+
+c Preserve the strictly positive massive dead-cone lower bound against
+c cancellation when the sister is highly boosted and nearly parallel.
+         r=min(1d0,abs(pmass(j_fks))/p(0,j_fks))
+         beta=sqrt(max(0d0,(1d0-r)*(1d0+r)))
+         chimin=2d0*r*r/(1d0+beta)
+         chi=max(0d0,max(chi,chimin))
+      endif
+
+      if (chi.ne.chi .or. chi.gt.huge(1d0)) goto 900
+
+c Partition the compensation between the actual soft and collinear FKS
+c maps.  This is essential away from their common double-unresolved limit:
+c p1_cnt(...,0) and p1_cnt(...,1) need not define the same observable.
+      if (has_soft .and. has_coll) then
+         dsoft=xi_i_fks_ev
+         dcoll=sqrt(chi)
+         dscale=max(dsoft,dcoll)
+         if (dscale.eq.0d0) then
+            soft_fraction=0.5d0
+         else
+            rs=dsoft/dscale
+            rc=dcoll/dscale
+            soft_fraction=rc*rc/(rs*rs+rc*rc)
+         endif
+         coll_fraction=1d0-soft_fraction
+      elseif (has_soft) then
+         soft_fraction=1d0
+      else
+         coll_fraction=1d0
+      endif
+      if (has_soft) then
+         if (xi_i_fks_ev.ne.xi_i_fks_ev .or.
+     $       xi_i_fks_ev.lt.0d0 .or.
+     $       xi_i_fks_ev.gt.huge(1d0)) goto 900
+         t_fks=0.5d0*sqrtshat_ev*xi_i_fks_ev*sqrt(chi)
+      else
+         t_fks=0.5d0*sqrtshat_ev*sqrt(chi)
+      endif
+      if (t_fks.ne.t_fks .or. t_fks.lt.0d0 .or.
+     $    t_fks.gt.huge(1d0)) goto 900
+      return
+
+ 900  ierr=1
+      active=.false.
+      t_fks=0d0
+      soft_fraction=0d0
+      coll_fraction=0d0
+      return
+      end
+
+
       subroutine compute_real_emission(p,sudakov_damp)
 c This subroutine computes the real-emission matrix elements and adds
 c its value to the list of weights using the add_wgt subroutine
@@ -654,6 +819,138 @@ c its value to the list of weights using the add_wgt subroutine
         endif
         if (sudakov_damp.lt.1d0) then
           call add_wgt(11,orders,wgt1*(1d0-sudakov_damp),0d0,0d0)
+        endif
+      enddo
+      call cpu_time(tAfter)
+      tReal=tReal+(tAfter-tBefore)
+      return
+      end
+
+
+      subroutine compute_real_emission_migration(p,keep_real,
+     $     keep_soft_projected,keep_coll_projected)
+c Compute the real matrix element once and store the *undamped* basis
+c contributions: R on the event kinematics (role 1), and a partition of R
+c over the FKS soft map (role 2) and collinear map (role 3).
+c add_fo_migration_damping_weights later forms Delta*R and (1-Delta)*R
+c for every requested profile.
+c
+c The three cut masks are intentionally independent.  In particular, if
+c the real event fails but either mapped counterevent passes, its projected
+c role must still be retained; otherwise the migration compensation is
+c incomplete.
+      use extra_weights
+      use weight_lines
+      implicit none
+      include 'nexternal.inc'
+      include 'coupl.inc'
+      include 'timing_variables.inc'
+      include 'orders.inc'
+      integer orders(nsplitorders)
+      integer iamp,icontr_before,ierr,k,mu
+      logical keep_real,keep_soft_projected,keep_coll_projected,active
+     $     ,soft_map_valid,coll_map_valid
+      double precision s_ev,fks_Sij,p(0:3,nexternal),wgt1,fx_ev,t_fks
+     $     ,soft_fraction,coll_fraction
+      external fks_Sij
+      integer            i_fks,j_fks
+      common/fks_indices/i_fks,j_fks
+      double precision    xi_i_fks_ev,y_ij_fks_ev,p_i_fks_ev(0:3)
+     $                    ,p_i_fks_cnt(0:3,-2:2)
+      common/fksvariables/xi_i_fks_ev,y_ij_fks_ev,p_i_fks_ev,p_i_fks_cnt
+      double precision     f_r,f_s,f_c,f_dc,f_sc,f_dsc(4)
+      common/factor_n1body/f_r,f_s,f_c,f_dc,f_sc,f_dsc
+      double precision p1_cnt(0:3,nexternal,-2:2),wgt_cnt(-2:2)
+     $     ,pswgt_cnt(-2:2),jac_cnt(-2:2)
+      common/counterevnts/p1_cnt,wgt_cnt,pswgt_cnt,jac_cnt
+      integer get_orders_tag
+
+      call cpu_time(tBefore)
+      if (f_r.eq.0d0) return
+      call get_fks_sector_t(p,t_fks,soft_fraction,coll_fraction,
+     $     active,ierr)
+c Identity damping on a non-QCD sector or invalid resolution variable.
+c No projected basis contribution is then needed because 1-Delta=0.
+      if (.not.active) then
+         if (keep_real) call compute_real_emission(p,1d0)
+         return
+      endif
+
+c A missing map must never turn into an uncompensated damped real weight.
+c Check only maps whose measurement is non-zero: an unavailable map that
+c fails its own cuts is irrelevant.  jac_cnt is the native MadFKS validity
+c flag; the momentum check also rejects NaN, infinity, and stale sentinels.
+      soft_map_valid=.true.
+      coll_map_valid=.true.
+      if (keep_soft_projected .and. soft_fraction.gt.0d0) then
+         soft_map_valid=jac_cnt(0).gt.0d0 .and.
+     $        p1_cnt(0,1,0).gt.0d0
+         do k=1,nexternal
+            do mu=0,3
+               soft_map_valid=soft_map_valid .and.
+     $              p1_cnt(mu,k,0).eq.p1_cnt(mu,k,0) .and.
+     $              abs(p1_cnt(mu,k,0)).le.huge(1d0)
+            enddo
+         enddo
+      endif
+      if (keep_coll_projected .and. coll_fraction.gt.0d0) then
+         coll_map_valid=jac_cnt(1).gt.0d0 .and.
+     $        p1_cnt(0,1,1).gt.0d0
+         do k=1,nexternal
+            do mu=0,3
+               coll_map_valid=coll_map_valid .and.
+     $              p1_cnt(mu,k,1).eq.p1_cnt(mu,k,1) .and.
+     $              abs(p1_cnt(mu,k,1)).le.huge(1d0)
+            enddo
+         enddo
+      endif
+c Fall back to Delta=1 for the whole sector on invalid required kinematics.
+      if (.not.soft_map_valid .or. .not.coll_map_valid) then
+         if (keep_real) call compute_real_emission(p,1d0)
+         return
+      endif
+      s_ev = fks_Sij(p,i_fks,j_fks,xi_i_fks_ev,y_ij_fks_ev)
+      if (s_ev.le.0.d0) return
+      call sreal(p,xi_i_fks_ev,y_ij_fks_ev,fx_ev)
+      do iamp=1,amp_split_size
+        if (amp_split(iamp).eq.0d0) cycle
+        call amp_split_pos_to_orders(iamp, orders)
+        QCD_power=orders(qcd_pos)
+        wgtcpower=0d0
+        if (cpower_pos.gt.0) wgtcpower=dble(orders(cpower_pos))
+        orders_tag=get_orders_tag(orders)
+        amp_pos=iamp
+        wgt1=amp_split(iamp)*s_ev*f_r/g**(qcd_power)
+        if (keep_real) then
+           icontr_before=icontr
+           call add_wgt(1,orders,wgt1,0d0,0d0)
+           if (icontr.gt.icontr_before) then
+              fks_migration_role(icontr)=1
+              fks_migration_t(icontr)=t_fks
+           endif
+        endif
+        if (keep_soft_projected .and. soft_fraction.gt.0d0) then
+           icontr_before=icontr
+           call add_wgt(11,orders,wgt1*soft_fraction,0d0,0d0)
+           if (icontr.gt.icontr_before) then
+              fks_migration_role(icontr)=2
+              fks_migration_t(icontr)=t_fks
+           endif
+        endif
+        if (keep_coll_projected .and. coll_fraction.gt.0d0) then
+           icontr_before=icontr
+           call add_wgt(11,orders,wgt1*coll_fraction,0d0,0d0)
+           if (icontr.gt.icontr_before) then
+              fks_migration_role(icontr)=3
+              fks_migration_t(icontr)=t_fks
+c add_wgt type 11 normally selects counterevent 0.  Replace only its
+c measurement kinematics by those of counterevent 1; all boost, weight,
+c scale and luminosity information deliberately remains that of the real R.
+              do k=1,nexternal
+                 momenta_m(0:3,k,1,icontr)=p1_cnt(0:3,k,1)
+                 momenta(0:3,k,icontr)=p1_cnt(0:3,k,1)
+              enddo
+           endif
         endif
       enddo
       call cpu_time(tAfter)
@@ -1980,6 +2277,10 @@ C Secondly, the more advanced filter
       icontr=icontr+1
       call weight_lines_allocated(nexternal,icontr,max_wgt,max_iproc)
       itype(icontr)=type
+c Default: this is not one of the real-migration basis entries.
+c compute_real_emission_migration overwrites these fields after add_wgt.
+      fks_migration_role(icontr)=0
+      fks_migration_t(icontr)=-1d0
 
 C here we rescale the contributions by the ratio of alpha's in different
 C schemes; it is needed when there are tagged photons around
@@ -2457,6 +2758,8 @@ c update the event weight to be written in the file
          cpower(ict_new)=cpower(ict)
          orderstag(ict_new)=orderstag(ict)
          H_event(ict_new)=H_event(ict)
+         fks_migration_role(ict_new)=fks_migration_role(ict)
+         fks_migration_t(ict_new)=fks_migration_t(ict)
          do k=1,nexternal
             do j=0,3
                momenta(j,k,ict_new)=momenta(j,k,ict)
@@ -2819,6 +3122,95 @@ c add the weights to the array
       return
       end
 
+
+      double precision function fo_migration_delta(t_fks,t_damp,
+     $     strength,g_fks)
+c Experimental NLO-preserving LL-like profile
+c
+c   Delta = exp[- A alpha_s/pi log^2(t_damp/t)] ,  t<t_damp,
+c           1                                      otherwise.
+c
+c Since g_fks^2=4*pi*alpha_s, Delta=1+O(alpha_s) at fixed t.
+      implicit none
+      double precision t_fks,t_damp,strength,g_fks,pi,ell,rho,logrho
+      parameter (pi=3.1415926535897932384626433832795d0)
+      fo_migration_delta=1d0
+      if (strength.eq.0d0 .or. t_fks.ge.t_damp) return
+      if (t_fks.le.0d0) then
+         fo_migration_delta=0d0
+         return
+      endif
+      if (g_fks.ne.g_fks .or. g_fks.le.0d0 .or.
+     $    g_fks.gt.huge(1d0)) return
+      ell=log(t_damp)-log(t_fks)
+      if (ell.le.0d0) return
+c Work in logarithms so neither t_damp/t nor coeff*ell**2 can overflow,
+c and so an ell rounded extremely close to zero cannot trigger 0/0.
+      logrho=log(strength)+2d0*log(g_fks)-log(4d0*pi*pi)
+     $     +2d0*log(ell)
+c exp(-700) is already numerically zero for these weights.
+      if (logrho.ge.log(700d0)) then
+         fo_migration_delta=0d0
+      else
+         rho=exp(logrho)
+         fo_migration_delta=exp(-rho)
+      endif
+      return
+      end
+
+
+      subroutine add_fo_migration_damping_weights
+c Append one central-scale correlated histogram weight per configured
+c profile. Ordinary contributions are copied from the undamped central
+c weight. For the tagged real basis contributions, form Delta*R on the
+c event and (1-Delta)*R on the partitioned soft/collinear mapped Born
+c kinematics. Finally zero the projected basis contributions in all
+c ordinary central/scale/PDF slots, leaving the pre-existing undamped NLO
+c prediction exactly unchanged.
+      use weight_lines
+      use FKSParams
+      implicit none
+      include 'nexternal.inc'
+      integer i,k,iwgt_standard,iwgt_profile
+      double precision delta,fo_migration_delta
+      external fo_migration_delta
+      if (NFOMigrationDampingProfiles.eq.0 .or. icontr.eq.0) return
+      iwgt_standard=iwgt
+      call weight_lines_allocated(nexternal,max_contr,
+     $     iwgt_standard+NFOMigrationDampingProfiles,max_iproc)
+      do i=1,icontr
+         do k=1,NFOMigrationDampingProfiles
+            iwgt_profile=iwgt_standard+k
+            if (fks_migration_role(i).eq.0) then
+               wgts(iwgt_profile,i)=wgts(1,i)
+            else
+               delta=fo_migration_delta(fks_migration_t(i),
+     $              FOMigrationDampingTdamp(k),FOMigrationDampingA(k),
+     $              g_strong(i))
+               if (fks_migration_role(i).eq.1) then
+                  wgts(iwgt_profile,i)=delta*wgts(1,i)
+               elseif (fks_migration_role(i).eq.2 .or.
+     $                 fks_migration_role(i).eq.3) then
+                  wgts(iwgt_profile,i)=(1d0-delta)*wgts(1,i)
+               else
+                  write(*,*) 'ERROR: invalid FKS migration role ',
+     $                 fks_migration_role(i)
+                  stop 1
+               endif
+            endif
+         enddo
+      enddo
+c Type-11 entries above are shadow basis contributions only. They must
+c not leak into the ordinary undamped central, scale, or PDF weights.
+      do i=1,icontr
+         if (fks_migration_role(i).eq.2 .or.
+     $       fks_migration_role(i).eq.3)
+     $        wgts(1:iwgt_standard,i)=0d0
+      enddo
+      iwgt=iwgt_standard+NFOMigrationDampingProfiles
+      return
+      end
+
       subroutine fill_pineappl_weights(vegas_wgt)
 c Fills the FineAPPL weights of pineappl_common.inc. This subroutine assumes
 c that there is an unique PS configuration: at most one Born, one real
@@ -3063,7 +3455,9 @@ c contribution makes sure that it is added as a new element.
          enddo
       enddo
       do i=1,icontr
-         if (plot_wgts(1,i).ne.0d0) then
+c A projected-real shadow has zero undamped central weight but can be
+c non-zero in any of the correlated damping-profile columns.
+         if (any(plot_wgts(1:iwgt,i).ne.0d0)) then
             if (.not.allocated(www)) then
                allocate(www(iwgt))
                max_weight=iwgt

@@ -29,12 +29,14 @@ c variables (something not possible in old fortran version)
          implicit none
          integer :: max_plots,max_points,max_bins,nwgts,np
          integer :: error_estimation=3
+         logical :: profile_errors=.false.
          logical, allocatable :: booked(:)
-         integer, allocatable :: nbin(:),histi(:,:),p_bin(:),p_label(:)
+         integer, allocatable :: nbin(:),histi(:,:),hist_iter(:,:)
+     $        ,p_bin(:),p_label(:)
          character(len=50), allocatable :: title(:)
          character(len=wgts_info_len), allocatable :: wgts_info(:)
          double precision, allocatable :: histy(:,:,:),histy_acc(:,:,:)
-     $        ,histy2(:,:),histy_err(:,:),histxl(:,:),histxm(:,:)
+     $        ,histy2(:,:,:),histy_err(:,:,:),histxl(:,:),histxm(:,:)
      $        ,step(:),p_wgts(:,:)
          save
       end module HwU_variables
@@ -62,13 +64,16 @@ C     Initialize the number of bins of the aMCfast grids
       max_points=0
       max_bins=0
       np=0
-c     Number of weights associated to each point. Note that the first
-c     weight should always be the 'central value' and it should not be
-c     zero if any of the other weights are non-zero.
+c     Number of weights associated to each point. The first weight is the
+c     'central value'. Other weights are allowed to be non-zero when the
+c     central one vanishes, as is needed for correlated migration weights.
       nwgts=nweights
       allocate(wgts_info(nwgts))
+      profile_errors=.false.
       do i=1,nwgts
          wgts_info(i)=wgt_info(i)
+         if (index(adjustl(wgts_info(i)),'FKSdamp ').eq.1)
+     $        profile_errors=.true.
       enddo
       return
       end
@@ -161,10 +166,11 @@ c     Set all the bins to zero.
          do j=1,nwgts
             histy(j,label,i)=0d0
             histy_acc(j,label,i)=0d0
+            histy2(j,label,i)=0d0
+            histy_err(j,label,i)=0d0
          enddo
          histi(label,i)=0
-         histy2(label,i)=0d0
-         histy_err(label,i)=0d0
+         hist_iter(label,i)=0
       enddo
       return
       end
@@ -178,6 +184,7 @@ c the same number of weights.
       use HwU_variables
       implicit none
       integer label,i,j,bin
+      logical nonzero_weight
       double precision x, wgts(*)
 
 c     PineAPPL commons
@@ -197,8 +204,18 @@ c     Fill the PineAPPL files
          enddo
       endif
 
-c     If central weight is zero do not add this point.
-      if (wgts(1).eq.0d0) return
+c     Preserve the legacy central-weight condition unless profile errors
+c     are requested. A migration counterevent can have zero central weight
+c     and a non-zero damping-profile weight.
+      if (.not.profile_errors .and. wgts(1).eq.0d0) return
+      nonzero_weight=.false.
+      do j=1,nwgts
+         if (wgts(j).ne.0d0) then
+            nonzero_weight=.true.
+            exit
+         endif
+      enddo
+      if (.not.nonzero_weight) return
 c     Check if point is within plotting range
       if (x.lt.histxl(label,1) .or.
      $     x.gt.histxm(label,nbin(label))) return
@@ -230,11 +247,10 @@ c     If a new bin, add it to the list of points
       
 c Call after all correlated contributions for a give phase-space
 c point. I.e., every time you get a new set of random numbers from
-c MINT/VEGAS. It adds the current list of points to the histograms. Add
-c the squares to compute the statistical uncertainty on the bin. Do the
-c second only for the weight corresponding to the 'central value'. In
-c this way, correlations between events and counter-events can be
-c correctly taken into account.
+c MINT/VEGAS. It adds the current list of points to the histograms and
+c adds the square of every correlated weight to compute its statistical
+c uncertainty. Squaring here, rather than in HwU_fill, is essential: event
+c and counterevent contributions have already been summed in p_wgts.
       subroutine HwU_add_points
       use HwU_variables
       implicit none
@@ -243,10 +259,12 @@ c correctly taken into account.
          do j=1,nwgts
             histy(j,p_label(i),p_bin(i))=
      $           histy(j,p_label(i),p_bin(i))+p_wgts(j,i)
+            if (profile_errors) histy2(j,p_label(i),p_bin(i))=
+     $           histy2(j,p_label(i),p_bin(i))+p_wgts(j,i)**2
          enddo
+         if (.not.profile_errors) histy2(1,p_label(i),p_bin(i))=
+     $        histy2(1,p_label(i),p_bin(i))+p_wgts(1,i)**2
          histi(p_label(i),p_bin(i))=histi(p_label(i),p_bin(i))+1
-         histy2(p_label(i),p_bin(i))=
-     $        histy2(p_label(i),p_bin(i))+p_wgts(1,i)**2
       enddo
       np=0
       return
@@ -278,8 +296,8 @@ c     ready for the next iteration.
          do i=1,nbin(label)
             do j=1,nwgts
                histy(j,label,i)=0d0
+               histy2(j,label,i)=0d0
             enddo
-            histy2(label,i)=0d0
             histi(label,i)=0
          enddo
       enddo
@@ -305,8 +323,9 @@ c HwU_output) to write intermediate plots to disk.
 c     Set all the bins to zero.
             do j=1,nwgts
                histy_acc(j,label,i)=0d0
+               histy_err(j,label,i)=0d0
             enddo
-            histy_err(label,i)=0d0
+            hist_iter(label,i)=0
          enddo
          call accumulate_results(label,nPSinv,niter,dummy)
       enddo
@@ -314,23 +333,28 @@ c     Set all the bins to zero.
       end
 
 c This adds the histograms of the current iteration ('histy') to the
-c accumulated results ('histy_acc'), with the uncertainty estimate given
-c in 'histy_err'. When error_estimation==2 it adds using a weight
-c corresponding to the statistical uncertainties on the 'central value'
-c weights ('etot' (from 'histy2') and 'histy_err', respectively), if
-c error_estimation==1 it simply averages over the iterations, if
-c error_estimation==0 it uses Poisson statistics to compute the
-c uncertainty. Note that this means that during the filling of the
-c histograms the central value should not be zero if any of the other
-c weights are non-zero.
+c accumulated results ('histy_acc'), with one uncertainty estimate in
+c 'histy_err' for each weight. When error_estimation==2 each weight uses
+c its own bin uncertainty for the iteration average. With
+c error_estimation==3 the means retain the common MINT iteration weights,
+c while each uncertainty is propagated separately. With
+c error_estimation==1 the iteration variance is evaluated weight by weight;
+c error_estimation==0 uses the corresponding sum of squared weights.
       subroutine accumulate_results(label,nPSinv,niter,values)
       use HwU_variables
       implicit none
       integer label,i,j
-      double precision nPSinv,etot,niter,y_squared
-     $     ,values(2),a1,a2
-      double precision,allocatable :: vtot(:)
-      if (.not. allocated(vtot)) allocate(vtot(nwgts))
+      double precision nPSinv,niter,values(2),a1,a2,denom
+      double precision,allocatable :: vtot(:),etot(:),y_squared(:)
+      if (.not. allocated(vtot)) then
+         allocate(vtot(nwgts))
+         allocate(etot(nwgts))
+         allocate(y_squared(nwgts))
+      endif
+      if (.not.profile_errors) then
+         call accumulate_results_legacy(label,nPSinv,niter,values)
+         return
+      endif
       if (error_estimation.eq.2) then
 c     Use the weighted average bin-by-bin. This is not really justified
 c     for fNLO computations, because for bins with low statistics, the
@@ -343,35 +367,43 @@ c     now normalised to the total cross section in that bin
             do j=1,nwgts
                vtot(j)=histy(j,label,i)*nPSinv
             enddo
+            do j=1,nwgts
 c     Error estimation of the current bin
-            etot=sqrt(abs(histy2(label,i)*nPSinv-vtot(1)**2)*nPSinv)
+               etot(j)=sqrt(abs(histy2(j,label,i)*nPSinv-vtot(j)**2)
+     $              *nPSinv)
 c     Include "Bessel's correction" to have a corrected (even though
 c     still biased) estimator of the standard deviation.
-            if (histi(label,i).gt.1) then
-               etot=etot* sqrt(dble(histi(label,i))
-     &                    /(dble(histi(label,i))-1.5d0))
-            else
-               etot=abs(vtot(1))*10d0 ! multiply by 10 to make it large
-            endif
-c     If the error estimation of the accumulated results is still zero
-c     (i.e. no points were added yet, e.g. because it is the first
-c     iteration) simply copy the results of this iteration over the
-c     accumulated results.
-            if (histy_err(label,i).eq.0d0) then
-               do j=1,nwgts
+               if (histi(label,i).gt.1) then
+                  etot(j)=etot(j)*sqrt(dble(histi(label,i))
+     &                 /(dble(histi(label,i))-1.5d0))
+               else
+                  etot(j)=abs(vtot(j))*10d0 ! make one-entry error large
+               endif
+c     Initialise this bin on its first contributing iteration.
+               if (hist_iter(label,i).eq.0) then
                   histy_acc(j,label,i)=vtot(j)
-               enddo
-               histy_err(label,i)=etot
-            else
+                  histy_err(j,label,i)=etot(j)
+               elseif (histy_err(j,label,i).ne.0d0 .and.
+     $                 etot(j).ne.0d0) then
 c     Add the results of the current iteration to the accumulated results
-               do j=1,nwgts
+                  denom=1d0/histy_err(j,label,i)+1d0/etot(j)
                   histy_acc(j,label,i)=(histy_acc(j,label,i)
-     &                 /histy_err(label,i)+vtot(j)/etot)/(1d0
-     &                 /histy_err(label,i) + 1d0/etot)
-               enddo
-               histy_err(label,i)=
-     $              1d0/sqrt(1d0/histy_err(label,i)**2+1d0/etot**2)
-            endif
+     &                 /histy_err(j,label,i)+vtot(j)/etot(j))/denom
+                  histy_err(j,label,i)=1d0/sqrt(1d0/
+     $                 histy_err(j,label,i)**2+1d0/etot(j)**2)
+               else
+c     A zero sample variance is common for sparse profile weights and must
+c     not be used as an infinite inverse-variance weight. Fall back to an
+c     iteration-count average for this update.
+                  a1=1d0/dble(hist_iter(label,i)+1)
+                  a2=1d0-a1
+                  histy_acc(j,label,i)=a2*histy_acc(j,label,i)
+     $                 +a1*vtot(j)
+                  histy_err(j,label,i)=sqrt((a2*
+     $                 histy_err(j,label,i))**2+(a1*etot(j))**2)
+               endif
+            enddo
+            hist_iter(label,i)=hist_iter(label,i)+1
          enddo
       elseif (error_estimation.eq.3) then
          do i=1,nbin(label)
@@ -382,26 +414,26 @@ c     now normalised to the total cross section in that bin
             do j=1,nwgts
                vtot(j)=histy(j,label,i)*nPSinv
             enddo
+            do j=1,nwgts
 c     Error estimation of the current bin
-            etot=sqrt(abs(histy2(label,i)*nPSinv-vtot(1)**2)*nPSinv)
+               etot(j)=sqrt(abs(histy2(j,label,i)*nPSinv-vtot(j)**2)
+     $              *nPSinv)
 c     Include "Bessel's correction" to have a corrected (even though
 c     still biased) estimator of the standard deviation.
-            if (histi(label,i).gt.1) then
-               etot=etot* sqrt(dble(histi(label,i))
-     &                    /(dble(histi(label,i))-1.5d0))
-            else
-               etot=abs(vtot(1))*10d0 ! multiply by 10 to make it large
-            endif
-c     If the error estimation of the accumulated results is still zero
-c     (i.e. no points were added yet, e.g. because it is the first
-c     iteration) simply copy the results of this iteration over the
-c     accumulated results.
-            if (histy_err(label,i).eq.0d0) then
+               if (histi(label,i).gt.1) then
+                  etot(j)=etot(j)*sqrt(dble(histi(label,i))
+     &                 /(dble(histi(label,i))-1.5d0))
+               else
+                  etot(j)=abs(vtot(j))*10d0 ! make one-entry error large
+               endif
+            enddo
+c     Initialise this bin on its first contributing iteration.
+            if (hist_iter(label,i).eq.0) then
                do j=1,nwgts
                   histy_acc(j,label,i)=vtot(j)
+                  histy_err(j,label,i)=etot(j)
                enddo
-               histy_err(label,i)=etot
-            else
+            elseif (values(1).ne.0d0 .and. values(2).ne.0d0) then
 c     Add the results of the current iteration to the accumulated results
                do j=1,nwgts
                   histy_acc(j,label,i)=(histy_acc(j,label,i)
@@ -410,37 +442,48 @@ c     Add the results of the current iteration to the accumulated results
                enddo
                a1=((1d0/values(1))/((1d0/values(1))+1d0/values(2)))**2
                a2=((1d0/values(2))/((1d0/values(1))+1d0/values(2)))**2
-               histy_err(label,i)=sqrt(a2*histy_err(label,i)**2 +
-     &              a1*etot**2)
+               do j=1,nwgts
+                  histy_err(j,label,i)=sqrt(a2*
+     $                 histy_err(j,label,i)**2+a1*etot(j)**2)
+               enddo
+            else
+c     Guard the degenerate MINT-error case with an iteration-count average.
+               a1=1d0/dble(hist_iter(label,i)+1)
+               a2=1d0-a1
+               do j=1,nwgts
+                  histy_acc(j,label,i)=a2*histy_acc(j,label,i)
+     $                 +a1*vtot(j)
+                  histy_err(j,label,i)=sqrt((a2*
+     $                 histy_err(j,label,i))**2+(a1*etot(j))**2)
+               enddo
             endif
+            hist_iter(label,i)=hist_iter(label,i)+1
          enddo 
       elseif(error_estimation.eq.1) then
 c     simply sum the weights in the bins
          do i=1,nbin(label)
-            if (histi(label,i).eq.0 .and.
-     &           histy_acc(1,label,i).eq.0d0) cycle
-            if (niter.ne.1d0) y_squared=((niter-1)*histy_err(label,i))
-     &           **2+(niter-1)*histy_acc(1,label,i)**2
             do j=1,nwgts
+               if (niter.ne.1d0) y_squared(j)=((niter-1)*
+     $              histy_err(j,label,i))**2+(niter-1)*
+     $              histy_acc(j,label,i)**2
                vtot(j)=histy(j,label,i)*nPSinv
                histy_acc(j,label,i)=(histy_acc(j,label,i)*(niter-1d0)
      &              +vtot(j))/niter
-            enddo
 c     base the error on the variance in the results per iteration. For a
 c     small number of iterations, this underestimates the actual
 c     uncertainty.
-            if (niter.eq.1d0) then
-               histy_err(label,i)=0d0
-            else
-               histy_err(label,i)= sqrt(((y_squared+vtot(1)**2)/niter
-     &              -histy_acc(1,label,i)**2)/niter)
-            endif
+               if (niter.eq.1d0) then
+                  histy_err(j,label,i)=0d0
+               else
+                  histy_err(j,label,i)=sqrt(max(0d0,((y_squared(j)
+     $                 +vtot(j)**2)/niter-histy_acc(j,label,i)**2)
+     $                 /niter))
+               endif
+            enddo
          enddo
       elseif(error_estimation.eq.0) then
 c     simply sum the weights in the bins
          do i=1,nbin(label)
-            if (histi(label,i).eq.0 .and.
-     &           histy_acc(1,label,i).eq.0d0) cycle
             do j=1,nwgts
                vtot(j)=histy(j,label,i)*nPSinv
                histy_acc(j,label,i)=(histy_acc(j,label,i)*(niter-1d0)
@@ -449,14 +492,133 @@ c     simply sum the weights in the bins
 c     Error estimation of the current bin using Poisson statistics,
 c     making sure we normalise with the number of iterations.
             if (histi(label,i).ne.0) then
-               etot=sqrt(histy2(label,i))*nPSinv
-               histy_err(label,i)= sqrt(((niter-1d0)*histy_err(label,i))
-     &              **2+etot**2)/niter
+               do j=1,nwgts
+                  etot(j)=sqrt(histy2(j,label,i))*nPSinv
+                  histy_err(j,label,i)=sqrt(((niter-1d0)*
+     $                 histy_err(j,label,i))**2+etot(j)**2)/niter
+               enddo
             else
-               histy_err(label,i)=(niter-1d0)/niter*histy_err(label,i)
+               do j=1,nwgts
+                  histy_err(j,label,i)=(niter-1d0)/niter*
+     $                 histy_err(j,label,i)
+               enddo
             endif
          enddo
       endif
+      end
+
+
+c Preserve the established HwU estimator exactly when no FKS migration
+c profiles are present.  This keeps zero-profile runs numerically and
+c format compatible with the 3.x branch.
+      subroutine accumulate_results_legacy(label,nPSinv,niter,values)
+      use HwU_variables
+      implicit none
+      integer label,i,j
+      double precision nPSinv,etot,niter,y_squared,values(2),a1,a2
+      double precision,allocatable :: vtot(:)
+      if (.not.allocated(vtot)) allocate(vtot(nwgts))
+      if (error_estimation.eq.2) then
+         do i=1,nbin(label)
+            if (histi(label,i).eq.0) cycle
+            do j=1,nwgts
+               vtot(j)=histy(j,label,i)*nPSinv
+            enddo
+            etot=sqrt(abs(histy2(1,label,i)*nPSinv-vtot(1)**2)
+     $           *nPSinv)
+            if (histi(label,i).gt.1) then
+               etot=etot*sqrt(dble(histi(label,i))
+     $              /(dble(histi(label,i))-1.5d0))
+            else
+               etot=abs(vtot(1))*10d0
+            endif
+            if (histy_err(1,label,i).eq.0d0) then
+               do j=1,nwgts
+                  histy_acc(j,label,i)=vtot(j)
+               enddo
+               histy_err(1,label,i)=etot
+            else
+               do j=1,nwgts
+                  histy_acc(j,label,i)=(histy_acc(j,label,i)
+     $                 /histy_err(1,label,i)+vtot(j)/etot)/(1d0
+     $                 /histy_err(1,label,i)+1d0/etot)
+               enddo
+               histy_err(1,label,i)=1d0/sqrt(1d0/
+     $              histy_err(1,label,i)**2+1d0/etot**2)
+            endif
+         enddo
+      elseif (error_estimation.eq.3) then
+         do i=1,nbin(label)
+            if (histi(label,i).eq.0) cycle
+            do j=1,nwgts
+               vtot(j)=histy(j,label,i)*nPSinv
+            enddo
+            etot=sqrt(abs(histy2(1,label,i)*nPSinv-vtot(1)**2)
+     $           *nPSinv)
+            if (histi(label,i).gt.1) then
+               etot=etot*sqrt(dble(histi(label,i))
+     $              /(dble(histi(label,i))-1.5d0))
+            else
+               etot=abs(vtot(1))*10d0
+            endif
+            if (histy_err(1,label,i).eq.0d0) then
+               do j=1,nwgts
+                  histy_acc(j,label,i)=vtot(j)
+               enddo
+               histy_err(1,label,i)=etot
+            else
+               do j=1,nwgts
+                  histy_acc(j,label,i)=(histy_acc(j,label,i)
+     $                 /values(2)+vtot(j)/values(1))/(1d0
+     $                 /values(2)+1d0/values(1))
+               enddo
+               a1=((1d0/values(1))/((1d0/values(1))
+     $              +1d0/values(2)))**2
+               a2=((1d0/values(2))/((1d0/values(1))
+     $              +1d0/values(2)))**2
+               histy_err(1,label,i)=sqrt(a2*
+     $              histy_err(1,label,i)**2+a1*etot**2)
+            endif
+         enddo
+      elseif (error_estimation.eq.1) then
+         do i=1,nbin(label)
+            if (histi(label,i).eq.0 .and.
+     $           histy_acc(1,label,i).eq.0d0) cycle
+            if (niter.ne.1d0) y_squared=((niter-1d0)*
+     $           histy_err(1,label,i))**2+(niter-1d0)*
+     $           histy_acc(1,label,i)**2
+            do j=1,nwgts
+               vtot(j)=histy(j,label,i)*nPSinv
+               histy_acc(j,label,i)=(histy_acc(j,label,i)
+     $              *(niter-1d0)+vtot(j))/niter
+            enddo
+            if (niter.eq.1d0) then
+               histy_err(1,label,i)=0d0
+            else
+               histy_err(1,label,i)=sqrt(((y_squared+vtot(1)**2)
+     $              /niter-histy_acc(1,label,i)**2)/niter)
+            endif
+         enddo
+      elseif (error_estimation.eq.0) then
+         do i=1,nbin(label)
+            if (histi(label,i).eq.0 .and.
+     $           histy_acc(1,label,i).eq.0d0) cycle
+            do j=1,nwgts
+               vtot(j)=histy(j,label,i)*nPSinv
+               histy_acc(j,label,i)=(histy_acc(j,label,i)
+     $              *(niter-1d0)+vtot(j))/niter
+            enddo
+            if (histi(label,i).ne.0) then
+               etot=sqrt(histy2(1,label,i))*nPSinv
+               histy_err(1,label,i)=sqrt(((niter-1d0)*
+     $              histy_err(1,label,i))**2+etot**2)/niter
+            else
+               histy_err(1,label,i)=(niter-1d0)/niter*
+     $              histy_err(1,label,i)
+            endif
+         enddo
+      endif
+      return
       end
       
 c Write the histograms to disk at the end of the run, multiplying the
@@ -470,15 +632,20 @@ c output by 'xnorm'
       character*4 str_nbin
       double precision xnorm
       if (.not. allocated(buffer))
-     &     allocate(character(len=(nwgts+3)*17) :: buffer)
+     &     allocate(character(len=(2*nwgts+2)*17) :: buffer)
 c     column info: x_min, x_max, y (central value), dy, {extra
-c     weights}.
+c     weights}, {dy for each migration-profile weight}.
       write (unit,'(a)', advance='no') '##& xmin'
       write (unit,'(a)', advance='no') ' & xmax'
       write (unit,'(a)', advance='no') ' & '//trim(adjustl(wgts_info(1)))
       write (unit,'(a)', advance='no') ' & dy'
       do j=2,nwgts
          write (unit,'(a)', advance='no') ' & '//trim(adjustl(wgts_info(j)))
+      enddo
+      do j=2,nwgts
+         if (index(adjustl(wgts_info(j)),'FKSdamp ').eq.1)
+     $        write (unit,'(a)', advance='no') ' & dy['//
+     $        trim(adjustl(wgts_info(j)))//']'
       enddo
       write (unit,'(a)') ''
       write (unit,'(a)') ''
@@ -496,9 +663,15 @@ c     data
            write (unit,'(2x,e14.7)', advance='no') histxl(label,i)
            write (unit,'(2x,e14.7)', advance='no') histxm(label,i)
            write (unit,'(2x,e14.7)', advance='no') histy_acc(1,label,i)*xnorm
-           write (unit,'(2x,e14.7)', advance='no') histy_err(label,i)*xnorm
+           write (unit,'(2x,e14.7)', advance='no')
+     $          histy_err(1,label,i)*xnorm
            do j=2,nwgts
               write (unit, '(2x,e14.7)', advance='no') histy_acc(j,label,i)*xnorm
+           enddo
+           do j=2,nwgts
+              if (index(adjustl(wgts_info(j)),'FKSdamp ').eq.1)
+     $             write (unit, '(2x,e14.7)', advance='no')
+     $             histy_err(j,label,i)*xnorm
            enddo
 	   write(unit, *) ''
          enddo
@@ -525,6 +698,7 @@ c Clean all the allocatable variables:
       if (allocated(histy)) deallocate(histy)
       if (allocated(histy_acc)) deallocate(histy_acc)
       if (allocated(histi)) deallocate(histi)
+      if (allocated(hist_iter)) deallocate(hist_iter)
       if (allocated(histy2)) deallocate(histy2)
       if (allocated(histy_err)) deallocate(histy_err)
       if (allocated(p_bin)) deallocate(p_bin)
@@ -588,8 +762,9 @@ c single histogram
          allocate(histy(nwgts,1,nbin_l))
          allocate(histy_acc(nwgts,1,nbin_l))
          allocate(histi(1,nbin_l))
-         allocate(histy2(1,nbin_l))
-         allocate(histy_err(1,nbin_l))
+         allocate(hist_iter(1,nbin_l))
+         allocate(histy2(nwgts,1,nbin_l))
+         allocate(histy_err(nwgts,1,nbin_l))
          max_plots=1
          max_bins=nbin_l
       endif
@@ -638,14 +813,18 @@ c histi
          allocate(itemp2(label_max,nbin_max))
          itemp2(1:max_plots,1:max_bins)=histi
          call move_alloc(itemp2,histi)
+c hist_iter
+         allocate(itemp2(label_max,nbin_max))
+         itemp2(1:max_plots,1:max_bins)=hist_iter
+         call move_alloc(itemp2,hist_iter)
 c histy2
-         allocate(temp2(label_max,nbin_max))
-         temp2(1:max_plots,1:max_bins)=histy2
-         call move_alloc(temp2,histy2)
+         allocate(temp3(nwgts,label_max,nbin_max))
+         temp3(1:nwgts,1:max_plots,1:max_bins)=histy2
+         call move_alloc(temp3,histy2)
 c histy_err
-         allocate(temp2(label_max,nbin_max))
-         temp2(1:max_plots,1:max_bins)=histy_err
-         call move_alloc(temp2,histy_err)
+         allocate(temp3(nwgts,label_max,nbin_max))
+         temp3(1:nwgts,1:max_plots,1:max_bins)=histy_err
+         call move_alloc(temp3,histy_err)
 c Update maximums
          max_plots=label_max
          max_bins=nbin_max
@@ -665,6 +844,3 @@ c dummy subroutine
       subroutine addfil(string)
       character*(*) string
       end
-
-
-

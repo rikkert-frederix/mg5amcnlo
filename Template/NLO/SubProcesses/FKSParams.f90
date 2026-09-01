@@ -9,12 +9,15 @@ module FKSParams
   integer,parameter :: maxContribsSelected=100, &
                        maxCouplingsSelected=100, &
                        maxContribType=15, &
-                       maxCouplingTypes=20
-  real*8 :: IRPoleCheckThreshold,Virt_fraction, PrecisionVirtualAtRunTime,Min_virt_fraction
+                       maxCouplingTypes=20, &
+                       maxFOMigrationDampingProfiles=20
+  real*8 :: IRPoleCheckThreshold,Virt_fraction, PrecisionVirtualAtRunTime,Min_virt_fraction, &
+            FOMigrationDampingTdamp(maxFOMigrationDampingProfiles), &
+            FOMigrationDampingA(maxFOMigrationDampingProfiles)
   integer  :: NHelForMCoverHels,VetoedContributionTypes(0:maxContribsSelected), &
               SelectedContributionTypes(0:maxContribsSelected),QED_squared_selected, &
               SelectedCouplingOrders(maxCouplingTypes,0:maxCouplingsSelected), &
-              QCD_squared_selected
+              QCD_squared_selected,NFOMigrationDampingProfiles
   logical :: separate_flavour_configs,IncludeBornContributions,use_poly_virtual
 
 contains
@@ -79,6 +82,30 @@ contains
              read(68,*,end=999) separate_flavour_configs
           else if (buff .eq. '#UsePolyVirtual') then
              read(68,*,end=999) use_poly_virtual
+          else if (buff .eq. '#FOMigrationDampingProfiles') then
+             read(68,*,end=999) NFOMigrationDampingProfiles
+             if (NFOMigrationDampingProfiles .lt. 0 .or. &
+                  NFOMigrationDampingProfiles .gt. maxFOMigrationDampingProfiles) then
+                write(*,*) 'FOMigrationDampingProfiles length should be >= 0 and <=', &
+                     maxFOMigrationDampingProfiles
+                stop 'Format error in FKS_params.dat.'
+             endif
+             do i=1,NFOMigrationDampingProfiles
+                read(68,*,end=999) FOMigrationDampingTdamp(i), &
+                     FOMigrationDampingA(i)
+                if (.not.(FOMigrationDampingTdamp(i) .gt. 0d0) .or. &
+                     FOMigrationDampingTdamp(i) .gt. huge(1d0)) then
+                   write(*,*) 'FOMigrationDampingProfiles entry ',i, &
+                        ' has invalid t_damp: ',FOMigrationDampingTdamp(i)
+                   stop 'FOMigrationDamping t_damp must be finite and > 0.'
+                endif
+                if (.not.(FOMigrationDampingA(i) .ge. 0d0) .or. &
+                     FOMigrationDampingA(i) .gt. huge(1d0)) then
+                   write(*,*) 'FOMigrationDampingProfiles entry ',i, &
+                        ' has invalid A: ',FOMigrationDampingA(i)
+                   stop 'FOMigrationDamping A must be finite and >= 0.'
+                endif
+             enddo
           else if (buff .eq. '#VetoedContributionTypes') then
              read(68,*,end=999) VetoedContributionTypes(0)
              if (VetoedContributionTypes(0) .lt. 0.or. &
@@ -205,6 +232,14 @@ contains
        write(*,*) ' > MinVirtualFraction        = ',Min_virt_fraction
        write(*,*) ' > SeparateFlavourConfigs    = ',separate_flavour_configs
        write(*,*) ' > UsePolyVirtual            = ',use_poly_virtual
+       if (NFOMigrationDampingProfiles.gt.0) then
+          do i=1,NFOMigrationDampingProfiles
+             write(*,*) ' > FOMigrationDampingProfile(',i,') = ', &
+                  FOMigrationDampingTdamp(i),FOMigrationDampingA(i)
+          enddo
+       else
+          write(*,*) ' > FOMigrationDampingProfiles = Off'
+       endif
        write(*,*) &
             '==============================================================='
        paramPrinted=.TRUE.
@@ -229,6 +264,9 @@ contains
     separate_flavour_configs=.false.
     use_poly_virtual=.true.
     IncludeBornContributions=.true.
+    NFOMigrationDampingProfiles=0
+    FOMigrationDampingTdamp(:)=0d0
+    FOMigrationDampingA(:)=0d0
     SelectedContributionTypes(0)=0
     VetoedContributionTypes(0)=0
     do i=1, maxContribsSelected

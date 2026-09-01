@@ -774,8 +774,12 @@ contains
 ! Add the PS point to the result of this iteration
     vtot(1:nintegrals,ichan)=vtot(1:nintegrals,ichan)+f(1:nintegrals)
     etot(1:nintegrals,ichan)=etot(1:nintegrals,ichan)+f(1:nintegrals)**2
-! Accumulate the points in the HwU histograms    
-    if (f(1).ne.0d0) call HwU_add_points
+! Accumulate the points in the HwU histograms.  A projected-real
+! migration contribution may have zero undamped central weight but a
+! non-zero profile weight, so do not discard that correlated point when
+! a migration scan is active.
+    if (f(1).ne.0d0 .or. NFOMigrationDampingProfiles.gt.0) &
+         call HwU_add_points
   end subroutine accumulate_the_point
 
   

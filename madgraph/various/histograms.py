@@ -449,14 +449,19 @@ class Histogram(object):
         
         new_wgts = {}
 
-        new_wgts['stat_error'] = math.sqrt(
-          (wgtsA['stat_error']*wgtsB['central'])**2+
-          (wgtsA['central']*wgtsB['stat_error'])**2)
-        
-        for label, wgt in wgtsA.items():    
-            if label=='stat_error':
-                continue
-            new_wgts[label] = wgt*wgtsB[label]
+        for label, wgt in wgtsA.items():
+            if Histogram.IS_STAT_ERROR_LABEL(label):
+                value_label = Histogram.GET_STAT_ERROR_VALUE_LABEL(label, wgtsA)
+                if value_label is None:
+                    # Preserve the historical behaviour for an unpaired custom
+                    # column whose name merely happens to look like ``dy[...]``.
+                    new_wgts[label] = wgt*wgtsB[label]
+                else:
+                    new_wgts[label] = math.sqrt(
+                        (wgt*wgtsB[value_label])**2+
+                        (wgtsA[value_label]*wgtsB[label])**2)
+            else:
+                new_wgts[label] = wgt*wgtsB[label]
 
         return new_wgts
 
@@ -465,18 +470,27 @@ class Histogram(object):
         """ Apply the division to the weights of two bins."""
         
         new_wgts = {}
-        if wgtsB['central'] == 0.0:
-            new_wgts['stat_error'] = 0.0
-        else: 
-            # d(x/y) = ( (dx/y)**2 + ((x*dy)/(y**2))**2 )**0.5
-            new_wgts['stat_error'] = math.sqrt(wgtsA['stat_error']**2+
-            ((wgtsA['central']*wgtsB['stat_error'])/
-                             wgtsB['central'])**2)/wgtsB['central']
-        
+
         for label, wgt in wgtsA.items():
-            if label=='stat_error':
-                continue
-            if wgtsB[label]==0.0 and wgt==0.0:
+            if Histogram.IS_STAT_ERROR_LABEL(label):
+                value_label = Histogram.GET_STAT_ERROR_VALUE_LABEL(label, wgtsA)
+                if value_label is None:
+                    # Preserve the historical behaviour for an unpaired custom
+                    # column whose name merely happens to look like ``dy[...]``.
+                    if wgtsB[label] == 0.0:
+                        new_wgts[label] = 0.0
+                    else:
+                        new_wgts[label] = wgt/wgtsB[label]
+                elif wgtsB[value_label] == 0.0:
+                    new_wgts[label] = 0.0
+                else:
+                    # d(x/y) = ((dx/y)**2 + (x*dy/y**2)**2)**0.5
+                    # Keep the pre-existing signed-denominator convention used
+                    # for the central statistical error.
+                    new_wgts[label] = math.sqrt(wgt**2+
+                        ((wgtsA[value_label]*wgtsB[label])/
+                         wgtsB[value_label])**2)/wgtsB[value_label]
+            elif wgtsB[label]==0.0 and wgt==0.0:
                 new_wgts[label] = 0.0
             elif wgtsB[label]==0.0:
 #               This situation is most often harmless and just happens in regions
@@ -490,6 +504,83 @@ class Histogram(object):
         return new_wgts        
     
     @staticmethod
+    def IS_STAT_ERROR_LABEL(label):
+        """Return whether *label* stores a statistical uncertainty.
+
+        In addition to the mandatory central ``dy`` column, experimental
+        fixed-order correlated-weight scans may write one ``dy[...]`` column
+        per alternative weight.  Those columns must be combined in
+        quadrature, rather than summed like ordinary reweighting columns.
+        """
+        return label == 'stat_error' or (
+            isinstance(label, str) and label.startswith('dy['))
+
+    @staticmethod
+    def GET_STAT_ERROR_VALUE_LABEL(label, wgts):
+        """Return the value column paired with a statistical-error column.
+
+        ``stat_error`` is paired with ``central``.  A ``dy[name]`` column is
+        normally paired directly with ``name``.  Standard scale/PDF labels are
+        normalised to tuples while parsing, however, so as a fallback use the
+        value/error column ordering written by HwU when all extra values have a
+        corresponding error column.
+        """
+
+        if label == 'stat_error':
+            return 'central' if 'central' in wgts else None
+        if not Histogram.IS_STAT_ERROR_LABEL(label):
+            return None
+
+        if isinstance(label, str) and label.endswith(']'):
+            value_label = label[3:-1]
+            if value_label in wgts:
+                return value_label
+
+            # HwU turns standard textual scale/PDF labels into tuples while
+            # parsing.  Reconstruct that tuple so pairing remains reliable even
+            # after auxiliary value-only columns have been added.
+            if 'HwU' in globals():
+                scale_wgt = HwU.weight_label_scale.match(value_label)
+                pdf_wgt = HwU.weight_label_PDF.match(value_label)
+                merging_wgt = HwU.weight_label_TMS.match(value_label)
+                alpsfact_wgt = HwU.weight_label_alpsfact.match(value_label)
+                scale_wgt_adv = HwU.weight_label_scale_adv.match(value_label)
+                pdf_wgt_adv = HwU.weight_label_PDF_adv.match(value_label)
+                if scale_wgt_adv:
+                    value_label = ('scale_adv',
+                        int(scale_wgt_adv.group('dyn_choice')),
+                        float(scale_wgt_adv.group('mur_fact')),
+                        float(scale_wgt_adv.group('muf_fact')))
+                elif scale_wgt:
+                    value_label = ('scale',
+                        float(scale_wgt.group('mur_fact')),
+                        float(scale_wgt.group('muf_fact')))
+                elif pdf_wgt_adv:
+                    value_label = ('pdf_adv',
+                        int(pdf_wgt_adv.group('PDF_set')),
+                        pdf_wgt_adv.group('PDF_set_cen'))
+                elif pdf_wgt:
+                    value_label = ('pdf', int(pdf_wgt.group('PDF_set')))
+                elif merging_wgt:
+                    value_label = ('merging_scale',
+                        float(merging_wgt.group('Merging_scale')))
+                elif alpsfact_wgt:
+                    value_label = ('alpsfact',
+                        float(alpsfact_wgt.group('alpsfact')))
+                if value_label in wgts:
+                    return value_label
+
+        error_labels = [key for key in wgts
+                        if Histogram.IS_STAT_ERROR_LABEL(key) and
+                        key != 'stat_error']
+        value_labels = [key for key in wgts
+                        if not Histogram.IS_STAT_ERROR_LABEL(key) and
+                        key != 'central']
+        if len(error_labels) == len(value_labels) and label in error_labels:
+            return value_labels[error_labels.index(label)]
+        return None
+
+    @staticmethod
     def OPERATION(wgtsA, wgtsB, wgt_operation, stat_error_operation):
         """ Apply the operation to the weights of two bins. Notice that we 
         assume here the two dict operands to have the same weight labels.
@@ -497,10 +588,10 @@ class Histogram(object):
 
         new_wgts = {}
         for label, wgt in wgtsA.items():
-            if label!='stat_error':
-                new_wgts[label] = wgt_operation(wgt, wgtsB[label])
-            else:
+            if Histogram.IS_STAT_ERROR_LABEL(label):
                 new_wgts[label] = stat_error_operation(wgt, wgtsB[label])
+            else:
+                new_wgts[label] = wgt_operation(wgt, wgtsB[label])
 #                if new_wgts[label]>1.0e+10:
 #                    print "stat_error_operation is ",stat_error_operation.__name__
 #                    print " inputs were ",wgt, wgtsB[label]
@@ -516,10 +607,10 @@ class Histogram(object):
         
         new_wgts = {}
         for label, wgt in wgts.items():
-            if label!='stat_error':
-                new_wgts[label] = wgt_operation(wgt)
-            else:
+            if Histogram.IS_STAT_ERROR_LABEL(label):
                 new_wgts[label] = stat_error_operation(wgt)
+            else:
+                new_wgts[label] = wgt_operation(wgt)
         
         return new_wgts
 
@@ -1480,9 +1571,15 @@ class HwU(Histogram):
         """ Select a specific merging scale for the central value of this Histogram. """
         if selected_label not in self.bins.weight_labels:
             raise MadGraph5Error("Selected weight label '%s' could not be found in this HwU."%selected_label)
-        
+
+        paired_errors = [label for label in self.bins.weight_labels
+                         if Histogram.IS_STAT_ERROR_LABEL(label) and
+                         Histogram.GET_STAT_ERROR_VALUE_LABEL(
+                             label, self.bins[0].wgts) == selected_label]
         for bin in self.bins:
-            bin.wgts['central']=bin.wgts[selected_label]                    
+            bin.wgts['central']=bin.wgts[selected_label]
+            if len(paired_errors) == 1:
+                bin.wgts['stat_error']=bin.wgts[paired_errors[0]]
     
     def rebin(self, n_rebin):
         """ Rebin the x-axis so as to merge n_rebin consecutive bins into a 
@@ -1510,12 +1607,12 @@ class HwU(Histogram):
             new_bins.append(Bin(boundaries=(bins_to_merge[0].boundaries[0],
               bins_to_merge[-1].boundaries[1]),wgts={'central':0.0}))
             for weight in self.bins.weight_labels:
-                if weight != 'stat_error':
+                if not Histogram.IS_STAT_ERROR_LABEL(weight):
                     new_bins[-1].wgts[weight] = \
                                       sum(b.wgts[weight] for b in bins_to_merge)
                 else:
-                    new_bins[-1].wgts['stat_error'] = \
-                        math.sqrt(sum(b.wgts['stat_error']**2 for b in\
+                    new_bins[-1].wgts[weight] = \
+                        math.sqrt(sum(b.wgts[weight]**2 for b in\
                                                                  bins_to_merge))
 
         self.bins = new_bins

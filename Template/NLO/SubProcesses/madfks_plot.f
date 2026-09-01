@@ -1,6 +1,7 @@
 c Wrapper routines for the fixed order analyses
       subroutine initplot
       use extra_weights
+      use FKSParams
       implicit none
       include 'run.inc'
       include "nexternal.inc"
@@ -109,6 +110,19 @@ c set the weights_info string for PDF variation
 c start with central member of the first set
          call InitPDFm(1,0)
       endif
+c Add central-scale migration-damping profiles as correlated weights.
+c The ordinary undamped NLO result remains weight 1 and is what MINT
+c integrates; each profile is evaluated on exactly the same PS points.
+      do i=1,NFOMigrationDampingProfiles
+         nwgt=nwgt+1
+         allocate(ctemp(nwgt))
+         ctemp(1:nwgt-1)=weights_info
+         call move_alloc(ctemp,weights_info)
+         write(weights_info(nwgt),
+     $        '(a8,i2.2,x,a3,es10.3,x,a2,es10.3)')
+     $        'FKSdamp ',i,'td=',FOMigrationDampingTdamp(i),
+     $        'A=',FOMigrationDampingA(i)
+      enddo
       if(pineappl)then
 c Initialize grid parameters to negative values.
          appl_Q2min   = -1d0

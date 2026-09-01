@@ -130,6 +130,26 @@
 ! Parameters defining the techniques used for the MC integration
 ! ==========================================================================
 !
+! For fixed-order runs, optionally define up to 20 correlated profiles for
+! damping finite real--counterevent migration terms.  The first line is the
+! number of profiles; zero disables the prescription.  Each following record
+! contains
+!
+!   t_damp [GeV]    A
+!
+! with t_damp > 0 and A >= 0.  An entry with A=0 is an undamped reference.
+! The implementation using these settings is experimental and is ignored for
+! (N)LO+PS event generation.
+!
+#FOMigrationDampingProfiles
+0
+! Example with two damped profiles and one undamped reference:
+! 3
+! 10.0d0 1.0d0
+! 20.0d0 1.0d0
+! 10.0d0 0.0d0
+! Default :: 0
+!
 ! This integer sets what is the minimum number of contributing
 ! helicities (in a given subrpocess) which is necessary for MadFKS to
 ! switch to the Monte-Carlo over helicity configurations method. Set

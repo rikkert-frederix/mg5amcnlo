@@ -10,11 +10,12 @@
      $        ,plot_id(:),niproc(:),ipr(:),parton_pdf(:,:,:)
      $        ,icontr_sum(:,:),ifold_cnt(:) ,icolour_con(:,:,:)
      $        ,orderstag(:),amppos(:),need_match(:,:)
+     $        ,fks_migration_role(:)
          double precision, allocatable :: momenta(:,:,:),momenta_m(:,:,:
      $        ,:),wgt(:,:),wgt_ME_tree(:,:),bjx(:,:),scales2(:,:)
      $        ,g_strong(:),wgts(:,:),parton_iproc(:,:),y_bst(:)
      $        ,cpower(:),plot_wgts(:,:),shower_scale(:),unwgt(:,:)
-     $        ,bias_wgt(:),shower_scale_a(:,:,:)
+     $        ,bias_wgt(:),shower_scale_a(:,:,:),fks_migration_t(:)
          save
       end module weight_lines
 
@@ -128,6 +129,10 @@ c amppos
          allocate(itemp1(n_contr))
          itemp1(1:max_contr)=amppos
          call move_alloc(itemp1,amppos)
+c FKS migration role: 0 ordinary, 1 real, 2 soft map, 3 collinear map
+         allocate(itemp1(n_contr))
+         itemp1(1:max_contr)=fks_migration_role
+         call move_alloc(itemp1,fks_migration_role)
 c parton_pdf
          allocate(itemp3(nexternal,max_iproc,n_contr))
          itemp3(1:nexternal,1:max_iproc,1:max_contr)=parton_pdf
@@ -168,6 +173,10 @@ c g_strong
          allocate(temp1(n_contr))
          temp1(1:max_contr)=g_strong
          call move_alloc(temp1,g_strong)
+c FKS resolution variable used by the migration damping scan
+         allocate(temp1(n_contr))
+         temp1(1:max_contr)=fks_migration_t
+         call move_alloc(temp1,fks_migration_t)
 c wgts
          allocate(temp2(max_wgt,n_contr))
          temp2(1:max_wgt,1:max_contr)=wgts
@@ -232,6 +241,7 @@ c update maximum
       allocate(ipr(1))
       allocate(orderstag(1))
       allocate(amppos(1))
+      allocate(fks_migration_role(1))
       allocate(parton_pdf(nexternal,1,1))
       allocate(icontr_sum(0:1,1))
       allocate(icolour_con(2,nexternal,1))
@@ -242,6 +252,7 @@ c update maximum
       allocate(bjx(2,1))
       allocate(scales2(3,1))
       allocate(g_strong(1))
+      allocate(fks_migration_t(1))
       allocate(wgts(1,1))
       allocate(parton_iproc(1,1))
       allocate(y_bst(1))
@@ -278,6 +289,7 @@ c update maximum
       if (allocated(ipr)) deallocate(ipr)
       if (allocated(orderstag)) deallocate(orderstag)
       if (allocated(amppos)) deallocate(amppos)
+      if (allocated(fks_migration_role)) deallocate(fks_migration_role)
       if (allocated(parton_pdf)) deallocate(parton_pdf)
       if (allocated(icontr_sum)) deallocate(icontr_sum)
       if (allocated(icolour_con)) deallocate(icolour_con)
@@ -288,6 +300,7 @@ c update maximum
       if (allocated(bjx)) deallocate(bjx)
       if (allocated(scales2)) deallocate(scales2)
       if (allocated(g_strong)) deallocate(g_strong)
+      if (allocated(fks_migration_t)) deallocate(fks_migration_t)
       if (allocated(wgts)) deallocate(wgts)
       if (allocated(parton_iproc)) deallocate(parton_iproc)
       if (allocated(y_bst)) deallocate(y_bst)
