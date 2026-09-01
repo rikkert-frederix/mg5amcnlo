@@ -118,10 +118,17 @@ c integrates; each profile is evaluated on exactly the same PS points.
          allocate(ctemp(nwgt))
          ctemp(1:nwgt-1)=weights_info
          call move_alloc(ctemp,weights_info)
-         write(weights_info(nwgt),
-     $        '(a8,i2.2,x,a3,es10.3,x,a2,es10.3)')
-     $        'FKSdamp ',i,'td=',FOMigrationDampingTdamp(i),
-     $        'A=',FOMigrationDampingA(i)
+         if (FOMigrationDampingUseMuR(i)) then
+            write(weights_info(nwgt),
+     $           '(a8,i2.2,x,a7,es10.3,x,a2,es10.3)')
+     $           'FKSdamp ',i,'td=muR*',FOMigrationDampingTdamp(i),
+     $           'A=',FOMigrationDampingA(i)
+         else
+            write(weights_info(nwgt),
+     $           '(a8,i2.2,x,a3,es10.3,x,a2,es10.3)')
+     $           'FKSdamp ',i,'td=',FOMigrationDampingTdamp(i),
+     $           'A=',FOMigrationDampingA(i)
+         endif
       enddo
       if(pineappl)then
 c Initialize grid parameters to negative values.

@@ -18,7 +18,8 @@ module FKSParams
               SelectedContributionTypes(0:maxContribsSelected),QED_squared_selected, &
               SelectedCouplingOrders(maxCouplingTypes,0:maxCouplingsSelected), &
               QCD_squared_selected,NFOMigrationDampingProfiles
-  logical :: separate_flavour_configs,IncludeBornContributions,use_poly_virtual
+  logical :: separate_flavour_configs,IncludeBornContributions,use_poly_virtual, &
+             FOMigrationDampingUseMuR(maxFOMigrationDampingProfiles)
 
 contains
 
@@ -29,8 +30,10 @@ contains
     logical :: force,couldRead,printParam
     character(*) :: filename
     CHARACTER(len=64) :: buff, buff2, mode
+    CHARACTER(len=256) :: profile_line
+    CHARACTER(len=16) :: profile_mode
     include "orders.inc"
-    integer :: i,j
+    integer :: i,j,ios,ich
     couldRead=.False.
     if (HasReadOnce.and..not.force) then
        goto 901
@@ -91,13 +94,53 @@ contains
                 stop 'Format error in FKS_params.dat.'
              endif
              do i=1,NFOMigrationDampingProfiles
-                read(68,*,end=999) FOMigrationDampingTdamp(i), &
-                     FOMigrationDampingA(i)
+                do
+                   read(68,'(A)',iostat=ios) profile_line
+                   if (ios.ne.0) then
+                      write(*,*) 'Missing FOMigrationDampingProfiles entry ',i
+                      stop 'Premature end of FKS_params.dat.'
+                   endif
+                   profile_line=adjustl(profile_line)
+                   if (len_trim(profile_line).eq.0) cycle
+                   if (profile_line(1:1).eq.'!') cycle
+                   exit
+                enddo
+                profile_mode=''
+                read(profile_line,*,iostat=ios) profile_mode
+                if (ios.ne.0) then
+                   write(*,*) 'Malformed FOMigrationDampingProfiles entry ',i
+                   stop 'Format error in FKS_params.dat.'
+                endif
+                do j=1,len_trim(profile_mode)
+                   ich=iachar(profile_mode(j:j))
+                   if (ich.ge.iachar('A') .and. ich.le.iachar('Z')) &
+                        profile_mode(j:j)=achar(ich+iachar('a')-iachar('A'))
+                enddo
+                if (profile_mode.eq.'mur') then
+                   FOMigrationDampingUseMuR(i)=.true.
+                   read(profile_line,*,iostat=ios) profile_mode, &
+                        FOMigrationDampingTdamp(i),FOMigrationDampingA(i)
+                else
+                   FOMigrationDampingUseMuR(i)=.false.
+                   read(profile_line,*,iostat=ios) FOMigrationDampingTdamp(i), &
+                        FOMigrationDampingA(i)
+                endif
+                if (ios.ne.0) then
+                   write(*,*) 'Malformed FOMigrationDampingProfiles entry ',i, &
+                        ': ',trim(profile_line)
+                   stop 'Format error in FKS_params.dat.'
+                endif
                 if (.not.(FOMigrationDampingTdamp(i) .gt. 0d0) .or. &
                      FOMigrationDampingTdamp(i) .gt. huge(1d0)) then
-                   write(*,*) 'FOMigrationDampingProfiles entry ',i, &
-                        ' has invalid t_damp: ',FOMigrationDampingTdamp(i)
-                   stop 'FOMigrationDamping t_damp must be finite and > 0.'
+                   if (FOMigrationDampingUseMuR(i)) then
+                      write(*,*) 'FOMigrationDampingProfiles entry ',i, &
+                           ' has invalid muR factor: ',FOMigrationDampingTdamp(i)
+                      stop 'FOMigrationDamping muR factor must be finite and > 0.'
+                   else
+                      write(*,*) 'FOMigrationDampingProfiles entry ',i, &
+                           ' has invalid t_damp: ',FOMigrationDampingTdamp(i)
+                      stop 'FOMigrationDamping t_damp must be finite and > 0.'
+                   endif
                 endif
                 if (.not.(FOMigrationDampingA(i) .ge. 0d0) .or. &
                      FOMigrationDampingA(i) .gt. huge(1d0)) then
@@ -234,8 +277,15 @@ contains
        write(*,*) ' > UsePolyVirtual            = ',use_poly_virtual
        if (NFOMigrationDampingProfiles.gt.0) then
           do i=1,NFOMigrationDampingProfiles
-             write(*,*) ' > FOMigrationDampingProfile(',i,') = ', &
-                  FOMigrationDampingTdamp(i),FOMigrationDampingA(i)
+             if (FOMigrationDampingUseMuR(i)) then
+                write(*,*) ' > FOMigrationDampingProfile(',i, &
+                     ') = muR * ',FOMigrationDampingTdamp(i), &
+                     ', A = ',FOMigrationDampingA(i)
+             else
+                write(*,*) ' > FOMigrationDampingProfile(',i, &
+                     ') = ',FOMigrationDampingTdamp(i), &
+                     ' GeV, A = ',FOMigrationDampingA(i)
+             endif
           enddo
        else
           write(*,*) ' > FOMigrationDampingProfiles = Off'
@@ -267,6 +317,7 @@ contains
     NFOMigrationDampingProfiles=0
     FOMigrationDampingTdamp(:)=0d0
     FOMigrationDampingA(:)=0d0
+    FOMigrationDampingUseMuR(:)=.false.
     SelectedContributionTypes(0)=0
     VetoedContributionTypes(0)=0
     do i=1, maxContribsSelected

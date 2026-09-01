@@ -3172,7 +3172,8 @@ c prediction exactly unchanged.
       implicit none
       include 'nexternal.inc'
       integer i,k,iwgt_standard,iwgt_profile
-      double precision delta,fo_migration_delta
+      double precision delta,fo_migration_delta,t_damp_eff,mu_r_central
+      logical valid_t_damp
       external fo_migration_delta
       if (NFOMigrationDampingProfiles.eq.0 .or. icontr.eq.0) return
       iwgt_standard=iwgt
@@ -3184,9 +3185,37 @@ c prediction exactly unchanged.
             if (fks_migration_role(i).eq.0) then
                wgts(iwgt_profile,i)=wgts(1,i)
             else
-               delta=fo_migration_delta(fks_migration_t(i),
-     $              FOMigrationDampingTdamp(k),FOMigrationDampingA(k),
-     $              g_strong(i))
+               valid_t_damp=.true.
+               if (FOMigrationDampingUseMuR(k)) then
+c scales2(2,i) is the central muR squared saved by add_wgt.  Use the
+c real-line value also for both projected roles; recomputing a scale from
+c their mapped momenta would spoil the point-by-point compensation.
+                  if (scales2(2,i).ne.scales2(2,i) .or.
+     $                scales2(2,i).le.0d0 .or.
+     $                scales2(2,i).gt.huge(1d0)) then
+                     valid_t_damp=.false.
+                  else
+                     mu_r_central=sqrt(scales2(2,i))
+                     if (FOMigrationDampingTdamp(k).gt.1d0) then
+                        if (mu_r_central.gt.huge(1d0)/
+     $                      FOMigrationDampingTdamp(k))
+     $                       valid_t_damp=.false.
+                     endif
+                     if (valid_t_damp) then
+                        t_damp_eff=FOMigrationDampingTdamp(k)*
+     $                       mu_r_central
+                     endif
+                  endif
+               else
+                  t_damp_eff=FOMigrationDampingTdamp(k)
+               endif
+               if (valid_t_damp) then
+                  delta=fo_migration_delta(fks_migration_t(i),
+     $                 t_damp_eff,FOMigrationDampingA(k),g_strong(i))
+               else
+c An invalid central scale must not leave an uncompensated damped real.
+                  delta=1d0
+               endif
                if (fks_migration_role(i).eq.1) then
                   wgts(iwgt_profile,i)=delta*wgts(1,i)
                elseif (fks_migration_role(i).eq.2 .or.

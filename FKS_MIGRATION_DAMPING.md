@@ -55,6 +55,23 @@ Delta_a(t) = exp[-A_a alpha_s/pi log(t_damp,a/t)^2]  for 0 < t < t_damp,a
 numerical profile, not a claim of process-independent physical LL
 resummation or an NLO+PS construction.
 
+The onset scale can be either fixed or event dependent.  In the dynamic
+mode it is
+
+```text
+t_damp(event) = c_muR * muR_central(event).
+```
+
+Here `muR_central=sqrt(scales2(2,i))` is the central renormalisation scale
+that MadFKS saved with the real contribution.  The same saved real-event
+scale is used for its soft- and collinear-projected compensation weights;
+it is not recomputed from the mapped momenta.  This common value is necessary
+for point-by-point unitarity.  Scale/PDF reweighting does not alter it.  The
+usual NLO-accuracy argument assumes that the chosen central scale is positive,
+finite, and IRC-continuous.  An invalid saved scale falls back to `Delta=1`;
+a pathological user scale proportional to the unresolved `t` can make the
+damping ineffective even when it remains finite.
+
 ## Resolution variable
 
 The variable is local to the current QCD FKS sector.  With native MadFKS
@@ -103,21 +120,27 @@ Edit the generated process card `Cards/FKS_params.dat`:
 
 ```text
 #FOMigrationDampingProfiles
-3
+4
 10.0d0 1.0d0
-20.0d0 1.0d0
-10.0d0 0.0d0
+mur 0.25d0 1.0d0
+mur 1.00d0 1.0d0
+mur 1.00d0 0.0d0
 ```
 
 The first line is the number of profiles (0--20).  Each subsequent line is
-`t_damp [GeV]  A`, with `t_damp>0` and `A>=0`.  Zero profiles restores the
-unmodified code path.
+either `t_damp [GeV]  A` for a fixed scale or `mur  c_muR  A` for
+`t_damp=c_muR*muR_central` event by event.  Thus the second profile above
+uses one quarter of the central renormalisation scale.  All fixed scales and
+factors must be positive, and `A>=0`.  Zero profiles restores the unmodified
+code path.  Fixed and dynamic entries can be mixed freely in the same scan.
 
 Run a normal fixed-order launch.  The standard central, scale, and PDF
 weights remain the undamped NLO result.  One central-scale `FKSdamp` column
 is appended per profile to the HwU file, together with a corresponding
 `dy[FKSdamp ...]` statistical-error column.  The profile columns share the
 same events but do not form a Cartesian product with scale/PDF variations.
+Dynamic labels contain `td=muR*...`; `muR` always means the central scale,
+not one of the scale-variation weights.
 
 Including an `A=0` profile in every scan is strongly recommended.  Its mean
 and statistical error must reproduce the ordinary central column exactly,
