@@ -197,11 +197,9 @@ def _decay_definition_at_path(decay_chains, path):
 def validate_nlo_decay_to_lo_generation(process_definition, options,
                                         correction_orders,
                                         ewsudakov=False):
-    """Validate the matrix-elements-only NLO-decay prototype.
+    """Validate one standalone NLO decay in an LO production environment.
 
-    Return a small immutable description of the selected decay attachment.
-    The deliberately narrow restrictions are documented in
-    ``NLO_DECAY_TO_LO_PRODUCTION_IMPLEMENTATION_PLAN.md``.
+    Return the selected decay attachment and its generation restrictions.
     """
 
     corrected = get_perturbed_decay_definitions(process_definition)
@@ -1736,20 +1734,6 @@ def _external_descendants(wavefunction, cache):
     return result
 
 
-def _all_wavefunctions(matrix_element):
-    result = list(matrix_element.get_all_wavefunctions())
-    if isinstance(matrix_element,
-                  loop_helas_objects.LoopHelasMatrixElement):
-        result.extend(matrix_element.get_all_loop_wavefunctions())
-    unique = []
-    seen = set()
-    for wavefunction in result:
-        if id(wavefunction) not in seen:
-            seen.add(id(wavefunction))
-            unique.append(wavefunction)
-    return unique
-
-
 def _set_local_width(wavefunction, width):
     particle = copy.copy(wavefunction['particle'])
     antiparticle = copy.copy(wavefunction['antiparticle'])
@@ -1765,7 +1749,7 @@ def _annotate_decay_nodes(matrix_element, context, metadata):
     The flattened amplitudes supply topology and relative channel weights;
     physical matrix elements are contracted from independent densities.
     """
-    wavefunctions = _all_wavefunctions(matrix_element)
+    wavefunctions = matrix_element.get_all_wavefunctions()
     cache = {}
     connector_ids = {}
     forced_species = set(metadata['forced_species'])
@@ -1781,17 +1765,8 @@ def _annotate_decay_nodes(matrix_element, context, metadata):
             expected = frozenset(
                 context['leaf_map'][leaf_id]
                 for leaf_id in _tree_leaf_ids(node['id'], metadata))
-        inverse_expected = frozenset()
-        if (full_topology and isinstance(
-                matrix_element,
-                loop_helas_objects.LoopHelasMatrixElement)):
-            inverse_expected = frozenset(
-                range(1, context['visible_count'] + 1)) - expected
-
         def descendants_match(wavefunction):
-            descendants = _external_descendants(wavefunction, cache)
-            return (descendants == expected or
-                    (inverse_expected and descendants == inverse_expected))
+            return _external_descendants(wavefunction, cache) == expected
 
         matches = [
             wavefunction for wavefunction in wavefunctions
@@ -1827,27 +1802,12 @@ def _annotate_decay_nodes(matrix_element, context, metadata):
 
 
 def _finalize_matrix_element(matrix_element):
+    """Rebuild the colour bookkeeping of a flattened tree topology."""
     matrix_element.set('base_amplitude', None)
-    if isinstance(matrix_element,
-                  loop_helas_objects.LoopHelasMatrixElement):
-        matrix_element['loop_groups'] = []
-        for diagram in matrix_element.get_loop_diagrams():
-            for amplitude in diagram.get_loop_amplitudes():
-                # set_mothers_and_pairing rebuilds the mothers but appends to
-                # the pairing list.  Clear both cached descriptions before
-                # recomputing them after decay insertion.
-                amplitude.set('pairing', [])
-                amplitude.set_mothers_and_pairing()
-        matrix_element['born_color_basis'] = \
-            matrix_element['born_color_basis'].__class__()
-        matrix_element['loop_color_basis'] = \
-            matrix_element['loop_color_basis'].__class__()
-        matrix_element.process_color()
-    else:
-        matrix_element.set('color_basis', color_amp.ColorBasis())
-        matrix_element.set(
-            'color_matrix', color_amp.ColorMatrix(color_amp.ColorBasis()))
-        matrix_element.process_color()
+    matrix_element.set('color_basis', color_amp.ColorBasis())
+    matrix_element.set(
+        'color_matrix', color_amp.ColorMatrix(color_amp.ColorBasis()))
+    matrix_element.process_color()
 
 
 def align_nlo_decay_born_to_decay_chain(decay_metadata,
@@ -2945,7 +2905,6 @@ def compose_nlo_decay_helas_process(fks_process, composition):
     fks_process.real_processes = combined_reals
     fks_process.color_links = color_links
     fks_process.nlo_decay_metadata = prototype_metadata
-    fks_process.nlo_decay_virtual_matrix_element = decay_virtual_me
     fks_process.virt_matrix_element = None
     fks_process.spin_density_plan = spin_density_plan
     decay_trees = tuple((
@@ -3058,7 +3017,7 @@ def nlo_decay_info_text(metadata):
     return '\n'.join(lines) + '\n'
 
 
-def write_nlo_decay_prototype_files(path, metadata):
+def write_nlo_decay_info(path, metadata):
     """Write runtime metadata for an integration-ready NLO decay."""
 
     with open(os.path.join(path, 'nlo_decay_info.dat'), 'w') as stream:

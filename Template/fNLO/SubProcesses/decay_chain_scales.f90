@@ -303,13 +303,16 @@ contains
     integer, intent(in) :: configuration
     double precision, intent(out) :: scale_momenta(0:3, nexternal)
 
-    if ((has_decay_chains() .or. has_nlo_decay()) .and. &
-        use_decayed_production_ren_scale_momenta()) then
-      scale_momenta = visible_momenta
-    else
-      call select_production_core_momenta(visible_momenta, configuration, &
-                                          scale_momenta)
+    ! Fortran does not guarantee short-circuit evaluation: do not read the
+    ! decay card at all when this process has no decay metadata.
+    if (has_decay_chains() .or. has_nlo_decay()) then
+      if (use_decayed_production_ren_scale_momenta()) then
+        scale_momenta = visible_momenta
+        return
+      end if
     end if
+    call select_production_core_momenta(visible_momenta, configuration, &
+                                        scale_momenta)
   end subroutine select_production_ren_scale_momenta
 
 

@@ -274,11 +274,19 @@ class TestMadEventCmd(unittest.TestCase):
         self.assertIn('icontr = 0\n    iwgt = 0', driver_source)
         self.assertIn('if (icontr < 1) then', driver_source)
         self.assertIn('picked_integers(contribution), 0d0)', driver_source)
-        self.assertIn('workspace%has_snapshot(', driver_source)
+        leaf_cuts = driver_source.split(
+            'subroutine test_multiplicative_leaf_cuts(', 1)[1].split(
+                'end subroutine test_multiplicative_leaf_cuts', 1)[0]
+        self.assertIn(
+            'materialized = multiplicative_leaf_has_snapshots(workspace)',
+            leaf_cuts)
         self.assertLess(
-            multiplicative_driver.index(
-                'pass_leaf = passcuts_multiplicative'),
-            multiplicative_driver.index('call include_pdf_and_alphas()'))
+            leaf_cuts.index('if (.not. materialized) return'),
+            leaf_cuts.index('call materialize_multiplicative_leaf'))
+        self.assertIn('passes = passcuts_multiplicative', leaf_cuts)
+        self.assertLess(
+            multiplicative_driver.index('call test_multiplicative_leaf_cuts'),
+            multiplicative_driver.index('call contract_multiplicative_leaf'))
         self.assertNotIn(
             'multiplicative nlo produced no density weight lines',
             driver_source)
@@ -418,6 +426,11 @@ class TestMadEventCmd(unittest.TestCase):
                 self.extra_cnt_me_list = [object()] if extra else []
                 self.ewsudakov = ewsudakov
                 self.splitting_types = splitting_types
+                self.spin_density_plan = None
+
+            def get_virt_matrix_elements(self):
+                return ([self.virt_matrix_element] if
+                        self.virt_matrix_element is not None else [])
 
             def get_fks_info_list(self):
                 return [{'fks_info': {
@@ -426,6 +439,11 @@ class TestMadEventCmd(unittest.TestCase):
         exporter = object.__new__(export_fks.ProcessExporterFortranFKS)
         exporter.opt = {'fks_template': 'fNLO'}
         exporter.validate_fnlo_matrix_element(FakeMatrixElement())
+
+        decayed = FakeMatrixElement()
+        decayed.decay_metadata = {}
+        with self.assertRaisesRegex(Exception, 'density-matrix component plan'):
+            exporter.validate_fnlo_matrix_element(decayed)
 
         with self.assertRaisesRegex(Exception, 'one maximally QCD-like Born'):
             exporter.validate_fnlo_matrix_element(FakeMatrixElement(
@@ -933,8 +951,9 @@ class TestMadEventCmd(unittest.TestCase):
                          nlo_decay_kinematics)
         self.assertIn('factorized_block_kinematics',
                       nlo_decay_kinematics)
-        self.assertNotIn('use decay_chain_kinematics',
-                         nlo_decay_kinematics)
+        self.assertIn('use decay_chain_kinematics, only: '
+                      'generate_canonical_decay_node_rest',
+                      nlo_decay_kinematics)
         self.assertNotIn('local_event_cache', nlo_decay_kinematics)
         with open(pjoin(subprocess_dir,
                         'decay_chain_kinematics.f90')) as stream:

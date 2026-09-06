@@ -344,6 +344,16 @@ contains
       end select
       if (ios /= 0) call fail_parameters('malformed decay-card record')
     end do
+    ! Keep the scale and width lookups on the same species domain. This is
+    ! also required before indexed options and width variations are resolved.
+    do scale_index = 1, size(scale_pdgs)
+      if (find_pdg(scale_pdgs(scale_index), width_pdgs) == 0) &
+           call fail_parameters('a decay scale has no physical width')
+    end do
+    do width_index = 1, number_of_width_species
+      if (find_pdg(width_pdgs(width_index), scale_pdgs) == 0) &
+           call fail_parameters('a physical width has no renormalisation scale')
+    end do
     call read_indexed_options(unit_number)
     close(unit_number)
     if (nlo_combination_value == nlo_decay_multiplicative .and. &

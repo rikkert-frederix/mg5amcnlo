@@ -92,8 +92,8 @@ contains
       end select
       if (ios /= 0) call fail_bundle('malformed contribution header')
     end do
-    if (metadata_format /= 2 .and. metadata_format /= 3) then
-      call fail_bundle('FORMAT 2 or FORMAT 3 is required')
+    if (metadata_format /= 3) then
+      call fail_bundle('FORMAT 3 is required')
     end if
     if (contribution_count < 2 .or. contribution_count > fks_configs) then
       call fail_bundle('invalid contribution count')
@@ -142,16 +142,9 @@ contains
       case ('FORMAT', 'COUNT', 'VIRTUAL_GRIDS')
         continue
       case ('CONTRIBUTION')
-        occurrence = 0
-        corrected_node = 0
-        if (metadata_format == 3) then
-          read(line, *, iostat=ios) keyword, contribution, kind, first, &
-               last, representative, has_virtual, parent, occurrence, &
-               corrected_node
-        else
-          read(line, *, iostat=ios) keyword, contribution, kind, first, &
-               last, representative, has_virtual, parent
-        end if
+        read(line, *, iostat=ios) keyword, contribution, kind, first, &
+             last, representative, has_virtual, parent, occurrence, &
+             corrected_node
         if (ios /= 0) call fail_bundle('malformed CONTRIBUTION record')
         call check_contribution(contribution)
         if (contribution_kind_values(contribution) /= 0) then
@@ -240,8 +233,7 @@ contains
           contribution_parent_values(contribution) == 0) then
         call fail_bundle('an NLO-decay member has no corrected parent')
       end if
-      if (metadata_format == 3 .and. &
-          contribution_kind_values(contribution) == &
+      if (contribution_kind_values(contribution) == &
           nlo_decay_contribution .and. &
           (contribution_occurrence_values(contribution) < 1 .or. &
            contribution_node_values(contribution) < 1)) then

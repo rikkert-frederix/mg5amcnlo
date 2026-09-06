@@ -148,15 +148,6 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
     def draw_virtual_diagrams(matrix_element):
         """Draw ordinary virtual diagrams when their base graph is drawable."""
 
-        if getattr(matrix_element, 'nlo_decay_crossed_current', False):
-            # The inverse-rooted production current uses a colour-safe base
-            # graph with synthetic internal leg labels.  It is authoritative
-            # for colour processing, but the legacy level-based drawer cannot
-            # lay out all multi-current topologies.
-            logger.info(
-                'Skipping diagram drawing for the crossed NLO-decay current')
-            return
-
         filename = 'loop_matrix.ps'
         plot = draw.MultiEpsDiagramDrawer(base_objects.DiagramList(
             matrix_element.get('base_amplitude').get('loop_diagrams')),
@@ -180,48 +171,6 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             matrix_element.get('processes')[0].nice_string(
                 print_weighted=False))
         plot.draw()
-
-    @staticmethod
-    def repair_nlo_decay_virtual_links(virtual_root,
-                                       virtual_matrix_element):
-        """Adjust MadLoop links for the extra prototype directory level.
-
-        ``generate_virt_directory`` normally writes ``P*/V*``.  The decay
-        loop is intentionally isolated as ``P*/NLODecayVirtual/V*``; links
-        reaching the subprocess and output roots therefore need one extra
-        ``..``.  Links internal to ``NLODecayVirtual`` remain untouched.
-        """
-
-        virtual_name = 'V%s' % virtual_matrix_element.get(
-            'processes')[0].shell_string()
-        virtual_path = os.path.join(virtual_root, virtual_name)
-        subprocess_files = [
-            'MadLoopCommons.f', 'MadLoopParamReader.f',
-            'MadLoopParams.inc', 'cts_mpc.h', 'cts_mprec.h',
-            'coupl.inc', 'mp_coupl.inc', 'mp_coupl_same_name.inc']
-        replacements = dict(
-            (name, os.path.join('..', '..', '..', name))
-            for name in subprocess_files)
-        replacements.update({
-            'makefile': os.path.join('..', '..', '..', 'makefile_loop'),
-            'mpmodule.mod': os.path.join(
-                '..', '..', '..', '..', 'lib', 'mpmodule.mod'),
-            'coef_specs.inc': os.path.join(
-                '..', '..', '..', '..', 'Source', 'DHELAS',
-                'coef_specs.inc')})
-
-        for name, target in replacements.items():
-            link_path = os.path.join(virtual_path, name)
-            if os.path.lexists(link_path):
-                os.remove(link_path)
-            os.symlink(target, link_path)
-
-        resource_link = os.path.join(
-            virtual_root, 'MadLoop5_resources', 'MadLoopParams.dat')
-        if os.path.lexists(resource_link):
-            os.remove(resource_link)
-        os.symlink(os.path.join('..', '..', '..', 'MadLoopParams.dat'),
-                   resource_link)
 
     def validate_fnlo_matrix_element(self, matrix_element):
         """Validate the physics restrictions of the reduced fNLO output.
@@ -256,17 +205,12 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                     'squared-order combinations' %
                     (len(real_amplitude_orders), len(real_squared_orders)))
 
-        virtual_matrix_elements = list(getattr(
-            matrix_element, 'bundle_virtual_matrix_elements', []))
-        if not virtual_matrix_elements:
-            virtual_matrix_element = getattr(
-                matrix_element, 'nlo_decay_virtual_matrix_element', None)
-            if virtual_matrix_element is None:
-                virtual_matrix_element = getattr(
-                    matrix_element, 'virt_matrix_element', None)
-            if virtual_matrix_element:
-                virtual_matrix_elements.append(virtual_matrix_element)
-        for virtual_matrix_element in virtual_matrix_elements:
+        if ((getattr(matrix_element, 'decay_metadata', None) is not None or
+             getattr(matrix_element, 'nlo_decay_metadata', None) is not None) and
+                matrix_element.spin_density_plan is None):
+            raise fks_common.FKSProcessError(
+                'fNLO decay chains require a density-matrix component plan')
+        for virtual_matrix_element in matrix_element.get_virt_matrix_elements():
             virtual_squared_orders, _ = \
                 virtual_matrix_element.get_split_orders_mapping()
             if len(virtual_squared_orders) != 1:
@@ -984,7 +928,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         decay_enabled = (
             self.opt.get('fks_template') == 'fNLO' and
             getattr(matrix_element, 'decay_metadata', None) is not None)
-        nlo_decay_prototype = (
+        nlo_decay_enabled = (
             self.opt.get('fks_template') == 'fNLO' and
             getattr(matrix_element, 'nlo_decay_metadata', None) is not None)
         contribution_bundle = (
@@ -993,8 +937,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         if decay_enabled:
             fks_decay.write_decay_chain_info(
                 os.getcwd(), matrix_element.decay_metadata)
-        if nlo_decay_prototype:
-            fks_decay.write_nlo_decay_prototype_files(
+        if nlo_decay_enabled:
+            fks_decay.write_nlo_decay_info(
                 os.getcwd(), matrix_element.nlo_decay_metadata)
         if contribution_bundle:
             fks_decay.write_contribution_bundle_files(
@@ -1016,8 +960,6 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             filename = 'OLE_order.lh'
             self.write_lh_order(filename, [matrix_element.born_me.get('processes')[0]], OLP)
         
-        nlo_decay_virtual = getattr(
-            matrix_element, 'nlo_decay_virtual_matrix_element', None)
         density_virtuals = (
             matrix_element.spin_density_plan.get('virtual_variants', [])
             if getattr(matrix_element, 'spin_density_plan', None) is not None
@@ -1041,9 +983,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 matrix_element, variant, fortran_model)
         elif contribution_bundle:
             archives = []
-            for virtual in matrix_element.bundle_virtual_matrix_elements:
-                contribution = virtual.fnlo_contribution_id
-                self._fnlo_virtual_prefix = 'FNLOC%d_' % contribution
+            for variant in density_virtuals:
+                virtual = variant['matrix_element']
+                contribution = variant['contribution_id']
+                self._fnlo_virtual_prefix = variant['loop_prefix']
                 self._fnlo_spin_density_override = True
                 self._fnlo_virtual_directory_name = \
                     'VContribution%d' % contribution
@@ -1065,22 +1008,6 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 with open('virtual_libraries.inc', 'w') as stream:
                     stream.write('FNLO_VIRTUAL_LIBRARIES = %s\n' %
                                  ' '.join(archives))
-        elif nlo_decay_virtual:
-            if nlo_decay_prototype:
-                # The decay virtual is a valid standalone MadLoop object, but
-                # its spin-correlated contraction with the LO production
-                # current is deliberately deferred.  Export it as an
-                # inspectable building block without registering it as the
-                # standard fNLO virtual subprocess.
-                virtual_root = os.path.join(
-                    path, borndir, 'NLODecayVirtual')
-                if not os.path.isdir(virtual_root):
-                    os.mkdir(virtual_root)
-                calls += self.generate_virt_directory(
-                    nlo_decay_virtual,
-                    fortran_model, virtual_root)
-                self.repair_nlo_decay_virtual_links(
-                    virtual_root, nlo_decay_virtual)
         elif matrix_element.virt_matrix_element:
             calls += self.generate_virt_directory(
                 matrix_element.virt_matrix_element,
@@ -1481,15 +1408,13 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         for file in linkfiles:
             ln('../' + file , '.')
         os.system("ln -s ../../Cards/param_card.dat .")
-        if decay_enabled or nlo_decay_prototype or contribution_bundle:
+        if decay_enabled or nlo_decay_enabled or contribution_bundle:
             os.system("ln -s ../../Cards/decay_card.dat .")
 
         #copy the makefile 
         os.system("ln -s ../makefile_fks_dir ./makefile")
         if self.opt.get('fks_template') == 'fNLO':
-            if (matrix_element.virt_matrix_element or density_virtuals or
-                    (contribution_bundle and
-                     matrix_element.bundle_virtual_matrix_elements)):
+            if matrix_element.get_virt_matrix_elements():
                 ln('../BinothLHA.f90', '.')
                 ln('../BinothLHA_bridge.f', '.')
             elif OLP != 'MadLoop':
@@ -1521,15 +1446,13 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
 
         return calls, amp_split_orders
 
-    def write_virtual_contribution_chooser(
-            self, writer, contributions, density_matrix=False):
-        """Dispatch the legacy unprefixed MadLoop ABI to one bundle member."""
+    def write_virtual_contribution_chooser(self, writer, contributions):
+        """Dispatch the unprefixed MadLoop ABI to a bundle density provider."""
 
         virtual_ids = set(
             contribution['id'] for contribution in contributions
             if contribution['has_virtual'])
         matrix_cases = []
-        helicity_cases = []
         stability_cases = []
         collier_uv_cases = []
         collier_ir_cases = []
@@ -1537,56 +1460,11 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         for contribution in contributions:
             identifier = contribution['id']
             if identifier in virtual_ids:
-                if density_matrix:
-                    matrix_cases.append(
-                        '      CASE (%d)\n'
-                        '        CALL SDM_VIRTUAL_CONTRIBUTION_%d(0, ANS, '
-                        'PREC_ASKED, PREC_FOUND, RET_CODE)' %
-                        (identifier, identifier))
-                    helicity_cases.append(
-                        '      CASE (%d)\n'
-                        '        CALL SDM_VIRTUAL_CONTRIBUTION_%d(0, ANS, '
-                        'PREC_ASKED, PREC_FOUND, RET_CODE)' %
-                        (identifier, identifier))
-                elif contribution['optimized_virtual']:
-                    matrix_cases.append(
-                        '      CASE (%d)\n'
-                        '        CALL FNLOC%d_SLOOPMATRIX_THRES(P, ANS, '
-                        'PREC_ASKED, PREC_FOUND, RET_CODE)' %
-                        (identifier, identifier))
-                    helicity_cases.append(
-                        '      CASE (%d)\n'
-                        '        CALL FNLOC%d_SLOOPMATRIXHEL_THRES(P, HEL, '
-                        'ANS, PREC_ASKED, PREC_FOUND, RET_CODE)' %
-                        (identifier, identifier))
-                else:
-                    # The traditional (non-optimized) MadLoop writer does
-                    # not expose split-order slots: its sole result lives at
-                    # index zero.  BinothLHA consumes the first split-order
-                    # slot, so mirror that total into slot one at this ABI
-                    # boundary.
-                    matrix_cases.append(
-                        '      CASE (%d)\n'
-                        '        CALL FNLOC%d_SLOOPMATRIX_THRES(P, RAW_ANS, '
-                        'PREC_ASKED, RAW_PREC_FOUND, RET_CODE)\n'
-                        '        ANS = 0D0\n'
-                        '        PREC_FOUND = 0D0\n'
-                        '        ANS(0:3,0) = RAW_ANS(0:3,0)\n'
-                        '        ANS(0:3,1) = RAW_ANS(0:3,0)\n'
-                        '        PREC_FOUND(0) = RAW_PREC_FOUND(0)\n'
-                        '        PREC_FOUND(1) = RAW_PREC_FOUND(0)' %
-                        (identifier, identifier))
-                    helicity_cases.append(
-                        '      CASE (%d)\n'
-                        '        CALL FNLOC%d_SLOOPMATRIXHEL_THRES(P, HEL, '
-                        'RAW_ANS, PREC_ASKED, RAW_PREC_FOUND, RET_CODE)\n'
-                        '        ANS = 0D0\n'
-                        '        PREC_FOUND = 0D0\n'
-                        '        ANS(0:3,0) = RAW_ANS(0:3,0)\n'
-                        '        ANS(0:3,1) = RAW_ANS(0:3,0)\n'
-                        '        PREC_FOUND(0) = RAW_PREC_FOUND(0)\n'
-                        '        PREC_FOUND(1) = RAW_PREC_FOUND(0)' %
-                        (identifier, identifier))
+                matrix_cases.append(
+                    '      CASE (%d)\n'
+                    '        CALL SDM_VIRTUAL_CONTRIBUTION_%d(0, ANS, '
+                    'PREC_ASKED, PREC_FOUND, RET_CODE)' %
+                    (identifier, identifier))
                 stability_cases.append(
                     '      CASE (%d)\n'
                     '        CALL FNLOC%d_FORCE_STABILITY_CHECK(ONOFF)' %
@@ -1635,11 +1513,6 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                     '        ANS = 0D0\n'
                     '        PREC_FOUND = 0D0\n'
                     '        RET_CODE = 0' % identifier)
-                helicity_cases.append(
-                    '      CASE (%d)\n'
-                    '        ANS = 0D0\n'
-                    '        PREC_FOUND = 0D0\n'
-                    '        RET_CODE = 0' % identifier)
                 stability_cases.append(
                     '      CASE (%d)\n'
                     '        CONTINUE' % identifier)
@@ -1660,7 +1533,6 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
       INCLUDE 'nexternal.inc'
       DOUBLE PRECISION P(0:3,NEXTERNAL-1), ANS(0:3,0:1)
       DOUBLE PRECISION PREC_ASKED, PREC_FOUND(0:1)
-      DOUBLE PRECISION RAW_ANS(0:3,0:0), RAW_PREC_FOUND(0:0)
       INTEGER RET_CODE
       SELECT CASE (ACTIVE_NLO_CONTRIBUTION())
 %s
@@ -1677,7 +1549,6 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
       INCLUDE 'nexternal.inc'
       DOUBLE PRECISION P(0:3,NEXTERNAL-1), ANS(0:3,0:1)
       DOUBLE PRECISION PREC_ASKED, PREC_FOUND(0:1)
-      DOUBLE PRECISION RAW_ANS(0:3,0:0), RAW_PREC_FOUND(0:0)
       INTEGER HEL(NEXTERNAL-1), RET_CODE
       SELECT CASE (ACTIVE_NLO_CONTRIBUTION())
 %s
@@ -1734,30 +1605,16 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         STOP 1
       END SELECT
       END
-""" % ('\n'.join(matrix_cases), '\n'.join(helicity_cases),
+""" % ('\n'.join(matrix_cases), '\n'.join(matrix_cases),
        '\n'.join(stability_cases),
        '\n'.join(collier_uv_cases), '\n'.join(collier_ir_cases),
        '\n'.join(order_cases))
-        if density_matrix:
-            direct_matrix_cases = []
-            for contribution in contributions:
-                identifier = contribution['id']
-                if identifier in virtual_ids:
-                    direct_matrix_cases.append(
-                        '      CASE (%d)\n'
-                        '        CALL SDM_VIRTUAL_CONTRIBUTION_%d('
-                        'EVENT_SLOT, ANS, PREC_ASKED, PREC_FOUND, '
-                        'RET_CODE)' % (identifier, identifier))
-                else:
-                    direct_matrix_cases.append(
-                        '      CASE (%d)\n'
-                        '        ANS = 0D0\n'
-                        '        PREC_FOUND = 0D0\n'
-                        '        RET_CODE = 0' % identifier)
-            direct_order_cases = [case.replace(
-                'GETORDPOWFROMINDEX_ML5',
-                'SDM_GETORDPOWFROMINDEX_ML5') for case in order_cases]
-            text += """
+        direct_matrix_cases = [case.replace(
+            '(0, ANS,', '(EVENT_SLOT, ANS,') for case in matrix_cases]
+        direct_order_cases = [case.replace(
+            'GETORDPOWFROMINDEX_ML5',
+            'SDM_GETORDPOWFROMINDEX_ML5') for case in order_cases]
+        text += """
 
       SUBROUTINE SDM_SLOOPMATRIX_THRES(CONTRIBUTION,EVENT_SLOT,
      $ ANS,PREC_ASKED,PREC_FOUND,RET_CODE)
@@ -3281,57 +3138,6 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             '     $ SDM_CONTRIBUTION_POSITION(CONTRIBUTION)',
             'END'])
         real_variants = plan.get('real_variants', [])
-        virtual_variants = plan.get('virtual_variants', [])
-        virtual_variants_with_contribution = [
-            (variant, variant.get('contribution_id', index))
-            for index, variant in enumerate(virtual_variants, 1)]
-        source.extend([
-            '',
-            'SUBROUTINE SDM_VIRTUAL_BLOCK_DENSITY(CONTRIBUTION,',
-            '     $ EVENT_SLOT,PREC_ASKED,OPEN_SIZE,RHO,PRECISION,',
-            '     $ RET_CODE)',
-            'IMPLICIT NONE',
-            "INCLUDE 'spin_density_branch_dimensions.inc'",
-            'INTEGER CONTRIBUTION,EVENT_SLOT,OPEN_SIZE,RET_CODE',
-            'REAL*8 PREC_ASKED,PRECISION',
-            'COMPLEX*16 RHO(3,SDM_MAX_OPEN_SIZE,SDM_MAX_OPEN_SIZE)',
-            'SELECT CASE (CONTRIBUTION)'])
-        for variant, contribution in virtual_variants_with_contribution:
-            source.extend([
-                'CASE (%d)' % contribution,
-                '  CALL SDM_VIRTUAL_BLOCK_DENSITY_%d(EVENT_SLOT,' %
-                contribution,
-                '     $ PREC_ASKED,OPEN_SIZE,RHO,PRECISION,RET_CODE)'])
-        source.extend([
-            'CASE DEFAULT',
-            "  WRITE(*,*) 'Invalid B-branch virtual contribution',",
-            '     $ CONTRIBUTION',
-            '  STOP 1',
-            'END SELECT',
-            'END'])
-        for variant, contribution in virtual_variants_with_contribution:
-            nexternal, _ = variant['matrix_element'].get_nexternal_ninitial()
-            open_size = variant['open_size']
-            source.extend([
-                '',
-                'SUBROUTINE SDM_VIRTUAL_BLOCK_DENSITY_%d(EVENT_SLOT,' %
-                contribution,
-                '     $ PREC_ASKED,OPEN_SIZE,RHO,PRECISION,RET_CODE)',
-                'IMPLICIT NONE',
-                "INCLUDE 'spin_density_branch_dimensions.inc'",
-                'INTEGER EVENT_SLOT,OPEN_SIZE,RET_CODE',
-                'REAL*8 P(0:3,%d),PREC_ASKED,PRECISION' % nexternal,
-                'COMPLEX*16 LOCAL_RHO(3,%d,%d)' % (
-                    open_size, open_size),
-                'COMPLEX*16 RHO(3,SDM_MAX_OPEN_SIZE,SDM_MAX_OPEN_SIZE)',
-                'CALL GET_FACTORIZED_BLOCK_MOMENTA(EVENT_SLOT,%d,%d,P)' % (
-                    variant['active_component'], nexternal),
-                'CALL %s(P,LOCAL_RHO,PREC_ASKED,PRECISION,RET_CODE)' %
-                variant['fortran_name'],
-                'RHO=(0D0,0D0)',
-                'RHO(:,1:%d,1:%d)=LOCAL_RHO' % (open_size, open_size),
-                'OPEN_SIZE=%d' % open_size,
-                'END'])
 
         # A multiplicative leaf combines block layouts which originate from
         # different FKS contributions.  Keep the process-specific topology
@@ -3769,15 +3575,6 @@ C     Legacy processes obtain their channel weights from SBORN itself.
       SDM_CONTRIBUTION_COMPONENT_POSITION=1
       END
 
-      SUBROUTINE SDM_VIRTUAL_BLOCK_DENSITY(I,J,A,K,RHO,B,L)
-      IMPLICIT NONE
-      INTEGER I,J,K,L
-      REAL*8 A,B
-      COMPLEX*16 RHO(*)
-      WRITE(*,*) 'Block density called for a legacy process'
-      STOP 1
-      END
-
       LOGICAL FUNCTION SDM_VIRTUAL_USES_ANALYTIC_PROVIDER(I)
       IMPLICIT NONE
       INTEGER I
@@ -3801,21 +3598,12 @@ C     Legacy processes obtain their channel weights from SBORN itself.
 
 
     @staticmethod
-    def _spin_density_order_function(matrix_element, function_name):
+    def _spin_density_order_function(matrix_element, function_name, order=None):
         """Return the one-order lookup required by reduced fNLO wrappers."""
 
-        squared_orders, _ = matrix_element.get_split_orders_mapping()
-        if len(squared_orders) != 1:
-            raise fks_common.FKSProcessError(
-                'A density-matrix component requires one squared order')
-        raw_order = squared_orders[0]
-        # Tree mappings expose the squared order directly.  Loop mappings
-        # additionally pair it with the contributing loop-amplitude orders.
-        # The reduced wrapper only needs the former in both cases.
-        if (raw_order and isinstance(raw_order[0], tuple)):
-            order = tuple(raw_order[0])
-        else:
-            order = tuple(raw_order)
+        if order is None:
+            order = fks_helas_objects.single_squared_order(
+                matrix_element, 'A density-matrix component')
         return '\n'.join([
             'INTEGER FUNCTION %s(IORDER,INDX)' % function_name,
             'IMPLICIT NONE',
@@ -4262,6 +4050,10 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
         density_exporter.write_virtual_provider(
             writers.FortranWriter(variant['filename']), plan, variant)
         loop_matrix_element = variant['matrix_element']
+        virtual_orders = fks_helas_objects.global_virtual_orders(plan, variant)
+        if len(virtual_orders) != 1:
+            raise fks_common.FKSProcessError(
+                'A contracted virtual density requires one squared order')
         prefix = variant['loop_prefix'].upper()
         collier_uv = ('CALL %sCOLLIER_COMPUTE_UV_POLES(ONOFF)' % prefix
                       if loop_matrix_element.optimized_output else
@@ -4364,7 +4156,8 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
             'END',
             '',
             self._spin_density_order_function(
-                loop_matrix_element, 'GETORDPOWFROMINDEX_ML5'),
+                loop_matrix_element, 'GETORDPOWFROMINDEX_ML5',
+                order=virtual_orders[0]),
             '',
             'INTEGER FUNCTION SDM_GETORDPOWFROMINDEX_ML5(',
             '     $ CONTRIBUTION,IORDER,INDX)',
@@ -4452,7 +4245,7 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
                 '\n'.join(source))
         self.write_virtual_contribution_chooser(
             writers.FortranWriter('virtual_contribution_chooser.f'),
-            fksborn.bundle_contributions, density_matrix=True)
+            fksborn.bundle_contributions)
 
 
     def write_spin_density_color(self, writer, fksborn, ilink,

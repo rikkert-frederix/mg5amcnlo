@@ -1343,34 +1343,6 @@ class SpinDensityExporter(object):
                 result[visible[0] - 1] = local_leg
         return result
 
-    def _contraction_layout(self, plan):
-        """Return the common resonance-state layout for a contraction."""
-
-        topology = plan['topology']
-        dimensions = dict(
-            (node['id'], len(self._node_helicities(plan, node['id'])))
-            for node in topology['nodes'])
-        state_count = _product(dimensions.values())
-        states = dict((node_id, []) for node_id in dimensions)
-        for state in range(state_count):
-            remainder = state
-            for node_id in sorted(dimensions):
-                states[node_id].append(
-                    remainder % dimensions[node_id] + 1)
-                remainder //= dimensions[node_id]
-        return dimensions, state_count, states
-
-    @staticmethod
-    def _state_index(provider, state_name):
-        terms = []
-        stride = 1
-        for node_id, dimension in zip(
-                provider['open_nodes'], provider['open_dimensions']):
-            terms.append('(SDM_NODE_STATE(%d,%s)-1)*%d' %
-                         (node_id, state_name, stride))
-            stride *= dimension
-        return '1' + ''.join('+%s' % term for term in terms)
-
     @staticmethod
     def _block_position_map(providers):
         return dict((component_id, position)

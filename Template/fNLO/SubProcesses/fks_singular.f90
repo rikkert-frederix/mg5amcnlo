@@ -362,34 +362,27 @@ contains
     double precision, intent(out) :: weight
     double precision :: legacy_momenta(0:3, nexternal - 1)
 
-    legacy_momenta = 0d0
-    if (uses_factorized_kernel_state()) then
-      if (event_slot /= soft_counterevent) then
-        call fail_fks_singular_state( &
-             'a factorized Born matrix requested a non-Born event slot')
-      end if
-    else
+    if (.not. uses_factorized_kernel_state()) then
       legacy_momenta = p_born
-    end if
-    if (uses_factorized_kernel_state()) then
-      if (has_nlo_contribution_bundle() .and. &
-          spin_density_fks_collection_enabled()) &
-        call reset_spin_density_born_matrix()
-      call sborn_factorized( &
-           active_nlo_contribution(), event_slot, weight)
-      if (multi_channel) then
-        call sborn_factorized_channel_weights( &
-             p_born)
-      end if
-      if (has_nlo_contribution_bundle() .and. &
-          spin_density_fks_collection_enabled()) then
-        if (.not. spin_density_born_matrix_available()) then
-          call fail_fks_singular_state( &
-               'the generated Born did not publish its block density')
-        end if
-      end if
-    else
       call sborn(legacy_momenta, weight)
+      return
+    end if
+    if (event_slot /= soft_counterevent) then
+      call fail_fks_singular_state( &
+           'a factorized Born matrix requested a non-Born event slot')
+    end if
+    if (has_nlo_contribution_bundle() .and. &
+        spin_density_fks_collection_enabled()) &
+      call reset_spin_density_born_matrix()
+    call sborn_factorized( &
+         active_nlo_contribution(), event_slot, weight)
+    if (multi_channel) call sborn_factorized_channel_weights(p_born)
+    if (has_nlo_contribution_bundle() .and. &
+        spin_density_fks_collection_enabled()) then
+      if (.not. spin_density_born_matrix_available()) then
+        call fail_fks_singular_state( &
+             'the generated Born did not publish its block density')
+      end if
     end if
   end subroutine evaluate_born_matrix
 
@@ -399,30 +392,26 @@ contains
     double precision, intent(out) :: weight
     double precision :: legacy_momenta(0:3, nexternal - 1)
 
-    legacy_momenta = 0d0
-    if (uses_factorized_kernel_state()) then
-      if (event_slot /= soft_counterevent) then
-        call fail_fks_singular_state( &
-             'a factorized color matrix requested a non-Born event slot')
-      end if
-    else
+    if (.not. uses_factorized_kernel_state()) then
       legacy_momenta = p_born
-    end if
-    if (uses_factorized_kernel_state()) then
-      if (has_nlo_contribution_bundle() .and. &
-          spin_density_fks_collection_enabled()) &
-        call reset_spin_density_color_matrix()
-      call sborn_sf_factorized(active_nlo_contribution(), event_slot, &
-                               first, second, weight)
-      if (has_nlo_contribution_bundle() .and. &
-          spin_density_fks_collection_enabled()) then
-        if (.not. spin_density_color_matrix_available()) then
-          call fail_fks_singular_state( &
-               'the generated color Born did not publish its block density')
-        end if
-      end if
-    else
       call sborn_sf(legacy_momenta, first, second, weight)
+      return
+    end if
+    if (event_slot /= soft_counterevent) then
+      call fail_fks_singular_state( &
+           'a factorized color matrix requested a non-Born event slot')
+    end if
+    if (has_nlo_contribution_bundle() .and. &
+        spin_density_fks_collection_enabled()) &
+      call reset_spin_density_color_matrix()
+    call sborn_sf_factorized(active_nlo_contribution(), event_slot, &
+                             first, second, weight)
+    if (has_nlo_contribution_bundle() .and. &
+        spin_density_fks_collection_enabled()) then
+      if (.not. spin_density_color_matrix_available()) then
+        call fail_fks_singular_state( &
+             'the generated color Born did not publish its block density')
+      end if
     end if
   end subroutine evaluate_born_color_matrix
 
@@ -432,29 +421,25 @@ contains
     double precision, intent(out) :: weight
     double precision :: legacy_momenta(0:3, nexternal)
 
-    legacy_momenta = 0d0
-    if (uses_factorized_kernel_state()) then
-      if (event_slot /= real_event) then
-        call fail_fks_singular_state( &
-             'a factorized real matrix requested a counterevent slot')
-      end if
-    else
+    if (.not. uses_factorized_kernel_state()) then
       legacy_momenta = stored_event_momenta(:, :, event_slot)
-    end if
-    if (uses_factorized_kernel_state()) then
-      if (has_nlo_contribution_bundle() .and. &
-          spin_density_fks_collection_enabled()) &
-        call reset_spin_density_real_matrix()
-      call smatrix_real_factorized(nfksprocess, event_slot, weight)
-      if (has_nlo_contribution_bundle() .and. &
-          spin_density_fks_collection_enabled()) then
-        if (.not. spin_density_real_matrix_available()) then
-          call fail_fks_singular_state( &
-               'the generated real did not publish its block density')
-        end if
-      end if
-    else
       call smatrix_real(legacy_momenta, weight)
+      return
+    end if
+    if (event_slot /= real_event) then
+      call fail_fks_singular_state( &
+           'a factorized real matrix requested a counterevent slot')
+    end if
+    if (has_nlo_contribution_bundle() .and. &
+        spin_density_fks_collection_enabled()) &
+      call reset_spin_density_real_matrix()
+    call smatrix_real_factorized(nfksprocess, event_slot, weight)
+    if (has_nlo_contribution_bundle() .and. &
+        spin_density_fks_collection_enabled()) then
+      if (.not. spin_density_real_matrix_available()) then
+        call fail_fks_singular_state( &
+             'the generated real did not publish its block density')
+      end if
     end if
   end subroutine evaluate_real_matrix
 
@@ -465,22 +450,18 @@ contains
     double precision, intent(out) :: virtual_weight
     double precision :: legacy_momenta(0:3, nexternal - 1)
 
-    legacy_momenta = 0d0
-    if (uses_factorized_kernel_state()) then
-      if (event_slot /= soft_counterevent) then
-        call fail_fks_singular_state( &
-             'a factorized virtual matrix requested a non-Born event slot')
-      end if
-    else
+    if (.not. uses_factorized_kernel_state()) then
       legacy_momenta = p_born
-    end if
-    if (uses_factorized_kernel_state()) then
-      call BinothLHA_factorized( &
-           active_nlo_contribution(), event_slot, born_weight, &
-           virtual_weight)
-    else
       call BinothLHA(legacy_momenta, born_weight, virtual_weight)
+      return
     end if
+    if (event_slot /= soft_counterevent) then
+      call fail_fks_singular_state( &
+           'a factorized virtual matrix requested a non-Born event slot')
+    end if
+    call BinothLHA_factorized( &
+         active_nlo_contribution(), event_slot, born_weight, &
+         virtual_weight)
   end subroutine evaluate_virtual_matrix
 
 

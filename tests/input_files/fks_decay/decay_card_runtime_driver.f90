@@ -7,8 +7,19 @@ program decay_card_runtime_driver
   implicit none
   character(len=32) :: mode
   double precision :: p(0:3, 3), scales(8)
+  double precision :: visible(0:3, 8), core(0:3, 8)
   integer :: factors(1)
   call get_command_argument(1, mode)
+  if (mode == 'no_decay') then
+    is_bundle = .false.
+    active = 0
+    visible = 1d0
+    call select_production_ren_scale_momenta(visible, 1, core)
+    call decay_event_scales(0, scales)
+    write(*, '(a,3(1x,l1))') 'NO_DECAY', all(core == visible), &
+         all(scales == 0d0), .not. multiplicative_nlo_enabled()
+    stop
+  end if
   if (mode == 'qcd_born') born_qcd = 1
   if (mode == 'standalone') then
     is_bundle = .false.

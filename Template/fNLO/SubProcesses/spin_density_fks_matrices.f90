@@ -29,7 +29,6 @@ module spin_density_fks_matrices
   public :: reset_spin_density_fks_matrices
   public :: set_spin_density_fks_collection
   public :: spin_density_fks_collection_enabled
-  public :: load_spin_density_virtual_matrix
   public :: set_spin_density_born_matrix
   public :: set_spin_density_real_matrix
   public :: set_spin_density_color_matrix
@@ -48,8 +47,6 @@ module spin_density_fks_matrices
   public :: spin_density_color_matrix_available
   public :: spin_density_virtual_matrix_available
   public :: get_spin_density_born_matrix
-  public :: get_spin_density_real_matrix
-  public :: get_spin_density_color_matrix
   public :: get_spin_density_virtual_matrix
   public :: reset_spin_density_reduced_matrix
   public :: set_spin_density_reduced_from_real
@@ -209,26 +206,6 @@ contains
     color_density = (0d0, 0d0)
     color_matrix_is_available = .false.
   end subroutine reset_spin_density_color_matrix
-
-
-  subroutine load_spin_density_virtual_matrix( &
-       contribution, event_slot, precision_asked, precision, return_code)
-    integer, intent(in) :: contribution, event_slot
-    double precision, intent(in) :: precision_asked
-    double precision, intent(out) :: precision
-    integer, intent(out) :: return_code
-
-    call ensure_spin_density_fks_matrices()
-    virtual_density = (0d0, 0d0)
-    virtual_matrix_is_available = .false.
-    call sdm_virtual_block_density( &
-         contribution, event_slot, precision_asked, active_open_size, &
-         virtual_density, precision, return_code)
-    active_component_position = &
-         sdm_contribution_component_position(contribution)
-    call validate_loaded_density('virtual')
-    virtual_matrix_is_available = .true.
-  end subroutine load_spin_density_virtual_matrix
 
 
   subroutine set_spin_density_virtual_matrix(contribution, density)
@@ -537,27 +514,6 @@ contains
     complex(kind=8), intent(out) :: density(:, :, :)
     call copy_ranked_density(born_density, density, 2)
   end subroutine get_spin_density_born_matrix
-
-
-  subroutine get_spin_density_real_matrix(density)
-    complex(kind=8), intent(out) :: density(:, :, :)
-    call copy_ranked_density(real_density, density, 2)
-  end subroutine get_spin_density_real_matrix
-
-
-  subroutine get_spin_density_color_matrix(density)
-    complex(kind=8), intent(out) :: density(:, :)
-
-    call ensure_spin_density_fks_matrices()
-    if (active_open_size < 1) then
-      call fail_spin_density_fks('no color density is loaded')
-    end if
-    if (size(density, 1) /= active_open_size .or. &
-        size(density, 2) /= active_open_size) then
-      call fail_spin_density_fks('a color-density target has the wrong shape')
-    end if
-    density = color_density(1:active_open_size, 1:active_open_size)
-  end subroutine get_spin_density_color_matrix
 
 
   subroutine get_spin_density_virtual_matrix(density)

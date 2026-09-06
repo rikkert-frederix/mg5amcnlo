@@ -421,6 +421,14 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIs(
                 matrix_element.spin_density_plan['virtual_variants'][0]
                 ['matrix_element'], matrix_element.virt_matrix_element)
+            self.assertEqual(matrix_element.get_virt_matrix_elements(),
+                             [matrix_element.virt_matrix_element])
+            self.assertEqual(helas.get_virt_matrix_elements(),
+                             [matrix_element.virt_matrix_element])
+            self.assertEqual(fks_helas_objects.global_virtual_orders(
+                matrix_element.spin_density_plan,
+                matrix_element.spin_density_plan['virtual_variants'][0]),
+                [(6, 8)])
             self.assertEqual(
                 [leg.get('id') for leg in matrix_element.
                  virt_matrix_element['processes'][0].get('legs')],
@@ -811,8 +819,7 @@ class TestFKSDecayChains(unittest.TestCase):
                 matrix_element.get('processes'))
             self.assertEqual(real_initials, born_initials)
             self.assertIsNone(matrix_element.virt_matrix_element)
-            decay_virtual = \
-                matrix_element.nlo_decay_virtual_matrix_element
+            decay_virtual = matrix_element.get_virt_matrix_elements()[0]
             self.assertIsNotNone(decay_virtual)
             self.assertEqual(
                 frozenset(tuple(process.get_initial_ids())
@@ -876,7 +883,7 @@ class TestFKSDecayChains(unittest.TestCase):
         helas = fks_helas_objects.FKSHelasMultiProcess(
             command._fks_multi_proc, loop_optimized=False)
         matrix_element = helas['matrix_elements'][0]
-        virtual = matrix_element.nlo_decay_virtual_matrix_element
+        virtual = matrix_element.get_virt_matrix_elements()[0]
         plan = matrix_element.spin_density_plan
 
         self.assertIsNone(matrix_element.virt_matrix_element)
@@ -901,6 +908,8 @@ class TestFKSDecayChains(unittest.TestCase):
         self.assertEqual(len(plan['virtual_variants']), 1)
         self.assertIs(plan['virtual_variants'][0]['matrix_element'], virtual)
         self.assertEqual(plan['virtual_variants'][0]['active_component'], 1)
+        self.assertEqual(fks_helas_objects.global_virtual_orders(
+            plan, plan['virtual_variants'][0]), [(6, 2)])
         self.assertEqual(plan['components'][0]['kind'], 'PRODUCTION')
         self.assertEqual(plan['components'][1]['kind'], 'DECAY')
 
@@ -911,7 +920,7 @@ class TestFKSDecayChains(unittest.TestCase):
         helas = fks_helas_objects.FKSHelasMultiProcess(
             command._fks_multi_proc, loop_optimized=True)
         matrix_element = helas['matrix_elements'][0]
-        virtual = matrix_element.nlo_decay_virtual_matrix_element
+        virtual = matrix_element.get_virt_matrix_elements()[0]
 
         self.assertTrue(virtual.optimized_output)
         self.assertEqual(virtual.get_nexternal_ninitial(), (3, 1))
@@ -933,7 +942,7 @@ class TestFKSDecayChains(unittest.TestCase):
                     command._fks_multi_proc,
                     loop_optimized=optimized)['matrix_elements'][0]
                 plan = matrix_element.spin_density_plan
-                virtual = matrix_element.nlo_decay_virtual_matrix_element
+                virtual = matrix_element.get_virt_matrix_elements()[0]
 
                 self.assertEqual(
                     matrix_element.nlo_decay_metadata[
@@ -986,6 +995,12 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertEqual(len(virtuals), 1)
             self.assertFalse(os.path.exists(os.path.join(
                 subprocess_dir, 'NLODecayVirtual')))
+            with open(os.path.join(
+                    subprocess_dir, 'spin_density_virtual_wrapper.f')) as stream:
+                wrapper_source = stream.read()
+            # The wrapper returns the fully contracted chain, not just the
+            # corrected top decay, whose local interference order is (2, 2).
+            self.assertIn('DATA VALUES /6,2/', wrapper_source)
 
             virtual_dir = virtuals[0]
             with open(os.path.join(virtual_dir, 'loop_matrix.f')) as stream:
@@ -1473,11 +1488,13 @@ class TestFKSDecayChains(unittest.TestCase):
                 matrix_element = fks_helas_objects.FKSHelasMultiProcess(
                     command._fks_multi_proc,
                     loop_optimized=False)['matrix_elements'][0]
-                virtual = matrix_element.nlo_decay_virtual_matrix_element
+                virtual = matrix_element.get_virt_matrix_elements()[0]
                 metadata = matrix_element.nlo_decay_metadata
                 plan = matrix_element.spin_density_plan
 
                 self.assertIsNotNone(virtual)
+                self.assertEqual(fks_helas_objects.global_virtual_orders(
+                    plan, plan['virtual_variants'][0]), [(6, 6)])
                 self.assertIsNone(matrix_element.virt_matrix_element)
                 self.assertTrue(virtual.get_loop_diagrams())
                 self.assertTrue(virtual.get_born_diagrams())
@@ -1565,6 +1582,9 @@ class TestFKSDecayChains(unittest.TestCase):
              matrix_element.bundle_contributions],
             [False, False, False])
         self.assertEqual(len(matrix_element.bundle_nlo_decay_metadata), 2)
+        self.assertEqual(matrix_element.get_virt_matrix_elements(), [])
+        self.assertEqual(helas.get_virt_matrix_elements(), [])
+        self.assertFalse(helas['has_loops'])
         born_variants = matrix_element.spin_density_plan['born_variants']
         self.assertEqual(
             [variant['contribution_id'] for variant in born_variants],
@@ -1732,7 +1752,7 @@ class TestFKSDecayChains(unittest.TestCase):
                 singular_source = ' '.join(
                     stream.read().lower().split())
             self.assertIn(
-                'call sborn_factorized_channel_weights( & p_born)',
+                'call sborn_factorized_channel_weights(p_born)',
                 singular_source)
             self.assertNotIn(
                 'call sborn_factorized_channel_weights( '
@@ -2204,6 +2224,17 @@ class TestFKSDecayChains(unittest.TestCase):
             command.exec_cmd(
                 'output fNLO %s' % process_dir,
                 printcmd=False, precmd=True)
+            helas = command._curr_matrix_elements
+            matrix_element = helas['matrix_elements'][0]
+            variants = matrix_element.spin_density_plan['virtual_variants']
+            expected_virtuals = [variant['matrix_element']
+                                 for variant in variants]
+            self.assertEqual([variant['contribution_id']
+                              for variant in variants], [1, 2, 3])
+            self.assertEqual(matrix_element.get_virt_matrix_elements(),
+                             expected_virtuals)
+            self.assertEqual(helas.get_virt_matrix_elements(), expected_virtuals)
+            self.assertTrue(helas['has_loops'])
             subprocess_root = os.path.join(process_dir, 'SubProcesses')
             subprocesses = [
                 os.path.join(subprocess_root, name)

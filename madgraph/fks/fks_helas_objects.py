@@ -78,6 +78,41 @@ def single_squared_order(matrix_element, description,
     return tuple(order)
 
 
+def global_virtual_orders(plan, variant):
+    """Dress a local virtual insertion with every LO spectator's order.
+
+    Runtime slots describe the full contracted decay chain, not the isolated
+    loop provider.  Use this same mapping for standalone and bundled virtuals.
+    """
+    virtual = variant['matrix_element']
+    split_orders = virtual.get('processes')[0].get('split_orders')
+    squared_orders, _ = virtual.get_split_orders_mapping()
+    local_orders = [tuple(order[0]) if order and isinstance(order[0], tuple)
+                    else tuple(order) for order in squared_orders]
+    spectator = [0] * len(split_orders)
+    for component_id, component in plan['components'].items():
+        if component_id == variant['active_component']:
+            continue
+        order = single_squared_order(
+            component['born']['matrix_element'],
+            'A spectator density-matrix component', split_orders)
+        if len(order) != len(spectator):
+            raise fks_common.FKSProcessError(
+                'Density-matrix components use incompatible split orders')
+        spectator = [left + right for left, right in zip(spectator, order)]
+
+    result = []
+    for order in local_orders:
+        if len(order) != len(spectator):
+            raise fks_common.FKSProcessError(
+                'A virtual density provider uses incompatible split orders')
+        global_order = tuple(left + right for left, right in
+                             zip(order, spectator))
+        if global_order not in result:
+            result.append(global_order)
+    return result
+
+
 #functions to be used in the ncores_for_proc_gen mode
 def async_generate_real(args):
     i = args[0]
@@ -549,46 +584,6 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
             leg.get('id') for leg in visible if leg.get('state')))
         return tuple(sorted(initial_states)), final_state
 
-    @classmethod
-    def _global_virtual_orders(cls, plan, active_component,
-                               local_virtual_orders, split_orders):
-        """Dress one local virtual insertion with all LO spectators.
-
-        The runtime amplitude-order slots describe the complete decay chain,
-        whereas an independent loop provider describes only its own block.
-        Adding every other block's Born squared order gives the unique global
-        O(alpha_s) order without ever constructing products of corrections.
-        """
-
-        spectator = None
-        for component_id, component in plan['components'].items():
-            if component_id == active_component:
-                continue
-            order = single_squared_order(
-                component['born']['matrix_element'],
-                'A spectator density-matrix component', split_orders)
-            if spectator is None:
-                spectator = [0] * len(order)
-            if len(order) != len(spectator):
-                raise fks_common.FKSProcessError(
-                    'Density-matrix components use incompatible split '
-                    'orders')
-            spectator = [left + right for left, right in
-                         zip(spectator, order)]
-
-        result = []
-        for order in local_virtual_orders:
-            if spectator is None:
-                spectator = [0] * len(order)
-            if len(order) != len(spectator):
-                raise fks_common.FKSProcessError(
-                    'A virtual density provider uses incompatible split '
-                    'orders')
-            global_order = tuple(left + right for left, right in
-                                 zip(order, spectator))
-            if global_order not in result:
-                result.append(global_order)
-        return result
 
     def initialize_full_nlo_decay_bundle(self, fksmulti, loop_optimized,
                                          gen_color, decay_ids):
@@ -633,7 +628,6 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
                     'has no decay metadata')
             production.contribution_bundle = False
             production.bundle_nlo_decay_metadata = []
-            production.bundle_virtual_matrix_elements = []
             production.bundle_fks_info_list = []
             production.bundle_contributions = []
             members = [production] + decay_members
@@ -743,14 +737,8 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
                            if virtual_variants else None)
                 virtual_orders = []
                 if virtual is not None:
-                    squared_orders, _ = virtual.get_split_orders_mapping()
-                    virtual_orders = [
-                        tuple(order[0]) if (order and
-                              isinstance(order[0], tuple)) else tuple(order)
-                        for order in squared_orders]
-                    virtual_orders = self._global_virtual_orders(
-                        member_plan, active_component, virtual_orders,
-                        virtual.get('processes')[0].get('split_orders'))
+                    virtual_orders = global_virtual_orders(
+                        member_plan, virtual_variants[0])
                 production.bundle_contributions.append({
                     'id': contribution_id,
                     'kind': ('PRODUCTION' if contribution_id == 1
@@ -769,9 +757,6 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
                     'corrected_node': (0 if contribution_id == 1 else
                                        metadata['corrected_node'])})
                 if virtual is not None:
-                    virtual.fnlo_contribution_id = contribution_id
-                    production.bundle_virtual_matrix_elements.append(
-                        virtual)
                     virtual_variant = copy.copy(virtual_variants[0])
                     virtual_variant['contribution_id'] = contribution_id
                     virtual_variant['loop_prefix'] = \
@@ -829,7 +814,6 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
             bundle_plan['contribution_bundle'] = True
             production.contribution_bundle = True
             production.virt_matrix_element = None
-            production.nlo_decay_virtual_matrix_element = None
             bundled.append(production)
 
         for indexed in decay_by_key:
@@ -848,7 +832,7 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
         self['max_configs'] = -1
         self['initial_states'] = production_helas.get('initial_states')
         self['has_loops'] = any(
-            matrix_element.bundle_virtual_matrix_elements
+            matrix_element.get_virt_matrix_elements()
             for matrix_element in bundled)
         self['has_isr'] = fksmulti['has_isr']
         self['has_fsr'] = fksmulti['has_fsr']
@@ -930,16 +914,8 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
         """Extract the list of virtuals matrix elements"""
         virtuals = []
         for matrix_element in self.get('matrix_elements'):
-            for virtual in getattr(
-                    matrix_element, 'bundle_virtual_matrix_elements', []):
+            for virtual in matrix_element.get_virt_matrix_elements():
                 if all(virtual is not other for other in virtuals):
-                    virtuals.append(virtual)
-            for virtual in [
-                    matrix_element.virt_matrix_element,
-                    getattr(matrix_element,
-                            'nlo_decay_virtual_matrix_element', None)]:
-                if (virtual and
-                        all(virtual is not other for other in virtuals)):
                     virtuals.append(virtual)
         return virtuals
         
@@ -1131,7 +1107,6 @@ class FKSHelasProcess(object):
         self.decay_grouping_signature = None
         self.decay_metadata = None
         self.nlo_decay_metadata = None
-        self.nlo_decay_virtual_matrix_element = None
         # fNLO decay chains are evaluated through independent production and
         # decay spin-density matrix elements.  The ordinary combined HELAS
         # objects are retained as kinematic/topology references only.
@@ -1298,24 +1273,26 @@ class FKSHelasProcess(object):
         return self.born_me.get(key)
 
     
+    def get_virt_matrix_elements(self):
+        """Return virtual providers from their authoritative numerical plan."""
+        if self.spin_density_plan is not None:
+            return [variant['matrix_element'] for variant in
+                    self.spin_density_plan.get('virtual_variants', [])]
+        return [self.virt_matrix_element] if self.virt_matrix_element else []
+
+
     def get_used_lorentz(self):
         """the get_used_lorentz function references to born, reals
         and virtual matrix elements"""
         lorentz_list = self.born_me.get_used_lorentz()
         for real in self.real_processes:
             lorentz_list.extend(real.matrix_element.get_used_lorentz())
-        if self.virt_matrix_element:
-            lorentz_list.extend(self.virt_matrix_element.get_used_lorentz())
-        if self.nlo_decay_virtual_matrix_element:
-            lorentz_list.extend(
-                self.nlo_decay_virtual_matrix_element.get_used_lorentz())
-        for virtual in getattr(
-                self, 'bundle_virtual_matrix_elements', []):
-            lorentz_list.extend(virtual.get_used_lorentz())
         if self.spin_density_plan is not None:
             for density_me in fks_decay.iter_spin_density_matrix_elements(
                     self.spin_density_plan):
                 lorentz_list.extend(density_me.get_used_lorentz())
+        elif self.virt_matrix_element:
+            lorentz_list.extend(self.virt_matrix_element.get_used_lorentz())
         for sud_me in self.sudakov_matrix_elements:
             lorentz_list.extend(sud_me['matrix_element'].get_used_lorentz())
 
@@ -1328,18 +1305,12 @@ class FKSHelasProcess(object):
         for real in self.real_processes:
             coupl_list.extend([c for c in\
                         real.matrix_element.get_used_couplings()])
-        if self.virt_matrix_element:
-            coupl_list.extend(self.virt_matrix_element.get_used_couplings())
-        if self.nlo_decay_virtual_matrix_element:
-            coupl_list.extend(
-                self.nlo_decay_virtual_matrix_element.get_used_couplings())
-        for virtual in getattr(
-                self, 'bundle_virtual_matrix_elements', []):
-            coupl_list.extend(virtual.get_used_couplings())
         if self.spin_density_plan is not None:
             for density_me in fks_decay.iter_spin_density_matrix_elements(
                     self.spin_density_plan):
                 coupl_list.extend(density_me.get_used_couplings())
+        elif self.virt_matrix_element:
+            coupl_list.extend(self.virt_matrix_element.get_used_couplings())
         for sud_me in self.sudakov_matrix_elements:
             coupl_list.extend(sud_me['matrix_element'].get_used_couplings())
         return coupl_list    

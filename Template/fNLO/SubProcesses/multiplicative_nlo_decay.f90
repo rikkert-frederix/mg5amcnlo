@@ -39,7 +39,6 @@ module multiplicative_nlo_decay
   public :: set_multiplicative_weight_count
   public :: reset_multiplicative_leaf_iterator
   public :: next_multiplicative_leaf
-  public :: store_multiplicative_snapshot
   public :: capture_multiplicative_snapshot
   public :: require_multiplicative_born_alignment
   public :: set_multiplicative_real_configuration
@@ -270,19 +269,6 @@ contains
     end do
     workspace%next_mask = workspace%next_mask + 1_8
   end subroutine next_multiplicative_leaf
-
-
-  subroutine store_multiplicative_snapshot( &
-       workspace, component_position, branch, snapshot)
-    type(multiplicative_nlo_workspace), intent(inout) :: workspace
-    integer, intent(in) :: component_position, branch
-    type(factorized_branch_snapshot), intent(in) :: snapshot
-
-    call validate_multiplicative_snapshot( &
-         workspace, component_position, branch, snapshot)
-    workspace%snapshots(branch, component_position) = snapshot
-    workspace%has_snapshot(branch, component_position) = .true.
-  end subroutine store_multiplicative_snapshot
 
 
   subroutine capture_multiplicative_snapshot( &

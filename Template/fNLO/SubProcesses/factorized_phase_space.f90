@@ -111,14 +111,9 @@ module factorized_phase_space
   public :: fetch_factorized_radiation_state
   public :: scale_factorized_radiation_jacobians
   public :: store_factorized_base_measure
-  public :: multiply_factorized_base_measure
-  public :: fetch_factorized_base_measure
   public :: store_factorized_event_measure
-  public :: multiply_factorized_event_measure
-  public :: fetch_factorized_event_measure
   public :: store_factorized_global_event_measure
   public :: multiply_factorized_global_event_measure
-  public :: fetch_factorized_global_event_measure
   public :: compose_factorized_base_measure
   public :: compose_factorized_event_measure
   public :: compose_factorized_block_measure
@@ -437,34 +432,6 @@ contains
   end subroutine store_factorized_base_measure
 
 
-  subroutine multiply_factorized_base_measure(block, measure)
-    integer, intent(in) :: block
-    type(factorized_measure_state), intent(in) :: measure
-
-    call ensure_storage()
-    call validate_block(block)
-    call validate_measure(measure)
-    if (.not. base_measure_is_valid(block)) then
-      base_measure(block) = factorized_measure_state()
-      base_measure_is_valid(block) = .true.
-    end if
-    call multiply_measure(base_measure(block), measure)
-  end subroutine multiply_factorized_base_measure
-
-
-  subroutine fetch_factorized_base_measure(block, measure, available)
-    integer, intent(in) :: block
-    type(factorized_measure_state), intent(out) :: measure
-    logical, intent(out) :: available
-
-    call ensure_storage()
-    call validate_block(block)
-    available = base_measure_is_valid(block)
-    measure = factorized_measure_state()
-    if (available) measure = base_measure(block)
-  end subroutine fetch_factorized_base_measure
-
-
   subroutine store_factorized_event_measure(event_slot, block, measure)
     integer, intent(in) :: event_slot, block
     type(factorized_measure_state), intent(in) :: measure
@@ -475,35 +442,6 @@ contains
     event_measure(block, event_slot) = measure
     event_measure_is_valid(block, event_slot) = .true.
   end subroutine store_factorized_event_measure
-
-
-  subroutine multiply_factorized_event_measure(event_slot, block, measure)
-    integer, intent(in) :: event_slot, block
-    type(factorized_measure_state), intent(in) :: measure
-
-    call ensure_storage()
-    call validate_event_and_block(event_slot, block)
-    call validate_measure(measure)
-    if (.not. event_measure_is_valid(block, event_slot)) then
-      event_measure(block, event_slot) = factorized_measure_state()
-      event_measure_is_valid(block, event_slot) = .true.
-    end if
-    call multiply_measure(event_measure(block, event_slot), measure)
-  end subroutine multiply_factorized_event_measure
-
-
-  subroutine fetch_factorized_event_measure(event_slot, block, measure, &
-                                             available)
-    integer, intent(in) :: event_slot, block
-    type(factorized_measure_state), intent(out) :: measure
-    logical, intent(out) :: available
-
-    call ensure_storage()
-    call validate_event_and_block(event_slot, block)
-    available = event_measure_is_valid(block, event_slot)
-    measure = factorized_measure_state()
-    if (available) measure = event_measure(block, event_slot)
-  end subroutine fetch_factorized_event_measure
 
 
   subroutine store_factorized_global_event_measure(event_slot, measure)
@@ -531,20 +469,6 @@ contains
     end if
     call multiply_measure(global_event_measure(event_slot), measure)
   end subroutine multiply_factorized_global_event_measure
-
-
-  subroutine fetch_factorized_global_event_measure(event_slot, measure, &
-                                                    available)
-    integer, intent(in) :: event_slot
-    type(factorized_measure_state), intent(out) :: measure
-    logical, intent(out) :: available
-
-    call ensure_storage()
-    call validate_event_and_block(event_slot, 0)
-    available = global_event_measure_is_valid(event_slot)
-    measure = factorized_measure_state()
-    if (available) measure = global_event_measure(event_slot)
-  end subroutine fetch_factorized_global_event_measure
 
 
   subroutine compose_factorized_base_measure(jacobian, phase_space_weight, &

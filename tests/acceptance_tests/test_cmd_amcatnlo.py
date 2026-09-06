@@ -741,6 +741,47 @@ class MECmdShell(IOTests.IOTestManager):
         check_html_page(self, pjoin(self.path, 'HTML', 'run_01', 'results.html'))
 
 
+    def test_fnlo_undecayed_scale_reweighting(self):
+        """The shared fNLO runtime works without any decay-card metadata."""
+        self.addCleanup(os.chdir, os.getcwd())
+        interface = MGCmd.MasterCmd()
+        interface.no_notification()
+        for command in [
+                'import model loop_sm',
+                'generate u u~ > t t~ [QCD]',
+                'output fNLO %s' % self.path]:
+            interface.exec_cmd(command, errorhandling=False, printcmd=False,
+                               precmd=True, postcmd=True)
+        self.assertFalse(os.path.exists(pjoin(self.path, 'Cards', 'decay_card.dat')))
+        run_path = pjoin(self.path, 'Cards', 'run_card.dat')
+        run_card = banner.RunCardNLO(run_path)
+        settings = dict(req_acc_fo=-1., npoints_fo_grid=30, niters_fo_grid=1,
+                        npoints_fo=40, niters_fo=1, iseed=12345,
+                        fixed_ren_scale=True, fixed_fac_scale=True,
+                        mur_ref_fixed=173., muf_ref_fixed=173.,
+                        reweight_scale=True, reweight_pdf=False,
+                        rw_rscale=[1., .5, 2.], rw_fscale=[1., .5, 2.])
+        for key, value in settings.items():
+            run_card[key] = value
+        run_card.write(run_path, template=pjoin(self.path, 'Cards',
+                                               'run_card_default.dat'))
+        self.cmd_line = NLOCmd.aMCatNLOCmdShell(me_dir=self.path)
+        self.cmd_line.no_notification()
+        self.cmd_line.run_cmd('set automatic_html_opening False --no_save')
+        self.do('calculate_xsect NLO -f')
+        with open(pjoin(self.path, 'Events', 'run_01', 'MADatNLO.HwU')) as stream:
+            header = stream.readline()
+            bins = [list(map(float, line.split())) for line in stream
+                    if line.lstrip().startswith(('+', '-'))]
+        self.assertTrue(bins)
+        self.assertTrue(all(math.isfinite(value) for row in bins for value in row))
+        self.assertTrue(any(row[2] != 0. for row in bins))
+        points = {tuple(map(float, match)) for match in re.findall(
+            r'muR=\s*([\d.]+) muF=\s*([\d.]+)', header)}
+        self.assertEqual(points, {(mur, muf) for mur in [1., .5, 2.]
+                                 for muf in [1., .5, 2.]})
+        self.cmd_line.do_quit('')
+
     @set_global()
     def test_calculate_xsect_nlo_decay_with_cuts_and_identical_gluon(self):
         """Integrate an NLO decay with non-inclusive, resonance-aware cuts."""

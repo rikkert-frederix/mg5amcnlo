@@ -155,3 +155,13 @@ class TestFNLODecayCard(unittest.TestCase):
         data = self.run_card(self.card(decay_dynamical_scale_choices={6: 3}), 'standalone')
         self.assertAlmostEqual(float(data['DENOMINATOR'][0]),
                                1.8/self.width(60.), places=13)
+
+    def test_undecayed_scales_do_not_initialize_decay_card(self):
+        data = self.run_card('', 'no_decay')
+        self.assertEqual(data['NO_DECAY'], ['T', 'T', 'T'])
+
+    def test_widths_and_scales_cover_the_same_species(self):
+        self.run_card(self.card() + '\n100. = decay_ren_scale(999)\n',
+                      error='a decay scale has no physical width')
+        self.run_card(self.card() + '\n1. = lo_decay_width(999)\n',
+                      error='a physical width has no renormalisation scale')
