@@ -7,6 +7,7 @@ module weight_lines
   public :: parton_pdg_uborn, parton_pdg, plot_id, niproc, ipr
   public :: orderstag, amppos, bundle_component, correction_scale_pdg
   public :: momenta, wgt, bjx, scales2
+  public :: decay_scales, correction_scale_node
   public :: g_strong, wgts, parton_iproc, y_bst, plot_wgts
   public :: weight_lines_allocated, deallocate_weight_lines
 
@@ -17,6 +18,8 @@ module weight_lines
   integer, allocatable :: parton_pdg(:,:,:), plot_id(:), niproc(:)
   integer, allocatable :: ipr(:), orderstag(:), amppos(:)
   integer, allocatable :: bundle_component(:), correction_scale_pdg(:)
+  integer, allocatable :: correction_scale_node(:)
+  double precision, allocatable :: decay_scales(:, :)
   double precision, allocatable :: momenta(:,:,:)
   double precision, allocatable :: wgt(:,:), bjx(:,:)
   double precision, allocatable :: scales2(:,:), g_strong(:), wgts(:,:)
@@ -186,6 +189,20 @@ contains
       correction_scale_pdg(1:max_contr) = itemp1
       deallocate(itemp1)
 
+      allocate(itemp1(max_contr))
+      itemp1 = correction_scale_node
+      deallocate(correction_scale_node)
+      allocate(correction_scale_node(n_contr))
+      correction_scale_node(1:max_contr) = itemp1
+      deallocate(itemp1)
+
+      allocate(temp2(nexternal, max_contr))
+      temp2 = decay_scales
+      deallocate(decay_scales)
+      allocate(decay_scales(nexternal, n_contr))
+      decay_scales(:, 1:max_contr) = temp2
+      deallocate(temp2)
+
       allocate(temp3(0:3, nexternal, max_contr))
       temp3 = momenta
       deallocate(momenta)
@@ -272,6 +289,8 @@ contains
     allocate(amppos(1))
     allocate(bundle_component(1))
     allocate(correction_scale_pdg(1))
+    allocate(correction_scale_node(1))
+    allocate(decay_scales(nexternal, 1))
     allocate(momenta(0:3, nexternal, 1))
     allocate(wgt(3, 1))
     allocate(bjx(2, 1))
@@ -307,6 +326,8 @@ contains
     if (allocated(amppos)) deallocate(amppos)
     if (allocated(bundle_component)) deallocate(bundle_component)
     if (allocated(correction_scale_pdg)) deallocate(correction_scale_pdg)
+    if (allocated(correction_scale_node)) deallocate(correction_scale_node)
+    if (allocated(decay_scales)) deallocate(decay_scales)
     if (allocated(momenta)) deallocate(momenta)
     if (allocated(wgt)) deallocate(wgt)
     if (allocated(bjx)) deallocate(bjx)

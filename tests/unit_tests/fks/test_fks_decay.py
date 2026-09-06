@@ -76,21 +76,18 @@ class TestFKSDecayChains(unittest.TestCase):
             return stream.read()
 
     def assert_local_widths(self, matrix_element, expected_nodes):
-        expected_widths = {
-            6: 'FNLO_DECAY_DUMMY_WIDTH_RATIO()*mdl_MT',
-            24: 'FNLO_DECAY_DUMMY_WIDTH_RATIO()*mdl_MW'}
+        forced_species = {6, 24}
         found_nodes = set()
         for wavefunction in matrix_element.get_all_wavefunctions():
             pdg = abs(wavefunction.get('pdg_code'))
-            if pdg not in expected_widths:
+            if pdg not in forced_species:
                 continue
             node_id = wavefunction.get('decay_node_id')
             if node_id:
                 found_nodes.add(node_id)
-                self.assertEqual(
-                    wavefunction.get('width'), expected_widths[pdg])
-            else:
-                self.assertEqual(wavefunction.get('width'), 'ZERO')
+                self.assertIn('NWA', wavefunction.get_aloha_info()[1])
+                self.assertTrue(wavefunction.get_helas_call_dict()['propa'].startswith('NWA'))
+            self.assertEqual(wavefunction.get('width'), 'ZERO')
         self.assertEqual(found_nodes, set(expected_nodes))
 
     def test_fks_skeleton_is_unchanged_and_undecayed(self):
@@ -170,38 +167,32 @@ class TestFKSDecayChains(unittest.TestCase):
 
         card_text = fks_decay.decay_card_text(
             {6: 1.4915, 24: 2.0476}, {6: 173.0, 24: 80.419})
-        self.assertEqual(card_text, (
-            '# FNLO_DECAY_CARD\n'
-            '# Runtime parameters for fixed-on-shell decay chains.\n'
-            '# LO_DECAY_WIDTH entries are LO physical total widths in GeV.\n'
-            '# NLO_DECAY_WIDTH entries are NLO physical total widths in GeV.\n'
-            '# Bundled NLO results use the strict O(alpha_s) width expansion.\n'
-            '# All NWA denominators use LO widths; NLO-LO enters only linearly.\n'
-            '# DECAY_REN_SCALE entries are independent decay scales in GeV.\n'
-            'FORMAT 3\n'
-            'DUMMY_WIDTH_RATIO 1.0000000000000001e-01\n'
-            'PRODUCTION_REN_SCALE_MOMENTA CORE\n'
-            'DECAY_WIDTH 6 1.4915000000000000e+00\n'
-            'DECAY_REN_SCALE 6 1.7300000000000000e+02\n'
-            'DECAY_WIDTH 24 2.0476000000000001e+00\n'
-            'DECAY_REN_SCALE 24 8.0418999999999997e+01\n'
-            'END\n'))
+        self.assertIn('FNLO_DECAY_CARD', card_text)
+        self.assertNotIn('= format', card_text)
+        self.assertNotIn('dummy_width', card_text.lower())
+        self.assertIn('NLO = production_order', card_text)
+        self.assertIn('NLO = decay_order', card_text)
+        self.assertIn('1.4915000000000000e+00 = lo_decay_width(6)', card_text)
+        self.assertIn('1.7300000000000000e+02 = decay_ren_scale(6)', card_text)
+        self.assertIn('8.0418999999999997e+01 = decay_ren_scale(24)', card_text)
+        self.assertIn('TOTAL widths', card_text)
+        self.assertIn('alpha_s-independent Born', card_text)
 
         decayed_scale_text = fks_decay.decay_card_text(
             {6: 1.4915}, {6: 173.0},
             production_scale_momenta='decayed')
         self.assertIn(
-            'PRODUCTION_REN_SCALE_MOMENTA DECAYED\n',
+            'DECAYED = production_ren_scale_momenta',
             decayed_scale_text)
         nlo_card_text = fks_decay.decay_card_text(
             {6: 1.4915}, {6: 173.0}, nlo_width_pdgs={6},
             nlo_widths={6: 1.3646})
-        self.assertIn('FORMAT 4\n', nlo_card_text)
+        self.assertNotIn('= format', nlo_card_text)
         self.assertIn(
-            'LO_DECAY_WIDTH 6 1.4915000000000000e+00\n',
+            '1.4915000000000000e+00 = lo_decay_width(6)',
             nlo_card_text)
         self.assertIn(
-            'NLO_DECAY_WIDTH 6 1.3646000000000000e+00\n',
+            '1.3646000000000000e+00 = nlo_decay_width(6)',
             nlo_card_text)
         self.assertNotIn('\nDECAY_WIDTH 6 ', nlo_card_text)
         varied_card_text = fks_decay.decay_card_text(
@@ -213,20 +204,17 @@ class TestFKSDecayChains(unittest.TestCase):
                 (6, 0.5): 1.42, (6, 2.0): 1.55},
             nlo_width_variations={
                 (6, 0.5): 1.29, (6, 2.0): 1.43})
-        self.assertIn('FORMAT 5\n', varied_card_text)
+        self.assertNotIn('= format', varied_card_text)
         self.assertIn(
-            'DECAY_SCALE_VARIATION_MODE INDEPENDENT\n',
+            'INDEPENDENT = decay_scale_variation_mode',
             varied_card_text)
         self.assertIn(
-            'DECAY_SCALE_FACTORS 3 1.0000000000000000e+00 '
-            '5.0000000000000000e-01 2.0000000000000000e+00\n',
+            '1, 0.5, 2 = decay_scale_factors',
             varied_card_text)
         self.assertIn(
-            'LO_DECAY_WIDTH_VARIATION 6 5.0000000000000000e-01 '
-            '1.4199999999999999e+00\n', varied_card_text)
+            '1.4199999999999999e+00 = lo_decay_width_variation(6, 0.5)', varied_card_text)
         self.assertIn(
-            'NLO_DECAY_WIDTH_VARIATION 6 2.0000000000000000e+00 '
-            '1.4299999999999999e+00\n', varied_card_text)
+            '1.4299999999999999e+00 = nlo_decay_width_variation(6, 2)', varied_card_text)
 
     def test_multi_diagram_decay_node_is_rejected(self):
         command = self.generate(
@@ -703,10 +691,9 @@ class TestFKSDecayChains(unittest.TestCase):
                     for wavefunction in top_wavefunctions),
                 set([0, 1]))
             for wavefunction in top_wavefunctions:
-                expected = (
-                    'FNLO_DECAY_DUMMY_WIDTH_RATIO()*mdl_MT'
-                    if wavefunction.get('decay_node_id') else 'ZERO')
-                self.assertEqual(wavefunction.get('width'), expected)
+                self.assertEqual(wavefunction.get('width'), 'ZERO')
+                if wavefunction.get('decay_node_id'):
+                    self.assertIn('NWA', wavefunction.get_aloha_info()[1])
 
         metadata = matrix_element.nlo_decay_metadata
         self.assertEqual(metadata['status'], 'INTEGRATION_READY')
@@ -1153,10 +1140,10 @@ class TestFKSDecayChains(unittest.TestCase):
                 fks_info_source.replace('$', ' ').split()).replace(' ,', ',')
             self.assertIn('SUBROUTINE SBORN(P,ANS_SUMMED)', born_source)
             self.assertIn('SUBROUTINE SMATRIX1(P,ANS_SUMMED)', real_source)
-            # The full-tree SDE channel helper needs regulated resonance
-            # propagators.  The factorized matrix element itself must remain
-            # independent of that phase-space-only dummy width.
-            self.assertIn('FNLO_DECAY_DUMMY_WIDTH_RATIO', born_source)
+            # Only the relative SDE channel helper uses pole-free flattened
+            # currents. The physical Born and real use independent densities.
+            self.assertNotIn('FNLO_DECAY_DUMMY_WIDTH_RATIO', born_source)
+            self.assertRegex(born_source, r'CALL \w+NWA_\d\(')
             factorized_born = born_source.split(
                 'SUBROUTINE SDM_BORN_CONTRIBUTION_1', 1)[1]
             self.assertNotIn(
@@ -1201,10 +1188,10 @@ class TestFKSDecayChains(unittest.TestCase):
                               provider_source)
                 self.assertIn('DCONJG(JAMP_HEL(J,HP))',
                               provider_source)
-            with open(os.path.join(
-                    subprocess_dir,
-                    'decay_matrix_factorization.inc')) as stream:
-                self.assertIn('.TRUE.', stream.read().upper())
+            self.assertFalse(os.path.exists(os.path.join(
+                subprocess_dir, 'decay_matrix_factorization.inc')))
+            self.assertFalse(os.path.exists(os.path.join(
+                subprocess_dir, 'decay_chain_parameters_bridge.f90')))
             self.assertIn('DATA FKS_I_D / 5 /', fks_info_source)
             self.assertIn('DATA FKS_J_D / 3 /', fks_info_source)
             self.assertIn(
@@ -1388,9 +1375,10 @@ class TestFKSDecayChains(unittest.TestCase):
             with open(os.path.join(
                     process_dir, 'Cards', 'decay_card.dat')) as stream:
                 decay_card = stream.read()
-            self.assertIn('FORMAT 4\n', decay_card)
-            self.assertIn('LO_DECAY_WIDTH 6 ', decay_card)
-            self.assertIn('NLO_DECAY_WIDTH 6 ', decay_card)
+            self.assertNotIn('= format', decay_card)
+            self.assertNotIn('dummy_width', decay_card.lower())
+            self.assertIn('= lo_decay_width(6)', decay_card)
+            self.assertIn('= nlo_decay_width(6)', decay_card)
             self.assertNotIn('\nDECAY_WIDTH 6 ', decay_card)
             self.assertTrue(os.path.islink(os.path.join(
                 subprocess_dir, 'decay_card.dat')))
@@ -2024,7 +2012,7 @@ class TestFKSDecayChains(unittest.TestCase):
                     process_dir, 'Cards', 'decay_card.dat')) as stream:
                 decay_card = stream.read()
             self.assertIn(
-                'NLO_DECAY_COMBINATION ADDITIVE', decay_card)
+                'ADDITIVE = nlo_decay_combination', decay_card)
 
     def test_full_nlo_bundle_supports_nested_corrected_decays(self):
         command = self.generate(

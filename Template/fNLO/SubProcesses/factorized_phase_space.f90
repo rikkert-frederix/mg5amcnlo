@@ -99,6 +99,7 @@ module factorized_phase_space
   public :: prepare_factorized_born_reuse
   public :: store_factorized_block_momenta
   public :: fetch_factorized_block_momenta
+  public :: factorized_block_size
   public :: factorized_block_momentum_revision
   public :: factorized_phase_space_revision
   public :: factorized_cache_real_equal
@@ -126,6 +127,15 @@ module factorized_phase_space
   public :: restore_factorized_branch_snapshot
 
 contains
+
+  integer function factorized_block_size(event_slot, block)
+    integer, intent(in) :: event_slot, block
+    call ensure_storage()
+    call validate_event_and_block(event_slot, block)
+    factorized_block_size = 0
+    if (block_is_valid(block, event_slot)) &
+         factorized_block_size = block_particle_count(block, event_slot)
+  end function factorized_block_size
 
   pure elemental logical function factorized_cache_real_equal(first, second)
     double precision, intent(in) :: first, second

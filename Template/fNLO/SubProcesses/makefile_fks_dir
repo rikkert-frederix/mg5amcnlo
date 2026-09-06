@@ -48,7 +48,7 @@ FILES= fnlo_process_common.o process_dimensions.o			\
 	 nlo_decay_metadata.o decay_chain_metadata.o			\
 	 decay_chain_parameters.o					\
 	 fnlo_scale_variations.o					\
-	 decay_chain_parameters_bridge.o phase_space_kinematics.o	\
+	 phase_space_kinematics.o					\
 	 factorized_phase_space.o factorized_block_kinematics.o	\
 	 top_decay_virtual_cdr.o top_decay_virtual_dispatch.o		\
 	 spin_density_matrix_results.o					\
@@ -242,8 +242,7 @@ nlo_decay_metadata.o: process_dimensions.o fks_metadata.o \
 decay_chain_metadata.o: process_dimensions.o fks_metadata.o \
 	nlo_decay_metadata.o nlo_contribution_bundle.o
 decay_chain_parameters.o: decay_chain_metadata.o nlo_decay_metadata.o \
-	nlo_contribution_bundle.o
-decay_chain_parameters_bridge.o: decay_chain_parameters.o
+	nlo_contribution_bundle.o $(LIBDIR)alfas_functions_module.mod
 fnlo_scale_variations.o: decay_chain_metadata.o nlo_decay_metadata.o \
 	decay_chain_parameters.o $(LIBDIR)run_state.mod \
 	$(LIBDIR)extra_weights.mod
@@ -261,7 +260,7 @@ multiplicative_event_materialization.o: multiplicative_nlo_decay.o \
 	spin_density_matrix_results.o factorized_phase_space.o \
 	factorized_block_kinematics.o
 spin_density_weight_lines.o: multiplicative_nlo_decay.o \
-	spin_density_matrix_results.o decay_chain_parameters.o \
+	spin_density_matrix_results.o decay_chain_parameters.o weight_lines.o \
 	$(LIBDIR)alfas_functions_module.mod
 factorized_block_kinematics.o: process_dimensions.o phase_space_kinematics.o
 decay_chain_kinematics.o: process_dimensions.o fnlo_process_common.o \
@@ -274,7 +273,7 @@ nlo_decay_kinematics.o: process_dimensions.o nlo_decay_metadata.o \
 	factorized_phase_space.o
 decay_chain_scales.o: process_dimensions.o decay_chain_metadata.o \
 	decay_chain_parameters.o decay_chain_kinematics.o \
-	nlo_decay_kinematics.o \
+	nlo_decay_kinematics.o factorized_phase_space.o dummy_fct.o \
 	$(LIBDIR)alfas_functions_module.mod
 fks_diagnostics.o: process_dimensions.o fnlo_process_common.o
 fks_soft_kernels.o: process_dimensions.o $(LIBDIR)kin_functions_module.mod

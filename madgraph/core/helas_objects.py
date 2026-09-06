@@ -641,8 +641,9 @@ class HelasWavefunction(base_objects.PhysicsObject):
         # should be onshell (True), as well as for forbidden s-channels (False).
         # Default is None
         self['onshell'] = None
-        # Nonzero only for a propagator introduced by an explicit decay
-        # chain.  The identifier is local to the combined matrix element.
+        # Nonzero only for a connector in a flattened fNLO decay topology.
+        # Positive identifiers also strip its common propagator denominator
+        # from the single-diagram channel weights (not physical densities).
         self['decay_node_id'] = 0
         # conjugate_indices is a list [1,2,...] with fermion lines
         # that need conjugates. Default is "None"
@@ -1657,6 +1658,9 @@ class HelasWavefunction(base_objects.PhysicsObject):
             else:            
                 raise InvalidCmd( 'polarization not supported for decay particle')
             
+        if self.get('decay_node_id') > 0:
+            output['propa'] = 'NWA' + (output['propa'] or '')
+
         # optimization
         if aloha.complex_mass: 
             if (self.get('width') == 'ZERO' or self.get('mass') == 'ZERO'):
@@ -1868,6 +1872,9 @@ class HelasWavefunction(base_objects.PhysicsObject):
                 tags.append('L')
             else:
                 tags.append('L%d'%self.get_loop_index())
+
+        if self.get('decay_node_id') > 0:
+            tags.append('NWA')
 
         if self.get('particle').get('propagator') not in ['', None]:
             tags.append('P%s' % str(self.get('particle').get('propagator')))

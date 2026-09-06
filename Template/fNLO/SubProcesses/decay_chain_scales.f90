@@ -4,7 +4,12 @@ module decay_chain_scales
        context_for_fks, node_pdg, node_qcd_order
   use decay_chain_parameters, only: decay_renormalization_scale, &
        use_decayed_production_ren_scale_momenta, &
-       decay_scale_species_count, decay_scale_species_index
+       decay_scale_species_count, decay_scale_species_index, &
+       decay_dynamical_scale_choice, decay_scale_factor
+  use factorized_phase_space, only: factorized_block_size, &
+       fetch_factorized_block_momenta
+  use fixed_order_user_hooks, only: fixed_user_decay_scale
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
   use decay_chain_kinematics, only: contract_visible_momenta
   use nlo_decay_metadata, only: has_nlo_decay, corrected_parent_pdg, &
        nlo_decay_production_born_qcd_order, nlo_decay_born_qcd_order, &
@@ -22,8 +27,62 @@ module decay_chain_scales
   public :: corrected_born_qcd_squared_order
   public :: select_production_core_momenta
   public :: select_production_ren_scale_momenta
+  public :: decay_event_scales
 
 contains
+
+  subroutine decay_event_scales(event_slot, scales)
+    integer, intent(in) :: event_slot
+    double precision, intent(out) :: scales(:)
+    integer :: node, nodes, pdg, choice, particles, i
+    double precision :: p(0:3, nexternal), value, spatial2
+    logical :: available
+
+    scales = 0d0
+    if (has_nlo_decay()) then
+      nodes = nlo_decay_node_count()
+    else if (has_decay_chains()) then
+      nodes = decay_node_count()
+    else
+      return
+    end if
+    if (size(scales) < nodes) call fail_scales('too few decay event scales')
+    do node = 1, nodes
+      if (has_nlo_decay()) then
+        pdg = nlo_decay_node_pdg(node)
+      else
+        pdg = node_pdg(node)
+      end if
+      value = decay_renormalization_scale(pdg)
+      choice = decay_dynamical_scale_choice(pdg)
+      if (choice /= 0) then
+        particles = factorized_block_size(event_slot, node)
+        if (particles < 2) call fail_scales('dynamic decay scale has no block momenta')
+        call fetch_factorized_block_momenta( &
+             event_slot, node, particles, p(:, 1:particles), available)
+        if (.not. available) call fail_scales('dynamic decay scale block is absent')
+        if (choice == -1) then
+          value = fixed_user_decay_scale(pdg, node, p(:, 1:particles), value)
+        else
+          value = 0d0
+          do i = 2, particles
+            if (choice == 1) then
+              spatial2 = sum(p(1:3, i)**2)
+              if (spatial2 > 0d0) &
+                   value = value + p(0, i)*sqrt(sum(p(1:2, i)**2)/spatial2)
+            else
+              value = value + sqrt(max(0d0, (p(0, i)-p(3, i))*(p(0, i)+p(3, i))))
+            end if
+          end do
+          if (choice == 3) value = value/2d0
+        end if
+        if (.not. ieee_is_finite(value) .or. value < 0d0) &
+             call fail_scales('invalid dynamical decay scale')
+        value = max(2d0, value)
+      end if
+      scales(node) = value
+    end do
+  end subroutine decay_event_scales
 
   integer function active_block_qcd_squared_order(total_qcd_order)
     integer, intent(in) :: total_qcd_order
@@ -98,9 +157,10 @@ contains
 
 
   double precision function decay_qcd_coupling_weight(qcd_power, &
-                                                       factor_indices)
+                                                       factor_indices, node_scales)
     integer, intent(in), optional :: qcd_power
     integer, intent(in), optional :: factor_indices(:)
+    double precision, intent(in), optional :: node_scales(:)
     integer :: node, qcd_order, total_power, corrected_power
     integer :: factor_index
     double precision :: coupling, scale
@@ -125,6 +185,8 @@ contains
              nlo_decay_node_pdg(node), factor_indices)
         scale = decay_renormalization_scale(&
              nlo_decay_node_pdg(node), factor_index)
+        if (present(node_scales)) &
+             scale = node_scales(node)*decay_scale_factor(factor_index)
         coupling = sqrt(4d0*pi*alphas(scale))
         decay_qcd_coupling_weight = decay_qcd_coupling_weight* &
              coupling**qcd_order
@@ -137,6 +199,8 @@ contains
       if (qcd_order == 0) cycle
       factor_index = selected_factor_index(node_pdg(node), factor_indices)
       scale = decay_renormalization_scale(node_pdg(node), factor_index)
+      if (present(node_scales)) &
+           scale = node_scales(node)*decay_scale_factor(factor_index)
       coupling = sqrt(4d0*pi*alphas(scale))
       decay_qcd_coupling_weight = decay_qcd_coupling_weight* &
            coupling**(2*qcd_order)
@@ -163,10 +227,11 @@ contains
 
   double precision function decay_qcd_coupling_rescaling(production_g, &
                                                           qcd_power, &
-                                                          factor_indices)
+                                                          factor_indices, node_scales)
     double precision, intent(in) :: production_g
     integer, intent(in), optional :: qcd_power
     integer, intent(in), optional :: factor_indices(:)
+    double precision, intent(in), optional :: node_scales(:)
     integer :: power
 
     power = decay_qcd_squared_order()
@@ -181,7 +246,7 @@ contains
       stop 1
     end if
     decay_qcd_coupling_rescaling = &
-         decay_qcd_coupling_weight(power, factor_indices)/production_g**power
+         decay_qcd_coupling_weight(power, factor_indices, node_scales)/production_g**power
   end function decay_qcd_coupling_rescaling
 
 

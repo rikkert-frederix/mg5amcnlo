@@ -1068,6 +1068,91 @@ class MECmdShell(IOTests.IOTestManager):
             self.assertNotIn('FAILED', test_me)
 
 
+    def test_fnlo_decay_card_mixed_orders_and_dynamic_reweighting(self):
+        """Exercise card switches and running-width weights in a compiled bundle."""
+        self.addCleanup(os.chdir, os.getcwd())
+        process_dir = pjoin(self.tmpdir, 'fnlo_decay_options')
+        interface = MGCmd.MasterCmd()
+        interface.no_notification()
+        for command in [
+                'import model loop_sm',
+                'generate u u~ > t t~ [real=QCD], '
+                '(t > b w+ QED=1 [real=QCD]), '
+                '(t~ > b~ w- QED=1 [real=QCD])',
+                'output fNLO %s -f' % process_dir]:
+            interface.exec_cmd(command, errorhandling=False, printcmd=False,
+                               precmd=True, postcmd=True)
+        run_path = pjoin(process_dir, 'Cards', 'run_card.dat')
+        run_card = banner.RunCardNLO(run_path)
+        settings = dict(req_acc_fo=-1., npoints_fo_grid=30, niters_fo_grid=1,
+                        npoints_fo=40, niters_fo=1, iseed=12345,
+                        fixed_ren_scale=True, fixed_fac_scale=True,
+                        mur_ref_fixed=173., muf_ref_fixed=173.,
+                        reweight_scale=False, reweight_pdf=False)
+        for key, value in settings.items():
+            run_card[key] = value
+        run_card.write(run_path, template=pjoin(process_dir, 'Cards',
+                                               'run_card_default.dat'))
+        shell = NLOCmd.aMCatNLOCmdShell(me_dir=process_dir)
+        shell.no_notification()
+        shell.run_cmd('set automatic_html_opening False --no_save')
+        for name, combination, production, decay in [
+                ('independent', 'ADDITIVE', 'NLO', 'NLO'),
+                ('production_lo', 'ADDITIVE', 'LO', 'NLO'),
+                ('decay_lo', 'ADDITIVE', 'NLO', 'LO'),
+                ('multiplicative', 'MULTIPLICATIVE', 'NLO', 'NLO'),
+                ('multiplicative_lo', 'MULTIPLICATIVE', 'LO', 'NLO')]:
+            run_card['reweight_scale'] = name == 'independent'
+            run_card.write(run_path, template=pjoin(process_dir, 'Cards',
+                                                   'run_card_default.dat'))
+            fks_decay.write_decay_card(
+                pjoin(process_dir, 'Cards'), {6: 1.4915}, {6: 173.},
+                nlo_width_pdgs={6}, nlo_widths={6: 1.3646},
+                production_order=production, decay_order=decay,
+                nlo_decay_combination=combination,
+                decay_dynamical_scale_choices={6: 3},
+                decay_scale_variation_mode='INDEPENDENT',
+                decay_scale_factors=(1., .5, 2.))
+            shell.exec_cmd('calculate_xsect NLO -f -n %s' % name,
+                           errorhandling=False, precmd=True)
+            event_dir = pjoin(process_dir, 'Events', name)
+            if combination == 'ADDITIVE':
+                result = NLOCmd.aMCatNLOCmdShell.read_fnlo_contribution_results(
+                    pjoin(event_dir, 'contribution_results_1.txt'))
+                components = {entry['label']: entry['value']
+                              for entry in result['components']}
+                self.assertNotEqual(components['BORN'], 0.)
+                if production == 'LO':
+                    self.assertEqual(components['PRODUCTION_NLO'], 0.)
+                    self.assertNotEqual(components['WIDTH_COUNTERTERM'], 0.)
+                    self.assertTrue(any(value != 0. for label, value in components.items()
+                                        if label.startswith('DECAY_NLO')))
+                if decay == 'LO':
+                    self.assertNotEqual(components['PRODUCTION_NLO'], 0.)
+                    self.assertEqual(components['WIDTH_COUNTERTERM'], 0.)
+                    self.assertTrue(all(value == 0. for label, value in components.items()
+                                        if label.startswith('DECAY_NLO')))
+            with open(pjoin(event_dir, 'MADatNLO.HwU')) as stream:
+                header = stream.readline()
+                bins = [list(map(float, line.split())) for line in stream
+                        if line.lstrip().startswith(('+', '-'))]
+            self.assertTrue(bins)
+            self.assertTrue(all(math.isfinite(value) for row in bins for value in row))
+            if decay == 'NLO':
+                self.assertEqual(header.count('d6='), 27 if name == 'independent' else 3)
+                self.assertTrue(all(row[2] == row[4] for row in bins))
+                self.assertTrue(any(row[4] != row[5] for row in bins))
+            if name == 'independent':
+                # All individual scale points must survive in the final HwU,
+                # including production-only, decay-only, and simultaneous changes.
+                points = {tuple(map(float, match)) for match in re.findall(
+                    r'muR=\s*([\d.]+) muF=\s*([\d.]+) d6=\s*([\d.]+)', header)}
+                self.assertEqual(points, {(mur, muf, decay_factor)
+                                         for mur in [1., .5, 2.]
+                                         for muf in [1., .5, 2.]
+                                         for decay_factor in [1., .5, 2.]})
+        shell.do_quit('')
+
     def test_calculate_xsect_lo(self):
         """test the param_card created is correct"""
         

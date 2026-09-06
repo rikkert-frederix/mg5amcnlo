@@ -2,32 +2,61 @@ This directory contains the cards used by the MadGraph5_aMC@NLO
 fNLO fixed-order calculation.
 
 Processes with on-shell decay chains additionally contain decay_card.dat.
-That card controls the physical widths, dummy-width ratio, decay
+That card controls the physical widths, decay
 renormalization scales, and the production renormalization-scale momentum
-choice. Full NLO production-and-decay bundles require separate LO and NLO
-total widths for each corrected species and use their strict fixed-order
-O(alpha_s) expansion. All narrow-width denominators use the LO entries; the
+choice. Full NLO production-and-decay bundles use separate LO and NLO
+total widths for each corrected species. Their default ADDITIVE combination
+uses a strict fixed-order O(alpha_s) expansion. Its narrow-width denominators
+use the LO entries; the
 NLO-minus-LO differences enter only through the linear Born counterterm. That
 counterterm counts physical resonance occurrences, independently of which
 partial-decay numerators receive QCD corrections.
 
-FORMAT 5 adds explicit decay-scale variations:
+Cards use the usual `value = parameter ! explanation` syntax and document all
+options in place. There is no version field or END record; older card syntaxes
+are not supported. Launch calculate_xsect NLO for mixed orders and select
 
-  DECAY_SCALE_VARIATION_MODE CORRELATED
-  DECAY_SCALE_FACTORS 3 1.0 2.0 0.5
-  LO_DECAY_WIDTH_VARIATION 6 2.0 <LO width at 2 mu_decay>
-  NLO_DECAY_WIDTH_VARIATION 6 2.0 <NLO width at 2 mu_decay>
-  LO_DECAY_WIDTH_VARIATION 6 0.5 <LO width at mu_decay/2>
-  NLO_DECAY_WIDTH_VARIATION 6 0.5 <NLO width at mu_decay/2>
+  NLO = production_order
+  NLO = decay_order
+
+Set either to LO to disable its corrections. Optional species overrides use
+`LO = decay_perturbative_order(6)`. Decay order also selects LO/NLO total
+widths; calculate_xsect LO selects LO everywhere. NLO_DECAY_COMBINATION can
+be ADDITIVE (strict NLO expansion) or MULTIPLICATIVE (product of blocks).
+
+For decay-scale reweighting, set
+
+  CORRELATED = decay_scale_variation_mode
+  1.0, 2.0, 0.5 = decay_scale_factors
 
 Use CORRELATED to identify the decay factors with rw_rscale; the factor lists
 must then match exactly and in the same order. Use INDEPENDENT for the full
 Cartesian product of production muR, production muF, and one factor per
 distinct scale-dependent decay species. The first factor must be 1. Every
-non-central point needs an explicit LO total width for each varied species
-and an explicit NLO total width for each NLO-corrected species. Missing widths
-are a fatal input error; they are never inferred by running or rescaling a
-central width.
+point is retained as a separate weight in the final HwU, labeled by production
+muR/muF and each decay d<PDG> factor. With production reweight_scale enabled,
+INDEPENDENT includes production-only, decay-only and simultaneous variations
+in a single run; it does not replace these weights by an envelope. Every
+non-central point also varies the total width. For an alpha_s-independent
+Born decay, AUTO = decay_width_scale_mode(6) keeps the LO width constant and
+runs the NLO-minus-LO correction by alpha_s(mu)/alpha_s(decay_ren_scale(6)).
+The supplied LO total width must also be alpha_s independent. For other
+decays use EXPLICIT mode and supply, for example,
+
+  1.49 = lo_decay_width_variation(6, 2.0)
+  1.37 = nlo_decay_width_variation(6, 2.0)
+
+at each noncentral factor (with physical values appropriate to the process).
+NLO entries are required only for species kept at NLO. AUTO and EXPLICIT
+must not be mixed for one species. All widths are TOTAL widths in GeV.
+
+Event-by-event scales use decay_dynamical_scale_choice(PDG): 0 fixed,
+1 sum daughter ET, 2 sum daughter mT, 3 half the mT sum, -1 the editable
+fixed_user_decay_scale hook in SubProcesses/dummy_fct.f90. These choices
+use the block's immediate daughters in the event frame and apply a 2 GeV
+floor before variation factors. They require an alpha_s-independent Born
+decay and AUTO widths: each occurrence's width follows its own scale.
+decay_ren_scale(PDG) remains the reference for the supplied LO/NLO widths.
 
 The run-card switch cut_decays controls whether built-in and user-defined
 generation cuts see forced-decay products. It defaults to false; fixed-order

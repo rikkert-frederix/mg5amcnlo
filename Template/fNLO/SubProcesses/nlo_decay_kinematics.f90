@@ -16,8 +16,7 @@ module nlo_decay_kinematics
        store_factorized_base_measure, compose_factorized_base_measure
   use decay_chain_metadata, only: has_decay_chain_metadata
   use decay_chain_kinematics, only: generate_canonical_decay_node_rest
-  use decay_chain_parameters, only: decay_dummy_width_ratio, &
-                                    decay_physical_width
+  use decay_chain_parameters, only: decay_physical_width
   use nlo_decay_metadata, only: initialize_nlo_decay_metadata, &
        has_nlo_decay, nlo_decay_metadata_revision, corrected_parent_pdg, &
        nlo_decay_born_context, nlo_decay_context_for_fks, &
@@ -1421,23 +1420,13 @@ contains
 
   double precision function nlo_decay_node_nwa_weight(node)
     integer, intent(in) :: node
-    double precision :: denominator_scale
-    include 'decay_matrix_factorization.inc'
     if (node < 1 .or. node > nlo_decay_node_count()) then
       call fail_kinematics('a decay measure requested an invalid node')
     end if
-    if (factorized_decay_matrix_elements) then
-      nlo_decay_node_nwa_weight = 1d0/ &
-           (2d0*node_masses(node)* &
-            decay_physical_width(nlo_decay_node_pdg(node), &
-                                 node == nlo_decay_corrected_node()))
-    else
-      denominator_scale = decay_dummy_width_ratio()*node_masses(node)**2
-      nlo_decay_node_nwa_weight = denominator_scale**2/ &
-           (2d0*node_masses(node)* &
-            decay_physical_width(nlo_decay_node_pdg(node), &
-                                 node == nlo_decay_corrected_node()))
-    end if
+    nlo_decay_node_nwa_weight = 1d0/ &
+         (2d0*node_masses(node)* &
+          decay_physical_width(nlo_decay_node_pdg(node), &
+                               node == nlo_decay_corrected_node()))
   end function nlo_decay_node_nwa_weight
 
 

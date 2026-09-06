@@ -13,7 +13,8 @@ module fks_weights_module
   use chooser_functions_module, only: set_pdg_impl, &
        get_underlying_born_pdg_impl
   use decay_chain_metadata, only: has_decay_chains
-  use nlo_decay_metadata, only: has_nlo_decay, corrected_parent_pdg
+  use nlo_decay_metadata, only: has_nlo_decay, corrected_parent_pdg, &
+       nlo_decay_corrected_node
   use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
        active_nlo_contribution, active_contribution_has_virtual, &
        active_contribution_is_production, active_virtual_grid_index, &
@@ -22,7 +23,8 @@ module fks_weights_module
        bundle_component_count
   use decay_chain_scales, only: production_qcd_squared_order, &
        decay_qcd_squared_order, decay_qcd_coupling_weight, &
-       decay_qcd_coupling_rescaling, active_block_qcd_squared_order
+       decay_qcd_coupling_rescaling, active_block_qcd_squared_order, &
+       decay_event_scales
   use decay_chain_parameters, only: decay_width_expansion_coefficient, &
        decay_width_denominator_rescaling, decay_scale_species_count, &
        decay_scale_species_index, decay_scale_factor
@@ -95,6 +97,9 @@ module fks_weights_module
     integer function dlum_cache_channel()
       implicit none
     end function dlum_cache_channel
+    integer function sdm_branch_component_id(position)
+      integer, intent(in) :: position
+    end function sdm_branch_component_id
   end interface
 
 contains
@@ -209,6 +214,7 @@ contains
   subroutine finish_bundle_virtual_tricks()
     integer :: iamp, virtual_grid, orders(nsplitorders)
     double precision :: xlum, rescaling
+    double precision :: node_scales(nexternal)
 
     if (.not. has_nlo_contribution_bundle()) return
     if (.not. bundle_snapshot_active) then
@@ -216,8 +222,9 @@ contains
       stop 1
     end if
     xlum = cached_dlum(event_bjorken_x(:, soft_counterevent))
+    call decay_event_scales(soft_counterevent, node_scales)
     rescaling = decay_qcd_coupling_rescaling(&
-         g, decay_qcd_squared_order())
+         g, decay_qcd_squared_order(), node_scales=node_scales)
     virt_wgt_mint(0) = bundle_virt_snapshot(0) + &
          (virt_wgt_mint(0) - bundle_virt_snapshot(0))*xlum*rescaling
     born_wgt_mint(0) = bundle_born_snapshot(0) + &
@@ -228,7 +235,7 @@ contains
       if (virtual_grid == 0) cycle
       call amp_split_pos_to_orders(iamp, orders)
       rescaling = decay_qcd_coupling_rescaling(&
-           g, decay_qcd_squared_order(orders(qcd_pos)))
+           g, decay_qcd_squared_order(orders(qcd_pos)), node_scales=node_scales)
       virt_wgt_mint(virtual_grid) = bundle_virt_snapshot(virtual_grid) + &
            (virt_wgt_mint(virtual_grid) - &
             bundle_virt_snapshot(virtual_grid))* &
@@ -461,11 +468,17 @@ contains
     amppos(icontr) = amp_pos
     bundle_component(icontr) = 0
     correction_scale_pdg(icontr) = 0
+    correction_scale_node(icontr) = 0
+    call decay_event_scales(event_slot, decay_scales(:, icontr))
     if (has_nlo_decay()) then
       correction_scale_pdg(icontr) = corrected_parent_pdg()
+      correction_scale_node(icontr) = nlo_decay_corrected_node()
     end if
     if (present(density_scale_pdg)) then
       correction_scale_pdg(icontr) = abs(density_scale_pdg)
+    end if
+    if (present(density_component)) then
+      correction_scale_node(icontr) = sdm_branch_component_id(density_component)
     end if
     if (has_nlo_contribution_bundle()) then
       contribution = active_nlo_contribution()
@@ -592,14 +605,15 @@ contains
     factor_index = 1
     if (size(factor_indices) > 0) then
       species_index = decay_scale_species_index(correction_scale_pdg(index))
-      if (species_index < 1 .or. species_index > size(factor_indices)) then
+      if (species_index > size(factor_indices)) then
         write (*, *) 'ERROR: corrected decay has no scale factor', &
              correction_scale_pdg(index)
         stop 1
       end if
-      factor_index = factor_indices(species_index)
+      if (species_index > 0) factor_index = factor_indices(species_index)
     end if
-    weight_line_logarithmic_mu2_r = scales2(1, index)* &
+    weight_line_logarithmic_mu2_r = &
+         decay_scales(correction_scale_node(index), index)**2* &
          decay_scale_factor(factor_index)**2
   end function weight_line_logarithmic_mu2_r
 
@@ -614,15 +628,17 @@ contains
     double precision :: denominator_rescaling, width_coefficient
 
     decay_coupling_weight = decay_qcd_coupling_weight( &
-         decayqcdpower(index), factor_indices)
+         decayqcdpower(index), factor_indices, decay_scales(:, index))
     denominator_rescaling = 1d0
     width_coefficient = 1d0
-    if (has_nlo_contribution_bundle()) then
+    if (has_decay_chains() .or. has_nlo_decay()) then
       denominator_rescaling = &
-           decay_width_denominator_rescaling(factor_indices)
+           decay_width_denominator_rescaling(factor_indices, decay_scales(:, index))
+    end if
+    if (has_nlo_contribution_bundle()) then
       if (bundle_component(index) == bundle_width_component()) then
         width_coefficient = &
-             decay_width_expansion_coefficient(factor_indices)
+             decay_width_expansion_coefficient(factor_indices, decay_scales(:, index))
       end if
     end if
     weight_line_multiplier = production_g**QCDpower(index)* &
@@ -704,7 +720,7 @@ contains
           .not. has_nlo_contribution_bundle()) then
         virt_found = .true.
         decay_rescaling = decay_qcd_coupling_rescaling( &
-             g_strong(i), decayqcdpower(i))
+             g_strong(i), decayqcdpower(i), node_scales=decay_scales(:, i))
 ! Special for the soft-virtual needed for the virt-tricks. The
 ! *_wgt_mint variable should be directly passed to the mint-integrator
 ! and not be part of the plots nor computation of the cross section.
@@ -714,7 +730,8 @@ contains
           call amp_split_pos_to_orders(iamp, orders)
           QCD_power = orders(qcd_pos)
           decay_rescaling = decay_qcd_coupling_rescaling( &
-               g_strong(i), decay_qcd_squared_order(QCD_power))
+               g_strong(i), decay_qcd_squared_order(QCD_power), &
+               node_scales=decay_scales(:, i))
           virt_wgt_mint(iamp) = &
                virt_wgt_mint(iamp)*xlum*decay_rescaling
           born_wgt_mint(iamp) = &
@@ -758,6 +775,8 @@ contains
       amppos(ict_new) = amppos(ict)
       bundle_component(ict_new) = bundle_component(ict)
       correction_scale_pdg(ict_new) = correction_scale_pdg(ict)
+      correction_scale_node(ict_new) = correction_scale_node(ict)
+      decay_scales(:, ict_new) = decay_scales(:, ict)
       call copy_spin_density_line_if_present(ict, ict_new)
       do k = 1, nexternal
         do j = 0, 3

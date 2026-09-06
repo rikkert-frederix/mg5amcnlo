@@ -31,9 +31,6 @@ import madgraph.loop.loop_helas_objects as loop_helas_objects
 import madgraph.various.misc as misc
 from madgraph import InvalidCmd
 
-DECAY_DUMMY_WIDTH_RATIO = 0.1
-DECAY_DUMMY_WIDTH_FUNCTION = 'FNLO_DECAY_DUMMY_WIDTH_RATIO()'
-
 
 def _decay_definition_signature(process):
     """Return the exact generation signature of one decay subtree."""
@@ -1762,7 +1759,12 @@ def _set_local_width(wavefunction, width):
     wavefunction.set('antiparticle', antiparticle)
 
 
-def _annotate_widths(matrix_element, context, metadata):
+def _annotate_decay_nodes(matrix_element, context, metadata):
+    """Tag pole-free SDE connectors and keep forced species widthless.
+
+    The flattened amplitudes supply topology and relative channel weights;
+    physical matrix elements are contracted from independent densities.
+    """
     wavefunctions = _all_wavefunctions(matrix_element)
     cache = {}
     connector_ids = {}
@@ -1821,53 +1823,10 @@ def _annotate_widths(matrix_element, context, metadata):
             if mass.lower() == 'zero':
                 raise fks_common.FKSProcessError(
                     'A decay connector cannot have zero mass')
-            width = '%s*%s' % (DECAY_DUMMY_WIDTH_FUNCTION, mass)
-        else:
-            width = 'ZERO'
-        _set_local_width(wavefunction, width)
+        _set_local_width(wavefunction, 'ZERO')
 
 
-def _cache_crossed_current_base_amplitude(matrix_element):
-    """Build a colour-safe base amplitude for an inverse-rooted current.
-
-    ``get_base_amplitude`` reconstructs graph legs from HELAS
-    ``number_external`` labels.  In a crossed production current an internal
-    line can carry the same label as an external leg which occurs later in the
-    inverse-rooted graph.  The colour replacement map then contracts the
-    external colour index by mistake.  Give non-loop internal lines temporary,
-    unique labels while reconstructing the base graph.  The cached base
-    amplitude retains those harmless internal labels, while the HELAS objects
-    are restored before any calls are written.
-    """
-
-    matrix_element.relabel_helas_objects()
-    wavefunctions = _all_wavefunctions(matrix_element)
-    external_numbers = [
-        wavefunction.get('number_external')
-        for wavefunction in wavefunctions
-        if not wavefunction.get('mothers')]
-    next_number = max(
-        external_numbers + [matrix_element.get_nexternal_ninitial()[0]]) + 1
-    original_numbers = []
-    for wavefunction in wavefunctions:
-        if (not wavefunction.get('mothers') or
-                wavefunction.get('is_loop')):
-            continue
-        original_numbers.append(
-            (wavefunction, wavefunction.get('number_external')))
-        wavefunction.set('number_external', next_number)
-        next_number += 1
-
-    try:
-        base_amplitude = matrix_element.get('base_amplitude')
-    finally:
-        for wavefunction, number_external in original_numbers:
-            wavefunction.set('number_external', number_external)
-    matrix_element.set('base_amplitude', base_amplitude)
-
-
-def _finalize_matrix_element(matrix_element,
-                             normalize_crossed_current=False):
+def _finalize_matrix_element(matrix_element):
     matrix_element.set('base_amplitude', None)
     if isinstance(matrix_element,
                   loop_helas_objects.LoopHelasMatrixElement):
@@ -1883,8 +1842,6 @@ def _finalize_matrix_element(matrix_element,
             matrix_element['born_color_basis'].__class__()
         matrix_element['loop_color_basis'] = \
             matrix_element['loop_color_basis'].__class__()
-        if normalize_crossed_current:
-            _cache_crossed_current_base_amplitude(matrix_element)
         matrix_element.process_color()
     else:
         matrix_element.set('color_basis', color_amp.ColorBasis())
@@ -1993,41 +1950,6 @@ def align_nlo_decay_born_to_decay_chain(decay_metadata,
             record['visible_first'], record['visible_second'] = (
                 record['visible_second'], record['visible_first'])
     return visible_map
-
-
-def canonicalize_virtual_external_order(matrix_element, visible_map):
-    """Make a composed decay virtual consume canonical Born momenta."""
-
-    if matrix_element is None:
-        return
-    for wavefunction in _all_wavefunctions(matrix_element):
-        if wavefunction.get('mothers') or wavefunction.get('is_loop'):
-            continue
-        old_number = wavefunction.get('number_external')
-        try:
-            wavefunction.set('number_external', visible_map[old_number])
-        except KeyError:
-            raise fks_common.FKSProcessError(
-                'A decay virtual external leg is absent from the canonical '
-                'Born permutation')
-
-    for process in matrix_element.get('processes'):
-        visible = process.get_legs_with_decays()
-        if not visible:
-            continue
-        reordered = [None] * len(visible)
-        for source_leg in visible:
-            leg = copy.copy(source_leg)
-            target = visible_map[leg.get('number')]
-            leg.set('number', target)
-            reordered[target - 1] = leg
-        if any(leg is None for leg in reordered):
-            raise fks_common.FKSProcessError(
-                'The canonical decay-virtual process ordering is incomplete')
-        process.set('legs_with_decays', base_objects.LegList(reordered))
-
-    _finalize_matrix_element(matrix_element,
-                             normalize_crossed_current=True)
 
 
 def set_bundle_color_links(fks_process, metadata_sequence):
@@ -2196,7 +2118,7 @@ def _make_context(matrix_element, assignment, metadata, context_id,
             for leg in sorted(core_legs,
                               key=lambda item: item.get('number'))],
         '_core_legs': core_legs}
-    _annotate_widths(matrix_element, context, metadata)
+    _annotate_decay_nodes(matrix_element, context, metadata)
     if finalize:
         _finalize_matrix_element(matrix_element)
     return context
@@ -2213,208 +2135,6 @@ def _matrix_element_as_decay_current(matrix_element):
             'Could not regenerate the corrected decay as a HELAS current')
     return helas_objects.HelasMatrixElement(
         amplitude, gen_color=False)
-
-
-def _normalized_crossed_diagram_tag(diagram, model, source_by_number,
-                                    target_source, ninitial):
-    """Tag a crossed current after restoring its physical external legs."""
-
-    candidate = copy.deepcopy(diagram)
-    vertices = candidate.get('vertices')
-    if (not vertices or vertices[-1].get('id') != 0 or
-            len(vertices[-1].get('legs')) != 2):
-        raise fks_common.FKSProcessError(
-            'A crossed production diagram has no open-current vertex')
-    root_vertex = vertices.pop()
-    root_numbers = [leg.get('number') for leg in root_vertex.get('legs')]
-    if 1 not in root_numbers:
-        raise fks_common.FKSProcessError(
-            'A crossed production current has no external root')
-    connector_number = [number for number in root_numbers if number != 1][0]
-    if not vertices:
-        raise fks_common.FKSProcessError(
-            'A crossed production current has no physical vertices')
-    connector = vertices[-1].get('legs')[-1]
-    if connector.get('number') != connector_number:
-        raise fks_common.FKSProcessError(
-            'The crossed production connector is not the final current')
-    # For a repeated fermion/gluon line the base diagram can reuse the same
-    # Leg object for the incoming and outgoing occurrence of this vertex.
-    # Detach the outgoing endpoint before turning it into the physical root.
-    connector = copy.copy(connector)
-    vertices[-1].get('legs')[-1] = connector
-    for name in ['state', 'onshell', 'polarization']:
-        connector.set(name, copy.copy(target_source.get(name)))
-    connector.set('id', target_source.get('id'))
-    connector.set('number', 1000 + target_source.get('number'))
-
-    produced = set()
-    for vertex_index, vertex in enumerate(vertices):
-        inputs = (vertex.get('legs') if vertex_index == len(vertices) - 1
-                  else vertex.get('legs')[:-1])
-        for leg in inputs:
-            candidate_number = leg.get('number')
-            if candidate_number in produced:
-                continue
-            source = source_by_number.get(candidate_number)
-            if source is None:
-                continue
-            for name in ['state', 'onshell', 'polarization']:
-                leg.set(name, copy.copy(source.get(name)))
-            source_id = source.get('id')
-            if not source.get('state'):
-                source_id = model.get_particle(
-                    source_id).get_anti_pdg_code()
-            leg.set('id', source_id)
-            leg.set('number', 1000 + source.get('number'))
-        if vertex_index != len(vertices) - 1:
-            produced.add(vertex.get('legs')[-1].get('number'))
-    return diagram_generation.DiagramTag(
-        candidate, model, ninitial)
-
-
-def _normalized_source_diagram_tag(diagram, model, ninitial):
-    """Tag a physical diagram with collision-free external-leg labels."""
-
-    candidate = copy.deepcopy(diagram)
-    vertices = candidate.get('vertices')
-    produced = set()
-    for vertex_index, vertex in enumerate(vertices):
-        inputs = (vertex.get('legs') if vertex_index == len(vertices) - 1
-                  else vertex.get('legs')[:-1])
-        for leg in inputs:
-            number = leg.get('number')
-            if number not in produced:
-                leg.set('number', 1000 + number)
-        if vertex_index != len(vertices) - 1:
-            produced.add(vertex.get('legs')[-1].get('number'))
-    return diagram_generation.DiagramTag(candidate, model, ninitial)
-
-
-def _production_amplitude_as_parent_current(production_amplitude, selector,
-                                            production_context):
-    """Cross LO production into a current carrying the selected parent.
-
-    A normal decay current is rooted on its physical incoming resonance.  To
-    obtain the inverse object, cross the selected production resonance to the
-    initial state as its antiparticle and cross every original initial leg to
-    the final state.  HELAS can then root every production diagram on the
-    selected resonance while retaining the correct fermion-flow conventions.
-    """
-
-    process = production_amplitude.get('process')
-    model = process.get('model')
-    target = _resolve_selector(process, selector)
-    if target.get('polarization'):
-        raise fks_common.FKSProcessError(
-            'The NLO-decay virtual compositor does not support a polarized '
-            'production resonance')
-
-    crossed_legs = process.get('legs').__class__()
-    root = copy.copy(target)
-    root.set('id', model.get_particle(
-        target.get('id')).get_anti_pdg_code())
-    root.set('state', False)
-    root.set('number', 1)
-    crossed_legs.append(root)
-
-    source_legs = {}
-    for leg in sorted(process.get('legs'),
-                      key=lambda item: item.get('number')):
-        if leg.get('number') == target.get('number'):
-            continue
-        crossed = copy.copy(leg)
-        if not leg.get('state'):
-            crossed.set('id', model.get_particle(
-                leg.get('id')).get_anti_pdg_code())
-        crossed.set('state', True)
-        crossed.set('number', len(crossed_legs) + 1)
-        source_legs[crossed.get('number')] = leg
-        crossed_legs.append(crossed)
-
-    current_process = _copy_process(process)
-    current_process.set('legs', crossed_legs)
-    current_process.set('is_decay_chain', True)
-    current_process.set('perturbation_couplings', [])
-    current_process.set('NLO_mode', 'tree')
-    current_amplitude = diagram_generation.Amplitude(current_process)
-    if not current_amplitude.get('diagrams'):
-        raise fks_common.FKSProcessError(
-            'Could not cross the LO production process into a resonance '
-            'current')
-    source_tags = [
-        _normalized_source_diagram_tag(diagram, model,
-                                       process.get_ninitial())
-        for diagram in production_amplitude.get('diagrams')]
-    normalized = []
-    for diagram in current_amplitude.get('diagrams'):
-        tag = _normalized_crossed_diagram_tag(
-            diagram, model, source_legs, target, process.get_ninitial())
-        if tag in source_tags:
-            normalized.append(diagram)
-    current_amplitude.set(
-        'diagrams', current_amplitude.get('diagrams').__class__(normalized))
-    if len(normalized) != len(production_amplitude.get('diagrams')):
-        raise fks_common.FKSProcessError(
-            'Crossing the LO decay environment retained %d of %d physical '
-            'production diagrams' %
-            (len(normalized), len(production_amplitude.get('diagrams'))))
-    current = helas_objects.HelasMatrixElement(
-        current_amplitude, gen_color=False)
-
-    for wavefunction in current.get_all_wavefunctions():
-        if wavefunction.get('mothers'):
-            continue
-        source = source_legs.get(wavefunction.get('number_external'))
-        if source is None:
-            continue
-        target_kind, visible_number = production_context['core_map'][
-            source.get('number')]
-        if target_kind != 'LEG':
-            raise fks_common.FKSProcessError(
-                'A non-resonant production leg did not map to a visible leg')
-        # The crossed state fixes the HELAS particle/antiparticle convention;
-        # leg_state instead records which full-process legs are incoming.
-        wavefunction.set('leg_state', source.get('state'))
-        # Loop HELAS flips the particle object of an ordinary incoming leg but
-        # deliberately retains its original ``is_part`` flow flag.  Reproduce
-        # that convention after constructing this leg by crossing it through
-        # a final-state antiparticle; otherwise an incoming quark momentum is
-        # assigned the outgoing sign in the composed loop current.
-        wavefunction.set(
-            'is_part', model.get_particle(source.get('id')).get('is_part'))
-        # Fermion crossing also reverses the HELAS momentum sign through the
-        # particle/antiparticle flow.  Bosons have no such flow sign: their
-        # external HELAS call obtains it directly from ``state``.  Restore
-        # that state for production-side incoming bosons, since the composed
-        # loop is evaluated with the ordinary positive-energy beam momenta.
-        if wavefunction.is_boson() and not source.get('state'):
-            wavefunction.set('state', 'initial')
-        # A negative node id is a temporary, deepcopy-safe visible-leg tag.
-        wavefunction.set('decay_node_id', -visible_number)
-
-    for diagram in current.get('diagrams'):
-        if len(diagram.get('amplitudes')) != 1:
-            raise fks_common.FKSProcessError(
-                'The NLO-decay virtual compositor currently requires one '
-                'production current per HELAS diagram')
-        amplitude = diagram.get('amplitudes')[0]
-        if (amplitude.get('interaction_id') != 0 or
-                len(amplitude.get('mothers')) != 2 or
-                not amplitude.get('mothers')[1].get('mothers')):
-            raise fks_common.FKSProcessError(
-                'The crossed production process did not produce the expected '
-                'open resonance current')
-        connector = amplitude.get('mothers')[1]
-        mass = connector.get('mass')
-        if mass.lower() == 'zero':
-            raise fks_common.FKSProcessError(
-                'The production/decay connector cannot be massless')
-        _set_local_width(
-            connector, '%s*%s' % (DECAY_DUMMY_WIDTH_FUNCTION, mass))
-        connector.set('decay_node_id', 1)
-
-    return current
 
 
 def _copy_loop_matrix_element(matrix_element):
@@ -2446,214 +2166,6 @@ def _copy_loop_matrix_element(matrix_element):
     result.set('has_mirror_process',
                matrix_element.get('has_mirror_process'))
     return result
-
-
-def _production_current_pieces(current):
-    """Return self-contained one-diagram production-current MEs.
-
-    Optimized tree HELAS matrix elements store shared external wavefunctions
-    only in the first diagram.  Each current must be independently insertable,
-    so recover the full recursive wavefunction closure after copying it.
-    Splitting also avoids the existing multi-diagram ``insert_decay`` path,
-    which does not replace loop-internal references independently in every
-    copied diagram.
-    """
-
-    pieces = []
-    for source_diagram in current.get('diagrams'):
-        if len(source_diagram.get('amplitudes')) != 1:
-            raise fks_common.FKSProcessError(
-                'The NLO-decay virtual compositor currently requires one '
-                'production current per HELAS diagram')
-        diagram = copy.deepcopy(source_diagram)
-        complete_wavefunctions = helas_objects.HelasWavefunctionList()
-        seen_wavefunctions = set()
-        for amplitude in diagram.get('amplitudes'):
-            wavefunctions = \
-                helas_objects.HelasWavefunctionList.extract_wavefunctions(
-                    amplitude.get('mothers'))
-            for wavefunction in reversed(wavefunctions):
-                if id(wavefunction) in seen_wavefunctions:
-                    continue
-                seen_wavefunctions.add(id(wavefunction))
-                complete_wavefunctions.append(wavefunction)
-        diagram.set('wavefunctions', complete_wavefunctions)
-
-        piece = copy.copy(current)
-        piece.set('processes', current.get('processes').__class__([
-            _copy_process_tree(process)
-            for process in current.get('processes')]))
-        piece.set('diagrams', current.get('diagrams').__class__([
-            diagram]))
-        piece.set('base_amplitude', None)
-        pieces.append(piece)
-    return pieces
-
-
-def _tag_decay_virtual_external_legs(virtual, local_context):
-    """Tag standalone decay-final wavefunctions with full visible numbers."""
-
-    for wavefunction in _all_wavefunctions(virtual):
-        if wavefunction.get('mothers') or wavefunction.get('is_loop'):
-            continue
-        local_number = wavefunction.get('number_external')
-        visible_target = local_context.get(
-            'visible_external_map', {}).get(local_number)
-        if visible_target is not None:
-            wavefunction.set('decay_node_id', -visible_target)
-            continue
-        target = local_context['local_map'].get(local_number)
-        if target is None or target[0] == 'NODE':
-            continue
-        if target[0] != 'LEG':
-            raise fks_common.FKSProcessError(
-                'The decay virtual contains an unknown external-leg mapping')
-        wavefunction.set('decay_node_id', -target[1])
-
-
-def _insert_one_production_current(decay_virtual, current,
-                                   local_context, parent_pdg):
-    """Insert one LO production current into a copy of the decay virtual."""
-
-    result = _copy_loop_matrix_element(decay_virtual)
-    _tag_decay_virtual_external_legs(result, local_context)
-    initial_numbers = [
-        leg.get('number')
-        for leg in result.get('processes')[0].get('legs')
-        if not leg.get('state')]
-    if len(initial_numbers) != 1:
-        raise fks_common.FKSProcessError(
-            'The standalone decay virtual must have one incoming resonance')
-    old_wavefunctions = [
-        wavefunction for wavefunction in _all_wavefunctions(result)
-        if (not wavefunction.get('mothers') and
-            not wavefunction.get('is_loop') and
-            wavefunction.get('number_external') == initial_numbers[0])]
-    if not old_wavefunctions:
-        raise fks_common.FKSProcessError(
-            'Could not locate the incoming resonance in the decay virtual')
-
-    numbers = [
-        max(wavefunction.get('number')
-            for wavefunction in result.get_all_wavefunctions()),
-        max(amplitude.get('number')
-            for amplitude in result.get_all_amplitudes())]
-    got_majoranas = any(
-        wavefunction.get('fermionflow') < 0 or
-        (wavefunction.get('self_antipart') and wavefunction.is_fermion())
-        for wavefunction in
-        result.get_all_wavefunctions() + current.get_all_wavefunctions())
-    # Calling insert_decay directly deliberately skips the ordinary process
-    # and identical-decay bookkeeping: this is the inverse operation, and the
-    # correct full process is installed after all production currents merge.
-    result.insert_decay(old_wavefunctions, current, numbers, got_majoranas)
-
-    for wavefunction in _all_wavefunctions(result):
-        if (not wavefunction.get('mothers') and
-                not wavefunction.get('is_loop') and
-                wavefunction.get('decay_node_id') < 0):
-            wavefunction.set(
-                'number_external', -wavefunction.get('decay_node_id'))
-            wavefunction.set('decay_node_id', 0)
-
-    for wavefunction in _all_wavefunctions(result):
-        if abs(wavefunction.get('pdg_code')) != abs(parent_pdg):
-            continue
-        if wavefunction.get('decay_node_id') == 1:
-            mass = wavefunction.get('mass')
-            _set_local_width(
-                wavefunction,
-                '%s*%s' % (DECAY_DUMMY_WIDTH_FUNCTION, mass))
-        else:
-            _set_local_width(wavefunction, 'ZERO')
-    return result
-
-
-def _combined_virtual_process(combined_born, decay_virtual):
-    """Build full-process order bookkeeping for the composed virtual."""
-
-    process = _copy_process_tree(combined_born.get('processes')[0])
-    decay_process = decay_virtual.get('processes')[0]
-    process.set('perturbation_couplings', ['QCD'])
-    process.set('NLO_mode', decay_process.get('NLO_mode'))
-    process.set('has_born', True)
-    process.set('split_orders', misc.make_unique(
-        list(process.get('split_orders')) +
-        list(decay_process.get('split_orders'))))
-
-    born_orders = misc.make_unique([
-        tuple(sorted(diagram.calculate_orders().items()))
-        for diagram in combined_born.get('diagrams')])
-    if len(born_orders) != 1:
-        raise fks_common.FKSProcessError(
-            'The NLO-decay virtual compositor currently requires one Born '
-            'coupling-order configuration')
-    born_sq_orders = dict(
-        (order, 2 * power) for order, power in born_orders[0])
-    for order in process.get('model').get('coupling_orders'):
-        born_sq_orders.setdefault(order, 0)
-    squared_orders = copy.copy(born_sq_orders)
-    squared_orders['QCD'] = squared_orders.get('QCD', 0) + 2
-    process.set('born_sq_orders', born_sq_orders)
-    process.set('squared_orders', squared_orders)
-    return process
-
-
-def compose_nlo_decay_virtual(production_amplitude, selector,
-                              decay_virtual, combined_born,
-                              production_context, local_context):
-    """Contract a decay loop with crossed LO-production currents at HELAS level."""
-
-    current = _production_amplitude_as_parent_current(
-        production_amplitude, selector, production_context)
-    pieces = _production_current_pieces(current)
-    composed = [
-        _insert_one_production_current(
-            decay_virtual, piece, local_context, selector[0])
-        for piece in pieces]
-    if not composed:
-        raise fks_common.FKSProcessError(
-            'The LO production process did not yield a virtual current')
-
-    combined = composed[0]
-    for contribution in composed[1:]:
-        combined.get('diagrams').extend(contribution.get('diagrams'))
-    combined.set('processes', combined.get('processes').__class__([
-        _combined_virtual_process(combined_born, decay_virtual)]))
-    combined.set('identical_particle_factor',
-                 combined_born.get('identical_particle_factor'))
-    combined.set('has_mirror_process',
-                 combined_born.get('has_mirror_process'))
-    combined.nlo_decay_crossed_current = True
-    # insert_decay_chains normally performs this final pass.  The inverse
-    # compositor calls insert_decay directly, so refresh the numbers, fermion
-    # signs and colour-index chains explicitly before rebuilding loop colour.
-    for index, diagram in enumerate(combined.get('diagrams'), 1):
-        diagram.set('number', index)
-    for index, wavefunction in enumerate(
-            combined.get_all_wavefunctions(), 1):
-        wavefunction.set('number', index)
-    for index, amplitude in enumerate(combined.get_all_amplitudes(), 1):
-        amplitude.set('number', index)
-        amplitude.calculate_fermionfactor()
-        amplitude.set('color_indices', amplitude.get_color_indices())
-    for attribute in ['squared_orders', 'amps_orders']:
-        if hasattr(combined, attribute):
-            delattr(combined, attribute)
-    _finalize_matrix_element(combined, normalize_crossed_current=True)
-
-    if (set(combined.get('born_color_basis')) !=
-            set(combined_born.get('color_basis'))):
-        raise fks_common.FKSProcessError(
-            'The composed decay virtual and full Born have inconsistent '
-            'colour bases')
-
-    if (combined.get_nexternal_ninitial() !=
-            combined_born.get_nexternal_ninitial()):
-        raise fks_common.FKSProcessError(
-            'The composed decay virtual and full Born have inconsistent '
-            'external-state dimensions')
-    return combined, len(pieces)
 
 
 def _glue_nlo_decay_tree_component(production_amplitude, selector,
@@ -3413,10 +2925,10 @@ def compose_nlo_decay_helas_process(fks_process, composition):
             'SPIN_DENSITY_MATRIX'
         prototype_metadata['virtual_current_count'] = 1
 
-    _annotate_widths(combined_born, born_local_context, prototype_metadata)
+    _annotate_decay_nodes(combined_born, born_local_context, prototype_metadata)
     for real, context in zip(
             combined_reals, prototype_metadata['contexts'][1:]):
-        _annotate_widths(
+        _annotate_decay_nodes(
             real.matrix_element, context, prototype_metadata)
     for context in prototype_metadata['contexts']:
         context.pop('_local_leaf_ids', None)
@@ -3940,14 +3452,17 @@ def write_decay_chain_info(path, metadata):
 
 
 def decay_card_text(widths, renormalization_scales,
-                    dummy_width_ratio=DECAY_DUMMY_WIDTH_RATIO,
                     production_scale_momenta='CORE',
                     nlo_width_pdgs=(), nlo_widths=None,
                     decay_scale_variation_mode='NONE',
                     decay_scale_factors=(1.0,),
                     lo_width_variations=None,
                     nlo_width_variations=None,
-                    nlo_decay_combination='ADDITIVE'):
+                    nlo_decay_combination='ADDITIVE',
+                    production_order='NLO', decay_order='NLO',
+                    decay_perturbative_orders=None,
+                    decay_dynamical_scale_choices=None,
+                    decay_width_scale_modes=None):
     """Return a deterministic runtime card for on-shell decay parameters."""
 
     absolute_widths = dict(
@@ -3964,6 +3479,30 @@ def decay_card_text(widths, renormalization_scales,
     if set(absolute_widths) != set(absolute_scales):
         raise ValueError(
             'Decay widths and renormalisation scales must cover the same PDGs')
+    production_order = production_order.upper()
+    decay_order = decay_order.upper()
+    if production_order not in ('LO', 'NLO') or decay_order not in ('LO', 'NLO'):
+        raise ValueError('Production and decay orders must be LO or NLO')
+
+    def indexed_options(options, allowed, name):
+        result = {}
+        for pdg, value in (options or {}).items():
+            pdg = abs(int(pdg))
+            if isinstance(value, str):
+                value = value.upper()
+            if pdg not in absolute_scales or pdg in result:
+                raise ValueError('%s has an unknown or duplicate PDG' % name)
+            if value not in allowed:
+                raise ValueError('Invalid %s: %s' % (name, value))
+            result[pdg] = value
+        return result
+
+    decay_orders = indexed_options(
+        decay_perturbative_orders, ('LO', 'NLO'), 'decay perturbative order')
+    dynamic_choices = indexed_options(
+        decay_dynamical_scale_choices, (-1, 0, 1, 2, 3), 'decay scale choice')
+    width_modes = indexed_options(
+        decay_width_scale_modes, ('AUTO', 'EXPLICIT'), 'width scale mode')
     absolute_nlo_width_pdgs = set(abs(pdg) for pdg in nlo_width_pdgs)
     if 0 in absolute_nlo_width_pdgs:
         raise ValueError('NLO decay-width PDG codes must be nonzero')
@@ -4045,102 +3584,173 @@ def decay_card_text(widths, renormalization_scales,
            for pdg, factor in absolute_nlo_width_variations):
         raise ValueError(
             'NLO width variations are only valid for NLO-width PDGs')
-    variation_requested = (
-        decay_scale_variation_mode != 'NONE' or
-        decay_scale_factors != (1.0,) or
-        bool(absolute_lo_width_variations) or
-        bool(absolute_nlo_width_variations))
-    if variation_requested and not absolute_nlo_width_pdgs:
-        raise ValueError(
-            'Decay-scale variations require explicit LO and NLO widths')
-    if decay_scale_variation_mode == 'NONE' and variation_requested:
+    if decay_scale_variation_mode == 'NONE' and (
+            absolute_lo_width_variations or absolute_nlo_width_variations):
         raise ValueError(
             'Decay scale factors or varied widths require a non-NONE mode')
     if decay_scale_variation_mode != 'NONE' and \
             len(decay_scale_factors) < 2:
         raise ValueError(
             'Decay-scale variation requires at least two scale factors')
-    if variation_requested:
-        for pdg in absolute_nlo_width_pdgs:
+    explicit_species = {pdg for pdg, factor in
+                        list(absolute_lo_width_variations) +
+                        list(absolute_nlo_width_variations)}
+    for pdg in explicit_species:
+        if width_modes.get(pdg) == 'AUTO':
+            raise ValueError('Explicit width variations require EXPLICIT mode')
+        width_modes[pdg] = 'EXPLICIT'
+    for pdg, choice in dynamic_choices.items():
+        if choice != 0 and width_modes.get(pdg) == 'EXPLICIT':
+            raise ValueError('Event-by-event decay scales require AUTO widths')
+    if decay_scale_variation_mode != 'NONE':
+        for pdg in explicit_species:
             for factor in decay_scale_factors[1:]:
                 if (pdg, factor) not in absolute_lo_width_variations:
                     raise ValueError(
                         'Every varied NLO-width PDG needs an explicit LO '
                         'width at every noncentral factor')
-                if (pdg, factor) not in absolute_nlo_width_variations:
+                if (pdg in absolute_nlo_width_pdgs and
+                        (pdg, factor) not in absolute_nlo_width_variations):
                     raise ValueError(
                         'Every varied NLO-width PDG needs an explicit NLO '
                         'width at every noncentral factor')
-    combination_comments = [
-        '# NLO_DECAY_COMBINATION selects expanded or multiplicative blocks.',
-        '# MULTIPLICATIVE normalizes corrected decays with their NLO widths.'] \
-        if absolute_nlo_width_pdgs else [
-        '# Bundled NLO results use the strict O(alpha_s) width expansion.',
-        '# All NWA denominators use LO widths; NLO-LO enters only linearly.']
     lines = [
-        '# FNLO_DECAY_CARD',
-        '# Runtime parameters for fixed-on-shell decay chains.',
-        '# LO_DECAY_WIDTH entries are LO physical total widths in GeV.',
-        '# NLO_DECAY_WIDTH entries are NLO physical total widths in GeV.'] + \
-        combination_comments + [
-        '# DECAY_REN_SCALE entries are independent decay scales in GeV.',
-        'FORMAT %d' % (5 if variation_requested else
-                       (4 if absolute_nlo_width_pdgs else 3)),
-        'DUMMY_WIDTH_RATIO %.16e' % dummy_width_ratio,
-        'PRODUCTION_REN_SCALE_MOMENTA %s' % production_scale_momenta]
+        '#*********************************************************************',
+        '#                       MadGraph5_aMC@NLO                             *',
+        '#                         FNLO_DECAY_CARD                             *',
+        '#                                                                     *',
+        '# Parameters for fixed-order, on-shell decay chains (fNLO only).       *',
+        '# Use: value = parameter ! explanation                                *',
+        '# Indexed parameters use absolute PDG codes: (6) covers t and t~.     *',
+        '# Each resonance occurrence still has its own momenta and scale.      *',
+        '#*********************************************************************',
+        '',
+        '#*********************************************************************',
+        '# Perturbative orders                                                  *',
+        '# NLO includes the corrections generated for the selected block.       *',
+        '# LO keeps its Born contribution and disables its NLO corrections.    *',
+        '# For a mixed calculation, launch calculate_xsect NLO and set either  *',
+        '# production_order or decay_order to LO below. calculate_xsect LO     *',
+        '# makes the entire calculation LO, irrespective of these settings.   *',
+        '# These switches cannot add corrections absent from the process.      *',
+        '#*********************************************************************',
+        '%s = production_order ! LO or NLO for production.' % production_order,
+        '%s = decay_order ! LO or NLO for all decays and their total widths.' % decay_order,
+        '# Optional: LO = decay_perturbative_order(6) disables just this species.',
+        '# A species override can disable NLO, but cannot override decay_order=LO.']
+    for pdg, order in sorted(decay_orders.items()):
+        lines.append('%s = decay_perturbative_order(%d)' % (order, pdg))
     if absolute_nlo_width_pdgs:
-        lines.append('NLO_DECAY_COMBINATION %s' % nlo_decay_combination)
-    if variation_requested:
         lines.extend([
-            '# Scale variations evaluate the same strict O(alpha_s) sum.',
-            '# Every non-central point needs explicit LO/NLO total widths.',
-            'DECAY_SCALE_VARIATION_MODE %s' %
-            decay_scale_variation_mode,
-            'DECAY_SCALE_FACTORS %d %s' % (
-                len(decay_scale_factors),
-                ' '.join('%.16e' % factor
-                         for factor in decay_scale_factors))])
+            '',
+            '# ADDITIVE: strict NLO expansion of production, decays and widths.',
+            '# Uses LO denominators and -Born*sum[(Gamma_NLO-Gamma_LO)/Gamma_LO].',
+            '# MULTIPLICATIVE: product of the selected LO/NLO block densities;',
+            '# normalizes NLO decays with NLO widths and LO decays with LO widths.',
+            '# It includes products of corrections beyond the strict NLO sum.',
+            '%s = nlo_decay_combination ! ADDITIVE or MULTIPLICATIVE.' % nlo_decay_combination])
+    lines.extend([
+        '',
+        '#*********************************************************************',
+        '# Scale reweighting                                                    *',
+        '# NONE: central decay scales only. Production variations are set in   *',
+        '# run_card.dat independently. CORRELATED: vary every decay scale by    *',
+        '# the production muR factor; the list must match rw_rscale in order,   *',
+        '# and production reweight_scale must be enabled. INDEPENDENT: take     *',
+        '# all combinations of production muR/muF and one factor per species.   *',
+        '# INDEPENDENT also works with production reweight_scale disabled.      *',
+        '# With production reweight_scale enabled, INDEPENDENT retains all     *',
+        '# production-only, decay-only and simultaneous scale variations in    *',
+        '# one run. Every point is kept as a separate final HwU weight, with    *',
+        '# muR, muF and d<PDG> factor labels, and in scale_pdf_dependence.dat.   *',
+        '#*********************************************************************',
+        '%s = decay_scale_variation_mode ! NONE, CORRELATED or INDEPENDENT.' % decay_scale_variation_mode,
+        '%s = decay_scale_factors ! Positive, distinct factors; central 1 first.' %
+        ', '.join('%.8g' % factor for factor in
+                  (decay_scale_factors if decay_scale_factors != (1.0,) else
+                   (1.0, 2.0, 0.5))),
+        '',
+        '#*********************************************************************',
+        '# Widths and renormalization scales (all dimensionful values in GeV)   *',
+        '# Supply physical TOTAL widths, not the selected partial widths.      *',
+        '# Export copies the param-card width into LO and NLO: replace both     *',
+        '# with values computed at the reference decay_ren_scale below.        *',
+        '# AUTO (Born independent of alpha_s): Gamma_LO stays constant and      *',
+        '# Gamma_NLO(mu) = Gamma_LO + [Gamma_NLO(ref)-Gamma_LO]                   *',
+        '#                            * alpha_s(mu)/alpha_s(ref).               *',
+        '# The supplied LO total width must also be independent of alpha_s.    *',
+        '# EXPLICIT: supply LO/NLO widths at every noncentral factor, e.g.      *',
+        '#   1.49 = lo_decay_width_variation(6, 2.0)                            *',
+        '#   1.37 = nlo_decay_width_variation(6, 2.0)                           *',
+        '# NLO widths are needed only for species kept at NLO. If the Born     *',
+        '# depends on alpha_s, use EXPLICIT and a fixed decay scale.            *',
+        '#                                                                     *',
+        '# decay_dynamical_scale_choice: 0 = fixed decay_ren_scale;              *',
+        '# 1 = sum daughter ET; 2 = sum daughter mT; 3 = half that mT sum.       *',
+        '# Daughters are immediate particles in this decay block, including    *',
+        '# real radiation, in the event frame. Dynamic scales have a 2 GeV     *',
+        '# floor before variation factors are applied. -1 calls the editable   *',
+        '# fixed_user_decay_scale hook in SubProcesses/dummy_fct.f90.           *',
+        '# Event-by-event scales require an alpha_s-independent Born and AUTO  *',
+        '# widths; each resonance width then follows its own event scale.      *',
+        '#*********************************************************************'])
     for pdg in sorted(absolute_widths):
-        width_keyword = ('LO_DECAY_WIDTH'
-                         if absolute_nlo_width_pdgs else 'DECAY_WIDTH')
-        lines.append('%s %d %.16e' % (
-            width_keyword, pdg, absolute_widths[pdg]))
+        lines.extend(['', '# Decaying species: |PDG| = %d' % pdg,
+                      '%.16e = lo_decay_width(%d) ! LO total width.' %
+                      (absolute_widths[pdg], pdg)])
         if pdg in absolute_nlo_width_pdgs:
-            lines.append('NLO_DECAY_WIDTH %d %.16e' % (
-                pdg, absolute_nlo_widths[pdg]))
-        lines.append('DECAY_REN_SCALE %d %.16e' % (
-            pdg, absolute_scales[pdg]))
-    if variation_requested:
+            lines.append('%.16e = nlo_decay_width(%d) ! NLO total width at the reference scale.' %
+                         (absolute_nlo_widths[pdg], pdg))
+        lines.extend([
+            '%.16e = decay_ren_scale(%d) ! Fixed scale and width reference scale.' %
+            (absolute_scales[pdg], pdg),
+            '%d = decay_dynamical_scale_choice(%d) ! 0 fixed; -1 user; 1/2/3 dynamic.' %
+            (dynamic_choices.get(pdg, 0), pdg)])
+        if pdg in width_modes:
+            lines.append('%s = decay_width_scale_mode(%d) ! AUTO or EXPLICIT.' %
+                         (width_modes[pdg], pdg))
+        else:
+            lines.append('# Width mode defaults to AUTO for alpha_s-independent Born decays,')
+            lines.append('# and EXPLICIT otherwise. Optional: AUTO = decay_width_scale_mode(%d)' % pdg)
+    if explicit_species:
+        lines.extend(['', '# Explicit total widths at varied decay scales:'])
         for (pdg, factor), value in sorted(
                 absolute_lo_width_variations.items()):
             lines.append(
-                'LO_DECAY_WIDTH_VARIATION %d %.16e %.16e' %
-                (pdg, factor, value))
+                '%.16e = lo_decay_width_variation(%d, %.8g)' %
+                (value, pdg, factor))
         for (pdg, factor), value in sorted(
                 absolute_nlo_width_variations.items()):
             lines.append(
-                'NLO_DECAY_WIDTH_VARIATION %d %.16e %.16e' %
-                (pdg, factor, value))
-    lines.append('END')
+                '%.16e = nlo_decay_width_variation(%d, %.8g)' %
+                (value, pdg, factor))
+    lines.extend([
+        '',
+        '#*********************************************************************',
+        '# Production momenta                                                   *',
+        '# CORE uses undecayed production momenta for production muR. DECAYED   *',
+        '# uses the complete decayed event. Production muF and the production  *',
+        '# Ellis-Sexton scale always use CORE.                                  *',
+        '#*********************************************************************',
+        '%s = production_ren_scale_momenta ! CORE or DECAYED.' % production_scale_momenta])
     return '\n'.join(lines) + '\n'
 
 
 def write_decay_card(path, widths, renormalization_scales,
-                     dummy_width_ratio=DECAY_DUMMY_WIDTH_RATIO,
                      production_scale_momenta='CORE',
                      nlo_width_pdgs=(), nlo_widths=None,
                      decay_scale_variation_mode='NONE',
                      decay_scale_factors=(1.0,),
                      lo_width_variations=None,
                      nlo_width_variations=None,
-                     nlo_decay_combination='ADDITIVE'):
+                     nlo_decay_combination='ADDITIVE', **options):
     """Write ``decay_card.dat`` containing runtime decay parameters."""
 
     filename = os.path.join(path, 'decay_card.dat')
     with open(filename, 'w') as stream:
         stream.write(decay_card_text(
-            widths, renormalization_scales, dummy_width_ratio,
+            widths, renormalization_scales,
             production_scale_momenta, nlo_width_pdgs, nlo_widths,
             decay_scale_variation_mode, decay_scale_factors,
             lo_width_variations, nlo_width_variations,
-            nlo_decay_combination))
+            nlo_decay_combination, **options))

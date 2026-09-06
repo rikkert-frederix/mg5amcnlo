@@ -63,7 +63,8 @@ module driver_mintfo_module
   use fks_singular_module, only: fill_configurations_common, setfksfactor
   use madfks_plot_module, only: topout_impl, outfun_multiplicative_impl
   use decay_chain_parameters, only: multiplicative_nlo_enabled, &
-       use_decayed_production_ren_scale_momenta
+       use_decayed_production_ren_scale_momenta, nlo_correction_enabled, &
+       set_decay_run_order
   use spin_density_fks_matrices, only: &
        set_spin_density_fks_collection, reset_spin_density_fks_matrices
   use spin_density_weight_lines, only: clear_spin_density_weight_lines, &
@@ -223,7 +224,6 @@ contains
 
     call setrun()
     call setpara('param_card.dat')
-    call configure_fnlo_scale_variations()
     call init_fks_singular_bridge()
     call setcuts()
     call printout()
@@ -233,6 +233,7 @@ contains
 
     write (*, *) 'getting user params'
     call get_user_params(ncalls0, itmax, restart_mode)
+    call configure_fnlo_scale_variations()
     imode = restart_mode
     flat_grid = imode == 0
 
@@ -419,6 +420,8 @@ contains
     double precision, save :: folded_integer_volume = 0d0
     logical, save :: folded_integer_is_valid = .false.
 
+    call set_decay_run_order(abrv == 'born')
+
     ! Bjorken x and CORE factorization scales are production data.  Preserve
     ! their PDF working set across decay replicas; genuinely DECAYED scales
     ! miss the numerical cache key and are evaluated normally.
@@ -532,6 +535,9 @@ contains
       end if
 
       do nbody_contribution = 1, nbody_contribution_max
+        if (has_nlo_contribution_bundle() .and. nbody_contribution > 1) then
+          if (.not. nlo_correction_enabled(nbody_contribution)) cycle
+        end if
         calculated_born = .false.
         if (has_nlo_contribution_bundle()) then
           nfks_born = contribution_representative_fks(nbody_contribution)
@@ -571,12 +577,12 @@ contains
                   has_nlo_contribution_bundle()) then
                 call compute_decay_width_counterterm()
               end if
-              if (has_nlo_contribution_bundle()) then
-                call begin_bundle_virtual_tricks()
-              end if
-              call compute_nbody_noborn()
-              if (has_nlo_contribution_bundle()) then
-                call finish_bundle_virtual_tricks()
+              if (nlo_correction_enabled()) then
+                if (has_nlo_contribution_bundle()) &
+                     call begin_bundle_virtual_tricks()
+                call compute_nbody_noborn()
+                if (has_nlo_contribution_bundle()) &
+                     call finish_bundle_virtual_tricks()
               end if
             end if
           end if
@@ -591,7 +597,8 @@ contains
         ! process-specific decay metadata and canonical Born embedding.
         if (has_nlo_contribution_bundle() .and. &
             abrv(1:4) /= 'born' .and. abrv(1:4) /= 'bovi' .and. &
-            abrv(1:2) /= 'vi' .and. .not. skip_nplusone) then
+            abrv(1:2) /= 'vi' .and. .not. skip_nplusone .and. &
+            nlo_correction_enabled(nbody_contribution)) then
           production_contribution = &
                .not. contribution_is_nlo_decay(nbody_contribution)
           resolved_partition = 1d0
@@ -614,6 +621,7 @@ contains
         .not. skip_nplusone .and. abrv == 'real' .and. &
         has_nlo_contribution_bundle()) then
       do nbody_contribution = 1, contribution_count
+        if (.not. nlo_correction_enabled(nbody_contribution)) cycle
         production_contribution = &
              .not. contribution_is_nlo_decay(nbody_contribution)
         resolved_partition = 1d0
@@ -629,7 +637,8 @@ contains
       end do
     else if (abrv(1:4) /= 'born' .and. abrv(1:4) /= 'bovi' .and. &
              abrv(1:2) /= 'vi' .and. .not. skip_nplusone .and. &
-             .not. has_nlo_contribution_bundle()) then
+             .not. has_nlo_contribution_bundle() .and. &
+             nlo_correction_enabled()) then
       nbody = .false.
       call evaluate_additive_n1body_sector( &
            xx, vegas_wgt, nndim, abrv, nfks_picked, volume, &
@@ -898,6 +907,9 @@ contains
     ! internal slots: their weighted densities are combined first.
     nbody = .true.
     do contribution = 1, contribution_count
+      if (contribution_is_nlo_decay(contribution)) then
+        if (.not. nlo_correction_enabled(contribution)) cycle
+      end if
       calculated_born = .false.
       wgt_me_born = 0d0
       wgt_me_real = 0d0
@@ -943,9 +955,11 @@ contains
           ! attach the global Born SDE partition exactly once, on production.
           if (production_contribution) call include_multichannel_enhance(1)
           call compute_born()
-          call begin_bundle_virtual_tricks()
-          call compute_nbody_noborn()
-          call finish_bundle_virtual_tricks()
+          if (nlo_correction_enabled(contribution)) then
+            call begin_bundle_virtual_tricks()
+            call compute_nbody_noborn()
+            call finish_bundle_virtual_tricks()
+          end if
         end if
 
         if (production_contribution) then
@@ -964,6 +978,7 @@ contains
       ! Evaluate this block's resolved sector and local counterterms using
       ! the Born state retained above.  Counterterms feed B; only the
       ! resolved event feeds R.
+      if (.not. nlo_correction_enabled(contribution)) cycle
       nbody = .false.
       ifks = configurations(contribution)
       calculated_born = .false.
@@ -1471,6 +1486,7 @@ contains
         end if
       end if
     end if
+    call set_decay_run_order(abrv == 'born')
   end subroutine get_user_params_impl
 
   subroutine fail_driver(message)

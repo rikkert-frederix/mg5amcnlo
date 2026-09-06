@@ -204,18 +204,41 @@ class TestMadEventCmd(unittest.TestCase):
             with open(decay_card, 'w') as stream:
                 stream.write(
                     '# runtime mode\n'
-                    'NLO_DECAY_COMBINATION MULTIPLICATIVE\n')
+                    'MULTIPLICATIVE = NLO_DECAY_COMBINATION\n')
             self.assertEqual(
                 run_mecmd.aMCatNLOCmd.read_fnlo_decay_combination(
                     decay_card),
                 'MULTIPLICATIVE')
             with open(decay_card, 'w') as stream:
-                stream.write('NLO_DECAY_COMBINATION UNKNOWN\n')
+                stream.write(
+                    "'multiplicative' = nlo_decay_combination ! block product\n"
+                    'independent = decay_scale_variation_mode # scale weights\n')
+            self.assertEqual(
+                run_mecmd.aMCatNLOCmd.read_fnlo_decay_combination(decay_card),
+                'MULTIPLICATIVE')
+            self.assertEqual(
+                run_mecmd.aMCatNLOCmd.read_fnlo_decay_option(
+                    decay_card, 'DECAY_SCALE_VARIATION_MODE', 'NONE',
+                    ('NONE', 'CORRELATED', 'INDEPENDENT')),
+                'INDEPENDENT')
+            with open(decay_card, 'a') as stream:
+                stream.write('ADDITIVE = NLO_DECAY_COMBINATION\n')
+            with self.assertRaisesRegex(run_mecmd.aMCatNLOError, 'Malformed'):
+                run_mecmd.aMCatNLOCmd.read_fnlo_decay_combination(decay_card)
+            with open(decay_card, 'w') as stream:
+                stream.write('UNKNOWN = NLO_DECAY_COMBINATION\n')
             with self.assertRaisesRegex(
                     run_mecmd.aMCatNLOError,
                     'Unknown NLO_DECAY_COMBINATION'):
                 run_mecmd.aMCatNLOCmd.read_fnlo_decay_combination(
                     decay_card)
+
+            for record in ['NLO_DECAY_COMBINATION MULTIPLICATIVE', 'FORMAT 5', 'END']:
+                with open(decay_card, 'w') as stream:
+                    stream.write(record + '\n')
+                with self.assertRaisesRegex(run_mecmd.aMCatNLOError,
+                                            'Expected value = parameter'):
+                    run_mecmd.aMCatNLOCmd.read_fnlo_decay_combination(decay_card)
 
     def test_fnlo_runtime_initialization_guards(self):
         """First-use and empty-sample paths remain valid Fortran."""

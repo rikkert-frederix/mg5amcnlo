@@ -515,10 +515,11 @@ class SpinDensityExporter(object):
         The factorized density-matrix contraction supplies the physical Born
         normalization, but single-diagram-enhanced multichannel integration
         additionally needs one positive ``AMP2`` entry per generated Born
-        configuration.  These entries are ratios only, so evaluate the
-        ordinary flattened Born amplitudes and reproduce the standard MG
-        definition, summed over external helicities, without replacing the
-        factorized Born result.
+        configuration. These entries are ratios only: the tagged decay
+        connectors omit their common resonance denominators, leaving finite
+        pole-free currents without introducing numerical widths. Sum these
+        flattened amplitudes over external helicities as in the standard MG
+        definition, without replacing the factorized Born result.
         """
 
         helicities = [tuple(row)

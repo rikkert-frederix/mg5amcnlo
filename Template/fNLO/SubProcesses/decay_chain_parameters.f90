@@ -3,9 +3,12 @@ module decay_chain_parameters
   use decay_chain_metadata, only: has_decay_chains, decay_node_count, &
        node_pdg, node_qcd_order
   use nlo_decay_metadata, only: has_nlo_decay, corrected_parent_pdg, &
-       nlo_decay_node_count, nlo_decay_node_pdg, nlo_decay_node_qcd_order
+       nlo_decay_node_count, nlo_decay_node_pdg, nlo_decay_node_qcd_order, &
+       nlo_decay_corrected_node
   use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
-       bundle_species_is_nlo
+       bundle_species_is_nlo, contribution_is_nlo_decay, &
+       contribution_parent_pdg, active_nlo_contribution
+  use alfas_functions_module, only: alphas
   implicit none
   private
 
@@ -15,7 +18,6 @@ module decay_chain_parameters
   integer, parameter, public :: decay_scale_independent = 2
   integer, parameter, public :: nlo_decay_additive = 0
   integer, parameter, public :: nlo_decay_multiplicative = 1
-  double precision, save :: dummy_width_ratio_value = 0d0
   logical, save :: use_decayed_production_momenta_value = .false.
   integer, save :: number_of_width_species = 0
   integer, allocatable, save :: width_pdgs(:)
@@ -25,6 +27,10 @@ module decay_chain_parameters
   logical, allocatable, save :: has_nlo_width(:)
   integer, allocatable, save :: scale_pdgs(:)
   double precision, allocatable, save :: scale_values(:)
+  integer, allocatable, save :: dynamic_scale_choices(:)
+  logical, allocatable, save :: automatic_widths(:), decay_orders(:)
+  logical, save :: production_nlo = .true., decays_nlo = .true.
+  logical, save :: lo_run = .false.
   integer, save :: scale_variation_mode_value = decay_scale_none
   integer, save :: nlo_combination_value = nlo_decay_additive
   integer, save :: number_of_scale_factors = 1
@@ -41,7 +47,7 @@ module decay_chain_parameters
   double precision, allocatable, save :: nlo_variation_values(:)
 
   public :: initialize_decay_chain_parameters
-  public :: decay_dummy_width_ratio, decay_physical_width
+  public :: decay_physical_width
   public :: decay_lo_width, decay_nlo_width
   public :: decay_width_expansion_coefficient
   public :: decay_width_denominator_rescaling
@@ -53,20 +59,22 @@ module decay_chain_parameters
   public :: decay_scale_factor_count, decay_scale_factor
   public :: decay_scale_species_count, decay_scale_species
   public :: decay_scale_species_index
+  public :: decay_dynamical_scale_choice, decay_automatic_width
+  public :: decay_species_nlo_enabled, nlo_correction_enabled
+  public :: set_decay_run_order, decay_node_width_rescaling
 
 contains
 
   subroutine initialize_decay_chain_parameters()
-    logical :: exists, end_seen, format_seen, ratio_seen, momentum_mode_seen
-    logical :: legacy_width_seen, explicit_lo_width_seen
+    logical :: exists, momentum_mode_seen
     logical :: variation_mode_seen, scale_factors_seen
-    logical :: combination_mode_seen
-    integer :: unit_number, ios, card_format, width_count, width_index
+    logical :: combination_mode_seen, production_order_seen, decay_order_seen
+    integer :: unit_number, ios, width_count, width_index
     integer :: scale_count, scale_index, factor_count, factor_index
     integer :: lo_variation_count, nlo_variation_count
     integer :: pdg, node, previous, declared_count
     double precision :: value, factor
-    character(len=512) :: line
+    character(len=2048) :: line
     character(len=32) :: keyword, momentum_mode, variation_mode
     character(len=32) :: combination_mode
 
@@ -90,11 +98,11 @@ contains
       read(unit_number, '(a)', iostat=ios) line
       if (ios < 0) exit
       if (ios /= 0) call fail_parameters('cannot read decay_card.dat')
+      call normalize_decay_card_record(line)
       if (skip_line(line)) cycle
       read(line, *, iostat=ios) keyword
       if (ios /= 0) call fail_parameters('malformed decay-card record')
-      if (trim(keyword) == 'DECAY_WIDTH' .or. &
-          trim(keyword) == 'LO_DECAY_WIDTH' .or. &
+      if (trim(keyword) == 'LO_DECAY_WIDTH' .or. &
           trim(keyword) == 'NLO_DECAY_WIDTH') then
         width_count = width_count + 1
       end if
@@ -128,6 +136,8 @@ contains
     allocate(has_nlo_width(width_count))
     allocate(scale_pdgs(scale_count))
     allocate(scale_values(scale_count))
+    allocate(dynamic_scale_choices(scale_count), automatic_widths(scale_count))
+    allocate(decay_orders(scale_count))
     allocate(scale_factor_values(max(1, factor_count)))
     allocate(lo_variation_pdgs(max(1, lo_variation_count)))
     allocate(nlo_variation_pdgs(max(1, nlo_variation_count)))
@@ -142,6 +152,9 @@ contains
     has_nlo_width = .false.
     scale_pdgs = 0
     scale_values = 0d0
+    dynamic_scale_choices = 0
+    automatic_widths = .false.
+    decay_orders = .true.
     scale_factor_values = 0d0
     scale_factor_values(1) = 1d0
     lo_variation_pdgs = 0
@@ -152,7 +165,6 @@ contains
     nlo_variation_values = 0d0
 
     rewind(unit_number)
-    card_format = 0
     number_of_width_species = 0
     scale_index = 0
     number_of_scale_factors = 1
@@ -160,36 +172,22 @@ contains
     number_of_nlo_width_variations = 0
     scale_variation_mode_value = decay_scale_none
     nlo_combination_value = nlo_decay_additive
-    dummy_width_ratio_value = 0d0
     use_decayed_production_momenta_value = .false.
-    end_seen = .false.
-    format_seen = .false.
-    ratio_seen = .false.
     momentum_mode_seen = .false.
-    legacy_width_seen = .false.
-    explicit_lo_width_seen = .false.
     variation_mode_seen = .false.
     scale_factors_seen = .false.
     combination_mode_seen = .false.
+    production_order_seen = .false.
+    decay_order_seen = .false.
     do
       read(unit_number, '(a)', iostat=ios) line
       if (ios < 0) exit
       if (ios /= 0) call fail_parameters('cannot read decay-card body')
+      call normalize_decay_card_record(line)
       if (skip_line(line)) cycle
-      if (end_seen) call fail_parameters('record found after END')
       read(line, *, iostat=ios) keyword
       if (ios /= 0) call fail_parameters('malformed decay-card keyword')
       select case (trim(keyword))
-      case ('FORMAT')
-        if (format_seen) call fail_parameters('duplicate FORMAT record')
-        read(line, *, iostat=ios) keyword, card_format
-        format_seen = .true.
-      case ('DUMMY_WIDTH_RATIO')
-        if (ratio_seen) then
-          call fail_parameters('duplicate DUMMY_WIDTH_RATIO record')
-        end if
-        read(line, *, iostat=ios) keyword, dummy_width_ratio_value
-        ratio_seen = .true.
       case ('PRODUCTION_REN_SCALE_MOMENTA')
         if (momentum_mode_seen) then
           call fail_parameters(&
@@ -208,13 +206,9 @@ contains
           end select
         end if
         momentum_mode_seen = .true.
-      case ('DECAY_WIDTH', 'LO_DECAY_WIDTH', 'NLO_DECAY_WIDTH')
+      case ('LO_DECAY_WIDTH', 'NLO_DECAY_WIDTH')
         read(line, *, iostat=ios) keyword, pdg, value
         if (ios == 0) then
-          if (trim(keyword) == 'DECAY_WIDTH') legacy_width_seen = .true.
-          if (trim(keyword) == 'LO_DECAY_WIDTH') then
-            explicit_lo_width_seen = .true.
-          end if
           pdg = abs(pdg)
           if (pdg == 0) call fail_parameters('a width has zero PDG code')
           width_index = find_pdg(pdg, width_pdgs)
@@ -290,6 +284,30 @@ contains
           end select
         end if
         combination_mode_seen = .true.
+      case ('PRODUCTION_ORDER', 'DECAY_ORDER')
+        read(line, *, iostat=ios) keyword, combination_mode
+        if (ios == 0) then
+          if (trim(combination_mode) /= 'LO' .and. &
+              trim(combination_mode) /= 'NLO') then
+            call fail_parameters('perturbative orders must be LO or NLO')
+          end if
+          if (trim(keyword) == 'PRODUCTION_ORDER') then
+            if (production_order_seen) &
+                 call fail_parameters('duplicate PRODUCTION_ORDER record')
+            production_nlo = trim(combination_mode) == 'NLO'
+            production_order_seen = .true.
+          else
+            if (decay_order_seen) &
+                 call fail_parameters('duplicate DECAY_ORDER record')
+            decays_nlo = trim(combination_mode) == 'NLO'
+            decay_order_seen = .true.
+          end if
+        end if
+      case ('DECAY_DYNAMICAL_SCALE_CHOICE', 'DECAY_WIDTH_SCALE_MODE', &
+            'DECAY_PERTURBATIVE_ORDER')
+        ! These indexed options are read in a separate pass so their order
+        ! relative to DECAY_REN_SCALE is immaterial.
+        continue
       case ('DECAY_SCALE_FACTORS')
         if (scale_factors_seen) then
           call fail_parameters('duplicate DECAY_SCALE_FACTORS record')
@@ -321,51 +339,27 @@ contains
           nlo_variation_factors(number_of_nlo_width_variations) = factor
           nlo_variation_values(number_of_nlo_width_variations) = value
         end if
-      case ('END')
-        end_seen = .true.
       case default
         call fail_parameters('unknown keyword '//trim(keyword))
       end select
       if (ios /= 0) call fail_parameters('malformed decay-card record')
     end do
+    call read_indexed_options(unit_number)
     close(unit_number)
-
-    if (.not. end_seen) call fail_parameters('END record is absent')
-    if (card_format /= 3 .and. card_format /= 4 .and. card_format /= 5) then
-      call fail_parameters('FORMAT 3, FORMAT 4 or FORMAT 5 is required')
-    end if
-    if (card_format == 3 .and. explicit_lo_width_seen) then
-      call fail_parameters(&
-           'FORMAT 3 requires legacy DECAY_WIDTH records')
-    end if
-    if ((card_format == 4 .or. card_format == 5) .and. &
-        legacy_width_seen) then
-      call fail_parameters(&
-           'FORMAT 4/5 requires explicit LO_DECAY_WIDTH records')
-    end if
-    if (has_nlo_contribution_bundle() .and. &
-        card_format /= 4 .and. card_format /= 5) then
-      call fail_parameters(&
-           'a full NLO contribution bundle requires FORMAT 4/5 with both LO and NLO widths')
-    end if
     if (nlo_combination_value == nlo_decay_multiplicative .and. &
         .not. has_nlo_contribution_bundle()) then
       call fail_parameters( &
            'multiplicative NLO decay combination requires a full NLO bundle')
     end if
-    if (.not. ratio_seen .or. dummy_width_ratio_value <= 0d0 .or. &
-        .not. ieee_is_finite(dummy_width_ratio_value)) then
-      call fail_parameters('the dummy-width ratio must be finite and positive')
-    end if
     if (.not. momentum_mode_seen) then
       call fail_parameters('PRODUCTION_REN_SCALE_MOMENTA record is absent')
     end if
     do width_index = 1, number_of_width_species
-      if (has_lo_width(width_index)) then
-        if (lo_width_values(width_index) <= 0d0 .or. &
-            .not. ieee_is_finite(lo_width_values(width_index))) then
-          call fail_parameters('LO physical widths must be finite and positive')
-        end if
+      if (.not. has_lo_width(width_index)) &
+           call fail_parameters('an LO width is required for every species')
+      if (lo_width_values(width_index) <= 0d0 .or. &
+          .not. ieee_is_finite(lo_width_values(width_index))) then
+        call fail_parameters('LO physical widths must be finite and positive')
       end if
       if (has_nlo_width(width_index)) then
         if (nlo_width_values(width_index) <= 0d0 .or. &
@@ -391,7 +385,8 @@ contains
         end if
         if (has_nlo_contribution_bundle() .and. &
             bundle_species_is_nlo(node_pdg(node))) then
-          if (.not. has_nlo_width(width_index)) then
+          if (.not. has_nlo_width(width_index) .and. &
+              species_order_is_nlo(node_pdg(node))) then
             call fail_parameters(&
                  'a corrected decay species has no NLO physical width')
           end if
@@ -413,14 +408,10 @@ contains
              bundle_species_is_nlo(pdg)) .or. &
             (.not. has_nlo_contribution_bundle() .and. &
              abs(pdg) == abs(corrected_parent_pdg()))) then
-          if (.not. has_nlo_width(width_index)) then
+          if (.not. has_nlo_width(width_index) .and. &
+              species_order_is_nlo(pdg)) then
             call fail_parameters(&
                  'the corrected species requires an NLO_DECAY_WIDTH record')
-          end if
-          if (has_nlo_contribution_bundle() .and. &
-              .not. has_lo_width(width_index)) then
-            call fail_parameters(&
-                 'the corrected species requires an LO_DECAY_WIDTH record')
           end if
         else if (has_nlo_width(width_index)) then
           call fail_parameters('an uncorrected node has an NLO width record')
@@ -433,16 +424,237 @@ contains
       end do
     end if
     call initialize_scale_species()
-    call validate_scale_variations(card_format, variation_mode_seen, &
-                                   scale_factors_seen)
+    call validate_scale_variations()
     initialized = .true.
   end subroutine initialize_decay_chain_parameters
 
 
-  double precision function decay_dummy_width_ratio()
+  subroutine normalize_decay_card_record(line)
+    character(len=*), intent(inout) :: line
+    character(len=len(line)) :: key, value, indices
+    integer :: pos, left, right, i, count, ios
+    double precision :: factors(100)
+
+    ! Use MG5 value = parameter syntax, with case-insensitive keywords and
+    ! inline ! or # comments. Internally put the key and indices first.
+    pos = scan(line, '!#')
+    if (pos > 0) line(pos:) = ' '
+    line = adjustl(line)
+    if (len_trim(line) == 0) return
+    pos = index(line, '=')
+    if (pos <= 1 .or. pos == len_trim(line)) &
+         call fail_parameters('expected value = parameter in decay_card.dat')
+    value = adjustl(line(:pos-1))
+    key = adjustl(line(pos+1:))
+    if (index(key, '=') > 0) &
+         call fail_parameters('expected one value = parameter assignment per line')
+    call uppercase(key)
+    indices = ' '
+    left = index(key, '(')
+    if (left > 0) then
+      right = index(key, ')')
+      if (right /= len_trim(key) .or. right <= left+1) &
+           call fail_parameters('malformed indexed decay-card parameter')
+      indices = key(left+1:right-1)
+      key(left:) = ' '
+    end if
+    if (len_trim(key) == 0 .or. &
+        verify(trim(key), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ_') /= 0) &
+         call fail_parameters('malformed decay-card parameter name')
+    select case (trim(key))
+    case ('LO_DECAY_WIDTH', 'NLO_DECAY_WIDTH', 'DECAY_REN_SCALE', &
+          'DECAY_DYNAMICAL_SCALE_CHOICE', 'DECAY_WIDTH_SCALE_MODE', &
+          'DECAY_PERTURBATIVE_ORDER', 'LO_DECAY_WIDTH_VARIATION', &
+          'NLO_DECAY_WIDTH_VARIATION')
+      if (len_trim(indices) == 0) &
+           call fail_parameters('decay species parameters require a PDG index')
+    case default
+      if (len_trim(indices) > 0) &
+           call fail_parameters('unexpected index on '//trim(key))
+    end select
+    do i = 1, len_trim(value)
+      if (value(i:i) == "'" .or. value(i:i) == '"') value(i:i) = ' '
+    end do
+    line = trim(key)//' '//trim(indices)//' '//trim(adjustl(value))
+    call uppercase(line)
+    if (trim(key) == 'DECAY_SCALE_FACTORS') then
+      ! Count list elements before allocating the scale-factor array.
+      do i = 1, len_trim(value)
+        if (scan(value(i:i), '[],') > 0) value(i:i) = ' '
+      end do
+      count = 0
+      do i = 1, len_trim(value)
+        if (value(i:i) == ' ' .or. value(i:i) == achar(9)) cycle
+        if (i > 1) then
+          if (value(i-1:i-1) /= ' ' .and. &
+              value(i-1:i-1) /= achar(9)) cycle
+        end if
+        count = count + 1
+      end do
+      if (count < 1 .or. count > size(factors)) &
+           call fail_parameters('invalid number of decay scale factors')
+      read(value, *, iostat=ios) factors(1:count)
+      if (ios /= 0) call fail_parameters('malformed decay scale factors')
+      write(key, '(i0)') count
+      line = 'DECAY_SCALE_FACTORS '//trim(key)//' '//trim(value)
+    end if
+  end subroutine normalize_decay_card_record
+
+
+  subroutine uppercase(value)
+    character(len=*), intent(inout) :: value
+    integer :: i, code
+    do i = 1, len_trim(value)
+      code = iachar(value(i:i))
+      if (code >= iachar('a') .and. code <= iachar('z')) &
+           value(i:i) = achar(code + iachar('A') - iachar('a'))
+    end do
+  end subroutine uppercase
+
+
+  subroutine read_indexed_options(unit_number)
+    integer, intent(in) :: unit_number
+    character(len=2048) :: line
+    character(len=64) :: keyword, mode
+    integer :: ios, pdg, idx, choice, node
+    logical :: seen(3, size(scale_pdgs)), qcd_independent
+
+    seen = .false.
+    automatic_widths = .true.
+    rewind(unit_number)
+    do
+      read(unit_number, '(a)', iostat=ios) line
+      if (ios < 0) exit
+      if (ios /= 0) call fail_parameters('cannot read indexed decay options')
+      call normalize_decay_card_record(line)
+      if (skip_line(line)) cycle
+      read(line, *) keyword
+      select case (trim(keyword))
+      case ('DECAY_DYNAMICAL_SCALE_CHOICE', 'DECAY_WIDTH_SCALE_MODE', &
+            'DECAY_PERTURBATIVE_ORDER')
+        read(line, *, iostat=ios) keyword, pdg, mode
+        if (ios /= 0) call fail_parameters('malformed indexed decay option')
+        idx = find_pdg(pdg, scale_pdgs)
+        if (idx == 0) call fail_parameters('decay option has an unknown PDG')
+        select case (trim(keyword))
+        case ('DECAY_DYNAMICAL_SCALE_CHOICE')
+          choice = 1
+          read(mode, *, iostat=ios) dynamic_scale_choices(idx)
+          if (ios /= 0) call fail_parameters('invalid decay scale choice')
+          if (dynamic_scale_choices(idx) < -1 .or. &
+              dynamic_scale_choices(idx) > 3) &
+               call fail_parameters('decay scale choice must be -1, 0, 1, 2 or 3')
+        case ('DECAY_WIDTH_SCALE_MODE')
+          choice = 2
+          if (trim(mode) /= 'AUTO' .and. trim(mode) /= 'EXPLICIT') &
+               call fail_parameters('decay width scale mode must be AUTO or EXPLICIT')
+          automatic_widths(idx) = trim(mode) == 'AUTO'
+        case ('DECAY_PERTURBATIVE_ORDER')
+          choice = 3
+          if (trim(mode) /= 'LO' .and. trim(mode) /= 'NLO') &
+               call fail_parameters('decay perturbative order must be LO or NLO')
+          decay_orders(idx) = trim(mode) == 'NLO'
+        end select
+        if (seen(choice, idx)) call fail_parameters('duplicate indexed decay option')
+        seen(choice, idx) = .true.
+      end select
+    end do
+    do idx = 1, size(scale_pdgs)
+      qcd_independent = .true.
+      if (has_decay_chains()) then
+        do node = 1, decay_node_count()
+          if (abs(node_pdg(node)) == scale_pdgs(idx)) &
+               qcd_independent = qcd_independent .and. node_qcd_order(node) == 0
+        end do
+      else
+        do node = 1, nlo_decay_node_count()
+          if (abs(nlo_decay_node_pdg(node)) == scale_pdgs(idx)) &
+               qcd_independent = qcd_independent .and. nlo_decay_node_qcd_order(node) == 0
+        end do
+      end if
+      if (automatic_widths(idx) .and. .not. qcd_independent) then
+        if (seen(2, idx)) &
+             call fail_parameters('AUTO widths require an alpha_s-independent Born decay')
+        automatic_widths(idx) = .false.
+      end if
+      if (dynamic_scale_choices(idx) /= 0) then
+        if (.not. qcd_independent) &
+             call fail_parameters('event-by-event decay scales require an alpha_s-independent Born decay')
+        if (.not. automatic_widths(idx)) &
+             call fail_parameters('event-by-event decay scales require AUTO widths')
+      end if
+    end do
+  end subroutine read_indexed_options
+
+
+  subroutine set_decay_run_order(is_lo)
+    logical, intent(in) :: is_lo
+    if (lo_run .eqv. is_lo) return
+    lo_run = is_lo
+    if (initialized) then
+      deallocate(scale_species_pdgs)
+      call initialize_scale_species()
+    end if
+  end subroutine set_decay_run_order
+
+
+  logical function species_order_is_nlo(pdg)
+    integer, intent(in) :: pdg
+    integer :: idx
+    species_order_is_nlo = decays_nlo .and. .not. lo_run
+    idx = find_pdg(pdg, scale_pdgs)
+    if (idx > 0) species_order_is_nlo = species_order_is_nlo .and. decay_orders(idx)
+  end function species_order_is_nlo
+
+
+  logical function decay_species_nlo_enabled(pdg)
+    integer, intent(in) :: pdg
     if (.not. initialized) call initialize_decay_chain_parameters()
-    decay_dummy_width_ratio = dummy_width_ratio_value
-  end function decay_dummy_width_ratio
+    decay_species_nlo_enabled = species_order_is_nlo(pdg)
+    if (has_nlo_contribution_bundle()) then
+      decay_species_nlo_enabled = decay_species_nlo_enabled .and. bundle_species_is_nlo(pdg)
+    else if (has_nlo_decay()) then
+      decay_species_nlo_enabled = decay_species_nlo_enabled .and. &
+           abs(pdg) == abs(corrected_parent_pdg())
+    else
+      decay_species_nlo_enabled = .false.
+    end if
+  end function decay_species_nlo_enabled
+
+
+  logical function nlo_correction_enabled(contribution)
+    integer, intent(in), optional :: contribution
+    integer :: selected
+    nlo_correction_enabled = .not. lo_run
+    if (.not. has_decay_chains() .and. .not. has_nlo_decay()) return
+    if (.not. initialized) call initialize_decay_chain_parameters()
+    if (has_nlo_contribution_bundle()) then
+      selected = active_nlo_contribution()
+      if (present(contribution)) selected = contribution
+      if (contribution_is_nlo_decay(selected)) then
+        nlo_correction_enabled = decay_species_nlo_enabled(contribution_parent_pdg(selected))
+        return
+      end if
+    else if (has_nlo_decay()) then
+      nlo_correction_enabled = decay_species_nlo_enabled(corrected_parent_pdg())
+      return
+    end if
+    nlo_correction_enabled = production_nlo .and. .not. lo_run
+  end function nlo_correction_enabled
+
+
+  integer function decay_dynamical_scale_choice(pdg)
+    integer, intent(in) :: pdg
+    if (.not. initialized) call initialize_decay_chain_parameters()
+    decay_dynamical_scale_choice = dynamic_scale_choices(find_pdg(pdg, scale_pdgs))
+  end function decay_dynamical_scale_choice
+
+
+  logical function decay_automatic_width(pdg)
+    integer, intent(in) :: pdg
+    if (.not. initialized) call initialize_decay_chain_parameters()
+    decay_automatic_width = automatic_widths(find_pdg(pdg, scale_pdgs))
+  end function decay_automatic_width
 
 
   double precision function decay_physical_width(pdg, use_nlo_width)
@@ -458,14 +670,11 @@ contains
     end if
     if (has_nlo_contribution_bundle()) then
       decay_physical_width = decay_lo_width(pdg)
-    else if (has_nlo_width(width_index) .and. &
-             .not. has_lo_width(width_index)) then
-      ! Compatibility with FORMAT 3 standalone NLO-decay cards.
-      decay_physical_width = nlo_width_values(width_index)
     else
       select_nlo_width = .false.
       if (present(use_nlo_width)) select_nlo_width = use_nlo_width
-      if (select_nlo_width .and. has_nlo_width(width_index)) then
+      if (select_nlo_width .and. has_nlo_width(width_index) .and. &
+          decay_species_nlo_enabled(pdg)) then
         decay_physical_width = nlo_width_values(width_index)
       else
         decay_physical_width = decay_lo_width(pdg)
@@ -501,16 +710,22 @@ contains
          number_of_lo_width_variations, lo_variation_pdgs, &
          lo_variation_factors)
     if (variation_index == 0) then
+      if (decay_automatic_width(pdg)) then
+        decay_lo_width = lo_width_values(width_index)
+        return
+      end if
       call fail_parameters('requested LO width variation is absent')
     end if
     decay_lo_width = lo_variation_values(variation_index)
   end function decay_lo_width
 
 
-  double precision function decay_nlo_width(pdg, factor_index)
+  double precision function decay_nlo_width(pdg, factor_index, ren_scale)
     integer, intent(in) :: pdg
     integer, intent(in), optional :: factor_index
-    integer :: width_index, variation_index
+    double precision, intent(in), optional :: ren_scale
+    integer :: width_index, variation_index, selected_index
+    double precision :: selected_scale, reference_scale
 
     if (.not. initialized) call initialize_decay_chain_parameters()
     width_index = find_pdg(pdg, width_pdgs)
@@ -520,17 +735,30 @@ contains
     if (.not. has_nlo_width(width_index)) then
       call fail_parameters('requested particle has no NLO physical width')
     end if
-    if (.not. present(factor_index)) then
+    selected_index = 1
+    if (present(factor_index)) selected_index = factor_index
+    call validate_factor_index(selected_index)
+    if (decay_automatic_width(pdg)) then
+      reference_scale = decay_renormalization_scale(pdg)
+      selected_scale = reference_scale
+      if (present(ren_scale)) selected_scale = ren_scale
+      selected_scale = selected_scale*decay_scale_factor(selected_index)
+      ! For a QCD-independent Born width the complete NLO scale dependence
+      ! is in its single power of alpha_s. The reference difference already
+      ! includes that coupling: multiply by its ratio, never by alpha_s again.
+      decay_nlo_width = lo_width_values(width_index) + &
+           (nlo_width_values(width_index) - lo_width_values(width_index))* &
+           alphas(selected_scale)/alphas(reference_scale)
+      if (decay_nlo_width <= 0d0 .or. .not. ieee_is_finite(decay_nlo_width)) &
+           call fail_parameters('the running NLO decay width is not positive and finite')
+      return
+    end if
+    if (selected_index == 1) then
       decay_nlo_width = nlo_width_values(width_index)
       return
     end if
-    if (factor_index == 1) then
-      decay_nlo_width = nlo_width_values(width_index)
-      return
-    end if
-    call validate_factor_index(factor_index)
     variation_index = find_width_variation(&
-         pdg, scale_factor_values(factor_index), &
+         pdg, scale_factor_values(selected_index), &
          number_of_nlo_width_variations, nlo_variation_pdgs, &
          nlo_variation_factors)
     if (variation_index == 0) then
@@ -541,9 +769,11 @@ contains
 
 
   double precision function decay_width_expansion_coefficient(&
-       factor_indices)
+       factor_indices, node_scales)
     integer, intent(in), optional :: factor_indices(:)
+    double precision, intent(in), optional :: node_scales(:)
     integer :: node, pdg, factor_index
+    double precision :: ren_scale
 
     if (.not. initialized) call initialize_decay_chain_parameters()
     decay_width_expansion_coefficient = 0d0
@@ -555,11 +785,13 @@ contains
     ! the same QCD-corrected total width in its NWA denominator.
     do node = 1, decay_node_count()
       pdg = node_pdg(node)
-      if (.not. bundle_species_is_nlo(pdg)) cycle
+      if (.not. decay_species_nlo_enabled(pdg)) cycle
       factor_index = selected_factor_index(pdg, factor_indices)
+      ren_scale = decay_renormalization_scale(pdg)
+      if (present(node_scales)) ren_scale = node_scales(node)
       decay_width_expansion_coefficient = &
            decay_width_expansion_coefficient - &
-           (decay_nlo_width(pdg, factor_index) - &
+           (decay_nlo_width(pdg, factor_index, ren_scale) - &
             decay_lo_width(pdg, factor_index))/ &
            decay_lo_width(pdg, factor_index)
     end do
@@ -567,29 +799,51 @@ contains
 
 
   double precision function decay_width_denominator_rescaling(&
-       factor_indices)
+       factor_indices, node_scales)
     integer, intent(in), optional :: factor_indices(:)
-    integer :: node, pdg, factor_index
+    double precision, intent(in), optional :: node_scales(:)
+    integer :: node, pdg, factor_index, node_count
+    double precision :: ren_scale, selected_width
+    logical :: corrected
 
     if (.not. initialized) call initialize_decay_chain_parameters()
     decay_width_denominator_rescaling = 1d0
-    if (.not. has_decay_chains()) return
-    do node = 1, decay_node_count()
-      pdg = node_pdg(node)
+    if (has_nlo_decay()) then
+      node_count = nlo_decay_node_count()
+    else
+      node_count = decay_node_count()
+    end if
+    do node = 1, node_count
+      if (has_nlo_decay()) then
+        pdg = nlo_decay_node_pdg(node)
+        corrected = node == nlo_decay_corrected_node()
+      else
+        pdg = node_pdg(node)
+        corrected = .false.
+      end if
       factor_index = selected_factor_index(pdg, factor_indices)
-      if (factor_index == 1) cycle
+      if (.not. has_nlo_contribution_bundle() .and. corrected .and. &
+          decay_species_nlo_enabled(pdg)) then
+        ren_scale = decay_renormalization_scale(pdg)
+        if (present(node_scales)) ren_scale = node_scales(node)
+        selected_width = decay_nlo_width(pdg, factor_index, ren_scale)
+      else if (.not. has_lo_width(find_pdg(pdg, width_pdgs))) then
+        selected_width = decay_nlo_width(pdg, factor_index)
+      else
+        selected_width = decay_lo_width(pdg, factor_index)
+      end if
       decay_width_denominator_rescaling = &
-           decay_width_denominator_rescaling*decay_lo_width(pdg)/ &
-           decay_lo_width(pdg, factor_index)
+           decay_width_denominator_rescaling*decay_physical_width(pdg, corrected)/selected_width
     end do
   end function decay_width_denominator_rescaling
 
 
   double precision function decay_multiplicative_width_rescaling( &
-       factor_indices)
+       factor_indices, node_scales)
     integer, intent(in), optional :: factor_indices(:)
+    double precision, intent(in), optional :: node_scales(:)
     integer :: node, pdg, factor_index
-    double precision :: selected_width
+    double precision :: selected_width, ren_scale
 
     if (.not. initialized) call initialize_decay_chain_parameters()
     decay_multiplicative_width_rescaling = 1d0
@@ -597,9 +851,11 @@ contains
     do node = 1, decay_node_count()
       pdg = node_pdg(node)
       factor_index = selected_factor_index(pdg, factor_indices)
+      ren_scale = decay_renormalization_scale(pdg)
+      if (present(node_scales)) ren_scale = node_scales(node)
       if (has_nlo_contribution_bundle() .and. &
-          bundle_species_is_nlo(pdg)) then
-        selected_width = decay_nlo_width(pdg, factor_index)
+          decay_species_nlo_enabled(pdg)) then
+        selected_width = decay_nlo_width(pdg, factor_index, ren_scale)
       else
         selected_width = decay_lo_width(pdg, factor_index)
       end if
@@ -611,6 +867,17 @@ contains
            decay_lo_width(pdg)/selected_width
     end do
   end function decay_multiplicative_width_rescaling
+
+
+  double precision function decay_node_width_rescaling(pdg, factor_index, ren_scale)
+    integer, intent(in) :: pdg, factor_index
+    double precision, intent(in) :: ren_scale
+    double precision :: selected_width
+    selected_width = decay_lo_width(pdg, factor_index)
+    if (decay_species_nlo_enabled(pdg)) &
+         selected_width = decay_nlo_width(pdg, factor_index, ren_scale)
+    decay_node_width_rescaling = decay_lo_width(pdg)/selected_width
+  end function decay_node_width_rescaling
 
 
   integer function nlo_decay_combination_mode()
@@ -626,7 +893,7 @@ contains
   logical function multiplicative_nlo_enabled()
     ! This query is used by shared fNLO code, including ordinary production
     ! processes with no decay metadata or decay_card.dat.  Such processes are
-    ! necessarily on the legacy additive path and must not initialize decay
+    ! necessarily on the ordinary additive path and must not initialize decay
     ! parameters merely to answer the mode question.
     if (.not. has_decay_chains() .and. .not. has_nlo_decay()) then
       multiplicative_nlo_enabled = .false.
@@ -634,7 +901,7 @@ contains
     end if
     if (.not. initialized) call initialize_decay_chain_parameters()
     multiplicative_nlo_enabled = &
-         nlo_combination_value == nlo_decay_multiplicative
+         nlo_combination_value == nlo_decay_multiplicative .and. .not. lo_run
   end function multiplicative_nlo_enabled
 
 
@@ -732,12 +999,13 @@ contains
         pdg = abs(node_pdg(node))
         scale_dependent = node_qcd_order(node) > 0
         if (has_nlo_contribution_bundle()) then
-          scale_dependent = scale_dependent .or. bundle_species_is_nlo(pdg)
+          scale_dependent = scale_dependent .or. &
+               (bundle_species_is_nlo(pdg) .and. species_order_is_nlo(pdg))
         end if
       else
         pdg = abs(nlo_decay_node_pdg(node))
         scale_dependent = nlo_decay_node_qcd_order(node) > 0 .or. &
-             pdg == abs(corrected_parent_pdg())
+             (pdg == abs(corrected_parent_pdg()) .and. species_order_is_nlo(pdg))
       end if
       if (.not. scale_dependent) cycle
       if (find_pdg(pdg, candidates) /= 0) cycle
@@ -752,8 +1020,8 @@ contains
       do index = 2, number_of_scale_species
         pdg = scale_species_pdgs(index)
         previous = index - 1
-        do while (previous >= 1 .and. &
-                  scale_species_pdgs(previous) > pdg)
+        do while (previous >= 1)
+          if (scale_species_pdgs(previous) <= pdg) exit
           scale_species_pdgs(previous + 1) = &
                scale_species_pdgs(previous)
           previous = previous - 1
@@ -765,36 +1033,15 @@ contains
   end subroutine initialize_scale_species
 
 
-  subroutine validate_scale_variations(card_format, variation_mode_seen, &
-                                       scale_factors_seen)
-    integer, intent(in) :: card_format
-    logical, intent(in) :: variation_mode_seen, scale_factors_seen
+  subroutine validate_scale_variations()
     integer :: index, factor_index, pdg
 
-    if (card_format /= 5) then
-      if (variation_mode_seen .or. scale_factors_seen .or. &
-          number_of_lo_width_variations /= 0 .or. &
-          number_of_nlo_width_variations /= 0) then
-        call fail_parameters(&
-             'decay-scale variation records require FORMAT 5')
-      end if
-      scale_variation_mode_value = decay_scale_none
-      number_of_scale_factors = 1
-      scale_factor_values(1) = 1d0
-      return
-    end if
-    if (.not. has_nlo_contribution_bundle()) then
-      call fail_parameters(&
-           'FORMAT 5 scale variations require a full NLO bundle')
-    end if
-    if (.not. variation_mode_seen .or. .not. scale_factors_seen) then
-      call fail_parameters(&
-           'FORMAT 5 requires decay scale mode and factors')
-    end if
     if (scale_variation_mode_value == decay_scale_none) then
-      call fail_parameters('FORMAT 5 requires a non-NONE scale mode')
+      if (number_of_lo_width_variations + number_of_nlo_width_variations > 0) &
+           call fail_parameters('varied widths require decay scale reweighting')
     end if
-    if (number_of_scale_species < 1 .or. number_of_scale_factors < 2) then
+    if (scale_variation_mode_value /= decay_scale_none .and. &
+        number_of_scale_factors < 2) then
       call fail_parameters(&
            'decay-scale variation requires species and noncentral factors')
     end if
@@ -813,6 +1060,7 @@ contains
     if (.not. same_factor(scale_factor_values(1), 1d0)) then
       call fail_parameters('the first decay scale factor must be one')
     end if
+    if (scale_variation_mode_value == decay_scale_none) return
 
     call validate_variation_records(&
          number_of_lo_width_variations, lo_variation_pdgs, &
@@ -822,6 +1070,7 @@ contains
          nlo_variation_factors, nlo_variation_values, .true.)
     do index = 1, number_of_scale_species
       pdg = scale_species_pdgs(index)
+      if (automatic_widths(find_pdg(pdg, scale_pdgs))) cycle
       do factor_index = 2, number_of_scale_factors
         if (find_width_variation(&
              pdg, scale_factor_values(factor_index), &
@@ -830,7 +1079,8 @@ contains
           call fail_parameters(&
                'a varied decay species has no LO width at every factor')
         end if
-        if (bundle_species_is_nlo(pdg) .and. &
+        if (species_order_is_nlo(pdg) .and. &
+            has_nlo_width(find_pdg(pdg, width_pdgs)) .and. &
             find_width_variation(&
              pdg, scale_factor_values(factor_index), &
              number_of_nlo_width_variations, nlo_variation_pdgs, &
@@ -851,15 +1101,17 @@ contains
     integer :: index, previous, factor_index
 
     do index = 1, count
-      if (find_pdg(pdgs(index), scale_species_pdgs) == 0) then
+      if (find_pdg(pdgs(index), scale_pdgs) == 0) then
         call fail_parameters(&
              'a width variation refers to a non-varied decay species')
       end if
       if (require_nlo_species .and. &
-          .not. bundle_species_is_nlo(pdgs(index))) then
+          .not. has_nlo_width(find_pdg(pdgs(index), width_pdgs))) then
         call fail_parameters(&
              'an NLO width variation refers to an uncorrected species')
       end if
+      if (automatic_widths(find_pdg(pdgs(index), scale_pdgs))) &
+           call fail_parameters('explicit width variations require EXPLICIT width scale mode')
       factor_index = find_factor_index(factors(index))
       if (factor_index < 2) then
         call fail_parameters(&

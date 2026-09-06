@@ -3151,26 +3151,40 @@ RESTART = %(mint_mode)s
 
 
     @staticmethod
-    def read_fnlo_decay_combination(path):
-        """Read the optional NLO decay-combination mode from a decay card."""
-
+    def read_fnlo_decay_option(path, name, default, allowed):
+        """Read an fNLO option in MG5 value = parameter syntax."""
         if not os.path.isfile(path):
-            return 'ADDITIVE'
+            return default
+        records = []
         with open(path) as decay_card:
-            records = [line.split() for line in decay_card
-                       if line.strip() and not line.lstrip().startswith('#')
-                       and line.split()[0].upper() ==
-                       'NLO_DECAY_COMBINATION']
+            for line in decay_card:
+                line = re.split('[!#]', line, 1)[0].strip()
+                if not line:
+                    continue
+                if line.count('=') != 1:
+                    raise aMCatNLOError(
+                        'Expected value = parameter in %s: %s' % (path, line))
+                value, key = line.split('=', 1)
+                fields = [key.strip().upper(), value.strip().strip("\"'").upper()]
+                if fields[0] == name:
+                    records.append(fields)
         if not records:
-            return 'ADDITIVE'
+            return default
         if len(records) != 1 or len(records[0]) != 2:
             raise aMCatNLOError(
-                'Malformed NLO_DECAY_COMBINATION record in %s' % path)
-        mode = records[0][1].upper()
-        if mode not in ['ADDITIVE', 'MULTIPLICATIVE']:
+                'Malformed %s record in %s' % (name, path))
+        mode = records[0][1]
+        if mode not in allowed:
             raise aMCatNLOError(
-                'Unknown NLO_DECAY_COMBINATION %s in %s' % (mode, path))
+                'Unknown %s %s in %s' % (name, mode, path))
         return mode
+
+    @staticmethod
+    def read_fnlo_decay_combination(path):
+        """Read the optional NLO decay-combination mode from a decay card."""
+        return aMCatNLOCmd.read_fnlo_decay_option(
+            path, 'NLO_DECAY_COMBINATION', 'ADDITIVE',
+            ('ADDITIVE', 'MULTIPLICATIVE'))
 
     def fnlo_multiplicative_enabled(self):
         """Return whether the current fNLO decay bundle is multiplicative."""
@@ -3455,22 +3469,10 @@ RESTART = %(mint_mode)s
     def fnlo_decay_scale_variation_mode(self):
         """Return the decay-card scale mode, if this is an fNLO decay run."""
 
-        decay_card = pjoin(self.me_dir, 'Cards', 'decay_card.dat')
-        try:
-            with open(decay_card) as card:
-                for line in card:
-                    fields = line.split()
-                    if fields and fields[0] == \
-                            'DECAY_SCALE_VARIATION_MODE':
-                        if len(fields) != 2 or fields[1] not in (
-                                'NONE', 'CORRELATED', 'INDEPENDENT'):
-                            raise aMCatNLOError(
-                                'Malformed DECAY_SCALE_VARIATION_MODE in %s' %
-                                decay_card)
-                        return fields[1]
-        except IOError:
-            pass
-        return 'NONE'
+        return self.read_fnlo_decay_option(
+            pjoin(self.me_dir, 'Cards', 'decay_card.dat'),
+            'DECAY_SCALE_VARIATION_MODE', 'NONE',
+            ('NONE', 'CORRELATED', 'INDEPENDENT'))
 
 
     def combine_plots_FO(self,folder_name,jobs):

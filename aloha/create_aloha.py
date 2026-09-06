@@ -165,6 +165,13 @@ class AbstractRoutineBuilder(object):
                 assert not any(t.startswith('L') for t in tag)
         self.expr = self.compute_aloha_high_kernel(mode, factorize)
 
+        # fNLO uses flattened tree currents only for relative SDE channel
+        # weights. Every diagram contains the same on-shell resonance
+        # denominators, so omit them instead of regulating them with widths.
+        # Keep the full massive (or polarized) propagator numerator intact.
+        if 'NWA' in tag:
+            self.denominator = 1
+
         return self.define_simple_output()
     
     def define_all_conjugate_builder(self, pair_list):
@@ -1415,7 +1422,6 @@ if '__main__' == __name__:
     stop = time.time()
     logger.info('done in %s s' % (stop-start))
   
-
 
 
 

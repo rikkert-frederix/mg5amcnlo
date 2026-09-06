@@ -22,11 +22,17 @@ the strict O(alpha_s) expansion
 
 Every term uses LO widths in all narrow-width denominators. The supplied
 width differences are numerical O(alpha_s) inputs and are not multiplied by
-another strong coupling. Products of production, decay, and width corrections
-are never included. The width sum runs over physical resonance occurrences,
+another strong coupling. In the additive combination, products of production,
+decay, and width corrections are excluded. The width sum runs over physical resonance occurrences,
 including an occurrence whose selected partial decay has no QCD numerator
 correction when the same particle species has an NLO total width. The
-generated scales default to the corresponding particle masses.
+generated scales default to the corresponding particle masses. This is the
+default ADDITIVE combination; `MULTIPLICATIVE = nlo_decay_combination` instead
+forms a product of the selected LO/NLO block densities with the corresponding
+LO/NLO total widths and includes products beyond strict NLO.
+Density-matrix elements use the physical narrow-width factor 1/(2 m Gamma)
+for each decay. Integration-channel weights use pole-free resonance currents,
+so no auxiliary numerical width is introduced.
 PRODUCTION_REN_SCALE_MOMENTA selects whether the production
 renormalization scale uses the undecayed production momenta (CORE, the
 default) or the fully decayed momenta (DECAYED). Production factorization and
@@ -45,19 +51,55 @@ A multiplicative bundle has no additive component decomposition and therefore
 omits these contribution_results files. Its total and distributions are
 reported through the ordinary fixed-order result and histogram files.
 
-Decay-scale variations
+Mixed orders and decay-scale variations
 ----------------------
 
-FORMAT 5 decay cards enable contribution-aware scale variations. Set
+Decay cards use the MadGraph `value = parameter ! comment` style, without
+a format/version field or an END record. To keep NLO corrections in only
+part of an existing process, launch calculate_xsect NLO and set
+
+  LO = production_order     ! LO production, selected decays remain NLO
+
+or
+
+  LO = decay_order          ! LO decays and widths, production remains NLO
+
+Both settings default to NLO. An optional `LO = decay_perturbative_order(6)`
+disables NLO for one absolute-PDG species, including its antiparticle and all
+occurrences. The global decay_order=LO disables every decay correction. These
+settings select from generated corrections; they cannot generate missing
+ones. calculate_xsect LO always selects the all-LO calculation.
+
+Set
 DECAY_SCALE_VARIATION_MODE to CORRELATED to tie every decay scale factor to
 the production renormalization-scale factor, or to INDEPENDENT to form the
 Cartesian product of production muR, production muF, and one scale factor for
 each distinct scale-dependent decay species. DECAY_SCALE_FACTORS must begin
 with 1 and, in correlated mode, must equal rw_rscale in the same order.
 
-Every non-central scale factor requires an explicit
-LO_DECAY_WIDTH_VARIATION for each varied decay species and an explicit
-NLO_DECAY_WIDTH_VARIATION for each NLO-corrected species. At a scale point k,
+For example, to vary decay scales independently of production:
+
+  INDEPENDENT = decay_scale_variation_mode
+  1.0, 2.0, 0.5 = decay_scale_factors
+
+This works even with production reweight_scale disabled. The factor list
+contains only scale factors, without a leading count. For each species the
+generated decay_width_scale_mode is AUTO if its Born decay is independent of alpha_s,
+and EXPLICIT otherwise. AUTO treats the supplied total widths as reference
+values at decay_ren_scale(PDG) and uses
+
+  Gamma_LO(mu) = Gamma_LO(ref),
+  Gamma_NLO(mu) = Gamma_LO(ref)
+      + [Gamma_NLO(ref)-Gamma_LO(ref)] alpha_s(mu)/alpha_s(ref).
+
+This also requires an alpha_s-independent LO total width. EXPLICIT uses
+width tables: every noncentral factor needs
+lo_decay_width_variation(PDG, factor), and species kept at NLO also need
+nlo_decay_width_variation(PDG, factor). These are physical TOTAL widths in
+GeV, not partial widths. AUTO and explicit width tables cannot be combined
+for the same species.
+
+At a scale point k in an additive bundle,
 the code evaluates
 
   R_LO(k) [ B(k) + delta P(k) + sum_i delta D_i(k) + C_Gamma(k) B(k) ],
@@ -74,6 +116,21 @@ contains exactly one NLO numerator correction at a time and never contains a
 production-times-decay, decay-times-decay, or width-times-NLO correction.
 Scale-point labels and the complete point set are written to the HwU weight
 metadata and scale_pdf_dependence.dat.
+
+Event-by-event decay scales are selected per species with
+decay_dynamical_scale_choice(PDG): 0 uses the fixed decay_ren_scale, 1 sums
+daughter transverse energies, 2 sums daughter transverse masses, and 3 uses
+half the latter sum. The daughters are the immediate particles of that
+decay block, including real radiation, in the event frame. Choice -1 calls
+fixed_user_decay_scale in SubProcesses/dummy_fct.f90, which receives the
+parent PDG, node number, block momenta (parent first), and reference scale.
+Custom prescriptions must be infrared safe. Dynamic scales have a 2 GeV
+floor before variation factors. They are permitted only for
+alpha_s-independent Born decays with AUTO widths. Each resonance occurrence
+has its own scale and running width, including when particle and antiparticle
+share the same card entries. The width reference scale remains the fixed
+decay_ren_scale value. Reweighting stores the scales of each event and
+counterevent; multiplicative densities carry their own width normalization.
 
 The run-card switch cut_decays defaults to false. With that setting, forced
 decay products are omitted from built-in and user-defined generation cuts,

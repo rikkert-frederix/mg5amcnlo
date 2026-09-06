@@ -26,8 +26,7 @@ module decay_chain_kinematics
        node_pdg, node_child_count, node_child_kind, node_child_id, &
        decay_leaf_child, decay_node_child, leaf_pdg, &
        visible_color_pair
-  use decay_chain_parameters, only: decay_dummy_width_ratio, &
-       decay_physical_width
+  use decay_chain_parameters, only: decay_physical_width
   implicit none
   private
 
@@ -843,21 +842,12 @@ contains
 
   double precision function decay_node_nwa_weight(node)
     integer, intent(in) :: node
-    double precision :: denominator_scale, physical_width
-    include 'decay_matrix_factorization.inc'
     call require_enabled()
     if (node < 1 .or. node > decay_node_count()) then
       call fail_kinematics('a decay measure requested an invalid node')
     end if
-    physical_width = decay_physical_width(node_pdg(node))
-    if (factorized_decay_matrix_elements) then
-      decay_node_nwa_weight = &
-           1d0/(2d0*node_masses(node)*physical_width)
-    else
-      denominator_scale = decay_dummy_width_ratio()*node_masses(node)**2
-      decay_node_nwa_weight = denominator_scale**2/ &
-           (2d0*node_masses(node)*physical_width)
-    end if
+    decay_node_nwa_weight = &
+         1d0/(2d0*node_masses(node)*decay_physical_width(node_pdg(node)))
   end function decay_node_nwa_weight
 
 

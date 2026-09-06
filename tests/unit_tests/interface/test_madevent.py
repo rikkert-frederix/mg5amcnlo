@@ -109,11 +109,10 @@ class TestMadEventCmd(unittest.TestCase):
                          'FO_analyse_card.dat')
 
         with tempfile.NamedTemporaryFile(mode='w', delete=False) as card:
-            card.write('# FNLO_DECAY_CARD\nFORMAT 3\n'
-                       'DUMMY_WIDTH_RATIO 0.1\n'
-                       'PRODUCTION_REN_SCALE_MOMENTA CORE\n'
-                       'DECAY_WIDTH 6 1.4915\n'
-                       'DECAY_REN_SCALE 6 173.0\nEND\n')
+            card.write('# FNLO_DECAY_CARD\n'
+                       'CORE = production_ren_scale_momenta\n'
+                       '1.4915 = lo_decay_width(6)\n'
+                       '173.0 = decay_ren_scale(6)\n')
             decay_card_path = card.name
         try:
             self.assertEqual(detect(decay_card_path), 'decay_card.dat')

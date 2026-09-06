@@ -408,6 +408,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
 
         species = set()
         nlo_width_species = set()
+        qcd_dependent_species = set()
         for metadata_path in metadata_paths:
             if os.path.basename(metadata_path).startswith(
                     'nlo_decay_info'):
@@ -431,6 +432,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 for line in metadata_file:
                     if line.startswith('FORCED_SPECIES '):
                         records.append(line.split())
+                    elif line.startswith('NODE '):
+                        fields = line.split()
+                        if int(fields[4]) > 0:
+                            qcd_dependent_species.add(abs(int(fields[3])))
             if len(records) != 1:
                 raise MadGraph5Error(
                     'Expected one FORCED_SPECIES record in %s' %
@@ -489,7 +494,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         fks_decay.write_decay_card(
             pjoin(self.dir_path, 'Cards'), widths,
             renormalization_scales,
-            nlo_width_pdgs=nlo_width_species)
+            nlo_width_pdgs=nlo_width_species,
+            decay_width_scale_modes={
+                pdg: ('EXPLICIT' if pdg in qcd_dependent_species else 'AUTO')
+                for pdg in species})
 
         madloop_card = pjoin(
             self.dir_path, 'Cards', 'MadLoopParams.dat')
@@ -535,49 +543,6 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         with open(fks_card_path, 'w') as fks_card_file:
             fks_card_file.write(fks_card)
 
-    @staticmethod
-    def declare_fnlo_decay_width_accessor(subprocess_path):
-        """Declare the runtime dummy-width function in generated HELAS code."""
-
-        function = fks_decay.DECAY_DUMMY_WIDTH_FUNCTION[:-2]
-        declaration = ('      DOUBLE PRECISION %s\n'
-                       '      EXTERNAL %s\n' % (function, function))
-        implicit_none = re.compile(
-            r'^[ \t]*IMPLICIT[ \t]+NONE[ \t]*$', re.I)
-        procedure_end = re.compile(
-            r'^[ \t]*END(?:[ \t]+(?:SUBROUTINE|FUNCTION|PROGRAM)'
-            r'[^\n]*)?[ \t]*$', re.I)
-        for root, _, filenames in os.walk(subprocess_path):
-            for filename in filenames:
-                if not filename.endswith(('.f', '.f90')):
-                    continue
-                source_path = pjoin(root, filename)
-                with open(source_path) as source_file:
-                    source = source_file.read()
-                if fks_decay.DECAY_DUMMY_WIDTH_FUNCTION not in source:
-                    continue
-                if declaration in source:
-                    continue
-                lines = source.splitlines(True)
-                replacements = 0
-                for line_index in range(len(lines) - 1, -1, -1):
-                    if not implicit_none.match(lines[line_index].rstrip('\n')):
-                        continue
-                    end_index = line_index + 1
-                    while (end_index < len(lines) and
-                           not procedure_end.match(
-                               lines[end_index].rstrip('\n'))):
-                        end_index += 1
-                    procedure = ''.join(lines[line_index:end_index + 1])
-                    if fks_decay.DECAY_DUMMY_WIDTH_FUNCTION in procedure:
-                        lines.insert(line_index + 1, declaration)
-                        replacements += 1
-                if replacements == 0:
-                    raise MadGraph5Error(
-                        'Could not declare %s in %s' %
-                        (function, source_path))
-                with open(source_path, 'w') as source_file:
-                    source_file.write(''.join(lines))
 
 #===============================================================================
 # copy the Template in a new directory.
@@ -1036,12 +1001,6 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 os.getcwd(), matrix_element.bundle_contributions,
                 matrix_element.bundle_nlo_decay_metadata)
 
-        writers.FortranWriter('decay_matrix_factorization.inc').writelines(
-            'LOGICAL, PARAMETER :: FACTORIZED_DECAY_MATRIX_ELEMENTS = %s' %
-            ('.TRUE.' if getattr(
-                matrix_element, 'spin_density_plan', None) is not None
-             else '.FALSE.'))
-
         if getattr(matrix_element, 'spin_density_plan', None) is not None:
             self.write_spin_density_providers(matrix_element, fortran_model)
         else:
@@ -1420,7 +1379,6 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               'decay_chain_metadata.f90',
                               'decay_chain_parameters.f90',
                               'fnlo_scale_variations.f90',
-                              'decay_chain_parameters_bridge.f90',
                               'factorized_block_kinematics.f90',
                               'decay_chain_kinematics.f90',
                               'nlo_decay_kinematics.f90',
@@ -1548,9 +1506,6 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             os.system("ln -s ../BinothLHA_OLP.f ./BinothLHA.f")
         else:
             os.system("ln -s ../BinothLHA_user.f ./BinothLHA.f")
-
-        if decay_enabled or nlo_decay_prototype or contribution_bundle:
-            self.declare_fnlo_decay_width_accessor(os.getcwd())
 
         # Return to SubProcesses dir
         os.chdir(os.path.pardir)

@@ -3,9 +3,10 @@ module spin_density_weight_lines
        spin_density_real_branch
   use multiplicative_nlo_decay, only: multiplicative_nlo_workspace, &
        add_multiplicative_block_density
-  use decay_chain_parameters, only: decay_renormalization_scale, &
-       decay_scale_species_index, decay_multiplicative_width_rescaling, &
-       multiplicative_nlo_enabled
+  use decay_chain_parameters, only: decay_scale_species_index, &
+       decay_node_width_rescaling, &
+       multiplicative_nlo_enabled, decay_scale_factor
+  use weight_lines, only: decay_scales, correction_scale_node
   use alfas_functions_module, only: alphas
   implicit none
   private
@@ -170,33 +171,33 @@ contains
     if (line_is_production(line)) then
       spin_density_weight_line_multiplier = parton_luminosity* &
            production_g**line_qcd_power(line)
-      if (multiplicative_nlo_enabled()) then
-        spin_density_weight_line_multiplier = &
-             spin_density_weight_line_multiplier* &
-             decay_multiplicative_width_rescaling(factor_indices)
-      end if
       return
     end if
     local_g = 1d0
-    if (line_qcd_power(line) > 0) then
-      factor_index = 1
+    factor_index = 1
+    if (line_scale_pdg(line) /= 0) then
       if (size(factor_indices) > 0) then
         species_index = decay_scale_species_index(line_scale_pdg(line))
-        if (species_index < 1 .or. &
-            species_index > size(factor_indices)) then
+        if (species_index > size(factor_indices)) then
           call fail_density_lines( &
                'a decay density line has no scale-factor index')
         end if
-        factor_index = factor_indices(species_index)
+        if (species_index > 0) factor_index = factor_indices(species_index)
       end if
-      scale = decay_renormalization_scale( &
-           line_scale_pdg(line), factor_index)
-      local_g = sqrt(4d0*pi*alphas(scale))
+      scale = decay_scales(correction_scale_node(line), line)
+      if (line_qcd_power(line) > 0) &
+           local_g = sqrt(4d0*pi*alphas(scale*decay_scale_factor(factor_index)))
     end if
     ! PDFs, incoming flux and the global integration weight belong solely to
     ! the production block and must not be repeated by a decay density.
     spin_density_weight_line_multiplier = &
          local_g**line_qcd_power(line)
+    if (multiplicative_nlo_enabled() .and. line_scale_pdg(line) /= 0) then
+      ! Normalize each decay density at its own scale. Putting all widths
+      ! on production would reuse its Born decay scales for resolved leaves.
+      spin_density_weight_line_multiplier = spin_density_weight_line_multiplier* &
+           decay_node_width_rescaling(line_scale_pdg(line), factor_index, scale)
+    end if
   end function spin_density_weight_line_multiplier
 
 
