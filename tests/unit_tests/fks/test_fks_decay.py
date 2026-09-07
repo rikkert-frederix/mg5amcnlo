@@ -90,6 +90,17 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertEqual(wavefunction.get('width'), 'ZERO')
         self.assertEqual(found_nodes, set(expected_nodes))
 
+    def assert_userhel_scope_is_restored(self, source):
+        self.assertRegex(
+            source,
+            re.compile(
+                r'INTEGER\s+HEL,\s*USERHEL,\s*OLDUSERHEL.*?'
+                r'OLDUSERHEL\s*=\s*USERHEL\s+'
+                r'USERHEL\s*=\s*HEL\s+'
+                r'CALL\s+[A-Z0-9_]*SLOOPMATRIX\(P,ANS\)\s+'
+                r'USERHEL\s*=\s*OLDUSERHEL',
+                re.DOTALL))
+
     def test_fks_skeleton_is_unchanged_and_undecayed(self):
         plain = self.generate('u u~ > t t~ [real=QCD]')
         decayed = self.generate(
@@ -1005,6 +1016,7 @@ class TestFKSDecayChains(unittest.TestCase):
             virtual_dir = virtuals[0]
             with open(os.path.join(virtual_dir, 'loop_matrix.f')) as stream:
                 loop_source = stream.read()
+            self.assert_userhel_scope_is_restored(loop_source)
             with open(os.path.join(virtual_dir, 'born_matrix.f')) as stream:
                 loop_born_source = stream.read()
             for source in [loop_source, loop_born_source]:
@@ -1094,6 +1106,10 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertEqual(len(virtuals), 1)
             self.assertTrue(os.path.isfile(os.path.join(
                 virtuals[0], 'compute_color_flows.f')))
+
+            with open(os.path.join(virtuals[0], 'loop_matrix.f')) as stream:
+                loop_source = stream.read()
+            self.assert_userhel_scope_is_restored(loop_source)
 
             with open(os.path.join(
                     virtuals[0], 'compute_color_flows.f')) as stream:

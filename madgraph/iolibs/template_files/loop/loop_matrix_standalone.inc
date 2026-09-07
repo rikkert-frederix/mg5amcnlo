@@ -13,13 +13,15 @@ C ARGUMENTS
 C  
       %(real_dp_format)s P(0:3,NEXTERNAL)
       %(real_dp_format)s ANS(0:3,0:NSQUAREDSO)
-	  INTEGER HEL, USERHEL
+	  INTEGER HEL, USERHEL, OLDUSERHEL
 	  common/%(proc_prefix)sUSERCHOICE/USERHEL
 C ----------
 C BEGIN CODE
 C ----------
+          OLDUSERHEL=USERHEL
 	  USERHEL=HEL
       CALL %(proc_prefix)sSLOOPMATRIX(P,ANS)
+          USERHEL=OLDUSERHEL
 	  END
 
       LOGICAL FUNCTION %(proc_prefix)sIS_HEL_SELECTED(HELID)

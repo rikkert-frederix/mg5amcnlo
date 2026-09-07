@@ -13,13 +13,15 @@ C     ARGUMENTS
 C     
       REAL*8 P(0:3,NEXTERNAL)
       REAL*8 ANS(0:3,0:NSQUAREDSO)
-      INTEGER HEL, USERHEL
+      INTEGER HEL, USERHEL, OLDUSERHEL
       COMMON/ML5_0_USERCHOICE/USERHEL
 C     ----------
 C     BEGIN CODE
 C     ----------
+      OLDUSERHEL=USERHEL
       USERHEL=HEL
       CALL ML5_0_SLOOPMATRIX(P,ANS)
+      USERHEL=OLDUSERHEL
       END
 
       LOGICAL FUNCTION ML5_0_IS_HEL_SELECTED(HELID)
@@ -1638,4 +1640,3 @@ C     Reset it to default value not to affect next runs
       RET_CODE=100*H+10*T+U
 
       END
-

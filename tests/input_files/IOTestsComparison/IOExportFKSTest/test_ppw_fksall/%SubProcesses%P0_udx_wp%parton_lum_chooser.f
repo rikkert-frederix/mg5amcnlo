@@ -19,3 +19,22 @@
       RETURN
       END
 
+      INTEGER FUNCTION DLUM_CACHE_CHANNEL()
+      IMPLICIT NONE
+      INTEGER NFKSPROCESS
+      COMMON/C_NFKSPROCESS/NFKSPROCESS
+      IF (NFKSPROCESS.EQ.1) THEN
+        DLUM_CACHE_CHANNEL=1
+      ELSEIF (NFKSPROCESS.EQ.2) THEN
+        DLUM_CACHE_CHANNEL=1
+      ELSEIF (NFKSPROCESS.EQ.3) THEN
+        DLUM_CACHE_CHANNEL=2
+      ELSEIF (NFKSPROCESS.EQ.4) THEN
+        DLUM_CACHE_CHANNEL=3
+      ELSE
+        WRITE(*,*) 'ERROR: invalid n in dlum cache channel :',
+     $               nfksprocess
+        STOP
+      ENDIF
+      RETURN
+      END

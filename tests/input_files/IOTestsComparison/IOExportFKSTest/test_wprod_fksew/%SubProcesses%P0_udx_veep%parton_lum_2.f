@@ -33,10 +33,10 @@ C
       INTEGER I, ICROSS,LP
       DOUBLE PRECISION A1
       DOUBLE PRECISION SX2,DX2
-C     
 C     STUFF FOR UPC
 C     
       DOUBLE PRECISION PHOTONPDFSQUARE
+
 C     
 C     EXTERNAL FUNCTIONS                                              
 C         
@@ -61,9 +61,9 @@ C
       DOUBLE PRECISION DUMMY_COMPONENTS(N_EE)
       DOUBLE PRECISION A1_COMPONENTS(N_EE)
       DOUBLE PRECISION SX2_COMPONENTS(N_EE),DX2_COMPONENTS(N_EE)
-
       INTEGER I_EE
       INCLUDE '../../Source/PDF/pdf.inc'
+
 C     
 C     DATA                                                            
 C         
@@ -115,4 +115,3 @@ C
       ENDDO
       RETURN
       END
-
