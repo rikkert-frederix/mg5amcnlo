@@ -1109,6 +1109,57 @@ class MECmdShell(IOTests.IOTestManager):
             self.assertNotIn('FAILED', test_me)
 
 
+    def test_fnlo_analytic_decay_virtuals_with_collier(self):
+        """Integration must retain the poles needed by analytic validation."""
+        self.addCleanup(os.chdir, os.getcwd())
+        interface = MGCmd.MasterCmd()
+        interface.no_notification()
+        collier = interface.options.get('collier')
+        if not collier or not os.path.isdir(collier):
+            self.skipTest('COLLIER is required for this regression')
+        for command in [
+                'import model loop_sm-no_b_mass',
+                'generate u u~ > t t~ [QCD], '
+                '(t > e+ ve b [QCD]), (t~ > e- ve~ b~ [QCD])',
+                'output fNLO %s' % self.path]:
+            interface.exec_cmd(command, errorhandling=False, printcmd=False,
+                               precmd=True, postcmd=True)
+        # Ninja and CutTools compute poles even when COLLIER's pole flags
+        # are disabled, and would hide this integration-only failure.
+        loop_path = pjoin(self.path, 'Cards', 'MadLoopParams.dat')
+        loop_card = banner.MadLoopParam(loop_path)
+        loop_card['MLReductionLib'] = '7'
+        loop_card.write(loop_path)
+        run_path = pjoin(self.path, 'Cards', 'run_card.dat')
+        run_card = banner.RunCardNLO(run_path)
+        for key, value in dict(
+                req_acc_fo=-1., npoints_fo_grid=40, niters_fo_grid=1,
+                npoints_fo=40, niters_fo=1, iseed=12345,
+                reweight_scale=False, reweight_pdf=False).items():
+            run_card[key] = value
+        run_card.write(run_path, template=pjoin(self.path, 'Cards',
+                                               'run_card_default.dat'))
+        fks_decay.write_decay_card(
+            pjoin(self.path, 'Cards'), {6: 1.4915}, {6: 173.},
+            nlo_width_pdgs={6}, nlo_widths={6: 1.3646},
+            nlo_decay_combination='MULTIPLICATIVE')
+        self.cmd_line = NLOCmd.aMCatNLOCmdShell(me_dir=self.path)
+        self.cmd_line.no_notification()
+        self.cmd_line.run_cmd('set automatic_html_opening False --no_save')
+        self.do('calculate_xsect NLO -f')
+        integration_logs = []
+        for root, _, filenames in os.walk(pjoin(self.path, 'SubProcesses')):
+            if 'log_MINT0.txt' in filenames:
+                with open(pjoin(root, 'log_MINT0.txt')) as stream:
+                    integration_logs.append(stream.read())
+        self.assertTrue(integration_logs)
+        for log in integration_logs:
+            self.assertNotIn('analytic top-decay virtual validation failed', log)
+            for contribution in (2, 3):
+                self.assertIn('analytic top-decay virtual provider for '
+                              'contribution %d validated' % contribution, log)
+        self.cmd_line.do_quit('')
+
     def test_fnlo_decay_card_mixed_orders_and_dynamic_reweighting(self):
         """Exercise card switches and running-width weights in a compiled bundle."""
         self.addCleanup(os.chdir, os.getcwd())

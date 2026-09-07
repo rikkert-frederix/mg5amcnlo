@@ -145,22 +145,18 @@ contains
       else
         call FORCE_STABILITY_CHECK(.true.)
       end if
-      if (.not. force_polecheck) then
-        if (factorized_matrix) then
-          call SDM_COLLIER_COMPUTE_UV_POLES(contribution, .false.)
-          call SDM_COLLIER_COMPUTE_IR_POLES(contribution, .false.)
-        else
-          call COLLIER_COMPUTE_UV_POLES(.false.)
-          call COLLIER_COMPUTE_IR_POLES(.false.)
-        end if
+      ! Density providers return all three Laurent coefficients, including
+      ! the poles used to validate analytic decay virtuals against MadLoop.
+      ! COLLIER must compute them during integration as well as pole checks.
+      if (factorized_matrix) then
+        call SDM_COLLIER_COMPUTE_UV_POLES(contribution, .true.)
+        call SDM_COLLIER_COMPUTE_IR_POLES(contribution, .true.)
+      else if (.not. force_polecheck) then
+        call COLLIER_COMPUTE_UV_POLES(.false.)
+        call COLLIER_COMPUTE_IR_POLES(.false.)
       else
-        if (factorized_matrix) then
-          call SDM_COLLIER_COMPUTE_UV_POLES(contribution, .true.)
-          call SDM_COLLIER_COMPUTE_IR_POLES(contribution, .true.)
-        else
-          call COLLIER_COMPUTE_UV_POLES(.true.)
-          call COLLIER_COMPUTE_IR_POLES(.true.)
-        end if
+        call COLLIER_COMPUTE_UV_POLES(.true.)
+        call COLLIER_COMPUTE_IR_POLES(.true.)
       end if
       firsttime_run(contribution) = .false.
     end if
