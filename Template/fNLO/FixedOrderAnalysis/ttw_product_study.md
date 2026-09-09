@@ -15,8 +15,10 @@ of the mixed production–decay corrections retained by a spin-correlated NLO
 product prescription**. Use trilepton $t\bar tW^\pm$ as the principal
 application and a small dileptonic $t\bar t$ validation study. The headline
 question is whether those corrections alter b-jet acceptance, event activity,
-and charge-separated shapes after consistent width normalization. This is a
-testable question even if the net correction is small.
+and charge-separated shapes after consistent width normalization, and whether
+that conclusion survives finite W widths. Keep dynamic production scales as
+the main choice; study central-scale definitions as a separate comparison.
+This is a testable question even if the net correction is small.
 
 Suggested title: *Mixed production and decay corrections in trilepton
 $t\bar tW$ production*. An alternative emphasizing the method is
@@ -89,7 +91,9 @@ extension, not a switch in the supplied scripts.
 
 Let $P_0,P_1$ be the Born production density and its NLO correction, and let
 $D_{i,0},D_{i,1}$ be the corresponding top-decay densities. Spin contractions
-and the common leptonic W-decay factors are implicit. Define
+and any explicit on-shell leptonic W-decay factors are implicit. With a
+finite-width W, its current and leptonic phase space are instead included
+inside the corresponding production or top-decay block. Define
 
 $$
 B_{i,0}=\frac{D_{i,0}}{\Gamma_{i,0}},\qquad
@@ -178,6 +182,77 @@ eight-subset integration would improve the statistics but is further work.
 Do not emulate a formal coefficient extraction by changing physical alpha-s,
 since that also changes PDFs, Born production powers and running widths.
 
+## W-width treatment: on-shell reference and finite-width extensions
+
+Keep the tops in the NWA in all three treatments. The W treatment is a
+separate axis from the six perturbative prescriptions and the scale grid:
+
+| Setup option | Production block | Top-decay blocks | Top total-width inputs |
+|---|---|---|---|
+| `onshell` (reference/default) | on-shell $t\bar tW$, then leptonic W decay | $t\to bW$, then leptonic W decay | on-shell-W LO/NLO widths |
+| `top-bw` | on-shell $t\bar tW$, then leptonic W decay | direct $t\to b\ell\nu$ with internal W | finite-W LO/NLO widths |
+| `all-bw` | direct $t\bar t\ell\nu$ with internal associated W | direct $t\to b\ell\nu$ with internal W | the same finite-W LO/NLO widths as `top-bw` |
+
+The corresponding antitop decays are always included. Finite width means
+integrating the full local matrix element/current and phase space over the
+W virtuality, with the fixed-width propagator denominator
+$(q^2-M_W^2)^2+M_W^2\Gamma_W^2$ of `loop_sm-no_b_mass`. Do not replace
+this by smearing on-shell events, and do not impose an associated-W
+resonance selector or a finite mass window. Retain all diagrams at the
+specified coupling order in each independent block. This is a real-mass,
+fixed-width NLO-QCD setup, not a general complex-mass NLO-EW calculation.
+
+Only explicit on-shell decay nodes receive a decay-card $1/\Gamma_W$
+normalization: all three Ws in `onshell`, only the associated W in
+`top-bw`, and none in `all-bw`. In the last case the card has no `(24)`
+width/reference entry; the nonzero propagator width remains in
+`param_card.dat`. Do not multiply direct three-body top decays or the
+direct production current by an additional W branching fraction. Leptonic
+Ws add no QCD decay scale or QCD-radiation sector.
+
+Compute physical total top widths at LO and NLO with exactly the same W
+prescription, masses, weak inputs and alpha-s reference as the corresponding
+decay densities. Keep the W total width/input scheme consistent across
+comparisons. The finite-W change of the inclusive top width can largely
+cancel in $d\Gamma_t/\Gamma_t$; an on-shell-W denominator with a BW decay
+numerator creates a spurious shift. This cancellation need not survive
+fiducial cuts. See [Denner et al.](https://arxiv.org/abs/1207.5018).
+Neither $\Gamma_W/M_W$ nor twice the change of $\Gamma_t$ is a prediction
+for the fiducial ttW-rate shift. The associated-W production current has no
+analogous top-width normalization cancellation.
+
+Run S and Pi in all three treatments first. At matching scale-factor points,
+for target treatment $w$ and reference $r$, compare
+
+$$
+\frac{S_w}{S_r},\quad \frac{\Pi_w}{\Pi_r},\quad
+\Delta_{w,r}=(\Pi-S)_w-(\Pi-S)_r,\quad
+\delta_{w,r}=(\Pi/S-1)_w-(\Pi/S-1)_r.
+$$
+
+Also retain $(\Pi/S)_w/(\Pi/S)_r$. Use `top-bw` versus `onshell` to
+isolate the top-decay W treatment, `all-bw` versus `top-bw` to assess the
+associated current, and `all-bw` versus `onshell` for the total change.
+The default W-grouped dynamic scale below is common to all three treatments;
+the native lepton-resolved alternative is a separate diagnostic. Evaluate
+all derived quantities pointwise before taking
+envelopes, including normalized shapes and acceptances.
+
+Prioritize the fiducial one-/two-b rates, acceptance, subleading-b pT,
+lepton HT/leading-lepton pT and $m_{b\ell}^{\rm minimax}$. The correct-pair
+Born endpoint $m_{b\ell}^2=m_t^2-M_W^2$ motivates the last observable,
+but jet radiation and pairing also generate tails; do not attribute every
+tail event to finite W width. Existing histograms can be reused unchanged.
+An internal $m_{\ell\nu}$ line-shape/phase-space check is a validation
+diagnostic, not a new visible-observable histogram supplied by these scripts.
+
+Before adopting `all-bw` as the final fiducial prediction, verify inclusive
+normalization, virtuals/subtraction and resonance integration in each mode.
+This remains **top-NWA with finite-width Ws**, not full off-shell ttW:
+top finite-width effects, singly/nonresonant top amplitudes, interference
+between alternative top histories and nonfactorizable production–decay
+exchanges are still missing. Keep a matched full off-shell reference separate.
+
 ## Scale dependence: a main result
 
 The independent scales are
@@ -199,19 +274,65 @@ the same width function at independently varied scales. Repeated resonances
 with the same signed PDG still share a variation factor; this is not a
 general per-occurrence grouping extension.
 
-Use $\mu_{R,0}^t=\mu_{R,0}^{\bar t}=m_t$. The first production central scale is
+Use $\mu_{R,0}^t=\mu_{R,0}^{\bar t}=m_t$. **Dynamic production scales remain
+the main choice in every W treatment.** The setup now defaults to
+`--production-scale core-w-ht-half`, the common W-system definition
 
 $$
-\mu_0^P=\tfrac12\sum_{i\in\text{production final state}}m_{T,i},
+\mu_{0,\mathrm{W-system}}^P=\tfrac12\left[
+m_{T,t}+m_{T,\bar t}+m_T(q_{\rm assoc})
++\sum_{j\in\mathrm{production\ radiation}}p_{T,j}\right],\qquad
+q_{\rm assoc}=p_{\ell_{\rm assoc}}+p_{\nu_{\rm assoc}}.
 $$
 
-with on-shell t, tbar, associated W and any production radiation, as
-implemented by `dynamical_scale_choice=3` with
-`production_ren_scale_momenta=CORE`. The independent cross-check is the
-fixed scale $m_t+m_W/2$. Keep these in separate exported results/manifests;
-combine their envelopes only as an explicitly defined additional diagnostic.
-Changing a dynamic production scale is not a reason to change the decay
-scale to the event hardness.
+Use $m_T(q)=\sqrt{q^2+|\mathbf q_T|^2}=\sqrt{q_0^2-q_z^2}$ at the actual
+BW virtuality, with no projection onto $M_W$. For an explicit on-shell W
+use its momentum instead. This reproduces the same scale continuously in
+the narrow-W limit. Only the associated current is grouped: the production
+metadata identifies its lepton and neutrino before top decays, so no
+three-lepton pairing or missing-momentum reconstruction is needed. The two
+Ws inside the top decays are already included in the parent top momenta.
+
+The runtime implements this directly in the momentum-aware scale
+calculation, without changing the event, matrix element or phase space.
+The setup selects
+
+```text
+CORE = production_ren_scale_momenta
+W_SYSTEM = production_scale_grouping
+```
+
+in `decay_card.dat` and `dynamical_scale_choice=3` in `run_card.dat`.
+The grouping applies consistently to production muR, muF and production
+Ellis–Sexton scales and their scale-reweighting entry points, using each
+Born/real/counterevent's production momenta. NLO-decay contributions still
+use their local decay QES; the top/antitop decay-scale choices are unchanged.
+The option rejects `DECAYED` momenta, other dynamic-scale choices, cores
+without one top and antitop, and ambiguous or flavour/charge-mismatched W
+currents. It does not require a general custom-scale hook extension.
+
+Generic runtime behaviour is unchanged: omitting `production_scale_grouping`
+(or selecting `NONE`) retains native CORE scales. For the study, the
+available central choices are:
+
+| Setup option | Role |
+|---|---|
+| `core-w-ht-half` (default) | Common dynamic W-system scale in all three W treatments |
+| `core-ht-half` | Native dynamic sum over production-core particles; separate associated leptons in `all-bw` |
+| `fixed` | $m_t+m_W/2$, an optional central-scale cross-check |
+
+The first two coincide for an explicit associated W. In `all-bw`, the native
+choice uses $p_{T,\ell}+p_{T,\nu}$ instead of $m_T(q_{\rm assoc})$ and is
+therefore a genuinely different central-scale prescription, even near the
+W pole. Compare the two within `all-bw` to study that effect separately
+from the W-width change. Fixed-scale curves remain an optional check, not
+a replacement for the main dynamic prediction or a prerequisite for a
+like-for-like BW comparison. The report records whether the declared scale
+definitions match and flags comparisons which change the definition.
+Keep each central choice in separate results/manifests and show the bands
+separately; their spread is not another independent statistical error.
+Changing a production scale is not a reason to change the decay scale
+from $m_t$ to the event hardness.
 
 For every observable retain the full Cartesian grid
 $(\xi_R,\xi_F,\xi_t,\xi_{\bar t})\in\{1/2,1,2\}^4$:
@@ -269,6 +390,10 @@ The concrete paper comparisons should be:
    the spread between central choices is conceptually different from a
    within-choice variation. Keep the full grid even if only 63 points enter
    the displayed main band.
+7. **W-width robustness.** Compare S/Pi in `onshell`, `top-bw` and
+   `all-bw`, including $\Delta_{w,r}$ and $\delta_{w,r}$ above. Keep dynamic
+   W-grouped production scales primary. Compare native lepton-resolved
+   scales within `all-bw` as a separate central-scale study.
 
 An optional compact diagnostic is the finite logarithmic response
 $s_P=[X(2,2,1,1)-X(1/2,1/2,1,1)]/\ln4$, with analogous
@@ -300,9 +425,14 @@ leptons and three light neutrinos, with total lepton charge $\pm1$. For the
 full direct e/mu result, sum each of the eight ordered
 $(W_t,W_{\bar t},W_{\rm assoc})$ e/mu assignments once per charge. Use separate
 exports, since corrected decay trees and the charge-conjugate associated W
-cannot generally be combined into the same full-NLO bundle. Check the fully
-inclusive sum against $(B_e+B_\mu)^3$ times stable ttW production; do not
-insert a manual factorial or a universal flavour rescaling under cuts.
+cannot generally be combined into the same full-NLO bundle. In `onshell`,
+check the fully inclusive sum against $(B_e+B_\mu)^3$ times stable ttW
+production. For BW modes use the matched integrated three-body branching
+densities; `all-bw` additionally needs the integrated $t\bar t\ell\nu$
+production current, not a stable-W cross section times a branching factor.
+Check the narrow-W limit at fixed/common scale and with consistently
+normalized widths. Do not insert a manual factorial or a universal flavour
+rescaling under cuts.
 
 For a fixed visible final state, full off-shell comparisons must include all
 compatible resonance histories in the NWA sum. Flavour labels do not uniquely
@@ -413,39 +543,60 @@ Use the scripts from the source checkout. From its root:
 
 ```sh
 python3 Template/fNLO/FixedOrderAnalysis/ttw_product_setup.py commands \
-  --charge plus --output /absolute/new/TTWplus_eemu
+  --charge plus --w-treatment onshell --output /absolute/new/TTWplus_onshell_eemu
 python3 Template/fNLO/FixedOrderAnalysis/ttw_product_setup.py commands \
-  --charge minus --output /absolute/new/TTWminus_eemu
+  --charge minus --w-treatment onshell --output /absolute/new/TTWminus_onshell_eemu
+python3 Template/fNLO/FixedOrderAnalysis/ttw_product_setup.py commands \
+  --charge plus --w-treatment top-bw --output /absolute/new/TTWplus_top_bw_eemu
+python3 Template/fNLO/FixedOrderAnalysis/ttw_product_setup.py commands \
+  --charge plus --w-treatment all-bw --output /absolute/new/TTWplus_all_bw_eemu
 ```
 
 These print exact generation commands. Save each output as an MG5 command
 file and pass it to `python3 bin/mg5_aMC <command-file>`. They select
-`loop_sm-no_b_mass`, the dominant $\alpha_s^2\alpha$ production order,
-and NLO QCD corrections in production and both top decays. `--flavours`
+`loop_sm-no_b_mass`, the dominant QCD-induced production order, and NLO
+QCD corrections in production and both top decays. The production block
+has `QCD=2 QED=1` with an explicit W and `QCD=2 QED=2` with its leptonic
+current; these count the same overall electroweak order after decays.
+Repeat the BW examples with `--charge minus`. `--flavours`
 specifies the ordered triple. `--corrected t`, `tbar`, `both`, `neither`
 select the four decay trees. `--real-only --partonic` is for export smoke
 tests; such output omits virtual terms and crossed proton channels and is
 not a physical NLO prediction.
 
+Changing W treatment requires a separate generation/export; it is not a
+run-card reweighting. The setup inspects every exported Born core and decay
+tree and refuses to configure a mismatched `--w-treatment`.
+
 Before configuring physical runs, calculate the top total width at LO/NLO
-in precisely the chosen model/PDF alpha-s setup with on-shell W. Archive
-that calculation. Fresh exports set LO and NLO width entries equal by
+in precisely the chosen model/PDF alpha-s setup, with on-shell Ws for
+`onshell` and finite-width Ws for both BW modes. Archive that calculation.
+Fresh exports set LO and NLO width entries equal by
 default: these placeholders must be replaced. The utility therefore
 requires the two numerical widths and a description of their source:
 
 ```sh
 python3 Template/fNLO/FixedOrderAnalysis/ttw_product_setup.py configure \
-  --process-dir /absolute/new/TTWplus_eemu --variant S \
+  --process-dir /absolute/new/TTWplus_onshell_eemu --variant S \
+  --w-treatment onshell --top-width-w-treatment onshell \
   --top-width-lo <matched-LO-width> --top-width-nlo <matched-NLO-width> \
   --width-source '<width calculation and matching parameter/PDF record>' \
   --pdf-id <installed-NLO-LHAPDF-central-ID> --seed 31701
 ```
 
+For `top-bw`/`all-bw`, select the corresponding export and W treatment,
+use `--top-width-w-treatment bw`, and supply the recalculated finite-W
+LO/NLO top widths. The mandatory width-convention declaration guards
+against accidental on-shell/BW mixing; the numerical/source consistency
+still requires the archived width calculation, not just a CLI label.
+
 Replace the angle-bracket placeholders; they are deliberately not nominal
 physics numbers. The W width and mass parameters are read from the generated
 parameter card. With no `--pdf-id`, the bundled `nn23nlo` set is used as a
 pilot fallback, not silently substituted for a publication PDF choice.
-Use `--production-scale fixed` for the central-scale cross-check. A single
+The default is `--production-scale core-w-ht-half`, including BW modes;
+use `--production-scale core-ht-half` for the native dynamic comparison and
+`--production-scale fixed` for the fixed-scale cross-check. A single
 PDF family and its alpha-s must be used for all six comparisons and the
 width calculation; choose a modern installed NLO set for production.
 
@@ -465,9 +616,16 @@ exports/copies for concurrent jobs. Existing card snapshots and Events
 names are protected against reuse. Old format-4 decay cards in existing
 `PROC_fnlo_runtime_20260830` output are obsolete; re-export from current
 source rather than using that directory as a publication input. The setup
-also rejects exports lacking the signed-PDG runtime extension. Run names
-include the grouping, e.g. `S_core-ht-half_separate_31701`, so shared and
-separate runs can coexist without overwriting their card archives.
+also rejects exports lacking the signed-PDG runtime extension and, when
+W grouping is selected, exports lacking the W-system scale implementation
+in all three affected runtime modules. Re-export; do not patch existing
+process directories or relabel previously generated native-scale weights.
+Run names
+include the W treatment and grouping, e.g.
+`S_top-bw_core-w-ht-half_separate_31701`, so choices cannot collide in
+their card archives. The manifest records the W prescription, the declared
+top-width W treatment, topology hashes, production-core and grouped scale
+objects, the actual-virtuality convention, and hashes of the scale runtime.
 
 For manually prepared **new exports**, the relevant decay-card settings are:
 
@@ -475,17 +633,23 @@ For manually prepared **new exports**, the relevant decay-card settings are:
 INDEPENDENT = decay_scale_variation_mode
 SIGNED_PDG = decay_scale_grouping
 1, 0.5, 2 = decay_scale_factors
+CORE = production_ren_scale_momenta
+W_SYSTEM = production_scale_grouping
 ```
 
 Together with `reweight_scale=True` and `rw_rscale=rw_fscale=[1,0.5,2]` in
 the run card, they produce all 81 points. `CORRELATED` mode still ties all
 decay factors to production muR even with signed grouping; it does not
-produce independent top/antitop variations.
+produce independent top/antitop variations. The W grouping additionally
+requires `dynamical_scale_choice=3`; no separate W variation axis is added.
 
 Default integration counts (200 grid points, 1000 points, three iterations
 per channel) are pilot settings, not convergence criteria. Start with two
-charges times six variants. Add the fixed-scale S/Pi cross-check (four more
-integrations) before expanding to all e/mu flavours. The 81 weights and all
+charges times six on-shell-W variants. Add dynamic S/Pi for `top-bw` and
+`all-bw` (eight more integrations for the two charges), then the native
+dynamic S/Pi cross-check in `all-bw` and selected fixed-scale comparisons.
+Expand the remaining
+four perturbative variants/flavour assignments after these pilots. The 81 weights and all
 five cut configurations are collected inside each integration, not by 405
 separate launches.
 
@@ -495,8 +659,39 @@ For S/Pi with both charges completed:
 python3 Template/fNLO/FixedOrderAnalysis/ttw_product_scales.py \
   --strict <Wplus-S.HwU> <Wminus-S.HwU> \
   --product <Wplus-Pi.HwU> <Wminus-Pi.HwU> \
+  --w-treatment onshell --production-scale core-w-ht-half \
   --output comparison.json
 ```
+
+Compare another W treatment directly to the reference S/Pi pair:
+
+```sh
+python3 Template/fNLO/FixedOrderAnalysis/ttw_product_scales.py \
+  --w-treatment top-bw --production-scale core-w-ht-half \
+  --strict <top-bw-Wplus-S.HwU> <top-bw-Wminus-S.HwU> \
+  --product <top-bw-Wplus-Pi.HwU> <top-bw-Wminus-Pi.HwU> \
+  --reference-w-treatment onshell \
+  --reference-strict <onshell-Wplus-S.HwU> <onshell-Wminus-S.HwU> \
+  --reference-product <onshell-Wplus-Pi.HwU> <onshell-Wminus-Pi.HwU> \
+  --output top-bw_vs_onshell.json
+```
+
+Use the same interface for `all-bw` versus either reference. It retains the
+reference predictions and adds point-matched strict/product treatment ratios,
+absolute and relative shift changes, and the double ratio for every absolute
+and normalized histogram and every derived acceptance/charge observable.
+For a dynamic-definition study, keep target and reference at `--w-treatment
+all-bw` / `--reference-w-treatment all-bw`, provide native-scale reference
+S/Pi files and add `--reference-production-scale core-ht-half`; the target
+defaults to W-grouped CORE HT/2. For the fixed-scale study supply fixed-scale
+reference files and use `--reference-production-scale fixed`.
+The reference central-scale label defaults
+to the target's choice. All labels are user declarations: verify the
+corresponding archived cards, flavours and physical inputs; the HwU file
+alone cannot validate them. For older native-scale files explicitly select
+`core-ht-half`; the new default must not be used to relabel them. Matched
+W-system definitions are identified as such in the JSON; native lepton-resolved
+or fixed-scale comparisons carry a warning when the scale definition changes.
 
 The JSON retains all 81 points, nine scale-band definitions, logarithmic
 production/top/antitop/shared-decay responses, per-bin
@@ -515,7 +710,8 @@ postprocessor's envelopes are scale-only.
 
 The stored HwU MC errors do not contain all bin/rate and cross-run
 covariances. The script reports difference errors under an explicit
-independent-run assumption and does not invent normalized-shape or ratio
+independent-run assumption (four independent integrations for a reference
+shift change) and does not invent normalized-shape or ratio
 errors. For publication, use matched independent integration replicas
 (preferably at least five) and estimate derived-observable covariance from
 replicas, or implement joint estimators. The same random seed alone does
@@ -538,7 +734,7 @@ every distribution.
 | Figure 5 | SS Dphi/Deta and leading-lepton/b-jet DR; test shape and charge dependence |
 | Figure 6 | 0/1/2-extra-jet sectors and second-extra-jet pT; expose partial higher-order content |
 | Figure 7 | Radius/threshold dependence of two-b acceptance and veto efficiency |
-| Figure 8 | Fixed/dynamic central scales and selected full off-shell or NNLO-production reference |
+| Figure 8 | W-treatment S/Pi shifts and dynamic-scale robustness; fixed/common-scale diagnostic |
 | Table 3 | Integrated shifts, MC precision and separate production/decay/combined scale responses |
 
 For the ttbar calibration, use the existing dilepton machinery only after
@@ -550,7 +746,8 @@ coefficients or grids can be obtained. This is a valuable calibration, not
 an assumption that the product approximates all NNLO terms well.
 
 An off-shell comparison must be $S_{\rm NWA}$ versus full off-shell NLO
-with common inputs; $\Pi-S_{\rm NWA}$ measures a different correction.
+with common inputs and an explicit W convention for $S_{\rm NWA}$;
+$\Pi-S_{\rm NWA}$ measures a different correction.
 Plot the two differences separately before discussing any additive hybrid.
 Off-shell effects, pure higher-order production corrections and mixed
 production–decay corrections do not substitute for one another.
@@ -559,7 +756,11 @@ production–decay corrections do not substitute for one another.
 
 1. **Correctness and pilot (first allocation).** Validate widths and
    inclusive branching normalization at all decay-scale points; establish
-   $S=P+D-LO$; check virtual poles and subtraction for ttW. Run plus/minus
+   $S=P+D-LO$; check virtual poles and subtraction for ttW. For each BW
+   treatment verify the internal W retains its physical width, full virtuality
+   support and no extra W normalization. Check the three-body analytic
+   top virtuals against MadLoop and the narrow-W limit with matched total
+   widths and a common production-scale definition. Run plus/minus
    pilots and record wall time, integration channels, cancellations, MC
    errors per plot bin and convergence of product-only sectors. The analysis
    unit tests below do not establish these generator-level identities.
@@ -572,7 +773,11 @@ production–decay corrections do not substitute for one another.
    cannot be met. Integration accuracy on the total rate is insufficient.
 3. **Scale and migration study.** Complete the production-only, decay-only,
    top/antitop-only, 21-/63-point and common-scale comparisons and the
-   fixed-scale cross-check.
+   fixed-scale cross-check. Keep dynamic scales primary in all three W
+   treatments; quantify how the W treatment changes the S/Pi shift.
+   Use the common W-system scale for the like-for-like BW comparison and
+   study the native associated-lepton scale definition separately. Check a
+   direct production-scale rerun against reweighting in a BW pilot.
    Use the in-run radius/threshold scans to test a radiation/acceptance
    explanation. Audit every plotted band's selected weight labels.
 4. **Attribution and references.** If a statistically resolved shift is
@@ -604,7 +809,7 @@ and simultaneous bottom-collinear limits, beam-collinear and soft limits,
 merged bottom jets, radius migration and two extra jets. Synthetic
 measurement points are not matrix-element or physics-validation results.
 
-Checked on 9 September 2026: all 25 focused tests passed. They include signed-axis Cartesian
+Checked on 9 September 2026: all 32 focused tests passed. They include signed-axis Cartesian
 decoding/labels, backward-compatible shared cards, separate running couplings
 and widths, standalone antitop normalization, explicit width tables,
 asymmetric direct-scale agreement, and shared-diagonal equality. The local
@@ -613,6 +818,36 @@ A fresh `u d~` real-only ttW export with both corrected top-decay trees accepted
 the generated recipe and signed-scale card configuration; its actual fNLO makefile compiled
 the new analysis and bridge against the native dimensions and HwU modules.
 That export check deliberately did not perform a physical NLO integration.
+
+The W-width update adds command tests for all three treatments, both charges
+and all four corrected-decay subsets; actual-topology and top-width-convention
+guards; W normalization/parameter-card preservation; and reference comparisons
+of absolute spectra, normalized shapes, acceptances and charge observables
+on both 27-/81-point grids. The dynamic production default is explicitly tested.
+Fresh real-only $u\bar d$ exports of `top-bw` and `all-bw` accepted the new
+configuration with synthetic width inputs. The generated top-decay Born/real
+currents retain `MDL_WW`, including in the mixed on-shell-associated-W mode.
+A fresh **full-NLO** partonic `all-bw` ttW export also succeeded and contains
+both analytic three-body top virtuals and their MadLoop-validation calls.
+Export success is not a numerical virtual validation or a physical integration;
+none of these checks supplies physical BW top widths or fiducial predictions.
+The W-system production scale is now implemented as an opt-in runtime mode
+and is the study default. Its compiled tests exercise the actual production
+scale and reweighting entry points, explicit-W/paired-current equality,
+actual-virtuality dependence, charge and ordering invariance, production
+real/soft/beam-collinear configurations, and both NLO-decay branches. They
+also check that decay QES and native scales retain their existing behaviour.
+The existing nested-decay export regression also passed. A fresh real-only
+$d\bar u$ `all-bw` export was compiled and run with W grouping in both S and
+Pi modes: both produced finite HwU values with all 81 signed-axis weights
+and the expected production scale labels. These used synthetic widths and
+very small integration counts, not physical study inputs. The pilots emit
+zero-invariant `phase_space_lambda(0,0,0)` diagnostics (NaN in the boundary
+check, not in the stored HwU weights). A native `core-ht-half` product
+control also completed with all 81 finite weights and reproduced these
+diagnostics with W grouping disabled; audit this separate phase-space issue
+before physics production. No physical NLO integration or precision claim
+is implied by these real-only smoke checks.
 
 The compiled acceptance regression
 `test_fnlo_decay_card_mixed_orders_and_dynamic_reweighting` also passed:

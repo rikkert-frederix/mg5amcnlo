@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 from madgraph import MG5DIR
 from madgraph.various.banner import RunCardNLO
@@ -136,6 +137,79 @@ class TestTTWProductTools(unittest.TestCase):
         with self.assertRaises(ValueError):
             setup.process_commands('plus', ['e','e','mu'], '/tmp/a; command')
 
+    def test_bw_process_commands(self):
+        for charge, assoc in [('plus', 'mu+ vm'), ('minus', 'mu- vm~')]:
+            for treatment in setup.W_TREATMENTS:
+                for corrected in ('both', 't', 'tbar', 'neither'):
+                    text = setup.process_commands(charge, ['e', 'mu', 'mu'], '/tmp/TTW_bw',
+                                                  corrected, True, True, treatment)
+                    self.assertIn('# ttW W treatment: ' + treatment, text)
+                    self.assertEqual(text.count('[real=QCD]'),
+                                     1 + (corrected in ('both', 't')) +
+                                     (corrected in ('both', 'tbar')))
+                    if treatment == 'onshell':
+                        self.assertIn('t > w+ b QED=1', text)
+                    else:
+                        self.assertIn('t > b e+ ve QED=2', text)
+                        self.assertIn('t~ > b~ mu- vm~ QED=2', text)
+                        self.assertNotIn('t > w+', text)
+                    if treatment == 'all-bw':
+                        self.assertIn('t t~ %s QCD=2 QED=2' % assoc, text)
+                        self.assertNotIn('w+ >', text)
+                        self.assertNotIn('w- >', text)
+                    else:
+                        self.assertIn('QCD=2 QED=1', text)
+                        self.assertIn(' > ' + assoc, text)
+        with self.assertRaisesRegex(ValueError, 'Unknown W'):
+            setup.process_commands('plus', ['e', 'e', 'mu'], '/tmp/TTW', w_treatment='bad')
+
+    @staticmethod
+    def topology_fixture(process, treatment):
+        """Small format-4 fixtures with real node/leaf/core semantics."""
+        directory = process / 'SubProcesses/P0_test'
+        directory.mkdir(parents=True, exist_ok=True)
+        if treatment == 'onshell':
+            nodes = [(1, 0, 6, 'NODE 2 LEAF 3'), (2, 1, 24, 'LEAF 1 LEAF 2'),
+                     (3, 0, -6, 'NODE 4 LEAF 6'), (4, 3, -24, 'LEAF 4 LEAF 5'),
+                     (5, 0, 24, 'LEAF 7 LEAF 8')]
+            leaves = [(2, -11), (2, 12), (1, 5), (4, 11), (4, -12), (3, -5),
+                      (5, -13), (5, 14)]
+        else:
+            nodes = [(1, 0, 6, 'LEAF 1 LEAF 2 LEAF 3'),
+                     (2, 0, -6, 'LEAF 4 LEAF 5 LEAF 6')]
+            leaves = [(1, 5), (1, -11), (1, 12), (2, -5), (2, 11), (2, -12)]
+            if treatment == 'top-bw':
+                nodes.append((3, 0, 24, 'LEAF 7 LEAF 8'))
+                leaves.extend([(3, -13), (3, 14)])
+        final = [6, -6, 14, -13] if treatment == 'all-bw' else [6, -6, 24]
+        lines = ['FORMAT 4']
+        lines += ['NODE %d %d %d 0 0 %d %s' % (i, parent, pdg, len(children.split())//2, children)
+                  for i, parent, pdg, children in nodes]
+        lines += ['DECAY_LEAF %d %d %d' % (i, parent, pdg)
+                  for i, (parent, pdg) in enumerate(leaves, 1)]
+        lines += ['CONTEXT 1 BORN 1 %d 10' % (len(final)+2),
+                  'CORE_LEG 1 1 2 I', 'CORE_LEG 1 2 -1 I']
+        lines += ['CORE_LEG 1 %d %d F' % (i, pdg) for i, pdg in enumerate(final, 3)]
+        path = directory / 'decay_chain_info.dat'
+        path.write_text('\n'.join(lines) + '\nEND\n')
+        return path
+
+    def test_export_w_treatment_checks_actual_core_and_decays(self):
+        with tempfile.TemporaryDirectory(prefix='ttw_topology_') as directory:
+            process = Path(directory)
+            with self.assertRaisesRegex(ValueError, 'Missing exported'):
+                setup.export_w_treatment(process)
+            for treatment in setup.W_TREATMENTS:
+                path = self.topology_fixture(process, treatment)
+                self.assertEqual(setup.export_w_treatment(process), (treatment, [path]))
+            original = path.read_text()
+            path.write_text(original.replace('CORE_LEG 1 6 -13 F', 'CORE_LEG 1 6 13 F'))
+            with self.assertRaisesRegex(ValueError, 'associated'):
+                setup.export_w_treatment(process)
+            path.write_text(original.replace('DECAY_LEAF 3 1 12', 'DECAY_LEAF 3 1 14'))
+            with self.assertRaisesRegex(ValueError, 'leptonic'):
+                setup.export_w_treatment(process)
+
     def test_configuration_records_widths_and_all_scales(self):
         with tempfile.TemporaryDirectory(prefix='ttw_setup_') as directory:
             process = Path(directory)
@@ -156,11 +230,19 @@ class TestTTWProductTools(unittest.TestCase):
 DECAY 6 1.5
 DECAY 24 2.05
 ''')
+            self.topology_fixture(process, 'onshell')
             args = argparse.Namespace(process_dir=str(process), variant='S', top_width_lo=1.5,
                                       top_width_nlo=1.35, width_source='synthetic test only',
-                                      pdf_id=None, production_scale='core-ht-half', ecm=13000.,
+                                      pdf_id=None, production_scale='core-w-ht-half', ecm=13000.,
                                       seed=42, points=10, grid_points=10, iterations=1,
-                                      decay_scales='separate')
+                                      decay_scales='separate', w_treatment='onshell',
+                                      top_width_w_treatment='onshell')
+            with self.assertRaisesRegex(ValueError, 'W-system CORE HT/2'):
+                setup.configure(args)
+            (process / 'SubProcesses/decay_chain_parameters.f90').write_text(
+                'DECAY_SCALE_GROUPING PRODUCTION_SCALE_GROUPING')
+            (process / 'SubProcesses/setscales.f90').write_text('w_system_core_ht_half')
+            (process / 'SubProcesses/decay_chain_scales.f90').write_text('function w_system_core_ht_half')
             with contextlib.redirect_stdout(io.StringIO()):
                 setup.configure(args)
             decay = (cards / 'decay_card.dat').read_text()
@@ -168,15 +250,21 @@ DECAY 24 2.05
             self.assertIn('SIGNED_PDG = decay_scale_grouping', decay)
             self.assertIn('1, 0.5, 2 = decay_scale_factors', decay)
             self.assertIn('AUTO = decay_width_scale_mode(6)', decay)
+            self.assertIn('W_SYSTEM = production_scale_grouping', decay)
             run = RunCardNLO(str(cards / 'run_card.dat'))
             self.assertEqual(list(run['rw_rscale']), [1., .5, 2.])
             self.assertEqual(list(run['rw_fscale']), [1., .5, 2.])
             self.assertFalse(run['cut_decays'])
             self.assertEqual(run['ptj'], 0.)
-            archive = process / 'study_cards/S_core-ht-half_separate_42'
+            archive = process / 'study_cards/S_onshell_core-w-ht-half_separate_42'
             manifest = json.loads((archive / 'manifest.json').read_text())
             self.assertEqual(manifest['top_width_reference_scale'], 173.)
             self.assertEqual(manifest['decay_scale_grouping'], 'separate')
+            self.assertEqual(manifest['w_treatment'], 'onshell')
+            self.assertEqual(manifest['top_width_w_treatment'], 'onshell')
+            self.assertEqual(len(manifest['topology_hashes']), 1)
+            self.assertEqual(manifest['production_scale_grouping'], 'W_SYSTEM')
+            self.assertEqual(len(manifest['scale_runtime_hashes']), 3)
             self.assertEqual((archive / 'before/decay_card.dat').read_text(), 'original decay card\n')
             with self.assertRaisesRegex(ValueError, 'already exists'):
                 setup.configure(args)
@@ -184,10 +272,125 @@ DECAY 24 2.05
             with contextlib.redirect_stdout(io.StringIO()):
                 setup.configure(args)
             self.assertIn('SPECIES = decay_scale_grouping', (cards / 'decay_card.dat').read_text())
-            self.assertTrue((process / 'study_cards/S_core-ht-half_shared_42/manifest.json').is_file())
+            self.assertTrue((process / 'study_cards/S_onshell_core-w-ht-half_shared_42/manifest.json').is_file())
+            before = (cards / 'decay_card.dat').read_text()
+            args.w_treatment = 'top-bw'
+            with self.assertRaisesRegex(ValueError, 'Export has W treatment'):
+                setup.configure(args)
+            self.topology_fixture(process, 'top-bw')
+            with self.assertRaisesRegex(ValueError, 'requires top total widths'):
+                setup.configure(args)
+            self.assertEqual((cards / 'decay_card.dat').read_text(), before)
+            self.assertFalse((process / 'study_cards/S_top-bw_core-w-ht-half_shared_42').exists())
+            args.top_width_w_treatment = 'bw'
+            param_before = (cards / 'param_card.dat').read_bytes()
+            for treatment in ('top-bw', 'all-bw'):
+                self.topology_fixture(process, treatment)
+                args.w_treatment = treatment
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as err:
+                    setup.configure(args)
+                decay = (cards / 'decay_card.dat').read_text()
+                self.assertIn('lo_decay_width(6)', decay)
+                self.assertEqual('lo_decay_width(24)' in decay, treatment == 'top-bw')
+                self.assertEqual((cards / 'param_card.dat').read_bytes(), param_before)
+                run = RunCardNLO(str(cards / 'run_card.dat'))
+                self.assertFalse(run['fixed_ren_scale'])
+                self.assertFalse(run['fixed_fac_scale'])
+                self.assertFalse(run['fixed_qes_scale'])
+                self.assertEqual(list(run['dynamical_scale_choice']), [3])
+                archive = process / ('study_cards/S_%s_core-w-ht-half_shared_42' % treatment)
+                manifest = json.loads((archive / 'manifest.json').read_text())
+                self.assertEqual(manifest['top_width_w_treatment'], 'bw')
+                self.assertEqual(manifest['w_width'], 2.05)
+                if treatment == 'all-bw':
+                    self.assertIn('associated lepton', manifest['production_core_objects'])
+                    self.assertIn('associated W system', manifest['production_scale_objects'])
+                    self.assertNotIn('native dynamic CORE HT/2', err.getvalue())
+            for choice in ('core-ht-half', 'fixed'):
+                args.production_scale = choice
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as err:
+                    setup.configure(args)
+                self.assertNotIn('production_scale_grouping', (cards / 'decay_card.dat').read_text())
+                run = RunCardNLO(str(cards / 'run_card.dat'))
+                self.assertEqual(run['fixed_ren_scale'], choice == 'fixed')
+                self.assertEqual('scale definition' in err.getvalue(), choice == 'core-ht-half')
             (process / 'SubProcesses/decay_chain_parameters.f90').write_text('old export')
             with self.assertRaisesRegex(ValueError, 'Re-export'):
                 setup.configure(args)
+
+    def test_reference_comparisons_are_point_matched(self):
+        for points in (scales.POINTS, scales.SHARED_POINTS):
+            rs = {k: k[0]*10. for k in points}
+            rs['central'] = 10.
+            rp = {k: 1.1*v for k, v in rs.items()}
+            s = {k: 2.*v for k, v in rs.items()}
+            p = {k: 1.2*v for k, v in s.items()}
+            result = scales.compare_reference_values(rs, rp, s, p)
+            self.assertAlmostEqual(result['shift_change']['central'], 3.)
+            self.assertAlmostEqual(result['relative_shift_change']['central'], .1)
+            self.assertAlmostEqual(result['product_over_strict_double_ratio']['central'], 1.2/1.1)
+            band = result['product_over_strict_double_ratio']['combined21']['envelope']
+            self.assertAlmostEqual(band[0], band[1])
+            s['central'] = 0.
+            result = scales.compare_reference_values(rs, rp, s, p)
+            self.assertEqual(result['shift_change']['central'], 23.)
+            self.assertIsNone(result['relative_shift_change']['central'])
+            self.assertIsNone(result['product_over_strict_double_ratio']['central'])
+            s['central'] = None
+            self.assertIsNone(scales.compare_reference_values(rs, rp, s, p)['shift_change']['central'])
+
+    def test_reference_report_includes_shapes_acceptances_and_charge(self):
+        with tempfile.TemporaryDirectory(prefix='ttw_reference_') as directory:
+            files = [Path(directory) / name for name in ('rs.HwU', 'rp.HwU', 's.HwU', 'p.HwU')]
+            for path, multiplier in zip(files, (1., 1.1, 2., 2.4)):
+                self.fixture(path, multiplier)
+            rs, rp, s, p = (scales.load_sum([path]) for path in files)
+            reference, target = scales.make_report(rs, rp), scales.make_report(s, p)
+            result = scales.make_reference_report(reference, target)
+            hist = result['histograms']['R04_b25 W+ 1b test1'][0]
+            self.assertAlmostEqual(hist['absolute']['shift_change']['central'], 1.2)
+            self.assertAlmostEqual(hist['normalized_to_fiducial']['relative_shift_change']['central'], 0.)
+            derived = result['derived']['R04_b25 W+']
+            self.assertAlmostEqual(derived['acceptance_2b']['strict_over_reference']['central'], 1.)
+            self.assertAlmostEqual(derived['charge_asymmetry_fiducial_1b']['relative_shift_change']['central'], 0.)
+            json.dumps(result, allow_nan=False)
+            output = Path(directory) / 'comparison.json'
+            argv = ['ttw_product_scales.py', '--strict', str(files[2]), '--product', str(files[3]),
+                    '--w-treatment', 'all-bw', '--reference-strict', str(files[0]),
+                    '--reference-product', str(files[1]), '--output', str(output)]
+            with mock.patch('sys.argv', argv), contextlib.redirect_stdout(io.StringIO()):
+                scales.main()
+            cli = json.loads(output.read_text())
+            self.assertEqual(cli['w_treatment'], 'all-bw')
+            self.assertEqual(cli['reference']['w_treatment'], 'onshell')
+            self.assertEqual(cli['production_scale'], 'core-w-ht-half')
+            self.assertTrue(cli['reference_comparison']['scale_definitions_match'])
+            self.assertNotEqual(scales.production_scale_definition('core-ht-half', 'all-bw'),
+                                cli['production_scale_definition'])
+            self.assertEqual(scales.production_scale_definition('core-ht-half', 'onshell'),
+                             cli['production_scale_definition'])
+            # The same interface can compare central choices within one W treatment.
+            argv[argv.index('all-bw')] = 'onshell'
+            argv[-1] = str(Path(directory) / 'central-scales.json')
+            argv += ['--reference-production-scale', 'fixed']
+            with mock.patch('sys.argv', argv), contextlib.redirect_stdout(io.StringIO()):
+                scales.main()
+            cli = json.loads(Path(argv[argv.index('--output')+1]).read_text())
+            self.assertEqual(cli['reference']['production_scale'], 'fixed')
+            self.assertEqual(cli['production_scale'], 'core-w-ht-half')
+            self.assertFalse(cli['reference_comparison']['scale_definitions_match'])
+            self.assertIn('not just W-width', cli['reference_comparison']['scale_definition_note'])
+            target['histograms']['R04_b25 W+ 1b test1'][0]['edges'] = [0., 1.]
+            with self.assertRaisesRegex(ValueError, 'bin edges differ'):
+                scales.make_reference_report(reference, target)
+
+    def test_setup_defaults_to_w_system_scale(self):
+        argv = ['ttw_product_setup.py', 'configure', '--process-dir', '/tmp/TTW', '--variant', 'S',
+                '--top-width-lo', '1.5', '--top-width-nlo', '1.35',
+                '--top-width-w-treatment', 'bw', '--w-treatment', 'all-bw', '--width-source', 'test only']
+        with mock.patch('sys.argv', argv), mock.patch.object(setup, 'configure') as configure:
+            setup.main()
+        self.assertEqual(configure.call_args[0][0].production_scale, 'core-w-ht-half')
 
 
 if __name__ == '__main__':

@@ -9,10 +9,16 @@ program decay_card_runtime_driver
   use weight_lines, only: decay_scales, correction_scale_node
   use spin_density_weight_lines
   use spin_density_matrix_results, only: spin_density_bornlike_branch
+  use setscales_module, only: set_alphas, set_ren_scale, set_fac_scale
+  use production_scale_fixture, only: production_p, core_pdgs, core_count
+  use run_state, only: mur2_current, muf12_current, muf22_current, qes2_current, &
+       mur_over_ref, muf1_over_ref, muf2_over_ref, dynamical_scale_choice
   implicit none
   character(len=32) :: mode
   double precision :: p(0:3, 3), scales(8)
   double precision :: visible(0:3, 8), core(0:3, 8)
+  double precision :: saved_p(0:3, 8), mur, muf(2)
+  integer :: saved_pdgs(8)
   integer, allocatable :: factors(:)
   integer :: itop, iantitop, point, kr, kf, i
   character(len=80) :: label
@@ -24,6 +30,7 @@ program decay_card_runtime_driver
     visible = 1d0
     call select_production_ren_scale_momenta(visible, 1, core)
     call decay_event_scales(0, scales)
+    if (production_w_system_scale()) stop 3
     write(*, '(a,3(1x,l1))') 'NO_DECAY', all(core == visible), &
          all(scales == 0d0), .not. multiplicative_nlo_enabled()
     stop
@@ -35,6 +42,61 @@ program decay_card_runtime_driver
     if (mode == 'standalone_tbar') active = 3
   end if
   call initialize_decay_chain_parameters()
+  if (index(mode, 'production') == 1) then
+    visible = 0d0
+    visible(:, 3) = [200d0, 60d0, 0d0, 80d0]
+    visible(:, 4) = [200d0, -60d0, 0d0, -80d0]
+    visible(:, 5) = [50d0, 30d0, 0d0, 40d0]
+    visible(:, 6) = [50d0, 0d0, 40d0, -30d0]
+    select case (trim(mode))
+    case ('production_real')
+      visible(:, 7) = [10d0, 6d0, 8d0, 0d0]
+    case ('production_soft')
+      visible(:, 7) = 1d-8*[10d0, 6d0, 8d0, 0d0]
+    case ('production_beam')
+      visible(:, 7) = [10d0, 0d0, 0d0, 10d0]
+    case ('production_virtuality')
+      visible(:, 5:6) = 1.5d0*visible(:, 5:6)
+    case ('production_explicit_w')
+      visible(:, 5) = visible(:, 5) + visible(:, 6)
+      visible(:, 6) = 0d0
+      core_pdgs(5:8) = [24, 21, 0, 0]
+      core_count = 6
+    case ('production_swap')
+      saved_p = visible
+      saved_pdgs = core_pdgs
+      visible(:, 3:7) = saved_p(:, [7, 6, 3, 5, 4])
+      core_pdgs(3:7) = saved_pdgs([7, 6, 3, 5, 4])
+    case ('production_minus')
+      core_pdgs(5:6) = [11, -12]
+    case ('production_bad_pair')
+      core_pdgs(6) = 14
+    case ('production_ambiguous')
+      core_pdgs(7) = 14
+    case ('production_bad_core')
+      core_pdgs(4) = 6
+    case ('production_bad_choice')
+      dynamical_scale_choice = 2
+    case ('production_decay_t')
+      active = 2
+    case ('production_decay_tbar')
+      active = 3
+    end select
+    production_p = visible
+    saved_p = visible
+    call set_alphas(visible)
+    write(*, '(a,4es25.16)') 'PRODUCTION_BASE ', &
+         sqrt(mur2_current), sqrt(muf12_current), sqrt(muf22_current), sqrt(qes2_current)
+    ! These are the same entry points used for production scale reweighting.
+    mur_over_ref = 2d0
+    muf1_over_ref = .5d0
+    muf2_over_ref = .5d0
+    call set_ren_scale(visible, mur)
+    call set_fac_scale(visible, muf)
+    write(*, '(a,3es25.16)') 'PRODUCTION_VARIED ', mur, muf
+    write(*, '(a,1x,l1)') 'INPUT_UNCHANGED', all(visible == saved_p)
+    stop
+  end if
   if (index(mode, 'grid') == 1) then
     if (mode == 'grid_lo') call set_decay_run_order(.true.)
     do_rwgt_scale = mode /= 'grid_decay_only'

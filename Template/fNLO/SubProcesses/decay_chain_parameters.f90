@@ -19,6 +19,7 @@ module decay_chain_parameters
   integer, parameter, public :: nlo_decay_additive = 0
   integer, parameter, public :: nlo_decay_multiplicative = 1
   logical, save :: use_decayed_production_momenta_value = .false.
+  logical, save :: production_w_system_value = .false.
   integer, save :: number_of_width_species = 0
   integer, allocatable, save :: width_pdgs(:)
   double precision, allocatable, save :: lo_width_values(:)
@@ -58,6 +59,7 @@ module decay_chain_parameters
   public :: nlo_decay_combination_mode, multiplicative_nlo_enabled
   public :: decay_renormalization_scale
   public :: use_decayed_production_ren_scale_momenta
+  public :: production_w_system_scale
   public :: decay_scale_variation_mode, decay_scale_variation_enabled
   public :: decay_scale_factor_count, decay_scale_factor
   public :: decay_scale_species_count, decay_scale_species
@@ -69,7 +71,7 @@ module decay_chain_parameters
 contains
 
   subroutine initialize_decay_chain_parameters()
-    logical :: exists, momentum_mode_seen
+    logical :: exists, momentum_mode_seen, production_grouping_seen
     logical :: variation_mode_seen, scale_factors_seen, scale_grouping_seen
     logical :: combination_mode_seen, production_order_seen, decay_order_seen
     integer :: unit_number, ios, width_count, width_index
@@ -177,6 +179,8 @@ contains
     signed_scale_axes = .false.
     nlo_combination_value = nlo_decay_additive
     use_decayed_production_momenta_value = .false.
+    production_w_system_value = .false.
+    production_grouping_seen = .false.
     momentum_mode_seen = .false.
     variation_mode_seen = .false.
     scale_grouping_seen = .false.
@@ -193,6 +197,21 @@ contains
       read(line, *, iostat=ios) keyword
       if (ios /= 0) call fail_parameters('malformed decay-card keyword')
       select case (trim(keyword))
+      case ('PRODUCTION_SCALE_GROUPING')
+        if (production_grouping_seen) &
+             call fail_parameters('duplicate PRODUCTION_SCALE_GROUPING record')
+        read(line, *, iostat=ios) keyword, momentum_mode
+        if (ios == 0) then
+          select case (trim(momentum_mode))
+          case ('NONE')
+            production_w_system_value = .false.
+          case ('W_SYSTEM')
+            production_w_system_value = .true.
+          case default
+            call fail_parameters('production scale grouping must be NONE or W_SYSTEM')
+          end select
+        end if
+        production_grouping_seen = .true.
       case ('PRODUCTION_REN_SCALE_MOMENTA')
         if (momentum_mode_seen) then
           call fail_parameters(&
@@ -385,6 +404,8 @@ contains
     if (.not. momentum_mode_seen) then
       call fail_parameters('PRODUCTION_REN_SCALE_MOMENTA record is absent')
     end if
+    if (production_w_system_value .and. use_decayed_production_momenta_value) &
+         call fail_parameters('W_SYSTEM production scale grouping requires CORE momenta')
     do width_index = 1, number_of_width_species
       if (.not. has_lo_width(width_index)) &
            call fail_parameters('an LO width is required for every species')
@@ -1010,6 +1031,15 @@ contains
     use_decayed_production_ren_scale_momenta = &
          use_decayed_production_momenta_value
   end function use_decayed_production_ren_scale_momenta
+
+
+  logical function production_w_system_scale()
+    ! Undecayed generic processes need neither a decay card nor this option.
+    production_w_system_scale = .false.
+    if (.not. has_decay_chains() .and. .not. has_nlo_decay()) return
+    if (.not. initialized) call initialize_decay_chain_parameters()
+    production_w_system_scale = production_w_system_value
+  end function production_w_system_scale
 
 
   subroutine initialize_scale_species()

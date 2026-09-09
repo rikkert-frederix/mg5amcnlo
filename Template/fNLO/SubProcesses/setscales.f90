@@ -11,8 +11,8 @@ module setscales_module
   use kin_functions_module, only: et => et_impl
   use fixed_order_user_hooks, only: fixed_user_scale
   use decay_chain_scales, only: select_production_core_momenta, &
-       select_production_ren_scale_momenta
-  use decay_chain_parameters, only: decay_renormalization_scale
+       select_production_ren_scale_momenta, w_system_core_ht_half
+  use decay_chain_parameters, only: decay_renormalization_scale, production_w_system_scale
   use nlo_decay_metadata, only: has_nlo_decay, corrected_parent_pdg
   use fnlo_process_common, only: mur_id_str, muf1_id_str, &
                                  muf2_id_str, qes_id_str, temp_scale_id, &
@@ -256,6 +256,13 @@ contains
     integer :: i
 
     call validate_momenta(pp, 'scale_global_reference')
+    if (production_w_system_scale()) then
+      if (dynamical_scale_choice /= 3) &
+           call fail_setscales('W_SYSTEM requires dynamical_scale_choice=3')
+      scale_global_ref_impl = w_system_core_ht_half(pp, nfksprocess)
+      temp_scale_id = 'CORE HT/2 with associated W system at its actual virtuality'
+      return
+    end if
     tmp = 0d0
     if (dynamical_scale_choice == 1) then
       do i = 3, nexternal

@@ -27,7 +27,7 @@ class TestFNLODecayCard(unittest.TestCase):
         sources = [os.path.join(fixtures, 'decay_card_runtime_stubs.f90')]
         sources += [os.path.join(template, name + '.f90') for name in (
             'decay_chain_parameters', 'factorized_phase_space',
-            'dummy_fct', 'decay_chain_scales', 'fnlo_scale_variations',
+            'dummy_fct', 'decay_chain_scales', 'setscales', 'fnlo_scale_variations',
             'weight_lines', 'spin_density_weight_lines')]
         sources.append(os.path.join(fixtures, 'decay_card_runtime_driver.f90'))
         result = subprocess.run(
@@ -79,6 +79,48 @@ class TestFNLODecayCard(unittest.TestCase):
             self.assertAlmostEqual(float(actual), 2./self.width(mu), places=13)
         self.assertAlmostEqual(float(data['COUPLING'][0]),
                                4.*math.pi*self.alpha(60.), places=13)
+
+    def test_w_system_production_scales_and_reweighting(self):
+        card = self.card(production_scale_grouping='W_SYSTEM')
+        expected = math.sqrt(200.**2-80.**2) + .5*math.sqrt(100.**2-10.**2)
+        for mode, shift in [('production', 0.), ('production_real', 5.),
+                            ('production_soft', 5.e-8), ('production_beam', 0.),
+                            ('production_explicit_w', 0.), ('production_swap', 0.),
+                            ('production_minus', 0.), ('production_decay_t', 0.),
+                            ('production_decay_tbar', 0.),
+                            ('production_virtuality', .25*math.sqrt(100.**2-10.**2))]:
+            with self.subTest(mode=mode):
+                data = self.run_card(card, mode)
+                scale = expected + shift
+                base = [scale]*4
+                if mode in ('production_decay_t', 'production_decay_tbar'):
+                    base[-1] = 100.  # Local decay QES stays at the decay scale.
+                for value, target in zip(data['PRODUCTION_BASE'], base):
+                    self.assertAlmostEqual(float(value), target, places=12)
+                for value, factor in zip(data['PRODUCTION_VARIED'], (2., .5, .5)):
+                    self.assertAlmostEqual(float(value), factor*scale, places=12)
+                self.assertEqual(data['INPUT_UNCHANGED'], ['T'])
+
+    def test_w_system_opt_in_and_validation(self):
+        native = self.run_card(self.card(), 'production')
+        explicit_none = self.run_card(self.card()+'\nNONE = production_scale_grouping', 'production')
+        self.assertEqual(native, explicit_none)
+        expected = math.sqrt(200.**2-80.**2)+.5*(30.+40.)
+        self.assertAlmostEqual(float(native['PRODUCTION_BASE'][0]), expected, places=12)
+        for kwargs, error in [({'production_scale_grouping': 'bad'}, 'NONE or W_SYSTEM'),
+                              ({'production_scale_grouping': 'W_SYSTEM',
+                                'production_scale_momenta': 'DECAYED'}, 'requires CORE')]:
+            with self.assertRaisesRegex(ValueError, error):
+                self.card(**kwargs)
+        card = self.card(production_scale_grouping='W_SYSTEM')
+        self.run_card(card.replace('W_SYSTEM =', 'bad ='), error='NONE or W_SYSTEM')
+        self.run_card(card+'\nNONE = production_scale_grouping', error='duplicate PRODUCTION_SCALE_GROUPING')
+        self.run_card(card.replace('CORE =', 'DECAYED ='), error='requires CORE')
+        for mode, error in [('production_bad_pair', 'matching charged-current'),
+                            ('production_ambiguous', 'unambiguous charged-current'),
+                            ('production_bad_core', 'one top and one antitop'),
+                            ('production_bad_choice', 'requires dynamical_scale_choice=3')]:
+            self.run_card(card, mode, error=error)
 
     def test_fixed_scale_reweighting_matches_direct_scale_change(self):
         varied = self.run_card(self.card())

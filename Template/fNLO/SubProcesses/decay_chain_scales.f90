@@ -1,7 +1,7 @@
 module decay_chain_scales
-  use process_dimensions, only: nexternal
+  use process_dimensions, only: nexternal, nincoming
   use decay_chain_metadata, only: has_decay_chains, decay_node_count, &
-       context_for_fks, node_pdg, node_qcd_order
+       context_for_fks, node_pdg, node_qcd_order, context_core_count, core_leg_pdg
   use decay_chain_parameters, only: decay_renormalization_scale, &
        use_decayed_production_ren_scale_momenta, &
        decay_scale_species_count, decay_scale_species_index, &
@@ -14,7 +14,8 @@ module decay_chain_scales
   use nlo_decay_metadata, only: has_nlo_decay, corrected_parent_pdg, &
        nlo_decay_production_born_qcd_order, nlo_decay_born_qcd_order, &
        nlo_decay_node_count, nlo_decay_node_pdg, &
-       nlo_decay_node_qcd_order, nlo_decay_corrected_node
+       nlo_decay_node_qcd_order, nlo_decay_corrected_node, &
+       nlo_decay_production_count, nlo_decay_production_pdg
   use nlo_decay_kinematics, only: get_nlo_decay_production_momenta
   use alfas_functions_module, only: alphas
   implicit none
@@ -28,6 +29,7 @@ module decay_chain_scales
   public :: select_production_core_momenta
   public :: select_production_ren_scale_momenta
   public :: decay_event_scales
+  public :: w_system_core_ht_half
 
 contains
 
@@ -314,6 +316,85 @@ contains
     call select_production_core_momenta(visible_momenta, configuration, &
                                         scale_momenta)
   end subroutine select_production_ren_scale_momenta
+
+
+  double precision function w_system_core_ht_half(momenta, configuration) result(value)
+    ! MOMENTA is already the current undecayed production core. Never change
+    ! the physical event or group visible top-decay leptons. The active
+    ! production/decay metadata supplies the matching core leg ordering.
+    double precision, intent(in) :: momenta(0:3, nexternal)
+    integer, intent(in) :: configuration
+    integer :: pdgs(nexternal), core_count, context, leg, lepton, neutrino
+    integer :: nw, nl, nn, pdg
+    double precision :: q(0:3)
+
+    if (nincoming /= 2) call fail_scales('W_SYSTEM requires a ttW production core')
+    pdgs = 0
+    if (has_nlo_decay()) then
+      core_count = nlo_decay_production_count()
+      do leg = 1, core_count
+        pdgs(leg) = nlo_decay_production_pdg(leg)
+      end do
+    else if (has_decay_chains()) then
+      context = context_for_fks(configuration)
+      core_count = context_core_count(context)
+      do leg = 1, core_count
+        pdgs(leg) = core_leg_pdg(context, leg)
+      end do
+    else
+      call fail_scales('W_SYSTEM requires production-core metadata')
+    end if
+    if (count(pdgs(3:core_count) == 6) /= 1 .or. &
+        count(pdgs(3:core_count) == -6) /= 1) &
+         call fail_scales('W_SYSTEM requires one top and one antitop in the core')
+    nw = 0
+    nl = 0
+    nn = 0
+    lepton = 0
+    neutrino = 0
+    do leg = 3, core_count
+      pdg = abs(pdgs(leg))
+      select case (pdg)
+      case (24)
+        nw = nw + 1
+      case (11, 13, 15)
+        nl = nl + 1
+        lepton = leg
+      case (12, 14, 16)
+        nn = nn + 1
+        neutrino = leg
+      case (1:6, 21)
+        ! Tops and production QCD radiation keep their original momenta.
+      case default
+        call fail_scales('W_SYSTEM encountered an unsupported production-core particle')
+      end select
+    end do
+    if (nw == 1 .and. nl == 0 .and. nn == 0) then
+      ! An explicit on-shell W already is one object: native CORE HT/2.
+    else if (nw == 0 .and. nl == 1 .and. nn == 1) then
+      if (pdgs(neutrino) /= -sign(abs(pdgs(lepton))+1, pdgs(lepton))) &
+           call fail_scales('W_SYSTEM requires a matching charged-current lepton pair')
+    else
+      call fail_scales('W_SYSTEM requires one W or one unambiguous charged-current pair')
+    end if
+    value = 0d0
+    do leg = 3, core_count
+      if (leg == lepton .or. leg == neutrino) cycle
+      value = value + transverse_mass(momenta(:, leg))
+    end do
+    if (lepton /= 0) then
+      q = momenta(:, lepton) + momenta(:, neutrino)
+      ! sqrt(q^2 + qT^2) = sqrt(q0^2 - qz^2), with no pole-mass projection.
+      value = value + transverse_mass(q)
+    end if
+    value = value/2d0
+  end function w_system_core_ht_half
+
+
+  double precision function transverse_mass(p)
+    double precision, intent(in) :: p(0:3)
+    transverse_mass = sqrt(max(0d0, (p(0)+p(3))*(p(0)-p(3))))
+  end function transverse_mass
 
 
   subroutine fail_scales(message)

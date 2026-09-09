@@ -137,6 +137,19 @@ decay products are omitted from built-in and user-defined generation cuts,
 while fixed-order analyses still receive the complete decayed event. Set it
 to true to apply the generation cuts to those products as well.
 
+For ttW studies with a finite-width associated W, the optional decay-card
+setting W_SYSTEM = production_scale_grouping makes CORE HT/2 use the
+associated lepton+neutrino four-vector as one scale object. It requires
+CORE = production_ren_scale_momenta and dynamical_scale_choice=3. The W's
+actual virtuality is used; explicit on-shell Ws already have the same
+grouping. The implementation changes only scale evaluation, with matching
+production-core metadata for Born, real, counterevent and NLO-decay paths.
+Production muR/muF/QES and reweighting use this definition; local decay
+scales and decay QES are unchanged. Other processes, ambiguous currents,
+DECAYED momenta and other dynamic choices are not supported by this mode.
+NONE (or an omitted key) preserves native behaviour. See the ttW study
+scripts/documentation in FixedOrderAnalysis for generation and comparisons.
+
 Factorized phase-space blocks
 -----------------------------
 

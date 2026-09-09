@@ -61,3 +61,22 @@ decay_ren_scale(PDG) remains the reference for the supplied LO/NLO widths.
 The run-card switch cut_decays controls whether built-in and user-defined
 generation cuts see forced-decay products. It defaults to false; fixed-order
 analyses always see the complete decayed event.
+
+For a common ttW production CORE HT/2 with on-shell or finite-width Ws, set
+
+  CORE = production_ren_scale_momenta
+  W_SYSTEM = production_scale_grouping
+
+and dynamical_scale_choice=3 in run_card.dat. The associated lepton/neutrino
+pair is one scale object, q = p_lepton + p_neutrino, with mT(q) computed at
+its actual virtuality, not the W pole mass. An explicit associated W is
+already one object. Tops and production radiation are otherwise unchanged;
+Ws inside top decays are included in their parent top momenta, not counted
+again. The current's identity comes from the production core, not visible
+lepton pairing. This applies to production muR, muF and production QES,
+including reweighting; local decay scales and decay QES are unchanged.
+Only ttW cores with one explicit W or one unambiguous charged-current pair
+are supported. DECAYED momenta and other dynamic-scale choices are rejected.
+Omitting this optional key, or using NONE, preserves native scale behaviour.
+The ttW study scripts select W_SYSTEM by default (core-w-ht-half); their
+core-ht-half option retains the native lepton-resolved diagnostic.

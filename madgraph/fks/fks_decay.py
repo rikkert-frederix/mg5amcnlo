@@ -3422,7 +3422,8 @@ def decay_card_text(widths, renormalization_scales,
                     decay_perturbative_orders=None,
                     decay_dynamical_scale_choices=None,
                     decay_width_scale_modes=None,
-                    decay_scale_grouping='SPECIES'):
+                    decay_scale_grouping='SPECIES',
+                    production_scale_grouping='NONE'):
     """Return a deterministic runtime card for on-shell decay parameters."""
 
     absolute_widths = dict(
@@ -3486,6 +3487,11 @@ def decay_card_text(widths, renormalization_scales,
     if production_scale_momenta not in ('CORE', 'DECAYED'):
         raise ValueError(
             'Production scale momenta must be CORE or DECAYED')
+    production_scale_grouping = production_scale_grouping.upper()
+    if production_scale_grouping not in ('NONE', 'W_SYSTEM'):
+        raise ValueError('Production scale grouping must be NONE or W_SYSTEM')
+    if production_scale_grouping == 'W_SYSTEM' and production_scale_momenta != 'CORE':
+        raise ValueError('W_SYSTEM production scale grouping requires CORE momenta')
     decay_scale_variation_mode = decay_scale_variation_mode.upper()
     if decay_scale_variation_mode not in (
             'NONE', 'CORRELATED', 'INDEPENDENT'):
@@ -3701,6 +3707,12 @@ def decay_card_text(widths, renormalization_scales,
         '# Ellis-Sexton scale always use CORE.                                  *',
         '#*********************************************************************',
         '%s = production_ren_scale_momenta ! CORE or DECAYED.' % production_scale_momenta])
+    if production_scale_grouping != 'NONE':
+        lines.extend([
+            '# W_SYSTEM: ttW CORE HT/2 with the associated lepton+neutrino',
+            '# grouped at their actual virtuality; applies to production muR/muF/QES.',
+            '# Requires CORE momenta and dynamical_scale_choice=3. NONE is the default.',
+            '%s = production_scale_grouping' % production_scale_grouping])
     return '\n'.join(lines) + '\n'
 
 

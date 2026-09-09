@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Compare strict/product HwU files with matched 81- or shared 27-point grids.
+"""Compare strict/product HwU files, optionally across W treatments or central scales.
 
 Input files within one prediction must be disjoint charge/flavour samples,
-not repeated estimates of the same integral. Output contents are bin integrals.
+not repeated estimates of the same integral. Match the 81- or shared 27-point
+grids. Output contents are bin integrals. Cards must be checked separately.
 """
 import argparse
 import itertools
@@ -40,6 +41,15 @@ GROUPS = {
 NUMBER = r'([-+]?\d*\.?\d+(?:[EeDd][-+]?\d+)?)'
 SCALE = re.compile(r'muR\s*=\s*'+NUMBER+r'\s+muF\s*=\s*'+NUMBER, re.I)
 DECAY_SCALE = re.compile(r'(?:^|\s)d(-?\d+)\s*=\s*'+NUMBER, re.I)
+PRODUCTION_SCALES = ('core-w-ht-half', 'core-ht-half', 'fixed')
+
+
+def production_scale_definition(choice, treatment):
+    if choice == 'fixed':
+        return 'fixed mt + MW/2'
+    if choice == 'core-ht-half' and treatment == 'all-bw':
+        return 'native CORE HT/2 with separate associated leptons'
+    return 'W-system CORE HT/2 at actual virtuality (explicit W when on shell)'
 
 
 def scale_point(label):
@@ -107,6 +117,86 @@ def compare_values(strict, product):
              for k in keys}
     return dict(strict=describe(strict), product=describe(product), difference=describe(delta),
                 product_over_strict=describe({k: ratio(product[k], strict[k]) for k in keys}))
+
+
+def compare_reference_values(reference_strict, reference_product, strict, product):
+    """Compare changes of the prescription at matching scale factors, before envelopes."""
+    points, _ = grid(strict)
+    if any(grid(values)[0] != points for values in
+           (reference_strict, reference_product, product)):
+        raise ValueError('Reference/target scale grids differ')
+    keys = ['central'] + sorted(points)
+
+    def subtract(a, b):
+        return a-b if a is not None and b is not None else None
+
+    strict_ratio, product_ratio, shift, relative_shift, double_ratio = {}, {}, {}, {}, {}
+    for key in keys:
+        rs, rp, s, p = (values[key] for values in
+                        (reference_strict, reference_product, strict, product))
+        strict_ratio[key], product_ratio[key] = ratio(s, rs), ratio(p, rp)
+        shift[key] = subtract(subtract(p, s), subtract(rp, rs))
+        reference_ratio, target_ratio = ratio(rp, rs), ratio(p, s)
+        relative_shift[key] = subtract(target_ratio, reference_ratio)
+        double_ratio[key] = ratio(target_ratio, reference_ratio)
+    return dict(strict_over_reference=describe(strict_ratio),
+                product_over_reference=describe(product_ratio),
+                shift_change=describe(shift),
+                relative_shift_change=describe(relative_shift),
+                product_over_strict_double_ratio=describe(double_ratio))
+
+
+def make_reference_report(reference, target):
+    """Apply the same comparison to rates, shapes, acceptances and charge observables."""
+    if reference['scale_axes'] != target['scale_axes']:
+        raise ValueError('Reference/target scale axes differ')
+    if reference['histograms'].keys() != target['histograms'].keys():
+        raise ValueError('Reference/target histogram sets differ')
+    if reference['derived'].keys() != target['derived'].keys():
+        raise ValueError('Reference/target derived observable sets differ')
+
+    def response(ref, current):
+        def values(description):
+            result = {tuple(map(float, key.split(','))): value
+                      for key, value in description['points'].items()}
+            result['central'] = description['central']
+            return result
+        return compare_reference_values(*(values(pair[name])
+                                          for pair in (ref, current)
+                                          for name in ('strict', 'product')))
+
+    output = dict(
+        definitions=dict(shift_change='(Pi-S)_target - (Pi-S)_reference',
+                         relative_shift_change='(Pi/S-1)_target - (Pi/S-1)_reference',
+                         product_over_strict_double_ratio='(Pi/S)_target / (Pi/S)_reference'),
+        uncertainty_note='Matched scale factors, not inferred MC covariance. The absolute '
+        'shift-change MC error assumes four independent integrations. No MC errors for '
+        'derived quantities without the corresponding covariance.',
+        histograms={}, derived={})
+    for title, rows in target['histograms'].items():
+        ref_rows = reference['histograms'][title]
+        if len(ref_rows) != len(rows):
+            raise ValueError('Reference/target bin counts differ')
+        records = []
+        for ref, current in zip(ref_rows, rows):
+            if ref['edges'] != current['edges']:
+                raise ValueError('Reference/target bin edges differ')
+            record = dict(edges=current['edges'], absolute=response(ref['absolute'], current['absolute']),
+                          mc_error_shift_change_independent=math.sqrt(sum(
+                              pair['mc_error_'+name]**2 for pair in (ref, current)
+                              for name in ('strict', 'product'))))
+            if 'normalized_to_fiducial' in current:
+                record['normalized_to_fiducial'] = response(
+                    ref['normalized_to_fiducial'], current['normalized_to_fiducial'])
+            records.append(record)
+        output['histograms'][title] = records
+    for prefix, observables in target['derived'].items():
+        if reference['derived'][prefix].keys() != observables.keys():
+            raise ValueError('Reference/target derived observable names differ')
+        output['derived'][prefix] = {
+            name: response(reference['derived'][prefix][name], value)
+            for name, value in observables.items()}
+    return output
 
 
 def load_sum(paths):
@@ -225,11 +315,50 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--strict', nargs='+', required=True)
     parser.add_argument('--product', nargs='+', required=True)
+    parser.add_argument('--w-treatment', choices=['onshell', 'top-bw', 'all-bw'], default='onshell')
+    parser.add_argument('--production-scale', choices=PRODUCTION_SCALES, default='core-w-ht-half')
+    parser.add_argument('--reference-strict', nargs='+', help='optional second matched S/Pi pair')
+    parser.add_argument('--reference-product', nargs='+')
+    parser.add_argument('--reference-w-treatment', choices=['onshell', 'top-bw', 'all-bw'],
+                        default='onshell')
+    parser.add_argument('--reference-production-scale', choices=PRODUCTION_SCALES,
+                        help='defaults to the target production-scale choice')
     parser.add_argument('--output', required=True)
     args = parser.parse_args()
     try:
+        if bool(args.reference_strict) != bool(args.reference_product):
+            raise ValueError('Supply both --reference-strict and --reference-product')
         report = make_report(load_sum(args.strict), load_sum(args.product))
         report['inputs'] = dict(strict=args.strict, product=args.product)
+        report['w_treatment'] = args.w_treatment
+        report['production_scale'] = args.production_scale
+        report['production_scale_definition'] = production_scale_definition(args.production_scale,
+                                                                            args.w_treatment)
+        report['input_check_note'] = ('W treatment and central-scale labels are user declarations. '
+                                     'Check matching archived top widths, EW/PDF inputs, flavours, '
+                                     'cuts and scale definitions; HwU weights do not encode these.')
+        if args.reference_strict:
+            reference_scale = args.reference_production_scale or args.production_scale
+            if (args.w_treatment, args.production_scale) == (args.reference_w_treatment, reference_scale):
+                raise ValueError('Reference must differ in W treatment or central-scale choice')
+            target_paths = {str(Path(p).resolve()) for p in args.strict + args.product}
+            reference_paths = {str(Path(p).resolve())
+                               for p in args.reference_strict + args.reference_product}
+            if target_paths & reference_paths:
+                raise ValueError('Do not reuse an input file between reference and target')
+            reference = make_report(load_sum(args.reference_strict), load_sum(args.reference_product))
+            reference.update(inputs=dict(strict=args.reference_strict, product=args.reference_product),
+                             w_treatment=args.reference_w_treatment, production_scale=reference_scale,
+                             production_scale_definition=production_scale_definition(
+                                 reference_scale, args.reference_w_treatment))
+            report['reference_comparison'] = make_reference_report(reference, report)
+            report['reference'] = reference
+            same_definition = report['production_scale_definition'] == reference['production_scale_definition']
+            report['reference_comparison']['scale_definitions_match'] = same_definition
+            report['reference_comparison']['scale_definition_note'] = (
+                'The declared central-scale definitions match across these predictions.' if same_definition else
+                'The central-scale definitions differ. This comparison includes a scale-definition '
+                'effect, not just W-width effects. Interpret it separately from scale-factor envelopes.')
         # Exclusive creation prevents silently replacing a comparison.
         with open(args.output, 'x') as stream:
             json.dump(report, stream, indent=2, allow_nan=False)
