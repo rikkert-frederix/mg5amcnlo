@@ -29,6 +29,7 @@ contains
   integer function contribution_parent_pdg(contribution)
     integer, intent(in) :: contribution
     contribution_parent_pdg = 6
+    if (contribution == 3) contribution_parent_pdg = -6
   end function
   integer function active_nlo_contribution()
     active_nlo_contribution = active
@@ -44,6 +45,7 @@ contains
   end function
   integer function corrected_parent_pdg()
     corrected_parent_pdg = 6
+    if (active == 3) corrected_parent_pdg = -6
   end function
   integer function nlo_decay_node_count()
     nlo_decay_node_count = 2
@@ -64,8 +66,44 @@ contains
   end function
   integer function nlo_decay_corrected_node()
     nlo_decay_corrected_node = 1
+    if (active == 3) nlo_decay_corrected_node = 2
   end function
 end module
+
+module extra_weights
+  integer :: dyn_scale(0:1) = [1, 3]
+  logical :: lscalevar(1) = .true.
+  double precision :: scalevarR(0:3) = [3d0, 1d0, .5d0, 2d0]
+  double precision :: scalevarF(0:3) = [3d0, 1d0, .5d0, 2d0]
+end module
+
+module run_state
+  logical :: do_rwgt_scale = .true., do_rwgt_decay_scale = .false.
+end module
+
+! The real weight-line module is tested; its unrelated aggregation interfaces
+! below are link stubs, not implementations of the physics under test.
+module spin_density_matrix_results
+  integer, parameter :: spin_density_bornlike_branch = 1, spin_density_real_branch = 2
+end module
+
+module multiplicative_nlo_decay
+  type multiplicative_nlo_workspace
+    integer :: component_count, weight_count
+    integer, allocatable :: component_open_sizes(:)
+  end type
+contains
+  subroutine add_multiplicative_block_density(workspace, component, branch, density)
+    type(multiplicative_nlo_workspace), intent(inout) :: workspace
+    integer, intent(in) :: component, branch
+    complex(kind=8), intent(in) :: density(:, :, :)
+    stop 'aggregation is not part of this fixture'
+  end subroutine
+end module
+
+integer function sdm_branch_max_open_size()
+  sdm_branch_max_open_size = 1
+end function
 
 module decay_chain_metadata
   use nlo_decay_metadata, only: born_qcd

@@ -32,6 +32,9 @@ module decay_chain_parameters
   logical, save :: production_nlo = .true., decays_nlo = .true.
   logical, save :: lo_run = .false.
   integer, save :: scale_variation_mode_value = decay_scale_none
+  ! Widths and reference-scale prescriptions remain absolute-PDG inputs.
+  ! Only the reweighting axes optionally distinguish particle/antiparticle.
+  logical, save :: signed_scale_axes = .false.
   integer, save :: nlo_combination_value = nlo_decay_additive
   integer, save :: number_of_scale_factors = 1
   integer, save :: number_of_scale_species = 0
@@ -67,7 +70,7 @@ contains
 
   subroutine initialize_decay_chain_parameters()
     logical :: exists, momentum_mode_seen
-    logical :: variation_mode_seen, scale_factors_seen
+    logical :: variation_mode_seen, scale_factors_seen, scale_grouping_seen
     logical :: combination_mode_seen, production_order_seen, decay_order_seen
     integer :: unit_number, ios, width_count, width_index
     integer :: scale_count, scale_index, factor_count, factor_index
@@ -171,10 +174,12 @@ contains
     number_of_lo_width_variations = 0
     number_of_nlo_width_variations = 0
     scale_variation_mode_value = decay_scale_none
+    signed_scale_axes = .false.
     nlo_combination_value = nlo_decay_additive
     use_decayed_production_momenta_value = .false.
     momentum_mode_seen = .false.
     variation_mode_seen = .false.
+    scale_grouping_seen = .false.
     scale_factors_seen = .false.
     combination_mode_seen = .false.
     production_order_seen = .false.
@@ -267,6 +272,22 @@ contains
           end select
         end if
         variation_mode_seen = .true.
+      case ('DECAY_SCALE_GROUPING')
+        if (scale_grouping_seen) then
+          call fail_parameters('duplicate DECAY_SCALE_GROUPING record')
+        end if
+        read(line, *, iostat=ios) keyword, variation_mode
+        if (ios == 0) then
+          select case (trim(variation_mode))
+          case ('SPECIES')
+            signed_scale_axes = .false.
+          case ('SIGNED_PDG')
+            signed_scale_axes = .true.
+          case default
+            call fail_parameters('decay scale grouping must be SPECIES or SIGNED_PDG')
+          end select
+        end if
+        scale_grouping_seen = .true.
       case ('NLO_DECAY_COMBINATION')
         if (combination_mode_seen) then
           call fail_parameters('duplicate NLO_DECAY_COMBINATION record')
@@ -980,7 +1001,7 @@ contains
   integer function decay_scale_species_index(pdg)
     integer, intent(in) :: pdg
     if (.not. initialized) call initialize_decay_chain_parameters()
-    decay_scale_species_index = find_pdg(pdg, scale_species_pdgs)
+    decay_scale_species_index = find_scale_pdg(pdg, scale_species_pdgs)
   end function decay_scale_species_index
 
 
@@ -1006,19 +1027,20 @@ contains
     number_of_scale_species = 0
     do node = 1, candidate_count
       if (has_decay_chains()) then
-        pdg = abs(node_pdg(node))
+        pdg = node_pdg(node)
         scale_dependent = node_qcd_order(node) > 0
         if (has_nlo_contribution_bundle()) then
           scale_dependent = scale_dependent .or. &
                (bundle_species_is_nlo(pdg) .and. species_order_is_nlo(pdg))
         end if
       else
-        pdg = abs(nlo_decay_node_pdg(node))
+        pdg = nlo_decay_node_pdg(node)
         scale_dependent = nlo_decay_node_qcd_order(node) > 0 .or. &
-             (pdg == abs(corrected_parent_pdg()) .and. species_order_is_nlo(pdg))
+             (abs(pdg) == abs(corrected_parent_pdg()) .and. species_order_is_nlo(pdg))
       end if
       if (.not. scale_dependent) cycle
-      if (find_pdg(pdg, candidates) /= 0) cycle
+      if (.not. signed_scale_axes) pdg = abs(pdg)
+      if (find_scale_pdg(pdg, candidates) /= 0) cycle
       number_of_scale_species = number_of_scale_species + 1
       candidates(number_of_scale_species) = pdg
     end do
@@ -1147,7 +1169,7 @@ contains
     integer :: species_index, index
 
     selected_factor_index = 1
-    species_index = find_pdg(pdg, scale_species_pdgs)
+    species_index = find_scale_pdg(pdg, scale_species_pdgs)
     if (species_index == 0 .or. .not. present(factor_indices)) return
     if (size(factor_indices) == 0) return
     if (size(factor_indices) /= number_of_scale_species) then
@@ -1201,6 +1223,22 @@ contains
     same_factor = abs(first - second) <= &
          1d-12*max(1d0, abs(first), abs(second))
   end function same_factor
+
+
+  integer function find_scale_pdg(pdg, pdgs)
+    integer, intent(in) :: pdg, pdgs(:)
+    integer :: index, key
+
+    key = pdg
+    if (.not. signed_scale_axes) key = abs(pdg)
+    find_scale_pdg = 0
+    do index = 1, size(pdgs)
+      if (pdgs(index) == key) then
+        find_scale_pdg = index
+        return
+      end if
+    end do
+  end function find_scale_pdg
 
 
   integer function find_pdg(pdg, pdgs)

@@ -475,7 +475,7 @@ contains
       correction_scale_node(icontr) = nlo_decay_corrected_node()
     end if
     if (present(density_scale_pdg)) then
-      correction_scale_pdg(icontr) = abs(density_scale_pdg)
+      correction_scale_pdg(icontr) = density_scale_pdg
     end if
     if (present(density_component)) then
       correction_scale_node(icontr) = sdm_branch_component_id(density_component)
@@ -510,7 +510,7 @@ contains
       end if
       local_density_scale_pdg = correction_scale_pdg(icontr)
       if (present(density_scale_pdg)) then
-        local_density_scale_pdg = abs(density_scale_pdg)
+        local_density_scale_pdg = density_scale_pdg
       end if
       local_density_is_production = active_contribution_is_production()
       if (present(density_is_production)) then

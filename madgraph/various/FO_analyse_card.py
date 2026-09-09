@@ -48,6 +48,7 @@ class FOAnalyseCard(dict):
         'analysis_HwU_pp_ttx.o',
         'analysis_HwU_pp_ttx_dilepton.o',
         'analysis_HwU_pp_ttxw_trilepton.o',
+        'analysis_HwU_pp_ttxw_product.o',
         'analysis_HwU_pp_ttx_v2.o',
         'analysis_HwU_template.o',
     )

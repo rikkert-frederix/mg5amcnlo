@@ -2,6 +2,8 @@
 
 import math
 import os
+import itertools
+import re
 import shutil
 import subprocess
 import tempfile
@@ -25,7 +27,8 @@ class TestFNLODecayCard(unittest.TestCase):
         sources = [os.path.join(fixtures, 'decay_card_runtime_stubs.f90')]
         sources += [os.path.join(template, name + '.f90') for name in (
             'decay_chain_parameters', 'factorized_phase_space',
-            'dummy_fct', 'decay_chain_scales')]
+            'dummy_fct', 'decay_chain_scales', 'fnlo_scale_variations',
+            'weight_lines', 'spin_density_weight_lines')]
         sources.append(os.path.join(fixtures, 'decay_card_runtime_driver.f90'))
         result = subprocess.run(
             [compiler, '-O0', '-g', '-fcheck=all', '-ffree-line-length-none',
@@ -117,6 +120,91 @@ class TestFNLODecayCard(unittest.TestCase):
         self.assertAlmostEqual(float(data['COUNTERTERM'][0]), -2.*(1.95-2.1)/2.1)
         # Switching to LO must also work without deleting unused width tables.
         self.run_card(self.card(decay_order='LO', **options), 'orders')
+
+    def test_signed_axes_couplings_widths_and_local_densities(self):
+        for combination in ('ADDITIVE', 'MULTIPLICATIVE'):
+            card = self.card(decay_scale_grouping='SIGNED_PDG',
+                             decay_dynamical_scale_choices={6: 3},
+                             nlo_decay_combination=combination)
+            data = self.run_card(card, 'split')
+            mus = [60., 20.]  # top x2, antitop x1/2, not a common factor.
+            expected = -sum((self.width(mu)-2.)/2. for mu in mus)
+            self.assertAlmostEqual(float(data['COUNTERTERM'][0]), expected, places=13)
+            self.assertAlmostEqual(float(data['PRODUCT_WIDTH'][0]),
+                                   4./(self.width(60.)*self.width(20.)), places=13)
+            for key, mu in zip(('COUPLING', 'ANTITOP_COUPLING'), mus):
+                self.assertAlmostEqual(float(data[key][0]), 4.*math.pi*self.alpha(mu), places=13)
+            for value, mu in zip(data['DENSITY_MULTIPLIERS'], mus):
+                expected = 4.*math.pi*self.alpha(mu)
+                if combination == 'MULTIPLICATIVE':
+                    expected *= 2./self.width(mu)
+                self.assertAlmostEqual(float(value), expected, places=13)
+            # Reweighting agrees with changing each block's momenta so that
+            # its central dynamical scale equals the requested off-diagonal point.
+            direct = self.run_card(self.card(
+                decay_scale_grouping='SIGNED_PDG',
+                decay_scale_variation_mode='NONE',
+                decay_dynamical_scale_choices={6: 3},
+                nlo_decay_combination=combination), 'direct_split')
+            for key in ('COUNTERTERM', 'PRODUCT_WIDTH', 'LOCAL_WIDTHS',
+                        'DENSITY_MULTIPLIERS', 'COUPLING', 'ANTITOP_COUPLING'):
+                for first, second in zip(data[key], direct[key]):
+                    self.assertAlmostEqual(float(first), float(second), places=13)
+            # Its diagonal remains numerically identical to the old shared mode.
+            shared = self.run_card(card.replace('SIGNED_PDG =', 'SPECIES ='))
+            diagonal = self.run_card(card)
+            self.assertEqual(shared, diagonal)
+
+    def test_signed_explicit_widths_and_standalone_antitop(self):
+        data = self.run_card(self.card(
+            decay_scale_grouping='SIGNED_PDG',
+            lo_width_variations={(6, .5): 1.9, (6, 2.): 2.1},
+            nlo_width_variations={(6, .5): 1.7, (6, 2.): 1.95}), 'qcd_split')
+        self.assertAlmostEqual(float(data['DENOMINATOR'][0]), 4./(2.1*1.9))
+        self.assertAlmostEqual(float(data['COUNTERTERM'][0]),
+                               -(1.95-2.1)/2.1-(1.7-1.9)/1.9)
+        data = self.run_card(self.card(decay_scale_grouping='SIGNED_PDG',
+                                      decay_dynamical_scale_choices={6: 3}), 'standalone_tbar')
+        self.assertAlmostEqual(float(data['DENOMINATOR'][0]), 1.8/self.width(20.), places=13)
+
+    def test_signed_grid_labels_decoding_and_shared_default(self):
+        for grouping, axes in [('SPECIES', [6]), ('SIGNED_PDG', [-6, 6])]:
+            for mode, nprod in [('grid', 9), ('grid_decay_only', 1)]:
+                data = self.run_card(self.card(decay_scale_grouping=grouping), mode)
+                self.assertEqual(list(map(int, data['AXES'])), axes)
+                count = nprod*3**len(axes)
+                self.assertEqual(int(data['GRID_COUNT'][0]), count)
+                indices = {tuple(map(int, data['INDICES%d' % i])) for i in range(1, count+1)}
+                production = (1, 2, 3) if nprod == 9 else (1,)
+                self.assertEqual(indices, set(itertools.product(
+                    production, production, *[(1, 2, 3)]*len(axes))))
+                for i in range(1, count+1):
+                    label = ' '.join(data['POINT%d' % i])
+                    self.assertEqual([int(x) for x in re.findall(r'd(-?\d+)=', label)], axes)
+                    actual = [float(x) for x in re.findall(r'(?:muR|muF|d-?\d+)=\s*([\d.]+)', label)]
+                    expected = [(1., .5, 2.)[int(k)-1] for k in data['INDICES%d' % i]]
+                    self.assertEqual(actual, expected)
+        card = self.card()
+        legacy = '\n'.join(line for line in card.splitlines() if '= decay_scale_grouping' not in line)
+        self.assertEqual(self.run_card(card, 'grid'), self.run_card(legacy, 'grid'))
+        card = self.card(decay_scale_grouping='SIGNED_PDG', decay_scale_variation_mode='CORRELATED')
+        data = self.run_card(card, 'grid')
+        self.assertEqual(int(data['GRID_COUNT'][0]), 9)
+        for i in range(1, 10):
+            kr, kf, dtbar, dt = map(int, data['INDICES%d' % i])
+            self.assertEqual((dtbar, dt), (kr, kr))
+        self.run_card(card, 'grid_decay_only', error='require production scale reweighting')
+        data = self.run_card(card, 'grid_lo')
+        self.assertEqual(data['AXES'], [])
+        self.assertEqual(int(data['GRID_COUNT'][0]), 9)
+
+    def test_scale_grouping_validation(self):
+        with self.assertRaisesRegex(ValueError, 'SPECIES or SIGNED_PDG'):
+            self.card(decay_scale_grouping='invalid')
+        self.run_card(self.card().replace('SPECIES =', 'invalid ='),
+                      error='grouping must be SPECIES or SIGNED_PDG')
+        self.run_card(self.card()+'\nSIGNED_PDG = decay_scale_grouping',
+                      error='duplicate DECAY_SCALE_GROUPING')
 
     def test_only_unversioned_assignment_cards_are_supported(self):
         card = self.card()

@@ -3421,7 +3421,8 @@ def decay_card_text(widths, renormalization_scales,
                     production_order='NLO', decay_order='NLO',
                     decay_perturbative_orders=None,
                     decay_dynamical_scale_choices=None,
-                    decay_width_scale_modes=None):
+                    decay_width_scale_modes=None,
+                    decay_scale_grouping='SPECIES'):
     """Return a deterministic runtime card for on-shell decay parameters."""
 
     absolute_widths = dict(
@@ -3491,6 +3492,9 @@ def decay_card_text(widths, renormalization_scales,
         raise ValueError(
             'Decay scale variation mode must be NONE, CORRELATED or '
             'INDEPENDENT')
+    decay_scale_grouping = decay_scale_grouping.upper()
+    if decay_scale_grouping not in ('SPECIES', 'SIGNED_PDG'):
+        raise ValueError('Decay scale grouping must be SPECIES or SIGNED_PDG')
     nlo_decay_combination = nlo_decay_combination.upper()
     if nlo_decay_combination not in ('ADDITIVE', 'MULTIPLICATIVE'):
         raise ValueError(
@@ -3616,7 +3620,11 @@ def decay_card_text(widths, renormalization_scales,
         '# run_card.dat independently. CORRELATED: vary every decay scale by    *',
         '# the production muR factor; the list must match rw_rscale in order,   *',
         '# and production reweight_scale must be enabled. INDEPENDENT: take     *',
-        '# all combinations of production muR/muF and one factor per species.   *',
+        '# all combinations of production muR/muF and one factor per axis.      *',
+        '# SPECIES (default): particle and antiparticle share an axis.          *',
+        '# SIGNED_PDG: separate them, e.g. d6 for t and d-6 for t~.               *',
+        '# Repeated resonances with the same signed PDG still share an axis.    *',
+        '# Grouping does not change the absolute-PDG width/reference inputs.    *',
         '# INDEPENDENT also works with production reweight_scale disabled.      *',
         '# With production reweight_scale enabled, INDEPENDENT retains all     *',
         '# production-only, decay-only and simultaneous scale variations in    *',
@@ -3624,6 +3632,7 @@ def decay_card_text(widths, renormalization_scales,
         '# muR, muF and d<PDG> factor labels, and in scale_pdf_dependence.dat.   *',
         '#*********************************************************************',
         '%s = decay_scale_variation_mode ! NONE, CORRELATED or INDEPENDENT.' % decay_scale_variation_mode,
+        '%s = decay_scale_grouping ! SPECIES or SIGNED_PDG reweighting axes.' % decay_scale_grouping,
         '%s = decay_scale_factors ! Positive, distinct factors; central 1 first.' %
         ', '.join('%.8g' % factor for factor in
                   (decay_scale_factors if decay_scale_factors != (1.0,) else

@@ -1188,13 +1188,17 @@ class MECmdShell(IOTests.IOTestManager):
         shell = NLOCmd.aMCatNLOCmdShell(me_dir=process_dir)
         shell.no_notification()
         shell.run_cmd('set automatic_html_opening False --no_save')
+        shared_scale_rows = None
         for name, combination, production, decay in [
                 ('independent', 'ADDITIVE', 'NLO', 'NLO'),
+                ('signed_independent', 'ADDITIVE', 'NLO', 'NLO'),
+                ('signed_multiplicative', 'MULTIPLICATIVE', 'NLO', 'NLO'),
                 ('production_lo', 'ADDITIVE', 'LO', 'NLO'),
                 ('decay_lo', 'ADDITIVE', 'NLO', 'LO'),
                 ('multiplicative', 'MULTIPLICATIVE', 'NLO', 'NLO'),
                 ('multiplicative_lo', 'MULTIPLICATIVE', 'LO', 'NLO')]:
-            run_card['reweight_scale'] = name == 'independent'
+            split = name.startswith('signed_')
+            run_card['reweight_scale'] = name == 'independent' or split
             run_card.write(run_path, template=pjoin(process_dir, 'Cards',
                                                    'run_card_default.dat'))
             fks_decay.write_decay_card(
@@ -1204,6 +1208,7 @@ class MECmdShell(IOTests.IOTestManager):
                 nlo_decay_combination=combination,
                 decay_dynamical_scale_choices={6: 3},
                 decay_scale_variation_mode='INDEPENDENT',
+                decay_scale_grouping='SIGNED_PDG' if split else 'SPECIES',
                 decay_scale_factors=(1., .5, 2.))
             shell.exec_cmd('calculate_xsect NLO -f -n %s' % name,
                            errorhandling=False, precmd=True)
@@ -1231,7 +1236,8 @@ class MECmdShell(IOTests.IOTestManager):
             self.assertTrue(bins)
             self.assertTrue(all(math.isfinite(value) for row in bins for value in row))
             if decay == 'NLO':
-                self.assertEqual(header.count('d6='), 27 if name == 'independent' else 3)
+                self.assertEqual(header.count('d6='), 81 if split else
+                                 27 if name == 'independent' else 3)
                 self.assertTrue(all(row[2] == row[4] for row in bins))
                 self.assertTrue(any(row[4] != row[5] for row in bins))
             if name == 'independent':
@@ -1243,6 +1249,27 @@ class MECmdShell(IOTests.IOTestManager):
                                          for mur in [1., .5, 2.]
                                          for muf in [1., .5, 2.]
                                          for decay_factor in [1., .5, 2.]})
+                labels = [tuple(map(float, match)) for match in re.findall(
+                    r'muR=\s*([\d.]+) muF=\s*([\d.]+) d6=\s*([\d.]+)', header)]
+                shared_scale_rows = {point: [row[4+i] for row in bins]
+                                     for i, point in enumerate(labels)}
+            if split:
+                labels = [tuple(map(float, match)) for match in re.findall(
+                    r'muR=\s*([\d.]+) muF=\s*([\d.]+) d-6=\s*([\d.]+) d6=\s*([\d.]+)', header)]
+                self.assertEqual(set(labels), {(mur, muf, antitop, top)
+                                              for mur in [1., .5, 2.]
+                                              for muf in [1., .5, 2.]
+                                              for antitop in [1., .5, 2.]
+                                              for top in [1., .5, 2.]})
+                if combination == 'ADDITIVE':
+                    # Same seed and central integrand: all 27 diagonal points
+                    # reproduce the legacy shared-scale calculation.
+                    for i, (mur, muf, antitop, top) in enumerate(labels):
+                        if antitop != top:
+                            continue
+                        for row, expected in zip(bins, shared_scale_rows[(mur, muf, top)]):
+                            self.assertAlmostEqual(row[4+i], expected,
+                                                   delta=1.e-8*max(1., abs(expected)))
         shell.do_quit('')
 
     def test_calculate_xsect_lo(self):

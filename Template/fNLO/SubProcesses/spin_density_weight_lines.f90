@@ -99,7 +99,8 @@ contains
     line_branch(line) = branch
     line_open_size(line) = open_size
     line_qcd_power(line) = qcd_power
-    line_scale_pdg(line) = abs(scale_pdg)
+    ! Preserve charge for SIGNED_PDG scale axes, including spectator widths.
+    line_scale_pdg(line) = scale_pdg
     line_is_production(line) = is_production
     line_coefficients(:, :, :, line) = (0d0, 0d0)
     line_coefficients(:, 1:open_size, 1:open_size, line) = coefficients
