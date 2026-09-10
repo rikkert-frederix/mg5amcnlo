@@ -3105,6 +3105,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        }
 
     options_madgraph= {'group_subprocesses': 'Auto',
+                          'decay_bottom_mass': 0.0,
                           'ignore_six_quark_processes': False,
                           'low_mem_multicore_nlo_generation': False,
                           'complex_mass_scheme': False,
@@ -3277,6 +3278,11 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         if args[0] == 'process':
             # Rejoin line
             line = ' '.join(args[1:])
+
+            if self.options.get('decay_bottom_mass', 0.):
+                raise self.InvalidCmd(
+                    'decay_bottom_mass requires fNLO generation with [QCD]; '
+                    'select LO blocks through decay_card.dat after export')
 
             # store the first process (for the perl script)
             if not self._generate_info:
@@ -8987,6 +8993,29 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
             self.options[args[0]] = args[1]
 
     # Set an option
+    def set2_decay_bottom_mass(self, args, log=True):
+        """Set a generation-time bottom mass for fNLO top decays only.
+
+        Example: set decay_bottom_mass 4.8
+        Requires loop_sm-no_b_mass and a fresh process generation; zero
+        selects the ordinary massless-decay path.
+        """
+        import math
+        args = [arg for arg in args if arg != '--no_save']
+        try:
+            if len(args) != 1:
+                raise ValueError
+            value = float(args[0])
+            if not math.isfinite(value) or value < 0:
+                raise ValueError
+        except ValueError:
+            raise self.InvalidCmd('decay_bottom_mass must be finite and nonnegative')
+        if getattr(self, '_curr_proc_defs', []) and value != self.options.get('decay_bottom_mass', 0.):
+            raise self.InvalidCmd('Set decay_bottom_mass before generating processes')
+        self.options['decay_bottom_mass'] = value
+        if log:
+            logger.info('Decay-only bottom mass: %s GeV (production unchanged)', value)
+
     def do_set(self, line, log=True, model_reload=True):
         """Set an option, which will be default for coming generations/outputs.
         """

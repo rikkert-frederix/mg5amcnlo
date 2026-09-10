@@ -57,6 +57,9 @@ module decay_chain_kinematics
     double precision function get_mass_from_id(id)
       integer, intent(in) :: id
     end function get_mass_from_id
+    double precision function get_decay_mass_from_id(id)
+      integer, intent(in) :: id
+    end function get_decay_mass_from_id
   end interface
 
 contains
@@ -80,13 +83,13 @@ contains
     node_rest_valid = .false.
 
     do node = 1, decay_node_count()
-      node_masses(node) = abs(get_mass_from_id(node_pdg(node)))
+      node_masses(node) = abs(get_decay_mass_from_id(node_pdg(node)))
       if (node_masses(node) <= 0d0) then
         call fail_kinematics('a forced decay parent has zero model mass')
       end if
     end do
     do leaf = 1, decay_leaf_count()
-      leaf_masses(leaf) = abs(get_mass_from_id(leaf_pdg(leaf)))
+      leaf_masses(leaf) = abs(get_decay_mass_from_id(leaf_pdg(leaf)))
     end do
     initialized = .true.
   end subroutine initialize_decay_chain_kinematics

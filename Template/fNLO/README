@@ -51,6 +51,27 @@ A multiplicative bundle has no additive component decomposition and therefore
 omits these contribution_results files. Its total and distributions are
 reported through the ordinary fixed-order result and histogram files.
 
+Massive-bottom decays with massless-bottom production
+----------------------
+
+For supported top decays, import loop_sm-no_b_mass and use
+`set decay_bottom_mass 4.8` before generating the fNLO process. Production
+vertices, PDFs, counterterms and alpha-s remain five-flavour/massless-bottom.
+A separate massive loop_sm supplies the decay Born, real and virtual
+amplitudes and massive FKS ingredients. The common model library uses
+namespaced decay parameters/couplings; only DECAYMASS(5) is a new physical
+input. It applies to both b and bbar in decays, while production MASS(5)=0.
+
+The default zero mass preserves the original generation path. Regenerate
+when switching between zero and nonzero; changing a positive mass within a
+massive export is allowed with consistently recalculated LO/NLO total widths.
+Use the same five-flavour alpha-s and W prescription for those widths.
+The current generation option requires real masses, unitary gauge, serial
+generation, explicit t > b W or b l nu (l=e,mu), and leptonic W subdecays.
+This is a factorized top-NWA approximation, not arbitrary model mixing in
+a full off-shell amplitude. See FixedOrderAnalysis/ttw_product_study.md
+for generation, configuration and matched mass-comparison commands.
+
 Mixed orders and decay-scale variations
 ----------------------
 

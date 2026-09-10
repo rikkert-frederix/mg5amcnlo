@@ -73,6 +73,9 @@ module nlo_decay_kinematics
     double precision function get_mass_from_id(id)
       integer, intent(in) :: id
     end function get_mass_from_id
+    double precision function get_decay_mass_from_id(id)
+      integer, intent(in) :: id
+    end function get_decay_mass_from_id
   end interface
 
 contains
@@ -113,16 +116,16 @@ contains
     parent_born = 0d0
 
     do node = 1, nlo_decay_node_count()
-      node_masses(node) = abs(get_mass_from_id(nlo_decay_node_pdg(node)))
+      node_masses(node) = abs(get_decay_mass_from_id(nlo_decay_node_pdg(node)))
       if (node_masses(node) <= 0d0) then
         call fail_kinematics('a forced decay parent has zero model mass')
       end if
     end do
     do leg = 1, nlo_decay_leaf_count()
-      leaf_masses(leg) = abs(get_mass_from_id(nlo_decay_leaf_pdg(leg)))
+      leaf_masses(leg) = abs(get_decay_mass_from_id(nlo_decay_leaf_pdg(leg)))
     end do
 
-    parent_mass = abs(get_mass_from_id(corrected_parent_pdg()))
+    parent_mass = abs(get_decay_mass_from_id(corrected_parent_pdg()))
     if (parent_mass <= 0d0) then
       call fail_kinematics('the corrected parent has zero model mass')
     end if
@@ -146,7 +149,7 @@ contains
         born_local_masses(leg) = node_masses(target)
       else
         born_local_masses(leg) = &
-             abs(get_mass_from_id(nlo_decay_local_pdg(context, leg)))
+             abs(get_decay_mass_from_id(nlo_decay_local_pdg(context, leg)))
       end if
       if (.not. nlo_decay_local_is_final(context, leg) .and. &
           abs(born_local_masses(leg) - parent_mass) > &
@@ -234,7 +237,7 @@ contains
     context = nlo_decay_context_for_fks(configuration)
     local_j = nlo_decay_fks_j(configuration)
     nlo_decay_fks_sister_mass = &
-         abs(get_mass_from_id(nlo_decay_local_pdg(context, local_j)))
+         abs(get_decay_mass_from_id(nlo_decay_local_pdg(context, local_j)))
   end function nlo_decay_fks_sister_mass
 
 
@@ -254,7 +257,7 @@ contains
     masses = 0d0
     do leg = 1, nlo_decay_local_count(context)
       masses(leg) = &
-           abs(get_mass_from_id(nlo_decay_local_pdg(context, leg)))
+           abs(get_decay_mass_from_id(nlo_decay_local_pdg(context, leg)))
     end do
   end subroutine get_nlo_decay_mass_buffer
 
@@ -280,7 +283,7 @@ contains
 
     do leg = 1, particle_count
       masses(leg) = &
-           abs(get_mass_from_id(nlo_decay_local_pdg(context, leg)))
+           abs(get_decay_mass_from_id(nlo_decay_local_pdg(context, leg)))
       if (.not. nlo_decay_local_is_final(context, leg)) then
         momenta(:, leg) = parent_rest
       else if (leg /= nlo_decay_fks_i(configuration)) then
@@ -347,7 +350,7 @@ contains
           nlo_decay_leg_target) then
         target = nlo_decay_local_target_id(context, leg)
         masses(target) = &
-             abs(get_mass_from_id(nlo_decay_local_pdg(context, leg)))
+             abs(get_decay_mass_from_id(nlo_decay_local_pdg(context, leg)))
         covered(target) = .true.
       end if
     end do
@@ -781,7 +784,7 @@ contains
     local_j = nlo_decay_fks_j(configuration)
     local_ij = nlo_decay_fks_ij(configuration)
     sister_mass = nlo_decay_fks_sister_mass(configuration)
-    if (abs(get_mass_from_id(nlo_decay_local_pdg(context, local_i))) > 0d0) then
+    if (abs(get_decay_mass_from_id(nlo_decay_local_pdg(context, local_i))) > 0d0) then
       call fail_kinematics('the emitted NLO-decay FKS leg must be massless')
     end if
 

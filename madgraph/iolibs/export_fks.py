@@ -17,6 +17,7 @@
 from __future__ import absolute_import
 from __future__ import division
 import glob
+import json
 import logging
 import os
 import re
@@ -349,6 +350,17 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 self.dir_path, 'SubProcesses', 'P*', metadata_name)))
         if not metadata_paths:
             return
+
+        decay_model = getattr(self.model, 'fnlo_decay_model', None)
+        if decay_model is not None:
+            with open(pjoin(self.dir_path, 'Cards', 'decay_mass_scheme.json'), 'w') as stream:
+                json.dump(dict(format=1, production_model=self.model['name'],
+                               decay_model=decay_model['name'],
+                               parameter=['decaymass', 5], alpha_s_flavours=5,
+                               bottom_mass_scheme='on-shell',
+                               generation_mass=self.model.fnlo_decay_bottom_mass),
+                          stream, indent=2)
+                stream.write('\n')
 
         species = set()
         nlo_width_species = set()
@@ -2366,6 +2378,21 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
     # write_get_mass_width_file
     #===============================================================================
     #test written
+    def write_pmass_file(self, writer, matrix_element):
+        if self.opt.get('fks_template') != 'fNLO' or not getattr(
+                matrix_element.get('processes')[0].get('model'), 'fnlo_decay_model', None):
+            return super(ProcessExporterFortranFKS, self).write_pmass_file(writer, matrix_element)
+        # The same PDG can be massless in the core and massive in a decay.
+        # Inserted external wavefunctions retain their own model's mass.
+        lines = []
+        for wavefunction in matrix_element.get_external_wavefunctions():
+            mass = wavefunction.get('mass')
+            if mass.lower() != 'zero':
+                mass = 'abs(%s)' % mass
+            lines.append('pmass(%d)=%s' % (wavefunction.get('number_external'), mass))
+        writer.writelines(lines)
+        return True
+
     def write_get_mass_width_file(self, writer, makeinc, model):
         """Write the get_mass_width_file.f file for MG4.
         Also update the makeinc.inc file
@@ -2418,6 +2445,27 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         file = open(os.path.join(_file_path, \
                           'iolibs/template_files/get_mass_width_fcts.inc')).read()
         file = file % replace_dict
+
+        # A PDG identifies a species, not its production/decay mass scheme.
+        # Keep the ordinary getter strictly production-local and give decay
+        # phase space its own entry point (also for unmodified models).
+        decay_model = getattr(model, 'fnlo_decay_model', None)
+        decay_lines = [
+            'DOUBLE PRECISION FUNCTION GET_DECAY_MASS_FROM_ID(ID)',
+            'USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE',
+            'IMPLICIT NONE', 'INTEGER ID',
+            'DOUBLE PRECISION GET_MASS_FROM_ID',
+            'EXTERNAL GET_MASS_FROM_ID', "INCLUDE 'coupl.inc'"]
+        if decay_model is not None:
+            mass = decay_model.get_particle(5)['mass']
+            decay_lines.extend([
+                'IF (.NOT.IEEE_IS_FINITE(%s).OR.%s.LE.0D0) THEN' % (mass, mass),
+                "WRITE(*,*) 'ERROR: DECAYMASS(5) must be positive; re-export for massless decays'",
+                'STOP 1', 'ENDIF', 'IF (ABS(ID).EQ.5) THEN',
+                'GET_DECAY_MASS_FROM_ID=%s' % mass, 'RETURN', 'ENDIF'])
+        decay_lines.extend(['GET_DECAY_MASS_FROM_ID=GET_MASS_FROM_ID(ID)',
+                            'RETURN', 'END'])
+        file += '\n\n' + '\n'.join(decay_lines) + '\n'
         
         # Write the file
         writer.writelines(file)
@@ -2944,6 +2992,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             self, fortran_model)
         density_exporter.prepare_plan(plan)
         self.write_spin_density_virtual_capabilities(matrix_element)
+        self.write_spin_density_internal_widths(plan)
         providers = [component['born'] for _, component in sorted(
             plan['components'].items())]
         providers.extend(variant['provider']
@@ -2974,6 +3023,26 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         self.write_spin_density_branch_contraction(
             matrix_element, density_exporter)
 
+
+    @staticmethod
+    def write_spin_density_internal_widths(plan):
+        """Retain colourless internal decay widths during card initialization.
+
+        In particular, a W forced on shell in production must not zero the
+        W propagators in a separate three-body top decay.
+        """
+        pdgs = set()
+        for node, component in plan['components'].items():
+            if node == 0:
+                continue
+            for wavefunction in component['born']['matrix_element'].get_all_wavefunctions():
+                if (wavefunction.get('mothers') and wavefunction.get('color') == 1
+                        and wavefunction.get('width').lower() != 'zero'
+                        and wavefunction.get('onshell') is not True):
+                    pdgs.add(abs(wavefunction.get('pdg_code')))
+        with open('decay_internal_widths.json', 'w') as stream:
+            json.dump({'format': 1, 'pdgs': sorted(pdgs)}, stream, indent=2)
+            stream.write('\n')
 
     @staticmethod
     def write_spin_density_virtual_capabilities(matrix_element):

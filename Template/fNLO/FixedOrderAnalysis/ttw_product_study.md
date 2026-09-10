@@ -1,7 +1,7 @@
 ---
 title: "Mixed production–decay corrections in trilepton ttW production"
 subtitle: "Paper proposal, scale comparisons, and an executable fNLO analysis"
-date: "9 September 2026"
+date: "10 September 2026"
 geometry: margin=2cm
 fontsize: 10pt
 papersize: a4
@@ -16,7 +16,8 @@ product prescription**. Use trilepton $t\bar tW^\pm$ as the principal
 application and a small dileptonic $t\bar t$ validation study. The headline
 question is whether those corrections alter b-jet acceptance, event activity,
 and charge-separated shapes after consistent width normalization, and whether
-that conclusion survives finite W widths. Keep dynamic production scales as
+that conclusion survives finite W widths and a finite bottom mass in decays.
+Keep dynamic production scales as
 the main choice; study central-scale definitions as a separate comparison.
 This is a testable question even if the net correction is small.
 
@@ -240,7 +241,7 @@ envelopes, including normalized shapes and acceptances.
 
 Prioritize the fiducial one-/two-b rates, acceptance, subleading-b pT,
 lepton HT/leading-lepton pT and $m_{b\ell}^{\rm minimax}$. The correct-pair
-Born endpoint $m_{b\ell}^2=m_t^2-M_W^2$ motivates the last observable,
+massless-bottom Born endpoint $m_{b\ell}^2=m_t^2-M_W^2$ motivates the last observable,
 but jet radiation and pairing also generate tails; do not attribute every
 tail event to finite W width. Existing histograms can be reused unchanged.
 An internal $m_{\ell\nu}$ line-shape/phase-space check is a validation
@@ -252,6 +253,75 @@ This remains **top-NWA with finite-width Ws**, not full off-shell ttW:
 top finite-width effects, singly/nonresonant top amplitudes, interference
 between alternative top histories and nonfactorizable production–decay
 exchanges are still missing. Keep a matched full off-shell reference separate.
+
+## Bottom-mass robustness: 5FS production with massive decays
+
+Keep the massless-bottom result as the baseline and add a controlled
+$m_b^{\rm decay}=0$ versus finite on-shell $m_b^{\rm decay}$ comparison.
+Keep **production in the five-flavour scheme in both samples**, including
+its PDFs, massless bottom amplitudes/loops/subtraction, and dynamic
+W-system CORE $H_T/2$. Only the independent decay blocks change. Within
+the top NWA this is a factorized approximation, not a prescription for
+changing selected masses inside a full off-shell amplitude. Call it
+"5FS production with massive-bottom NLO decays", not "4FS decays": there
+are no decay PDFs, and a nonzero final-state mass does not demand
+four-flavour running of alpha-s.
+
+Use a specified on-shell bottom mass, for example 4.8 GeV as a benchmark
+(not an MSbar mass inserted without conversion), in the decay Born, real
+and virtual amplitudes, phase space, and massive FKS mappings/subtraction.
+Use the same five-flavour alpha-s definition as production, evaluated at
+the separate top/antitop renormalization scales. Match the LO and NLO
+physical total top widths to the bottom mass, W prescription, weak inputs,
+alpha-s reference and reference scale of their decay numerators. Do not
+reuse the massless widths. The inclusive mass correction can largely cancel
+in normalized branching densities, while cuts and endpoints can retain
+shape effects. A small inclusive width shift is not a prediction for a
+fiducial rate shift. Massive NLO three-body decays with finite-width Ws are
+described by [Basso, Dittmaier, Huss and Oggero](https://link.springer.com/article/10.1140/epjc/s10052-016-3878-2).
+
+Start with matched S/Pi pairs at zero and finite decay mass, separately in
+`onshell` and `all-bw`; `top-bw` can further isolate W effects if needed.
+Use the same four scale axes and retain all 81 weights, initially at pilot
+statistics. At each matching weight compare $S_{m_b}/S_0$,
+$\Pi_{m_b}/\Pi_0$, $(\Pi-S)_{m_b}-(\Pi-S)_0$,
+$(\Pi/S-1)_{m_b}-(\Pi/S-1)_0$, and $(\Pi/S)_{m_b}/(\Pi/S)_0$.
+Form envelopes only after these operations. Prioritize one-/two-b
+acceptance, leading/subleading b-jet pT, $m_{b\ell}^{\rm minimax}$ and
+endpoint bins, then the existing jet-radius and b-threshold scans. Retain
+charge-separated results and use normalized shapes as well as absolute
+rates. Keep the same IR-safe jet definitions: finite-mass bare-bottom
+distributions are not suitable for a massless comparison. Increase
+statistics only where a shift is resolved or a useful upper sensitivity can
+be established; distinguish mass effects from W-width and scale-definition
+effects instead of changing all three together.
+
+The generator option `set decay_bottom_mass 4.8` must precede generation
+with `loop_sm-no_b_mass`. It creates private massive `loop_sm` decay
+ingredients with namespaced couplings/counterterms. Production vertices,
+counterterms and its five-flavour coupling remain unchanged. `DECAYMASS(5)`
+in `param_card.dat` supplies the decay-only mass; `MASS(5)` remains zero.
+The generated `Cards/decay_mass_scheme.json` records this separation.
+Generation with zero (the default) follows the original massless path.
+Changing between zero and nonzero requires a fresh export because the FKS
+singular regions and virtual poles differ. Positive values can be changed
+in a massive export's parameter card, with recalculated widths and matching
+setup declarations. Both signs of the bottom use the same decay mass.
+Currently this option supports QCD-corrected top decays to bW or be/mu+nu
+and leptonic W subdecays, real masses, unitary gauge and serial generation.
+It is not a general per-particle or per-occurrence model-mixing interface.
+
+The sibling `topDecay/width` calculator now uses nf=5 by default for both
+zero and nonzero bottom mass, independently of its exact mass-dependent
+NLO coefficient. Explicit `nf=4` retains the old matched-decoupling
+diagnostic; do not use that setting for these five-flavour study widths.
+At this electroweak Born order the conversion between matched four- and
+five-flavour couplings first changes the decay prediction at
+$O(\alpha_s^2)$, but it would unnecessarily contaminate the product's
+higher-order comparison. Match its GF, alpha-s input/evolution, masses and
+W width to the generated cards; its defaults are not automatically matched
+to a chosen PDF or MG5 weak-input scheme. Archive the calculator inputs
+and outputs in the width-source record.
 
 ## Scale dependence: a main result
 
@@ -405,7 +475,7 @@ quadrature as though they were independent probabilistic errors.
 The `AUTO` top-width mode evolves the NLO correction at the varied decay
 alpha-s for this alpha-s-independent Born decay. Supply the LO and NLO
 width at the same reference scale and with the same weak input scheme,
-massless-bottom treatment and W treatment as the matrix element. Verify one
+bottom-mass treatment and W treatment as the matrix element. Verify one
 direct rerun at an asymmetric point, e.g. $(\xi_t,\xi_{\bar t})=(2,1/2)$,
 against reweighting. The W total width
 and leptonic branching convention must be held consistent across all curves.
@@ -564,9 +634,47 @@ select the four decay trees. `--real-only --partonic` is for export smoke
 tests; such output omits virtual terms and crossed proton channels and is
 not a physical NLO prediction.
 
+For the massive-decay companion, keep the same production model and add:
+
+```sh
+python3 Template/fNLO/FixedOrderAnalysis/ttw_product_setup.py commands \
+  --charge plus --w-treatment all-bw --decay-bottom-mass 4.8 \
+  --output /absolute/new/TTWplus_all_bw_mb4p8_eemu
+```
+
+On the matching `configure` command below, also supply
+`--decay-bottom-mass 4.8 --top-width-bottom-mass 4.8`. The first must match
+the actual generated decay-only mass; the second declares the bottom mass
+used in both supplied widths. The script rejects a missing or mismatched
+mass declaration before replacing cards. Massive run names gain an
+`_mb4p8` suffix, and manifests record the two masses, mass scheme, nf=5 and
+generation-metadata hash. Massless calls remain backward compatible.
+
+Use the comparison script's existing matched-reference calculation for
+the mass scan, without changing the W or production-scale labels:
+
+```sh
+python3 Template/fNLO/FixedOrderAnalysis/ttw_product_scales.py \
+  --strict S_mb4p8.HwU --product Pi_mb4p8.HwU \
+  --reference-strict S_mb0.HwU --reference-product Pi_mb0.HwU \
+  --w-treatment all-bw --reference-w-treatment all-bw \
+  --decay-bottom-mass 4.8 --reference-decay-bottom-mass 0 \
+  --output bottom_mass_comparison.json
+```
+
+These mass labels, like the W/scale labels, are declarations: check the
+archived cards/width inputs, since HwU does not encode the mass scheme.
+
 Changing W treatment requires a separate generation/export; it is not a
 run-card reweighting. The setup inspects every exported Born core and decay
 tree and refuses to configure a mismatched `--w-treatment`.
+Re-export existing BW processes for the internal-width initialization fix:
+generated `SubProcesses/P*/decay_internal_widths.json` certifies the internal
+colourless decay resonances. In `top-bw`, this keeps the top decays' W
+propagators finite even though the associated W is forced on shell. Its
+actual NWA connector remains pole-free, and forced coloured resonances
+remain widthless in matrix elements. The setup checks and hashes these
+records; it rejects older BW exports without them.
 
 Before configuring physical runs, calculate the top total width at LO/NLO
 in precisely the chosen model/PDF alpha-s setup, with on-shell Ws for
@@ -734,7 +842,7 @@ every distribution.
 | Figure 5 | SS Dphi/Deta and leading-lepton/b-jet DR; test shape and charge dependence |
 | Figure 6 | 0/1/2-extra-jet sectors and second-extra-jet pT; expose partial higher-order content |
 | Figure 7 | Radius/threshold dependence of two-b acceptance and veto efficiency |
-| Figure 8 | W-treatment S/Pi shifts and dynamic-scale robustness; fixed/common-scale diagnostic |
+| Figure 8 | W-treatment and decay-bottom-mass S/Pi robustness, with common dynamic production scales |
 | Table 3 | Integrated shifts, MC precision and separate production/decay/combined scale responses |
 
 For the ttbar calibration, use the existing dilepton machinery only after
@@ -780,6 +888,11 @@ production–decay corrections do not substitute for one another.
    direct production-scale rerun against reweighting in a BW pilot.
    Use the in-run radius/threshold scans to test a radiation/acceptance
    explanation. Audit every plotted band's selected weight labels.
+   Add the finite-bottom-mass S/Pi pairs with production fixed to 5FS.
+   Validate unchanged production amplitudes and FKS regions, massive decay
+   virtual poles and soft subtraction, and the small-mass limit of IR-safe
+   observables with matched widths. Compare the width calculator's nf=5
+   alpha-s at all decay-scale points against the generator's coupling.
 4. **Attribution and references.** If a statistically resolved shift is
    found, spend further time on the eight stage subsets and a matched
    off-shell/ttbar reference. If it is small throughout, quantify that bound
@@ -800,6 +913,36 @@ two-b acceptance and one representative radiation-sensitive distribution,
 with all 81 scale points accounted for.
 
 ## Current validation record
+
+Checked on 10 September 2026: 41 focused tests and all 38 decay-generation
+regressions passed, as did both standalone `topDecay/width` test programs.
+A fresh full-NLO $u\bar d$ `top-bw` export with $m_b^{\rm decay}=4.8$ GeV
+compiled and completed short S and Pi integrations with all 81 finite scale
+weights. Its actual initialization retained the physical W width; native
+soft tests passed and poles cancelled at 60/60 points. The analytic massive
+top/antitop virtuals agreed with MadLoop at their validation points to better
+than $2\times10^{-13}$ relative precision. These were software smoke checks
+with synthetic top widths, one initial Born channel, 100 grid points and
+500 integration points, not converged fiducial predictions or a numerical
+measurement of the bottom-mass effect.
+
+The massive-decay update adds tests of unchanged production vertices,
+counterterms, numeric couplings and nf=5; distinct production/decay masses
+with bottom beams; massive density providers in both BW topologies; separate
+Fortran mass lookup; and matched width-mass declarations before card writes.
+The mixed-W tests also check that only the actual associated-W connector
+is pole-free, while the top decays retain internal W widths. The standalone
+`topDecay/width` tests check exact mass-dependent coefficients, nf=5 running
+independent of bottom mass at three scales, explicit nf=4 matching, and BW
+API propagation. None of these tests supplies matched physical study widths.
+
+A separate existing export limitation was reproduced with both zero and
+4.8 GeV decay masses: `top-bw` with top and associated W both decaying to
+`e+ ve` (and the antitop to `b~ mu- vm~`) hits the labeled Born
+identical-particle normalization guard. Resolve and validate that limitation
+before completing the full same-charge/same-flavour sum; the default
+`e,e,mu` ordered assignment does not hit it. Do not substitute a flavour
+multiplicity factor for the missing exports.
 
 The new module is registered in both the fNLO makefile and analysis-card
 bridge selector. Its fixed-size and variable-size interfaces forward all
@@ -862,10 +1005,13 @@ Reproduce the focused checks from the checkout root:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest \
+  tests.unit_tests.fks.test_fks_decay_masses \
   tests.unit_tests.fks.test_ttw_product_analysis \
   tests.unit_tests.fks.test_ttw_product_tools \
   tests.unit_tests.fks.test_fnlo_decay_card \
-  tests.unit_tests.various.test_FO_analyse_card
+  tests.unit_tests.various.test_FO_analyse_card \
+  tests.unit_tests.interface.test_amcatnlo.TestMadEventCmd.test_fnlo_forced_width_pids \
+  tests.unit_tests.interface.test_amcatnlo.TestMadEventCmd.test_fnlo_internal_decay_width_pids
 ```
 
 Before claiming physical results, retain the run logs proving the separate

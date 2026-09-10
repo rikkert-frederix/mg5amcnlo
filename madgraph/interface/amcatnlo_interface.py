@@ -604,6 +604,8 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         full_nlo_decay_specs = None
         if ',' in line:
             myprocdef, line = mg_interface.MadGraphCmd.extract_decay_chain_process(self,line)
+            from madgraph.fks.fks_decay_masses import apply_decay_bottom_mass
+            apply_decay_bottom_mass(myprocdef, self.options.get('decay_bottom_mass', 0.), self.options)
             if myprocdef.are_decays_perturbed():
                 production_is_nlo = (
                     bool(myprocdef.get('perturbation_couplings')) and
@@ -626,6 +628,8 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                     myprocdef.set('NLO_mode', 'tree')
         else:
             myprocdef = mg_interface.MadGraphCmd.extract_process(self,line)
+            if self.options.get('decay_bottom_mass', 0.):
+                raise self.InvalidCmd('decay_bottom_mass requires an explicit top decay chain')
 
         if nlo_decay_spec is None and full_nlo_decay_specs is None:
             self.proc_validity(myprocdef,'aMCatNLO_%s'%proc_type[1])

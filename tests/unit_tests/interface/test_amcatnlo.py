@@ -192,6 +192,23 @@ class TestMadEventCmd(unittest.TestCase):
                     'Malformed FORCED_SPECIES record'):
                 interface.get_fnlo_forced_width_pids()
 
+    def test_fnlo_internal_decay_width_pids(self):
+        interface = object.__new__(run_mecmd.common_run.CommonRunCmd)
+        interface.stop_for_runweb = True
+        with tempfile.TemporaryDirectory() as output_root:
+            interface.me_dir = output_root
+            directory = pjoin(output_root, 'SubProcesses', 'P0_test')
+            os.makedirs(directory)
+            self.assertEqual(interface.get_fnlo_internal_width_pids(), set())
+            path = pjoin(directory, 'decay_internal_widths.json')
+            with open(path, 'w') as stream:
+                stream.write('{"format": 1, "pdgs": [24]}')
+            self.assertEqual(interface.get_fnlo_internal_width_pids(), {24})
+            with open(path, 'w') as stream:
+                stream.write('{"format": 1, "pdgs": [-24]}')
+            with self.assertRaisesRegex(madgraph.MadGraph5Error, 'Malformed internal-width'):
+                interface.get_fnlo_internal_width_pids()
+
     def test_fnlo_decay_combination_mode(self):
         """The result collector recognizes multiplicative decay bundles."""
 

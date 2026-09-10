@@ -7323,7 +7323,11 @@ C
         if self.opt['complex_mass']:
             complex_mass = set()
             
-        for particle in self.model.get('particles'):
+        model_particles = list(self.model.get('particles'))
+        decay_model = getattr(self.model, 'fnlo_decay_model', None)
+        if decay_model is not None:
+            model_particles.extend(decay_model.get('particles'))
+        for particle in model_particles:
             #find masses
             one_mass = particle.get('mass')
             if one_mass.lower() != 'zero':
@@ -7441,7 +7445,11 @@ C
                     
         #find mass/ width since they are already define
         already_def = set()
-        for particle in self.model.get('particles'):
+        model_particles = list(self.model.get('particles'))
+        decay_model = getattr(self.model, 'fnlo_decay_model', None)
+        if decay_model is not None:
+            model_particles.extend(decay_model.get('particles'))
+        for particle in model_particles:
             already_def.add(particle.get('mass').lower())
             already_def.add(particle.get('width').lower())
             if self.opt['complex_mass']:

@@ -1744,7 +1744,7 @@ def _set_local_width(wavefunction, width):
 
 
 def _annotate_decay_nodes(matrix_element, context, metadata):
-    """Tag pole-free SDE connectors and keep forced species widthless.
+    """Tag pole-free SDE connectors and keep forced coloured species widthless.
 
     The flattened amplitudes supply topology and relative channel weights;
     physical matrix elements are contracted from independent densities.
@@ -1798,7 +1798,12 @@ def _annotate_decay_nodes(matrix_element, context, metadata):
             if mass.lower() == 'zero':
                 raise fks_common.FKSProcessError(
                     'A decay connector cannot have zero mass')
-        _set_local_width(wavefunction, 'ZERO')
+        # A colourless species can be forced in one block and internal in
+        # another (e.g. associated on-shell W and t -> b l nu). Only its
+        # actual connector is pole-free; the other current needs its BW.
+        # Coloured forced species remain widthless for QCD factorization.
+        if node or wavefunction.get('color') != 1:
+            _set_local_width(wavefunction, 'ZERO')
 
 
 def _finalize_matrix_element(matrix_element):

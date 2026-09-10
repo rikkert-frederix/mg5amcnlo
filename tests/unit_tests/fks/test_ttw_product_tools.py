@@ -163,6 +163,39 @@ class TestTTWProductTools(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Unknown W'):
             setup.process_commands('plus', ['e', 'e', 'mu'], '/tmp/TTW', w_treatment='bad')
 
+    def test_massive_decay_commands_and_export_guard(self):
+        from models.check_param_card import ParamCard
+        for treatment in setup.W_TREATMENTS:
+            text = setup.process_commands('plus', ['e', 'e', 'mu'], '/tmp/TTW',
+                                          w_treatment=treatment, decay_bottom_mass=4.8)
+            self.assertIn('import model loop_sm-no_b_mass\nset decay_bottom_mass 4.8', text)
+            self.assertIn('define p = g u c d s b u~ c~ d~ s~ b~', text)
+        for mass in (-1., float('nan'), float('inf')):
+            with self.assertRaisesRegex(ValueError, 'bottom mass'):
+                setup.process_commands('plus', ['e', 'e', 'mu'], '/tmp/TTW', decay_bottom_mass=mass)
+        with tempfile.TemporaryDirectory() as directory:
+            process = Path(directory)
+            cards = process / 'Cards'
+            cards.mkdir()
+            path = cards / 'param_card.dat'
+            path.write_text('BLOCK MASS\n 5 0.\nBLOCK DECAYMASS\n 5 4.8\n')
+            param = ParamCard(str(path))
+            with self.assertRaisesRegex(ValueError, 'without a generated'):
+                setup.export_decay_bottom_mass(process, param)
+            scheme = cards / 'decay_mass_scheme.json'
+            scheme.write_text(json.dumps(dict(format=1, production_model='loop_sm-no_b_mass',
+                                              decay_model='loop_sm', parameter=['decaymass', 5],
+                                              alpha_s_flavours=5)))
+            with self.assertRaisesRegex(ValueError, 'mass lookup'):
+                setup.export_decay_bottom_mass(process, param)
+            source = process / 'Source/MODEL/get_mass_width_fcts.f'
+            source.parent.mkdir(parents=True)
+            source.write_text('GET_DECAY_MASS_FROM_ID=DC_MDL_MB')
+            self.assertEqual(setup.export_decay_bottom_mass(process, param), (4.8, scheme))
+            param['decaymass'].get((5,)).value = 0.
+            with self.assertRaisesRegex(ValueError, 'requires positive'):
+                setup.export_decay_bottom_mass(process, param)
+
     @staticmethod
     def topology_fixture(process, treatment):
         """Small format-4 fixtures with real node/leaf/core semantics."""
@@ -192,6 +225,8 @@ class TestTTWProductTools(unittest.TestCase):
         lines += ['CORE_LEG 1 %d %d F' % (i, pdg) for i, pdg in enumerate(final, 3)]
         path = directory / 'decay_chain_info.dat'
         path.write_text('\n'.join(lines) + '\nEND\n')
+        path.with_name('decay_internal_widths.json').write_text(json.dumps(
+            dict(format=1, pdgs=[] if treatment == 'onshell' else [24])))
         return path
 
     def test_export_w_treatment_checks_actual_core_and_decays(self):
@@ -262,6 +297,10 @@ DECAY 24 2.05
             self.assertEqual(manifest['decay_scale_grouping'], 'separate')
             self.assertEqual(manifest['w_treatment'], 'onshell')
             self.assertEqual(manifest['top_width_w_treatment'], 'onshell')
+            self.assertEqual(manifest['production_bottom_mass'], 0.)
+            self.assertEqual(manifest['decay_bottom_mass'], 0.)
+            self.assertEqual(manifest['top_width_bottom_mass'], 0.)
+            self.assertEqual(manifest['alpha_s_flavours'], 5)
             self.assertEqual(len(manifest['topology_hashes']), 1)
             self.assertEqual(manifest['production_scale_grouping'], 'W_SYSTEM')
             self.assertEqual(len(manifest['scale_runtime_hashes']), 3)
@@ -283,6 +322,11 @@ DECAY 24 2.05
             self.assertEqual((cards / 'decay_card.dat').read_text(), before)
             self.assertFalse((process / 'study_cards/S_top-bw_core-w-ht-half_shared_42').exists())
             args.top_width_w_treatment = 'bw'
+            internal_width_path = process / 'SubProcesses/P0_test/decay_internal_widths.json'
+            internal_width_path.unlink()
+            with self.assertRaisesRegex(ValueError, 'preserve internal decay W widths'):
+                setup.configure(args)
+            self.assertEqual((cards / 'decay_card.dat').read_text(), before)
             param_before = (cards / 'param_card.dat').read_bytes()
             for treatment in ('top-bw', 'all-bw'):
                 self.topology_fixture(process, treatment)
@@ -314,6 +358,40 @@ DECAY 24 2.05
                 run = RunCardNLO(str(cards / 'run_card.dat'))
                 self.assertEqual(run['fixed_ren_scale'], choice == 'fixed')
                 self.assertEqual('scale definition' in err.getvalue(), choice == 'core-ht-half')
+            # A massive export must declare the same mass in its matrix
+            # elements and both supplied widths before any card is changed.
+            param_path = cards / 'param_card.dat'
+            param_path.write_text(param_path.read_text() + 'BLOCK DECAYMASS\n 5 4.8\n')
+            scheme_path = cards / 'decay_mass_scheme.json'
+            scheme_path.write_text(json.dumps(dict(
+                format=1, production_model='loop_sm-no_b_mass', decay_model='loop_sm',
+                parameter=['decaymass', 5], alpha_s_flavours=5)))
+            mass_source = process / 'Source/MODEL/get_mass_width_fcts.f'
+            mass_source.parent.mkdir(parents=True)
+            mass_source.write_text('GET_DECAY_MASS_FROM_ID=DC_MDL_MB')
+            before = {name: (cards / name).read_bytes()
+                      for name in ('param_card.dat', 'run_card.dat', 'decay_card.dat')}
+            with self.assertRaisesRegex(ValueError, 'Requested decay bottom mass'):
+                setup.configure(args)
+            args.decay_bottom_mass = 4.8
+            for value in (None, 0., 4.7, float('nan')):
+                args.top_width_bottom_mass = value
+                with self.assertRaisesRegex(ValueError, 'top-width-bottom-mass'):
+                    setup.configure(args)
+                for name, contents in before.items():
+                    self.assertEqual((cards / name).read_bytes(), contents)
+            args.top_width_bottom_mass = 4.8
+            with contextlib.redirect_stdout(io.StringIO()):
+                setup.configure(args)
+            archive = process / 'study_cards/S_all-bw_fixed_shared_42_mb4p8'
+            manifest = json.loads((archive / 'manifest.json').read_text())
+            self.assertEqual(manifest['production_bottom_mass'], 0.)
+            self.assertEqual(manifest['decay_bottom_mass'], 4.8)
+            self.assertEqual(manifest['top_width_bottom_mass'], 4.8)
+            self.assertEqual(manifest['bottom_mass_scheme'], 'on-shell')
+            self.assertEqual(manifest['alpha_s_flavours'], 5)
+            self.assertTrue(manifest['decay_mass_scheme_hash'])
+            self.assertEqual((archive / scheme_path.name).read_bytes(), scheme_path.read_bytes())
             (process / 'SubProcesses/decay_chain_parameters.f90').write_text('old export')
             with self.assertRaisesRegex(ValueError, 'Re-export'):
                 setup.configure(args)
@@ -380,6 +458,15 @@ DECAY 24 2.05
             self.assertEqual(cli['production_scale'], 'core-w-ht-half')
             self.assertFalse(cli['reference_comparison']['scale_definitions_match'])
             self.assertIn('not just W-width', cli['reference_comparison']['scale_definition_note'])
+            argv[argv.index('--reference-production-scale') + 1] = 'core-w-ht-half'
+            argv[argv.index('--output') + 1] = str(Path(directory) / 'bottom-masses.json')
+            argv += ['--decay-bottom-mass', '4.8', '--reference-decay-bottom-mass', '0']
+            with mock.patch('sys.argv', argv), contextlib.redirect_stdout(io.StringIO()):
+                scales.main()
+            cli = json.loads(Path(argv[argv.index('--output')+1]).read_text())
+            self.assertEqual(cli['decay_bottom_mass'], 4.8)
+            self.assertEqual(cli['reference']['decay_bottom_mass'], 0.)
+            self.assertTrue(cli['reference_comparison']['scale_definitions_match'])
             target['histograms']['R04_b25 W+ 1b test1'][0]['edges'] = [0., 1.]
             with self.assertRaisesRegex(ValueError, 'bin edges differ'):
                 scales.make_reference_report(reference, target)

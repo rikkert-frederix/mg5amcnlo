@@ -23,13 +23,15 @@ PRODUCTION_SCALES = ('core-w-ht-half', 'core-ht-half', 'fixed')
 
 
 def process_commands(charge, flavours, output, corrected='both', real_only=False,
-                     partonic=False, w_treatment='onshell'):
+                     partonic=False, w_treatment='onshell', decay_bottom_mass=0.):
     """One export per charge and ordered (Wt,Wtbar,Wassoc) flavour assignment."""
     output = str(Path(output).expanduser().absolute())
     if not re.fullmatch(r'[\w./+\-]+', output):
         raise ValueError('MadGraph output path must contain no spaces or shell metacharacters')
     if w_treatment not in W_TREATMENTS:
         raise ValueError('Unknown W treatment: ' + w_treatment)
+    if not math.isfinite(decay_bottom_mass) or decay_bottom_mass < 0.:
+        raise ValueError('Decay bottom mass must be finite and nonnegative')
     lp = {'e': 'e+ ve', 'mu': 'mu+ vm'}
     lm = {'e': 'e- ve~', 'mu': 'mu- vm~'}
     order = '[real=QCD]' if real_only else '[QCD]'
@@ -57,11 +59,34 @@ def process_commands(charge, flavours, output, corrected='both', real_only=False
     return '\n'.join([
         '# ttW W treatment: ' + w_treatment + '; tops remain on shell',
         'import model loop_sm-no_b_mass',
+        'set decay_bottom_mass %.16g' % decay_bottom_mass,
         'define p = g u c d s b u~ c~ d~ s~ b~',
         'generate %s > t t~ %s %s, %s' % (initial, core, order, decays),
         'output fNLO ' + output,
         '',
     ])
+
+
+def export_decay_bottom_mass(process, param):
+    """Read the decay-only input, checking the generated model separation."""
+    path = process / 'Cards/decay_mass_scheme.json'
+    if not path.is_file():
+        if 'decaymass' in param:
+            raise ValueError('DECAYMASS without a generated mass scheme; re-export')
+        return 0., None
+    scheme = json.loads(path.read_text())
+    if (scheme.get('format') != 1 or scheme.get('production_model') != 'loop_sm-no_b_mass'
+            or scheme.get('decay_model') != 'loop_sm'
+            or scheme.get('parameter') != ['decaymass', 5]
+            or scheme.get('alpha_s_flavours') != 5):
+        raise ValueError('Unsupported exported decay mass scheme')
+    mass = float(param['decaymass'].get((5,)).value)
+    if not math.isfinite(mass) or mass <= 0.:
+        raise ValueError('A massive-decay export requires positive DECAYMASS(5); re-export for zero')
+    source = process / 'Source/MODEL/get_mass_width_fcts.f'
+    if not source.is_file() or 'GET_DECAY_MASS_FROM_ID=DC_MDL_MB' not in source.read_text().upper():
+        raise ValueError('Missing generated decay-only mass lookup; re-export')
+    return mass, path
 
 
 def export_w_treatment(process):
@@ -167,6 +192,15 @@ def configure(args):
     if treatment != args.w_treatment:
         raise ValueError('Export has W treatment %s, not %s; generate a separate export' %
                          (treatment, args.w_treatment))
+    internal_width_paths = [path.with_name('decay_internal_widths.json')
+                            for path in topology_paths]
+    if treatment != 'onshell':
+        for path in internal_width_paths:
+            if not path.is_file():
+                raise ValueError('Re-export to preserve internal decay W widths at initialization')
+            data = json.loads(path.read_text())
+            if data.get('format') != 1 or 24 not in data.get('pdgs', []):
+                raise ValueError('Export does not certify finite internal decay W widths')
     expected_width_treatment = 'onshell' if treatment == 'onshell' else 'bw'
     if args.top_width_w_treatment != expected_width_treatment:
         raise ValueError('%s requires top total widths calculated with %s Ws' %
@@ -179,7 +213,20 @@ def configure(args):
     ww = float(param['decay'].get((24,)).value)
     mb = float(param['mass'].get((5,)).value)
     if mb != 0.:
-        raise ValueError('This setup uses loop_sm-no_b_mass; bottom mass must be zero')
+        raise ValueError('This setup uses loop_sm-no_b_mass; production bottom mass must be zero')
+    decay_mb, mass_scheme_path = export_decay_bottom_mass(process, param)
+    requested_mb = getattr(args, 'decay_bottom_mass', 0.)
+    width_mb = getattr(args, 'top_width_bottom_mass', None)
+    if not math.isfinite(requested_mb) or requested_mb < 0. or not math.isclose(
+            decay_mb, requested_mb, rel_tol=1.e-12, abs_tol=1.e-12):
+        raise ValueError('Requested decay bottom mass does not match the export/card')
+    if width_mb is None and decay_mb == 0.:
+        width_mb = 0.  # Backwards-compatible massless baseline.
+    if width_mb is None or not math.isfinite(width_mb) or not math.isclose(
+            decay_mb, width_mb, rel_tol=1.e-12, abs_tol=1.e-12):
+        raise ValueError('Supply --top-width-bottom-mass matching the decay matrix elements')
+    if decay_mb >= mt - (mw if treatment == 'onshell' else 0.):
+        raise ValueError('Decay bottom mass closes the top-decay phase space')
     for value in (mt, mw, ww, args.top_width_lo, args.top_width_nlo, args.ecm):
         if not math.isfinite(value) or value <= 0.:
             raise ValueError('Masses, widths and collider energy must be positive and finite')
@@ -187,6 +234,8 @@ def configure(args):
         raise ValueError('Seed, integration counts and iterations must be positive')
     run_name = '%s_%s_%s_%s_%d' % (args.variant, treatment, args.production_scale,
                                   args.decay_scales, args.seed)
+    if decay_mb:
+        run_name += '_mb%s' % ('%.12g' % decay_mb).replace('.', 'p')
     archive = process / 'study_cards' / run_name
     if archive.exists() or (process / 'Events' / run_name).exists():
         raise ValueError('Run or card archive already exists: ' + run_name)
@@ -235,6 +284,8 @@ def configure(args):
         'FO_EXTRALIBS=\nFO_EXTRAPATHS=\nFO_INCLUDEPATHS=\n')
     for name in ('run_card.dat', 'decay_card.dat', 'FO_analyse_card.dat', 'param_card.dat'):
         shutil.copy2(cards / name, archive / name)
+    if mass_scheme_path is not None:
+        shutil.copy2(mass_scheme_path, archive / mass_scheme_path.name)
     hashes = {name: hashlib.sha256((archive / name).read_bytes()).hexdigest()
               for name in ('run_card.dat', 'decay_card.dat', 'FO_analyse_card.dat', 'param_card.dat')}
     hashes['analysis_source'] = hashlib.sha256(source.read_bytes()).hexdigest()
@@ -242,6 +293,11 @@ def configure(args):
                        for path in topology_paths}
     manifest = dict(variant=args.variant, run_name=run_name, settings=settings,
                     w_treatment=treatment, tops_on_shell=True,
+                    production_bottom_mass=mb, decay_bottom_mass=decay_mb,
+                    bottom_mass_scheme='on-shell' if decay_mb else 'massless',
+                    alpha_s_flavours=5, top_width_bottom_mass=width_mb,
+                    decay_mass_scheme_hash=(hashlib.sha256(mass_scheme_path.read_bytes()).hexdigest()
+                                            if mass_scheme_path else None),
                     top_width_lo=args.top_width_lo, top_width_nlo=args.top_width_nlo,
                     top_width_w_treatment=args.top_width_w_treatment,
                     width_source=args.width_source, top_width_reference_scale=mt,
@@ -260,6 +316,9 @@ def configure(args):
                     w_width_prescription=('NWA normalization only' if treatment == 'onshell' else
                                           'fixed-width internal propagators with real masses'),
                     topology_hashes=topology_hashes,
+                    internal_width_hashes={str(path.relative_to(process)):
+                                           hashlib.sha256(path.read_bytes()).hexdigest()
+                                           for path in internal_width_paths if path.is_file()},
                     decay_scale_grouping=args.decay_scales, hashes=hashes,
                     git_head=subprocess.check_output(
                         ['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip(),
@@ -285,6 +344,8 @@ def main():
     cmd.add_argument('--corrected', choices=['both', 't', 'tbar', 'neither'], default='both')
     cmd.add_argument('--w-treatment', choices=W_TREATMENTS, default='onshell',
                      help='on-shell Ws, BW Ws in top decays only, or BW Ws everywhere')
+    cmd.add_argument('--decay-bottom-mass', type=float, default=0.,
+                     help='generation-time on-shell bottom mass in decays only, in GeV')
     cmd.add_argument('--real-only', action='store_true', help='generation smoke test only, not physical NLO')
     cmd.add_argument('--partonic', action='store_true', help='one initial channel for a generation smoke test')
     config = sub.add_parser('configure', help='update exported cards, with a snapshot; does not run')
@@ -296,6 +357,10 @@ def main():
                         help='must match the generated topology; cannot change it through cards')
     config.add_argument('--top-width-w-treatment', choices=['onshell', 'bw'], required=True,
                         help='explicit W convention of BOTH supplied physical total top widths')
+    config.add_argument('--decay-bottom-mass', type=float, default=0.,
+                        help='must match the generated DECAYMASS(5), or zero for massless decays')
+    config.add_argument('--top-width-bottom-mass', type=float,
+                        help='bottom mass used in BOTH total widths; required for massive decays')
     config.add_argument('--width-source', required=True, help='matched width calculation and input record')
     config.add_argument('--pdf-id', type=int, help='LHAPDF ID; absent selects bundled nn23nlo for pilots')
     config.add_argument('--production-scale', choices=PRODUCTION_SCALES, default='core-w-ht-half',
@@ -312,7 +377,7 @@ def main():
         if args.action == 'commands':
             print(process_commands(args.charge, args.flavours, args.output,
                                    args.corrected, args.real_only, args.partonic,
-                                   args.w_treatment), end='')
+                                   args.w_treatment, args.decay_bottom_mass), end='')
         else:
             configure(args)
     except (ValueError, KeyError, OSError) as error:

@@ -999,6 +999,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                 # force particle in final states to have zero width
                 pids = self.get_pid_final_initial_states()
                 forced_width_pids = self.get_fnlo_forced_width_pids()
+                internal_width_pids = self.get_fnlo_internal_width_pids()
                 # check those which are charged under qcd
                 if pjoin(self.me_dir,'bin','internal','ufomodel') not in sys.path:
                     sys.path.insert(0,pjoin(self.me_dir,'bin','internal', 'ufomodel'))     
@@ -1048,9 +1049,10 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                 # An fNLO decay chain treats every forced resonance as an
                 # on-shell external particle in one of its factorized matrix
                 # elements.  Its physical width remains in decay_card.dat for
-                # the narrow-width normalization, but it must not enter any
-                # of the block amplitudes: a finite propagator width there
-                # spoils their local soft factorization.
+                # the narrow-width normalization. Coloured forced species
+                # must be widthless for local QCD soft factorization. A
+                # colourless internal current in a different decay block
+                # is exempted below; only its on-shell connector is removed.
                 no_width.extend(
                     p for p in ufomodel.all_particles
                     if abs(p.pdg_code) in forced_width_pids
@@ -1058,6 +1060,10 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
 
                 done = []
                 for part in no_width:
+                    # Keep actual colourless BW currents in another decay
+                    # block; its on-shell connectors are widthless locally.
+                    if part.color == 1 and abs(part.pdg_code) in internal_width_pids:
+                        continue
                     if abs(part.pdg_code) in done:
                         continue
                     done.append(abs(part.pdg_code))
@@ -3493,6 +3499,20 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                 pids.update(set(particles))
 
         return pids
+
+    def get_fnlo_internal_width_pids(self):
+        """Read exporter-certified colourless internal decay resonances."""
+        import json
+        pdgs = set()
+        for path in glob.glob(pjoin(
+                self.me_dir, 'SubProcesses', 'P*', 'decay_internal_widths.json')):
+            with open(path) as stream:
+                data = json.load(stream)
+            if (data.get('format') != 1 or not isinstance(data.get('pdgs'), list)
+                    or any(type(pdg) is not int or pdg <= 0 for pdg in data['pdgs'])):
+                raise MadGraph5Error('Malformed internal-width metadata in %s' % path)
+            pdgs.update(data['pdgs'])
+        return pdgs
 
     def get_fnlo_forced_width_pids(self):
         """Return forced-resonance PDGs whose matrix-element width is zero.

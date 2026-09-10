@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare strict/product HwU files, optionally across W treatments or central scales.
+"""Compare strict/product HwU files across W treatments, decay masses or scales.
 
 Input files within one prediction must be disjoint charge/flavour samples,
 not repeated estimates of the same integral. Match the 81- or shared 27-point
@@ -317,30 +317,39 @@ def main():
     parser.add_argument('--product', nargs='+', required=True)
     parser.add_argument('--w-treatment', choices=['onshell', 'top-bw', 'all-bw'], default='onshell')
     parser.add_argument('--production-scale', choices=PRODUCTION_SCALES, default='core-w-ht-half')
+    parser.add_argument('--decay-bottom-mass', type=float, default=0.)
     parser.add_argument('--reference-strict', nargs='+', help='optional second matched S/Pi pair')
     parser.add_argument('--reference-product', nargs='+')
     parser.add_argument('--reference-w-treatment', choices=['onshell', 'top-bw', 'all-bw'],
                         default='onshell')
     parser.add_argument('--reference-production-scale', choices=PRODUCTION_SCALES,
                         help='defaults to the target production-scale choice')
+    parser.add_argument('--reference-decay-bottom-mass', type=float,
+                        help='defaults to the target decay bottom mass')
     parser.add_argument('--output', required=True)
     args = parser.parse_args()
     try:
         if bool(args.reference_strict) != bool(args.reference_product):
             raise ValueError('Supply both --reference-strict and --reference-product')
+        reference_mb = (args.decay_bottom_mass if args.reference_decay_bottom_mass is None
+                        else args.reference_decay_bottom_mass)
+        if any(not math.isfinite(mass) or mass < 0. for mass in (args.decay_bottom_mass, reference_mb)):
+            raise ValueError('Decay bottom masses must be finite and nonnegative')
         report = make_report(load_sum(args.strict), load_sum(args.product))
         report['inputs'] = dict(strict=args.strict, product=args.product)
         report['w_treatment'] = args.w_treatment
         report['production_scale'] = args.production_scale
+        report['decay_bottom_mass'] = args.decay_bottom_mass
         report['production_scale_definition'] = production_scale_definition(args.production_scale,
                                                                             args.w_treatment)
-        report['input_check_note'] = ('W treatment and central-scale labels are user declarations. '
+        report['input_check_note'] = ('W treatment, decay bottom mass and central-scale labels are user declarations. '
                                      'Check matching archived top widths, EW/PDF inputs, flavours, '
                                      'cuts and scale definitions; HwU weights do not encode these.')
         if args.reference_strict:
             reference_scale = args.reference_production_scale or args.production_scale
-            if (args.w_treatment, args.production_scale) == (args.reference_w_treatment, reference_scale):
-                raise ValueError('Reference must differ in W treatment or central-scale choice')
+            if (args.w_treatment, args.production_scale, args.decay_bottom_mass) == (
+                    args.reference_w_treatment, reference_scale, reference_mb):
+                raise ValueError('Reference must differ in W treatment, central-scale choice or decay bottom mass')
             target_paths = {str(Path(p).resolve()) for p in args.strict + args.product}
             reference_paths = {str(Path(p).resolve())
                                for p in args.reference_strict + args.reference_product}
@@ -348,6 +357,7 @@ def main():
                 raise ValueError('Do not reuse an input file between reference and target')
             reference = make_report(load_sum(args.reference_strict), load_sum(args.reference_product))
             reference.update(inputs=dict(strict=args.reference_strict, product=args.reference_product),
+                             decay_bottom_mass=reference_mb,
                              w_treatment=args.reference_w_treatment, production_scale=reference_scale,
                              production_scale_definition=production_scale_definition(
                                  reference_scale, args.reference_w_treatment))
@@ -358,7 +368,7 @@ def main():
             report['reference_comparison']['scale_definition_note'] = (
                 'The declared central-scale definitions match across these predictions.' if same_definition else
                 'The central-scale definitions differ. This comparison includes a scale-definition '
-                'effect, not just W-width effects. Interpret it separately from scale-factor envelopes.')
+                'effect, not just W-width or bottom-mass effects. Interpret it separately from scale-factor envelopes.')
         # Exclusive creation prevents silently replacing a comparison.
         with open(args.output, 'x') as stream:
             json.dump(report, stream, indent=2, allow_nan=False)

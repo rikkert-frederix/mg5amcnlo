@@ -1,6 +1,19 @@
 This directory contains the cards used by the MadGraph5_aMC@NLO
 fNLO fixed-order calculation.
 
+To retain 5FS production but give top-decay bottoms an on-shell mass, use
+`import model loop_sm-no_b_mass` followed by `set decay_bottom_mass 4.8`
+before generation. The supported fNLO top-decay export then adds
+DECAYMASS(5) to param_card.dat and decay_mass_scheme.json to this directory.
+MASS(5) remains zero for production, including bottom-initiated channels.
+The decay matrix elements, phase space and subtraction use DECAYMASS(5);
+the running coupling remains the production five-flavour coupling.
+Supply LO/NLO total top widths computed with that same decay bottom mass,
+alpha-s and W treatment. Zero/nonzero mass changes require a fresh export;
+do not set DECAYMASS(5) to zero in an already generated massive process.
+See FixedOrderAnalysis/ttw_product_study.md for the supported scope and
+the setup script's matching-mass declarations.
+
 Processes with on-shell decay chains additionally contain decay_card.dat.
 That card controls the physical widths, decay
 renormalization scales, and the production renormalization-scale momentum
@@ -80,3 +93,10 @@ are supported. DECAYED momenta and other dynamic-scale choices are rejected.
 Omitting this optional key, or using NONE, preserves native scale behaviour.
 The ttW study scripts select W_SYSTEM by default (core-w-ht-half); their
 core-ht-half option retains the native lepton-resolved diagnostic.
+
+BW exports also contain SubProcesses/P*/decay_internal_widths.json. These
+generated records keep colourless internal decay widths during launch-time
+parameter initialization, including a W that is forced on shell in another
+block. Actual NWA connectors are pole-free and coloured forced resonances
+remain widthless. Re-export older BW processes; the study setup requires
+this metadata to avoid silently zeroing top-decay W propagators in top-bw.
