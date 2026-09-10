@@ -88,6 +88,253 @@ fNLO exporter currently accepts one maximally QCD-like Born order and QCD
 corrections, so complete NLO QCD+EW is an external comparison or later
 extension, not a switch in the supplied scripts.
 
+## Frozen input benchmark and parameter uncertainties
+
+Use this benchmark for the main campaign and all six perturbative
+prescriptions. These are specified theoretical inputs, not a claim to use
+the latest measured central values. The top/W/Z masses follow the useful
+13 TeV reference of [Bevilacqua et al., Sec. 3](https://arxiv.org/pdf/2005.09427),
+while the PDFs are updated to NNPDF4.0. Reproducing that paper is a
+**separate matched validation configuration**, with its own PDFs, cuts,
+scales and width-variation convention; do not import its rounded widths
+into this benchmark.
+
+### Masses, couplings and beam inputs
+
+| Input | Main value and convention |
+|---|---|
+| Beams | unpolarized $pp$, $\sqrt{s}=13000$ GeV; `lpp1=lpp2=1`, `ebeam1=ebeam2=6500` GeV |
+| Top/antitop mass | $m_t=m_{\bar t}=172.5$ GeV, on-shell/pole mass in amplitudes, phase space and widths |
+| Production bottom mass | $m_b^{\rm production}=0$, five-flavour production including bottom PDFs |
+| Decay bottom mass | $m_b^{\rm decay}=0$ baseline; **4.8 GeV on shell** for the massive companion |
+| W mass | $M_W=80.385$ GeV, the same real model mass in all W treatments |
+| Z mass | $M_Z=91.1876$ GeV, also used in the weak-input relation |
+| Fermi constant | $G_F=1.1663787\times10^{-5}$ GeV$^{-2}$, exactly the `topDecay/width` normalization |
+| Electroweak coupling | real $G_\mu$ scheme; $\alpha_{G_\mu}^{-1}=132.2332297913$ (derived below), not $\alpha(0)^{-1}$ |
+| CKM | diagonal, $V_{ud}=V_{cs}=V_{tb}=1$, all off-diagonal entries zero; same top/antitop widths |
+| Other external fermions | production $u,d,s,c,b$, direct $e,\mu$ and neutrinos massless; no tau-decay contribution to the signal |
+| Spectator model inputs | $M_H=125$ GeV, $\Gamma_H=0.00407$ GeV, $\Gamma_Z=2.4952$ GeV, $m_\tau=1.777$ GeV, $\Gamma_\tau=0$; these do not enter the selected QCD-induced channels |
+
+Use `loop_sm-no_b_mass`, with on-shell mass renormalization and the
+five-flavour $\overline{\rm MS}$ strong coupling, including for massive
+decays. The production parton definition includes $g,u,d,s,c,b$ and their
+antiquarks, not top or photon PDFs. Keep the dominant QCD-induced Born
+order, $\alpha_s^2\alpha^6$ for the fully decayed final state, and its
+QCD corrections. No NLO EW, subleading EW Born channels, photon-induced
+contributions, parton shower, hadronization, MPI or detector effects are
+included. Restoring CKM mixing requires a compatible unrestricted model
+and fresh exports, not editing Wolfenstein parameters after restricted
+vertices have been removed.
+
+The model does **not** take $M_W$ as an independent input. Set
+
+$$
+\alpha_{G_\mu}=\frac{\sqrt{2}G_F M_W^2}{\pi}
+ \left(1-\frac{M_W^2}{M_Z^2}\right)=0.0075623956366973,
+\qquad \sin^2\theta_W=0.2228972225239182.
+$$
+
+Set the inverse electromagnetic coupling with `SMINPUTS(1)=132.2332297913`
+and the Fermi constant with `SMINPUTS(2)=1.1663787e-5`.
+Use `MASS(23)=91.1876` and `MASS(6)=172.5`, with `YUKAWA(6)=172.5`
+as well. Regenerate/check dependent parameters so that
+the printed `MASS(24)` and the model's internal $M_W$ both equal 80.385.
+Editing `MASS(24)` alone is insufficient. Keep `MASS(5)=YUKAWA(5)=0` in
+production; only a massive export gets `DECAYMASS(5)=4.8`. Retain the
+restriction's massless light-fermion/Yukawa entries and zero Wolfenstein
+parameters. These real masses with constant propagator widths define the
+benchmark; do not silently mix running-width mass conventions or switch
+to complex weak masses between the on-shell and BW samples.
+
+### PDFs and strong coupling
+
+Use **`NNPDF40_nlo_as_01180`, LHAPDF ID 331700, member 0**, with
+`DataVersion=1`. Members 1--100 provide the replica uncertainty.
+This is the NLO, five-flavour set; ID 331100 is NNLO and is not the study
+choice. Keep this same NLO PDF and coupling for LO, P, D, S, PiD and Pi.
+The nominal coupling is $\alpha_s(M_Z)=0.118$, but the supplied NLO
+LHAPDF interpolation, not independently initialized two-loop running, is
+authoritative in production, decay corrections and running top widths.
+The metadata's bottom/charm masses, 4.92/1.51 GeV, describe the PDF fit
+and thresholds: they are **not** the decay on-shell bottom mass and must
+not be changed in the mass scan.
+See the [official set metadata](https://lhapdfsets.web.cern.ch/current/NNPDF40_nlo_as_01180/NNPDF40_nlo_as_01180.info)
+and the [NNPDF4.0 analysis](https://arxiv.org/abs/2109.02653).
+
+The official metadata evaluated with LHAPDF 6.5.4 gives these coupling
+checkpoints (extra digits are for reproducibility, not physical precision):
+
+| Scale $Q$ [GeV] | $\alpha_s^{\rm PDF}(Q)$ |
+|---|---:|
+| $M_W=80.385$ | 0.1202908028622 |
+| $m_t/2=86.25$ | 0.1190016017860 |
+| $M_Z=91.1876$ | 0.1180021695134 |
+| $m_t=172.5$ | 0.1076703477820 |
+| $2m_t=345$ | 0.0983392832531 |
+
+`SMINPUTS(3)=0.1180021695134` is a matching record, not an instruction
+to override LHAPDF evolution. Require `pdlabel=lhapdf` and `lhaid=331700`;
+verify the generated executable's coupling against these checkpoints.
+The full NNPDF4.0 grids are not installed in the currently inspected local
+LHAPDF data directory: install/locate all 101 members before physical runs.
+Only the official coupling metadata was needed for the width calculation
+below. Do not fall back to bundled `nn23nlo` for this benchmark.
+
+### Fixed W width and matched top widths
+
+Use **$\Gamma_W^{\rm ref}=2.0976735621$ GeV** as one fixed external
+input in every prescription, W treatment, bottom-mass comparison and scale
+variation. It is the massless-fermion total width through NLO QCD,
+
+$$
+\Gamma_\ell=\frac{G_F M_W^3}{6\pi\sqrt{2}}
+ =0.2272733468713\ {\rm GeV},\qquad
+\Gamma_W^{\rm ref}=\Gamma_\ell
+ \left[3+6\left(1+\frac{\alpha_s^{\rm PDF}(M_W)}{\pi}\right)\right].
+$$
+
+The sum includes three leptonic families and the unitary CKM hadronic
+sum, treating their final-state masses as zero. The LO total,
+$9\Gamma_\ell=2.0454601218$ GeV, is a diagnostic, **not** the W width
+to substitute in LO/P samples. The same external W-width convention
+at LO and NLO is also used in the
+[ttW reference](https://arxiv.org/pdf/2005.09427). No QCD correction or
+independent scale axis is added to the leptonic W numerator.
+For an on-shell W, $B_e=B_\mu=0.1083454313305$; this supports the
+inclusive branching check but is not an extra factor for BW currents.
+
+In `onshell`, Ws have zero propagator width in their forced on-shell
+matrix-element connectors, but every W decay node still has the **positive
+physical** $\Gamma_W^{\rm ref}$ normalization. In `top-bw`/`all-bw`,
+internal Ws use that same nonzero fixed propagator width. Tops always
+remain on shell with widthless connectors; their physical total widths
+enter the normalized decay densities, not a top Breit--Wigner line shape.
+
+The matched widths at $\mu_R^t=\mu_R^{\bar t}=172.5$ GeV are:
+
+| $m_b^{\rm decay}$ [GeV] | Top-width W prescription | $\Gamma_{t,0}$ [GeV] | $\Gamma_t^{\rm NLO}$ [GeV] |
+|---:|---|---:|---:|
+| 0 | on-shell W (`onshell`) | 1.4806285092 | 1.3535485212 |
+| 0 | BW W (`top-bw`, `all-bw`) | 1.4576010900 | 1.3324848297 |
+| 4.8 | on-shell W (`onshell`) | 1.4765338515 | 1.3513387258 |
+| 4.8 | BW W (`top-bw`, `all-bw`) | 1.4535389808 | 1.3302875304 |
+
+These are total $t\to bW^{(*)}+X$ normalization widths, **not** one
+leptonic partial width. They use $|V_{tb}|=1$, nf=5, the above weak inputs
+and PDF coupling, with no EW or NNLO top-width correction. Both BW modes
+use the same top-width row. The W input is held fixed in defining the
+top LO/NLO expansion; `Gamma_t_NLO` means the total
+$\Gamma_{t,0}+\Gamma_{t,1}$, not the correction alone.
+
+The values were calculated with sibling `topDecay/width` at commit
+`f5e73bc68caddf926a59998e48e7aa75e340decb`, whose exact-mass NLO coefficient
+and fixed-W-width convolution follow
+[Campbell and Ellis, Eqs. (6)--(7)](https://arxiv.org/abs/1204.1513).
+To reproduce them, build the two calculators in `topDecay/width` and run:
+
+```sh
+./w_decay_width 80.385 80.385 5 0.118
+./top_decay_width 172.5 80.385 0.0 172.5 0.0 0.118 1.0 5
+./top_decay_width 172.5 80.385 4.8 172.5 0.0 0.118 1.0 5
+./top_decay_width 172.5 80.385 0.0 172.5 2.097673562052797 0.118 1.0 5
+./top_decay_width 172.5 80.385 4.8 172.5 2.097673562052797 0.118 1.0 5
+```
+
+**The raw CLI NLO outputs need one coupling-matching step.** These
+calculators solve their own running-coupling equation; even supplying the
+same rounded $\alpha_s(M_Z)$ does not exactly reproduce the PDF table.
+For each output form
+
+$$
+C_X=\frac{\Delta\Gamma^{\rm CLI}_{X,\rm QCD}}
+                  {\alpha_s^{\rm CLI}(\mu_R)},\qquad
+\Gamma_X^{\rm NLO,PDF}=\Gamma_{X,0}
+                  +C_X\alpha_s^{\rm PDF}(\mu_R).
+$$
+
+Apply this first to the W at $\mu_R=M_W$, then pass the resulting
+$\Gamma_W^{\rm ref}$ to the BW top calculation and match its QCD
+correction at $\mu_R=m_t$. This is exact for these NLO coefficients;
+do not rescale the entire LO+NLO width. Obtain the coupling with
+`lhapdf.mkPDF('NNPDF40_nlo_as_01180', 0).alphasQ(Q)` in an installed
+LHAPDF Python binding, or the equivalent C++ API. The checkpoints were
+obtained with `LHAPDF::mkAlphaS` from the official `.info` file; verify
+the installed member gives the same values before production.
+
+For each signed decay-scale factor use `AUTO`, equivalent here to
+
+$$
+\Gamma_t^{\rm NLO}(\xi m_t)=\Gamma_{t,0}
++\big[\Gamma_t^{\rm NLO}(m_t)-\Gamma_{t,0}\big]
+ \frac{\alpha_s^{\rm PDF}(\xi m_t)}{\alpha_s^{\rm PDF}(m_t)}.
+$$
+
+The top and antitop evaluate this function independently. $\Gamma_{t,0}$
+is scale-independent. LO/P use LO top denominators; the NLO-decay
+prescriptions use the consistent additive or multiplicative width treatment
+defined below. Keep both entries in every decay card. For provenance,
+`param_card.dat` may retain the matching central NLO top width; runtime
+forced-width handling makes its matrix-element connector widthless.
+Do not replace the physical decay-card widths by zero or a measured width.
+
+### Scale choices and the bounded parameter campaign
+
+The central production scale is the dynamic **W-system CORE $H_T/2$**
+defined in the scale section below, for both $\mu_R^P$ and $\mu_F^P$.
+Use actual reconstructed associated-W virtuality in BW modes.
+The decay scales are independently centered at $m_t=172.5$ GeV.
+Keep all 81 factor-two scale points and display the 63-point main envelope;
+PDF errors are separate, not additional envelope points.
+The Ellis--Sexton scale follows the production reference in production
+sectors and the local decay reference in decay sectors, with
+`qes_over_ref=1`. It is a subtraction/virtual convention, not a fifth
+physical uncertainty axis; verify its cancellation in technical tests.
+
+| Comparison | Inputs to change; everything else remains matched |
+|---|---|
+| Required W/mass robustness | massless S/Pi in all three W treatments; $m_b^{\rm decay}=0$ versus 4.8 GeV in `onshell` and `all-bw`, adding `top-bw` if needed; use the applicable width row and keep production 5FS |
+| Central-scale diagnostics | `all-bw` native lepton-resolved CORE $H_T/2$; selected fixed-scale S/Pi with $\mu_R^P=\mu_F^P=m_t+M_W/2=212.6925$ GeV |
+| PDF uncertainty | 100 NNPDF4.0 replicas at central scales; retain charge/flavour correlations in rates, shapes, acceptances and Pi/S |
+| PDF-family cross-check | selected S/Pi with `CT18NLO` (ID 14400) and `MSHT20nlo_as118` (ID 27100), member 0; match the top NLO correction to each set's coupling |
+| Strong-coupling sensitivity | selected S/Pi with `NNPDF40_nlo_as_01170` (ID 333900) and `NNPDF40_nlo_as_01190` (ID 334100); rerun with matched decay corrections/widths |
+| Top-mass sensitivity | selected S/Pi at $m_t=171.5,173.5$ GeV, with new top widths, matching top Yukawa and decay-scale reference; this $\pm1$ GeV scan is not a mass-measurement error |
+| Massive-decay mass sensitivity | if resolved at 4.8 GeV, repeat selected results at $m_b^{\rm decay}=4.6,5.0$ GeV with recalculated top widths; do not alter PDF thresholds |
+| Run-3 energy | selected validated S/Pi results at $\sqrt{s}=13600$ GeV, 6800 GeV per beam; same masses, widths and scale definitions |
+
+The alternative PDF IDs are recorded in the
+[official LHAPDF set index](https://www.lhapdf.org/pdfsets.html).
+Use the [LHAPDF uncertainty prescription](https://www.lhapdf.org/classLHAPDF_1_1PDFSet.html)
+at one standard deviation for PDF errors. Form each derived observable
+member by member before calculating its uncertainty. Keep the member-0
+prediction as nominal and record any difference from the replica mean for
+nonlinear observables. CT18's Hessian errors, if evaluated, are 90% CL and
+need conversion to the common 68.27% level; MSHT20 provides 68% CL errors.
+See the official [CT18NLO metadata](https://lhapdfsets.web.cern.ch/current/CT18NLO/CT18NLO.info)
+and [MSHT20 metadata](https://lhapdfsets.web.cern.ch/current/MSHT20nlo_as118/MSHT20nlo_as118.info).
+Do not turn the PDF-family spread into another independent Gaussian error.
+The supplied scale postprocessor leaves PDF weights in HwU but does not
+calculate PDF uncertainties: member-wise PDF reduction remains a required
+analysis step before publication.
+
+For a PDF-only replica scan, the coupling is common and top widths do not
+change. For a change of PDF family or $\alpha_s$, recompute the matched
+top NLO correction using that set's coupling; a luminosity-only reweight
+is not a full $\alpha_s$ variation. Keep $\Gamma_W^{\rm ref}$ fixed as
+the chosen external input also in these scans. Its initial NLO calculation
+defines the reference value, not a hidden fifth scale variation.
+Do not independently scan $\Gamma_t$ in this NWA study: varying a
+normalization denominator without its decay numerator would spoil the
+branching cancellation. A finite-top-width/off-shell uncertainty requires
+the separate matched calculation described below.
+
+Freeze the existing central fiducial definition as well: direct trileptons,
+anti-$k_T$ E-scheme jets with $R=0.4$, accepted jets with $p_T\geq25$ GeV
+and $|\eta|<2.5$, the specified lepton/Z-veto and overlap cuts, one-b and
+nested two-b regions, and no missing-transverse-momentum cut. The existing
+radius/b-threshold alternatives are acceptance diagnostics, not new
+coupling or PDF inputs. Do not change cuts during a mass, W-width or scale
+comparison.
+
 ## Definitions and comparisons that isolate the physics
 
 Let $P_0,P_1$ be the Born production density and its NLO correction, and let
@@ -267,7 +514,7 @@ changing selected masses inside a full off-shell amplitude. Call it
 are no decay PDFs, and a nonzero final-state mass does not demand
 four-flavour running of alpha-s.
 
-Use a specified on-shell bottom mass, for example 4.8 GeV as a benchmark
+Use the specified on-shell bottom mass of 4.8 GeV for the benchmark
 (not an MSbar mass inserted without conversion), in the decay Born, real
 and virtual amplitudes, phase space, and massive FKS mappings/subtraction.
 Use the same five-flavour alpha-s definition as production, evaluated at
@@ -676,37 +923,49 @@ actual NWA connector remains pole-free, and forced coloured resonances
 remain widthless in matrix elements. The setup checks and hashes these
 records; it rejects older BW exports without them.
 
-Before configuring physical runs, calculate the top total width at LO/NLO
-in precisely the chosen model/PDF alpha-s setup, with on-shell Ws for
-`onshell` and finite-width Ws for both BW modes. Archive that calculation.
-Fresh exports set LO and NLO width entries equal by
-default: these placeholders must be replaced. The utility therefore
-requires the two numerical widths and a description of their source:
+Before configuring physical runs, prepare `Cards/param_card.dat` with the
+frozen masses, $G_F$ and derived electroweak coupling above; check the
+dependent W mass, set `DECAY(24)=2.097673562052797`, and retain a record of
+the matching central NLO top width. The setup reads these parameters but
+**does not set the weak inputs or masses for you**. This step is required
+even for fresh exports, whose defaults differ from the benchmark.
+
+Use the matched top-width row above with on-shell Ws for `onshell` and
+finite-width Ws for both BW modes. Recalculate for any changed physical
+input or coupling. Archive that calculation and its PDF-coupling matching.
+Fresh exports set LO and NLO width entries equal by default: these
+placeholders must be replaced. For the **massless-decay on-shell-W
+benchmark**, configure S with the actual numerical inputs:
 
 ```sh
 python3 Template/fNLO/FixedOrderAnalysis/ttw_product_setup.py configure \
   --process-dir /absolute/new/TTWplus_onshell_eemu --variant S \
   --w-treatment onshell --top-width-w-treatment onshell \
-  --top-width-lo <matched-LO-width> --top-width-nlo <matched-NLO-width> \
-  --width-source '<width calculation and matching parameter/PDF record>' \
-  --pdf-id <installed-NLO-LHAPDF-central-ID> --seed 31701
+  --decay-bottom-mass 0 --top-width-bottom-mass 0 \
+  --top-width-lo 1.4806285092 --top-width-nlo 1.3535485212 \
+  --width-source 'ttw_product_study.md benchmark 2026-09-10; nf=5' \
+  --pdf-id 331700 --ecm 13000 --seed 31701
 ```
 
 For `top-bw`/`all-bw`, select the corresponding export and W treatment,
-use `--top-width-w-treatment bw`, and supply the recalculated finite-W
-LO/NLO top widths. The mandatory width-convention declaration guards
+use `--top-width-w-treatment bw`, and supply
+`--top-width-lo 1.4576010900 --top-width-nlo 1.3324848297` for massless
+decays. For the 4.8 GeV massive BW export use instead
+`--top-width-lo 1.4535389808 --top-width-nlo 1.3302875304`, together with
+both mass declarations set to 4.8. The massive on-shell export takes the
+remaining row of the table. The mandatory width-convention declaration guards
 against accidental on-shell/BW mixing; the numerical/source consistency
 still requires the archived width calculation, not just a CLI label.
 
-Replace the angle-bracket placeholders; they are deliberately not nominal
-physics numbers. The W width and mass parameters are read from the generated
-parameter card. With no `--pdf-id`, the bundled `nn23nlo` set is used as a
-pilot fallback, not silently substituted for a publication PDF choice.
+Replace the illustrative process paths and archive the width calculation
+with the generated card snapshots. Always pass `--pdf-id 331700` for the
+main benchmark after installing the PDF set. Omitting it selects bundled
+`nn23nlo`, which is only a software-pilot fallback, not this physics setup.
 The default is `--production-scale core-w-ht-half`, including BW modes;
 use `--production-scale core-ht-half` for the native dynamic comparison and
 `--production-scale fixed` for the fixed-scale cross-check. A single
 PDF family and its alpha-s must be used for all six comparisons and the
-width calculation; choose a modern installed NLO set for production.
+width calculation; use the explicitly selected NNPDF4.0 NLO set above.
 
 The utility defaults to `--decay-scales separate`: 81 reweights when NLO
 top decays are enabled. `--decay-scales shared` restores 27. Production
@@ -862,7 +1121,12 @@ production–decay corrections do not substitute for one another.
 
 ## Work packages, convergence and stopping decisions
 
-1. **Correctness and pilot (first allocation).** Validate widths and
+1. **Correctness and pilot (first allocation).** Freeze the benchmark
+   cards, install/verify NNPDF4.0 NLO member 0 and all 100 replicas, and
+   check the derived W mass and PDF-coupling checkpoints. Record both
+   source commits, compiler/LHAPDF versions, PDF DataVersion and metadata
+   hash, all mass/weak/width inputs and the width-calculator outputs before
+   launching physical samples. Validate widths and
    inclusive branching normalization at all decay-scale points; establish
    $S=P+D-LO$; check virtual poles and subtraction for ttW. For each BW
    treatment verify the internal W retains its physical width, full virtuality
@@ -893,6 +1157,11 @@ production–decay corrections do not substitute for one another.
    virtual poles and soft subtraction, and the small-mass limit of IR-safe
    observables with matched widths. Compare the width calculator's nf=5
    alpha-s at all decay-scale points against the generator's coupling.
+   Apply the explicit coefficient-level coupling matching above rather
+   than assuming the standalone running exactly equals LHAPDF. Reduce the
+   PDF replicas member by member for the main observables and keep their
+   uncertainty separate from scale bands. Run the selected PDF-family,
+   alpha-s and mass-sensitivity checks after the main S/Pi pilot converges.
 4. **Attribution and references.** If a statistically resolved shift is
    found, spend further time on the eight stage subsets and a matched
    off-shell/ttbar reference. If it is small throughout, quantify that bound
@@ -913,6 +1182,19 @@ two-b acceptance and one representative radiation-sensitive distribution,
 with all 81 scale points accounted for.
 
 ## Current validation record
+
+The frozen-input calculation on 10 September 2026 produced the four
+physical LO/NLO top-width pairs and fixed W width tabulated above. It used
+the committed `topDecay/width` sources and LHAPDF 6.5.4's interpolation of
+the official NNPDF4.0 NLO metadata (`DataVersion=1`), whose SHA-256 is
+`9362949bda8c0ae1d6ba37542ee31ddbae010369d126ac45ab68ce8b306212a1`.
+The derived electroweak inputs reconstruct $M_W=80.385$ GeV, and the W
+total agrees with the direct leptonic-plus-hadronic formula. Both standalone
+width test programs passed again with this source revision. These are
+inclusive width calculations, not a new ttW integration. The full PDF
+grids and generated matrix-element normalization still require the
+preflight checks specified above; earlier synthetic-width smoke samples
+must not be relabelled as physical benchmark predictions.
 
 Checked on 10 September 2026: 41 focused tests and all 38 decay-generation
 regressions passed, as did both standalone `topDecay/width` test programs.
