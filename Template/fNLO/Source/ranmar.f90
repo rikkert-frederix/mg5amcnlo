@@ -6,6 +6,11 @@ module ranmar_module
 
   integer, parameter :: ranmar_real_kind = selected_real_kind(15, 307)
   integer, parameter :: ranmar_seed_kind = selected_int_kind(18)
+  integer(kind=ranmar_seed_kind), parameter :: seed_kl_count = 30082_ranmar_seed_kind
+  integer(kind=ranmar_seed_kind), parameter :: seed_pair_count = 31329_ranmar_seed_kind * seed_kl_count
+  ! Coprime to seed_pair_count: translating the flattened pair is a
+  ! permutation, with no repeat for a fixed worker before a full cycle.
+  integer(kind=ranmar_seed_kind), parameter :: stage_stride = 32452843_ranmar_seed_kind
 
   real(kind=ranmar_real_kind) :: random_values(97) = 0.0_ranmar_real_kind
   real(kind=ranmar_real_kind) :: carry = 0.0_ranmar_real_kind
@@ -32,6 +37,8 @@ contains
     integer :: ioffset
     integer :: joffset
     integer(kind=ranmar_seed_kind) :: iseed
+    integer(kind=ranmar_seed_kind) :: scaled_seed, split_offset, seed_ij, seed_kl
+    integer(kind=ranmar_seed_kind) :: stage, pair_index
 
     if (ntuple_needs_initialization) then
       ntuple_needs_initialization = .false.
@@ -43,21 +50,30 @@ contains
       base_seed_common = iseed
       call get_moffset(joffset)
 
-      joffset = joffset * 3157
-      iseed = iseed * 31300_ranmar_seed_kind
-      ntuple_ij = 1802 + jconfig + int(mod(iseed, 30081_ranmar_seed_kind))
-      ntuple_kl = 9373 + int(iseed / 30081_ranmar_seed_kind) + ioffset + joffset
+      if (iseed < 0 .or. iseed > huge(iseed) / 31300_ranmar_seed_kind) then
+        error stop 'RANMAR base seed is outside the supported integer range'
+      end if
+      ! Widen BEFORE multiplying or adding. Large valid run/split seeds
+      ! previously overflowed default-integer intermediates.
+      split_offset = int(joffset, ranmar_seed_kind) * 3157_ranmar_seed_kind
+      scaled_seed = iseed * 31300_ranmar_seed_kind
+      seed_ij = 1802_ranmar_seed_kind + int(jconfig, ranmar_seed_kind) &
+                + mod(scaled_seed, 30081_ranmar_seed_kind)
+      seed_kl = 9373_ranmar_seed_kind + scaled_seed / 30081_ranmar_seed_kind &
+                + int(ioffset, ranmar_seed_kind) + split_offset
+      if (seed_ij < 0 .or. seed_kl < 0) error stop 'RANMAR negative legacy seed offset'
+      ! Preserve the historical sequence when the stage is zero or absent.
+      if (seed_ij > 31328) seed_ij = modulo(seed_ij - 1, 31328_ranmar_seed_kind) + 1
+      if (seed_kl > 30081) seed_kl = modulo(seed_kl - 1, 30081_ranmar_seed_kind) + 1
+      call get_refinement_stage(stage)
+      pair_index = modulo(seed_ij * seed_kl_count + seed_kl + stage * stage_stride, seed_pair_count)
+      ntuple_ij = int(pair_index / seed_kl_count)
+      ntuple_kl = int(modulo(pair_index, seed_kl_count))
 
-      write (*, '(a,i6,a3,i6,a3,i6)') &
-           'Using random seed offsets:', jconfig, ' , ', ioffset, ' , ', joffset
-      write (*, *) ' with seed', iseed / 31300_ranmar_seed_kind
-
-      do while (ntuple_ij > 31328)
-        ntuple_ij = ntuple_ij - 31328
-      end do
-      do while (ntuple_kl > 30081)
-        ntuple_kl = ntuple_kl - 30081
-      end do
+      write (*, '(a,i0,a3,i0,a3,i0)') &
+           'Using random seed offsets:', jconfig, ' , ', ioffset, ' , ', split_offset
+      write (*, *) ' with seed', iseed
+      write (*, '(a,i0,a,i0)') 'Ranmar stream namespace refinement-v1 stage ', stage, ' split ', joffset
       call rmarin(ntuple_ij, ntuple_kl)
     end if
 
@@ -67,6 +83,26 @@ contains
     end do
     x = a + x * (b - a)
   end subroutine ntuple
+
+
+  subroutine get_refinement_stage(stage)
+    integer(kind=ranmar_seed_kind), intent(out) :: stage
+    character(len=64) :: value
+    integer :: length, status, i
+
+    call get_environment_variable('MG5AMC_REFINEMENT_STAGE', value, length, status)
+    stage = 0
+    if (status == 1) return ! Standalone checks retain the historical stream.
+    if (status /= 0 .or. length == 0 .or. length > len(value)) then
+      error stop 'Invalid MG5AMC_REFINEMENT_STAGE'
+    end if
+    do i = 1, length
+      if (value(i:i) < '0' .or. value(i:i) > '9') error stop 'Invalid MG5AMC_REFINEMENT_STAGE'
+    end do
+    read(value, *, iostat=status) stage
+    if (status /= 0) error stop 'Invalid MG5AMC_REFINEMENT_STAGE'
+    if (stage < 0 .or. stage >= seed_pair_count) error stop 'RANMAR refinement stage exceeds its namespace'
+  end subroutine get_refinement_stage
 
 
   subroutine get_base(iseed)

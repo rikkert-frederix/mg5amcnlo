@@ -49,6 +49,15 @@ run_mode=$2
 runnumber=$3
 integration_step=$4
 
+# A fresh executable must not reuse the samples that trained its input grid.
+# Keep randinit unchanged: the stage is a separate RNG namespace, not a new
+# physical/run-card seed. This also survives execution on a cluster worker.
+if [[ ! "$integration_step" =~ ^[0-9]+$ ]] ; then
+    echo "Invalid fixed-order refinement stage: $integration_step" >&2
+    exit 1
+fi
+export MG5AMC_REFINEMENT_STAGE="$integration_step"
+
 FO_EXTRAPATHS=
 export LD_LIBRARY_PATH=$FO_EXTRAPATHS:$LD_LIBRARY_PATH
 export DYLD_LIBRARY_PATH=$FO_EXTRAPATHS:$DYLD_LIBRARY_PATH
@@ -116,6 +125,9 @@ TAGTAGTAGTAGTAGTAGTAG for i in 1 ; do
     link1up leshouche_info.dat
     link1up OLE_order.olc
     link1up param_card.dat
+
+    # Preserve the draw count and split/configuration inputs for every stage.
+    cp -f input_app.txt input_app_MINT$integration_step.txt || exit 1
     
     
     T="$(date +%s)"
