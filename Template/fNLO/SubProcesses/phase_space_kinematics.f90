@@ -216,16 +216,35 @@ contains
 !     MA2 AND MB2 ARE THE MASS SQUARED OF THE FINAL STATE PARTICLES
 !     2-D PHASE SPACE = .5*PI*SQRT(1.,MA2/S^2,MB2/S^2)*(D(OMEGA)/4PI)
 !****************************************************************************
-    double precision MA2, MB2, S, tiny, tmp, rat
+    double precision MA2, MB2, S, tiny, tmp, rat, threshold
     parameter(tiny=1.d-8)
 !
-    tmp = S**2 + MA2**2 + MB2**2 - 2d0*S*MA2 - 2d0*MA2*MB2 - 2d0*S*MB2
-    if (tmp .le. 0.d0) then
+    if (ma2 == 0d0) then
+      tmp = (s-mb2)**2
+    else if (mb2 == 0d0) then
+      tmp = (s-ma2)**2
+    else if (ma2 > 0d0 .and. mb2 > 0d0) then
+      ! Avoid cancellation between O(S**2) terms near a physical threshold.
+      ! The factored form also preserves the small positive phase-space
+      ! volume which the expanded polynomial can round to zero or negative.
+      tmp = (s-(sqrt(ma2)+sqrt(mb2))**2)* &
+            (s-(sqrt(ma2)-sqrt(mb2))**2)
+    else
+      ! Retain the general polynomial for spacelike daughter invariants.
+      tmp = S**2 + MA2**2 + MB2**2 - 2d0*S*MA2 - 2d0*MA2*MB2 - 2d0*S*MB2
+    end if
+    ! An exact zero is a valid boundary, including S=MA2=MB2=0.
+    ! Only negative values need a roundoff/threshold check.
+    if (tmp .lt. 0.d0) then
       if (ma2 .lt. 0.d0 .or. mb2 .lt. 0.d0) then
         write (6, *) 'Error #1 in function phase_space_lambda:', s, ma2, mb2
         stop
       end if
-      rat = 1 - (sqrt(ma2) + sqrt(mb2))/s
+      ! S and the daughter inputs are invariant masses squared.  Compare
+      ! like dimensions, independent of the energy units.  For tmp<0 this
+      ! denominator cannot vanish with nonnegative daughter masses.
+      threshold = (sqrt(ma2) + sqrt(mb2))**2
+      rat = (s - threshold)/max(abs(s), threshold)
       if (rat .gt. -tiny) then
         tmp = 0.d0
       else
