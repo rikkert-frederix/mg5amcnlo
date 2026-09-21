@@ -22,6 +22,7 @@ module top_decay_virtual_dispatch
   public :: tdv_evaluate_two_body_top_w
   public :: tdv_evaluate_three_body_top
   public :: tdv_madloop_required
+  public :: tdv_validation_precision
   public :: tdv_validate_against_madloop
 
 contains
@@ -119,6 +120,20 @@ contains
     tdv_madloop_required = validated_point_count(contribution) < &
          tdv_required_validation_points
   end function tdv_madloop_required
+
+
+  double precision function tdv_validation_precision(requested)
+    double precision, intent(in) :: requested
+
+    ! A production integration tolerance (normally 1d-3) cannot certify
+    ! the independent density comparison at 1d-8. Ask MadLoop to rescue
+    ! the validation evaluations at a tighter precision, without changing
+    ! either the comparison tolerance or nonanalytic production requests.
+    tdv_validation_precision = validation_tolerance*1d-2
+    if (requested > 0d0) then
+      tdv_validation_precision = min(requested, tdv_validation_precision)
+    end if
+  end function tdv_validation_precision
 
 
   subroutine tdv_validate_against_madloop(contribution, momenta, &

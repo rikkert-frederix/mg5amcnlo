@@ -228,6 +228,7 @@ class SpinDensityExporter(object):
         return [
             "INCLUDE 'coupl.inc'",
             'LOGICAL TDV_ANALYTIC_AVAILABLE,TDV_NEEDS_MADLOOP',
+            'REAL*8 TDV_PRECISION_ASKED',
             'REAL*8 TDV_VALIDATION_P(0:3,4)',
             'COMPLEX*16 TDV_ANALYTIC_RHO(3,%d,%d)' % (
                 open_size, open_size)]
@@ -275,8 +276,11 @@ class SpinDensityExporter(object):
             'TDV_NEEDS_MADLOOP=TDV_MADLOOP_REQUIRED(%d,' % contribution,
             '     $ TDV_ANALYTIC_AVAILABLE)',
             'IF (TDV_NEEDS_MADLOOP) THEN',
+            '  TDV_PRECISION_ASKED=%s' % precision_asked,
+            '  IF (TDV_ANALYTIC_AVAILABLE) TDV_PRECISION_ASKED=',
+            '     $ TDV_VALIDATION_PRECISION(%s)' % precision_asked,
             '  CALL %s(SDM_INSERTION_P,SDM_INSERTION_RHO,%s,' % (
-                variant['fortran_name'], precision_asked),
+                variant['fortran_name'], 'TDV_PRECISION_ASKED'),
             '     $ SDM_PRECISION,SDM_RET_CODE)',
             '  IF (TDV_ANALYTIC_AVAILABLE) THEN',
             '    CALL TDV_VALIDATE_AGAINST_MADLOOP(%d,' % contribution,

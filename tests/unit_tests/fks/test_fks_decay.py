@@ -2419,6 +2419,10 @@ class TestFKSDecayChains(unittest.TestCase):
                     'FNLOC%d_SLOOPMATRIXHEL_THRES' % contribution,
                     density_source)
                 self.assertIn('COMPLEX*16 RHO(3,NOPEN,NOPEN)',
+            self.assertIn('TDV_VALIDATION_PRECISION(PREC_ASKED)',
+                          flat_contractions)
+            self.assertIn('SDM_INSERTION_RHO,TDV_PRECISION_ASKED,',
+                          flat_contractions)
                               density_source)
                 self.assertIn(
                     'VALUE=0.5D0*(RHO(K,A,B)+DCONJG(RHO(K,B,A)))',

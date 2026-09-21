@@ -4266,6 +4266,7 @@ C     per-helicity ABI deterministic by assigning that sum to one bin.
                 '     $ TDV_EVALUATE_TWO_BODY_TOP_W,',
                 '     $ TDV_EVALUATE_THREE_BODY_TOP,',
                 '     $ TDV_MADLOOP_REQUIRED,',
+                '     $ TDV_VALIDATION_PRECISION,',
                 '     $ TDV_VALIDATE_AGAINST_MADLOOP'])
         source.extend([
             'IMPLICIT NONE',
