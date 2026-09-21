@@ -14,7 +14,8 @@ module nlo_decay_kinematics
        store_factorized_embedded_momenta, &
        fetch_factorized_embedded_momenta, &
        store_factorized_base_measure, compose_factorized_base_measure
-  use decay_chain_metadata, only: has_decay_chain_metadata
+  use decay_chain_metadata, only: has_decay_chain_metadata, &
+       canonical_born_context => born_context, leaf_visible_leg
   use decay_chain_kinematics, only: generate_canonical_decay_node_rest
   use decay_chain_parameters, only: decay_physical_width
   use nlo_decay_metadata, only: initialize_nlo_decay_metadata, &
@@ -57,6 +58,7 @@ module nlo_decay_kinematics
 
   public :: initialize_nlo_decay_kinematics
   public :: nlo_decay_minimum_production_mass
+  public :: nlo_decay_born_topology_order
   public :: nlo_decay_production_mass
   public :: get_nlo_decay_production_momenta
   public :: fill_nlo_decay_born_masses
@@ -504,14 +506,57 @@ contains
     integer, intent(inout) :: index
     logical, intent(out) :: pass
     integer :: child_count, child, child_kind, identifier
-    integer :: leg, final_count, target
+    integer :: leg, final_count, target, order(nexternal), final_index
     double precision :: child_masses(nexternal)
     double precision :: rest_momenta(0:3, nexternal)
     double precision :: local_jacobian, local_weight
     type(factorized_measure_state) :: decay_measure
 
+  subroutine nlo_decay_born_topology_order(order)
+    ! Map canonical [parent, topology children] to local Born leg numbers.
+    ! Bundled Born visible-leg IDs have already been aligned by the exporter;
+    ! use those identities, not PDGs (which need not be unique).
+    integer, intent(out) :: order(:)
+    integer :: context, node, child, leg, kind, target, count, matches
+    logical :: used(size(order))
+
+    call initialize_nlo_decay_kinematics()
+    context = nlo_decay_born_context()
+    node = nlo_decay_corrected_node()
+    count = nlo_decay_local_count(context)
+    if (.not. has_decay_chain_metadata() .or. size(order) < count .or. &
+        count /= nlo_decay_node_child_count(node) + 1) then
+      call fail_kinematics('a Born topology permutation has invalid shape')
+    end if
+    order = 0
+    used = .false.
+    do child = 0, count - 1
+      kind = nlo_decay_node_target
+      target = node
+      if (child > 0) then
+        target = nlo_decay_node_child_id(node, child)
+        if (nlo_decay_node_child_kind(node, child) == nlo_decay_leaf_child) then
+          kind = nlo_decay_leg_target
+          target = leaf_visible_leg(canonical_born_context(), target)
+        end if
+      end if
+      matches = 0
+      do leg = 1, count
+        if (nlo_decay_local_is_final(context, leg) .neqv. (child > 0)) cycle
+        if (nlo_decay_local_target_kind(context, leg) /= kind .or. &
+            nlo_decay_local_target_id(context, leg) /= target) cycle
+        matches = matches + 1
+        order(child + 1) = leg
+      end do
+      if (matches /= 1) call fail_kinematics('a Born topology target is ambiguous')
+      if (used(order(child + 1))) call fail_kinematics('a Born topology target is repeated')
+      used(order(child + 1)) = .true.
+    end do
+  end subroutine nlo_decay_born_topology_order
+
+
     node_random_start(node) = index
-    if (node == nlo_decay_corrected_node()) then
+    if (node == nlo_decay_corrected_node() .and. .not. has_decay_chain_metadata()) then
       final_count = 0
       do leg = 1, nlo_decay_local_count(context)
         if (.not. nlo_decay_local_is_final(context, leg)) cycle
@@ -557,11 +602,23 @@ contains
     call store_factorized_base_measure(node, decay_measure)
     index = index + 3*child_count - 4
 
-    if (node == nlo_decay_corrected_node()) then
+    if (node == nlo_decay_corrected_node() .and. .not. has_decay_chain_metadata()) then
       do leg = 1, nlo_decay_local_count(context)
         if (.not. nlo_decay_local_is_final(context, leg)) cycle
         if (nlo_decay_local_target_kind(context, leg) /= &
             nlo_decay_node_target) cycle
+    if (node == nlo_decay_corrected_node() .and. has_decay_chain_metadata()) then
+      call nlo_decay_born_topology_order(order)
+      final_index = 0
+      do leg = 1, nlo_decay_local_count(context)
+        if (.not. nlo_decay_local_is_final(context, leg)) cycle
+        final_index = final_index + 1
+        do child = 1, child_count
+          if (order(child + 1) == leg) &
+               node_rest_storage(:, final_index, node) = rest_momenta(:, child)
+        end do
+      end do
+    end if
         target = nlo_decay_local_target_id(context, leg)
         call sample_nlo_decay_node(context, target, x, index, pass)
         if (.not. pass) return

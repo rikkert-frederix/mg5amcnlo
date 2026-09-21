@@ -288,7 +288,7 @@ contains
 
 
   subroutine require_multiplicative_born_alignment( &
-       workspace, component_position, event_slot)
+       workspace, component_position, event_slot, current_leg_order)
     ! A decay correction is generated through its dedicated NLO context,
     ! whereas the reusable Born density and B snapshot are generated through
     ! the production decay tree.  They must describe the identical local
@@ -297,9 +297,11 @@ contains
     ! but destroys local cancellation in differential observables.
     type(multiplicative_nlo_workspace), intent(in) :: workspace
     integer, intent(in) :: component_position, event_slot
+    integer, intent(in), optional :: current_leg_order(:)
     type(factorized_branch_snapshot) :: current
     double precision :: momentum_scale, tolerance
     double precision :: jacobian_tolerance, phase_space_tolerance
+    integer :: leg, block_size
 
     call validate_component_and_branch( &
          workspace, component_position, spin_density_bornlike_branch)
@@ -313,6 +315,20 @@ contains
     call validate_multiplicative_snapshot( &
          workspace, component_position, spin_density_bornlike_branch, &
          current)
+    ! The saved B block uses topology order; an FKS-local Born process can
+    ! have a different leg order. Relabel the temporary comparison only:
+    ! the actual local block must retain the matrix-element provider's order.
+    if (present(current_leg_order)) then
+      block_size = current%block_count
+      if (size(current_leg_order) < block_size) &
+           call fail_multiplicative_nlo('a Born alignment permutation is too short')
+      do leg = 1, block_size
+        if (count(current_leg_order(1:block_size) == leg) /= 1) &
+             call fail_multiplicative_nlo('a Born alignment permutation is invalid')
+      end do
+      current%block_momenta(:, 1:block_size) = &
+           current%block_momenta(:, current_leg_order(1:block_size))
+    end if
     associate(canonical => workspace%snapshots( &
               spin_density_bornlike_branch, component_position))
       if (current%block_count /= canonical%block_count .or. &

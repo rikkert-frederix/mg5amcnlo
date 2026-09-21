@@ -2784,14 +2784,20 @@ def compose_nlo_decay_helas_process(fks_process, composition):
     combined_born, born_component_context, born_component_metadata = \
         _glue_nlo_decay_tree_component(
             production_amplitude, selector, born_current, 'BORN', 1)
-    raw_born_symmetry = combined_born.get('identical_particle_factor')
     full_born_symmetry = composition['full_identical_particle_factor']
-    if (raw_born_symmetry < 1 or full_born_symmetry < 1 or
-            full_born_symmetry % raw_born_symmetry):
+    local_born_symmetry = born_current.get('identical_particle_factor')
+    if (local_born_symmetry < 1 or full_born_symmetry < 1 or
+            full_born_symmetry % local_born_symmetry):
         raise fks_common.FKSProcessError(
             'The labeled NLO-decay Born has an incompatible identical-'
             'particle normalization')
-    symmetry_multiplier = full_born_symmetry // raw_born_symmetry
+    # Flattening the LO environment can make daughters of distinct resonance
+    # branches look identical (e.g. e+ ve from a top and an associated W).
+    # Its artificial factorial is not a physical symmetry divisor.  Preserve
+    # the complete Born assignment's divisor and replace only the local
+    # corrected current's factor when constructing its real emission.  This
+    # also retains the production divisor for labelled identical resonances.
+    environment_symmetry = full_born_symmetry // local_born_symmetry
     combined_born.set('identical_particle_factor', full_born_symmetry)
     combined_born.set(
         'has_mirror_process', composition['full_has_mirror_process'])
@@ -2847,8 +2853,8 @@ def compose_nlo_decay_helas_process(fks_process, composition):
                 production_amplitude, selector, real_current, 'REAL', index)
         combined_real.set(
             'identical_particle_factor',
-            combined_real.get('identical_particle_factor') *
-            symmetry_multiplier)
+            real_current.get('identical_particle_factor') *
+            environment_symmetry)
         combined_real.set(
             'has_mirror_process', composition['full_has_mirror_process'])
         real.matrix_element = combined_real

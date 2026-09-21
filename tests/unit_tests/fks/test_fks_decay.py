@@ -1993,6 +1993,13 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn(
                 'if (has_decay_chain_metadata()) then',
                 nlo_decay_sampler)
+            self.assertIn('call nlo_decay_born_topology_order(order)',
+                          nlo_decay_sampler)
+            self.assertIn('rest_momenta(:, child)', nlo_decay_sampler)
+            self.assertIn('leaf_visible_leg(canonical_born_context(), target)',
+                          nlo_decay_kinematics_source)
+            self.assertIn('current_leg_order(1:block_size)', workspace_source)
+            self.assertIn('a born alignment permutation is invalid', workspace_source)
             with open(os.path.join(
                     subprocess_dir,
                     'multiplicative_event_materialization.f90')) as stream:
@@ -2141,6 +2148,25 @@ class TestFKSDecayChains(unittest.TestCase):
             set(real.matrix_element.get('identical_particle_factor')
                 for real in matrix_element.real_processes),
             set([born_factor]))
+
+    def test_full_nlo_bundle_same_flavour_different_decay_origins(self):
+        # The two same-sign currents have different resonance parents.  Their
+        # identical leptons must not acquire a cross-stage 2! times 2! divisor
+        # when the environment of the antitop correction is flattened.
+        command = self.generate(
+            'u d~ > t t~ w+ QCD=2 QED=1 [real=QCD], '
+            '(t > b e+ ve QED=2 [real=QCD]), '
+            '(t~ > b~ mu- vm~ QED=2 [real=QCD]), w+ > e+ ve')
+        matrix_element = fks_helas_objects.FKSHelasMultiProcess(
+            command._fks_multi_proc,
+            loop_optimized=False)['matrix_elements'][0]
+        self.assertEqual(matrix_element.born_me.get('identical_particle_factor'), 1)
+        self.assertEqual(
+            [entry['parent_pdg'] for entry in matrix_element.bundle_contributions],
+            [0, 6, -6])
+        self.assertEqual(
+            {real.matrix_element.get('identical_particle_factor')
+             for real in matrix_element.real_processes}, {1})
 
     def test_full_nlo_bundle_groups_production_subprocesses(self):
         command = self.generate(
@@ -2393,6 +2419,10 @@ class TestFKSDecayChains(unittest.TestCase):
                 production_contraction)
             flat_contractions = ' '.join(
                 contractions.replace('$', ' ').split())
+            self.assertIn('TDV_VALIDATION_PRECISION(PREC_ASKED)',
+                          flat_contractions)
+            self.assertIn('SDM_INSERTION_RHO,TDV_PRECISION_ASKED,',
+                          flat_contractions)
             for contribution, parent in [(2, 6), (3, -6)]:
                 self.assertIn(
                     'TDV_MADLOOP_REQUIRED(%d,' % contribution,
@@ -2419,10 +2449,6 @@ class TestFKSDecayChains(unittest.TestCase):
                     'FNLOC%d_SLOOPMATRIXHEL_THRES' % contribution,
                     density_source)
                 self.assertIn('COMPLEX*16 RHO(3,NOPEN,NOPEN)',
-            self.assertIn('TDV_VALIDATION_PRECISION(PREC_ASKED)',
-                          flat_contractions)
-            self.assertIn('SDM_INSERTION_RHO,TDV_PRECISION_ASKED,',
-                          flat_contractions)
                               density_source)
                 self.assertIn(
                     'VALUE=0.5D0*(RHO(K,A,B)+DCONJG(RHO(K,B,A)))',

@@ -269,6 +269,7 @@ decay_chain_kinematics.o: process_dimensions.o fnlo_process_common.o \
 	decay_chain_parameters.o phase_space_kinematics.o \
 	factorized_phase_space.o factorized_block_kinematics.o
 nlo_decay_kinematics.o: process_dimensions.o nlo_decay_metadata.o \
+	decay_chain_metadata.o decay_chain_kinematics.o \
 	decay_chain_parameters.o factorized_block_kinematics.o \
 	phase_space_kinematics.o boostwdir2.o fnlo_process_common.o \
 	factorized_phase_space.o
@@ -343,7 +344,7 @@ fks_singular_bridge.o: fks_model_state.o fks_singular.o \
 	fks_metadata_bridge.o
 fks_random_bridge.o: fks_random.o mint_module.o
 driver_mintFO.o: process_dimensions.o fks_metadata.o fks_channel_map.o \
-	decay_chain_metadata.o nlo_contribution_bundle.o \
+	decay_chain_metadata.o nlo_decay_kinematics.o nlo_contribution_bundle.o \
 	decay_chain_parameters.o spin_density_fks_matrices.o \
 	spin_density_weight_lines.o multiplicative_nlo_decay.o \
 	multiplicative_event_materialization.o \

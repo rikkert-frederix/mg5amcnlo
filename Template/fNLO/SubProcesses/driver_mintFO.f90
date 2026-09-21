@@ -33,6 +33,7 @@ module driver_mintfo_module
   use decay_chain_metadata, only: real_phase_space_dimension, &
                                   decay_random_dimension
   use decay_chain_kinematics, only: decay_variable_start
+  use nlo_decay_kinematics, only: nlo_decay_born_topology_order
   use fnlo_scale_variations, only: configure_fnlo_scale_variations
   use nlo_contribution_bundle, only: has_nlo_contribution_bundle, &
        nlo_contribution_count, contribution_representative_fks, &
@@ -788,6 +789,7 @@ contains
     integer :: component_position, contribution, contribution_count
     integer :: ibody, ifks, leaf_capacity, particle_count
     integer :: production_position, radiation_block, weight
+    integer :: born_leg_order(nexternal)
     integer(kind=8) :: leaf_mask, leaves_seen
     logical :: available, leaf_is_materialized, pass_leaf
     logical :: production_contribution, reuse_folded_production
@@ -938,8 +940,9 @@ contains
       ! snapshot absent here; they are completed as an exact zero below.
       if (event_momenta(0, 1, soft_counterevent) > 0d0) then
         if (.not. production_contribution) then
+          call nlo_decay_born_topology_order(born_leg_order)
           call require_multiplicative_born_alignment( &
-               workspace, component_position, soft_counterevent)
+               workspace, component_position, soft_counterevent, born_leg_order)
         end if
         call set_alphas( &
              event_momenta(0:3, 1:nexternal, soft_counterevent))
