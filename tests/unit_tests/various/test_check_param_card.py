@@ -18,6 +18,8 @@ import random
 import io
 import os
 import sys
+import tempfile
+from pathlib import Path
 import tests.unit_tests as unittest
 
 _file_path = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0]
@@ -94,6 +96,55 @@ BLOCK SMINPUTS Q= 1.000000e+00 #  test
 
 class TestParamCard(unittest.TestCase):
     """ Test the ParamCard Object """
+
+    def test_decaymass_is_a_block_not_a_decay_table(self):
+        text = '''Block decaymass
+  5 4.8
+Block decaycouplings
+  1 0.25
+Block mass
+  5 0.0
+DECAY 6 1.3513387258319858
+  1.0 2 5 24
+'''
+        card = writter.ParamCard(text)
+        for precision in ('', 16):
+            written = card.write(precision=precision)
+            self.assertIn('BLOCK DECAYMASS', written)
+            self.assertIn('BLOCK DECAYCOUPLINGS', written)
+            self.assertNotIn('BLOCK DECAY_TABLE', written)
+            reread = writter.ParamCard(written)
+            self.assertEqual(reread['decaymass'].get((5,)).value, 4.8)
+            self.assertEqual(reread['mass'].get((5,)).value, 0.)
+            self.assertEqual(reread['decaycouplings'].get((1,)).value, .25)
+            self.assertEqual(reread['decay'].decay_table[6], card['decay'].decay_table[6])
+
+    def test_precision_preserves_decay_widths_and_fortran_inputs(self):
+        text = '''Block sminputs
+  1 132.23322979128372
+  2 1.1663787e-5
+Block mass
+  24 80.385
+DECAY 24 2.097673562052797
+'''
+        card = writter.ParamCard(text)
+        roundtrip = writter.ParamCard(card.write(precision=16))
+        self.assertEqual(roundtrip['decay'].get((24,)).value,
+                         card['decay'].get((24,)).value)
+        with tempfile.TemporaryDirectory(prefix='param_precision_') as directory:
+            directory = Path(directory)
+            default = directory/'default.dat'
+            default.write_text(text)
+            ident = directory/'ident.dat'
+            ident.write_text('sminputs 1 aewm1\nsminputs 2 mdl_gf\ndecay 24 mdl_ww\n')
+            inc = directory/'param_card.inc'
+            card.write_inc_file(str(inc), str(ident), str(default), need_mp=True)
+            values = dict(line.lower().strip().split(' = ')
+                          for line in inc.read_text().splitlines())
+            for name in ('aewm1', 'mdl_gf', 'mdl_ww'):
+                dp = float(values[name].replace('d', 'e'))
+                mp = float(values['mp__'+name].removesuffix('_16'))
+                self.assertEqual(dp, mp, name)
 
     def test_mod_param(self):
         """ test that we can modify a param card """

@@ -296,11 +296,11 @@ class Block(list):
             for param in self:
                 pid = param.lhacode[0]
                 param.set_block('decay')
-                text += str(param)+ '\n'
+                text += param.__str__(precision) + '\n'
                 if pid in self.decay_table:
                     text += str(self.decay_table[pid])+'\n'
             return text
-        elif self.name.startswith('decay'):
+        elif self.name.startswith('decay_table'):
             text = '' # avoid block definition
         #general case 
         elif not self.scale:
@@ -694,13 +694,16 @@ class ParamCard(dict):
                 if self['mass'].get(tuple(lhaid)).value < 0:
                     value = '-%s' % value
 
-            fout.writelines(' %s = %s' % (variable, ('%e'%float(value)).replace('e','d')))
+            # Preserve the input double precision. Seven significant digits
+            # here gave the DP and MP loop providers different weak inputs
+            # and dependent masses, spoiling on-shell virtual comparisons.
+            fout.writelines(' %s = %s' % (variable, ('%.16e'%float(value)).replace('e','d')))
             if need_mp:
                 fout.writelines(' mp__%s = %s_16' % (variable, value))
                 
         for block in scales:
             value = self[block].scale
-            fout.writelines(' mdl__%s__scale = %s' % (block, ('%e'%float(value)).replace('e','d')))
+            fout.writelines(' mdl__%s__scale = %s' % (block, ('%.16e'%float(value)).replace('e','d')))
 
         fout.close()
         # compare if we need to update the file (allowing to skip some recompilation)
