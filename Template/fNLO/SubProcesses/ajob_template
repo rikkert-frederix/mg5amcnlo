@@ -11,18 +11,37 @@ if [ $CLUSTER_LHAPATH ]; then
    export LHAPATH=$CLUSTER_LHAPATH;
 fi
 
+function madloop_resources_ready {
+    local resource
+    [[ -n "$madloop_archive_contents" ]] || return 1
+    while IFS= read -r resource ; do
+        if [[ "$resource" == */ ]] ; then
+            [[ -d "$resource" ]] || return 1
+        else
+            [[ -f "$resource" ]] || return 1
+        fi
+    done <<< "$madloop_archive_contents"
+    return 0
+}
+
+# Full-NLO decay bundles have namespaced FNLOC*_HelConfigs.dat files.
+# Verify every archived resource instead of requiring one legacy filename.
+madloop_archive_contents=
+if [[ -f MadLoop5_resources.tar.gz ]] ; then
+    madloop_archive_contents=$(tar -tzf MadLoop5_resources.tar.gz) || exit 1
+fi
 tarCounter=0
-while [[ (-f MadLoop5_resources.tar.gz) && (! -f MadLoop5_resources/HelConfigs.dat) && ($tarCounter < 10) ]]; do
+while [[ -f MadLoop5_resources.tar.gz && $tarCounter -lt 10 ]] && ! madloop_resources_ready ; do
     if [[ $tarCounter > 0 ]]; then
 	sleep 2s
     fi
     tar -xzf MadLoop5_resources.tar.gz >/dev/null 2>&1
-    tarCounter=$[$tarCounter+1]
+    tarCounter=$((tarCounter+1))
 done
 
-if [[ (-e MadLoop5_resources.tar.gz) && (! -e MadLoop5_resources/HelConfigs.dat) ]]; then
+if [[ -e MadLoop5_resources.tar.gz ]] && ! madloop_resources_ready ; then
     echo "Cannot untar and unzip file `pwd`/MadLoop5_resources.tar.gz." > log.txt
-    exit
+    exit 1
 fi
 
 channel=$1
