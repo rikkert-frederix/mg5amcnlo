@@ -1,0 +1,72 @@
+{
+  "created_utc": "2026-09-14T10:49:58.329295+00:00",
+  "status": "single-assignment conditional pilot figure; not a full-flavour prediction",
+  "inputs": {
+    "/export/slow1/rikkert/mg5amcnlo/ttw_study/results/w_treatment_pilot_plus_width_mass_v1.json": "dad3187293cc1b2c295bb86ab7f6a604dc05816ee9fd42a30851c2bdb8e7dcf8",
+    "/export/slow1/rikkert/mg5amcnlo/ttw_study/results/w_treatment_pilot_minus_width_mass_v1.json": "60ca913a12a607fe0d7a3138dbf6277c970e45937b64ebaa3c93f05a3286404e"
+  },
+  "comparison_order": [
+    "top_W",
+    "associated_W",
+    "all_W"
+  ],
+  "points": {
+    "fiducial_1b": {
+      "plus": {
+        "value": [
+          1.009315543143968,
+          1.0341584194336289,
+          1.0437921668075607
+        ],
+        "conditional_mc_error": [
+          0.05829296927556657,
+          0.055624463387841515,
+          0.05996425171613496
+        ]
+      },
+      "minus": {
+        "value": [
+          1.1398462162987057,
+          0.9993185638602788,
+          1.1390694838931954
+        ],
+        "conditional_mc_error": [
+          0.08787056210327428,
+          0.055486264616838574,
+          0.09697803996291739
+        ]
+      }
+    },
+    "fiducial_2b": {
+      "plus": {
+        "value": [
+          0.9586179885894893,
+          0.9871952042516953,
+          0.9463430810449502
+        ],
+        "conditional_mc_error": [
+          0.061399369612881234,
+          0.06767507310482068,
+          0.05558021761053117
+        ]
+      },
+      "minus": {
+        "value": [
+          1.030685591323445,
+          1.0563234901784653,
+          1.0887374011034368
+        ],
+        "conditional_mc_error": [
+          0.05765490637408351,
+          0.07383625130430195,
+          0.07934529943793732
+        ]
+      }
+    }
+  },
+  "script_sha256": "061698d15f422f15ce85d020d08eb33765c911f70ae1046dbd4ceb2ae2fdfa1e",
+  "outputs": {
+    "/export/slow1/rikkert/mg5amcnlo/ttw_study/figures/w_treatment_pilot_width_mass_v2.pdf": "a3fdb838d98b47dcee035f469143c609d3ecc216bca5089e77ed83843ecdd3c4",
+    "/export/slow1/rikkert/mg5amcnlo/ttw_study/figures/w_treatment_pilot_width_mass_v2.png": "8611c16cbf09f1594a33350444cc1cd29c560a0a183159bc0cbe20022a9982a1"
+  }
+}

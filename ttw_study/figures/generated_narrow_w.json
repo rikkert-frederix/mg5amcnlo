@@ -1,0 +1,14 @@
+{
+  "created_utc": "2026-09-14T05:42:00.597922+00:00",
+  "inputs": {
+    "/export/slow1/rikkert/mg5amcnlo/ttw_study/results/narrow_v2_LO_generated_limit.json": "ddd76d2900de9fb9978e0d077927083eec50335fafcbb2a8cc394738da86bb26",
+    "/export/slow1/rikkert/mg5amcnlo/ttw_study/results/narrow_v2_S_generated_limit.json": "f41049fc3bb57d63eab572f523ecf7b96702428390714b4497586dcfdd345ea4",
+    "/export/slow1/rikkert/mg5amcnlo/ttw_study/results/narrow_v2_Pi_generated_limit.json": "85c55ccb73053340c8dbd2fa2b1793f72cf086ec9d18e8f9b50a765e5fc1289a"
+  },
+  "script_sha256": "79805558e0f7729ac9a1628d870e64808036e83d63f0ceac14668c9a58639e13",
+  "outputs": {
+    ".pdf": "59ccc344f72402ec112a9dbbd652037f476f395fde5f9e1246ebee176cbf2156",
+    ".png": "c3f181876d8c50241cb86dce8176de6a80417cc80ba0455f52100e2cc6c454f2"
+  },
+  "scope": "One-assignment technical limit diagnostic, not main phenomenology. Horizontal offsets distinguish modes; all use exactly epsilon=1,0.2,0.05. Each panel has its own vertical scale; errors are conditional joint MC, not scale/PDF bands."
+}
