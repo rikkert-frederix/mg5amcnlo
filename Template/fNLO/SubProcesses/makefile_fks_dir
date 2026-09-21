@@ -296,6 +296,9 @@ BinothLHADummy.o: process_dimensions.o
 BinothLHADummy_bridge.o: BinothLHADummy.o process_dimensions.o
 HwU_bridge.o: HwU.o
 $(FNLO_MODULE_ANALYSES): process_dimensions.o HwU.o open_output_files.o
+# These standalone reference analyses provide their own external ABI but
+# still consume the same Fortran modules as the registered analyses.
+analysis_HwU_pp_ttxw_reference.o analysis_HwU_pp_ttx_leptons_reference.o: process_dimensions.o HwU.o open_output_files.o
 $(FNLO_MODULE_ANALYSIS_BRIDGES): %_bridge.o: %.o process_dimensions.o
 analysis_HwU_general.o: cuts.o $(LIBDIR)run_state.mod \
 	$(LIBDIR)kin_functions_module.mod
