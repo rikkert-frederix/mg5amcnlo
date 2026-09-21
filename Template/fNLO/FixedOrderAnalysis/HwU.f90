@@ -15,6 +15,7 @@ module HwU_module
   integer :: np = 0
 
   logical, allocatable :: booked(:)
+  logical, allocatable :: accumulated(:)
   integer, allocatable :: nbin(:)
   integer, allocatable :: histi(:, :)
   integer, allocatable :: p_bin(:)
@@ -68,6 +69,7 @@ contains
     call HwU_allocate_histo(label, nbin_l)
 
     booked(label) = .true.
+    accumulated(label) = .false.
     title(label) = title_l
     nbin(label) = nbin_l
     step(label) = (xmax - xmin)/dble(nbin(label))
@@ -163,7 +165,9 @@ contains
     allocate (vtot(nwgts))
 
     do i = 1, nbin(label)
-      if (histi(label, i) == 0) cycle
+      ! An empty bin is a zero estimate, not a missing iteration. Every bin
+      ! and weight must use the same global integration weights, otherwise
+      ! sparse bins are biased and histogram partitions cease to add up.
       do j = 1, nwgts
         vtot(j) = histy(j, label, i)*nPSinv
       end do
@@ -176,7 +180,9 @@ contains
         etot = abs(vtot(1))*10d0
       end if
 
-      if (histy_err(label, i) == 0d0) then
+      ! A genuine zero variance (including an empty first iteration) must
+      ! not be confused with an uninitialized accumulated estimator.
+      if (.not. accumulated(label)) then
         do j = 1, nwgts
           histy_acc(j, label, i) = vtot(j)
         end do
@@ -195,6 +201,7 @@ contains
                                    a1*etot**2)
       end if
     end do
+    accumulated(label) = .true.
 
     deallocate (vtot)
   end subroutine accumulate_results
@@ -241,6 +248,7 @@ contains
   subroutine HwU_deallocate_all()
     if (allocated(wgts_info)) deallocate (wgts_info)
     if (allocated(booked)) deallocate (booked)
+    if (allocated(accumulated)) deallocate (accumulated)
     if (allocated(title)) deallocate (title)
     if (allocated(nbin)) deallocate (nbin)
     if (allocated(step)) deallocate (step)
@@ -309,7 +317,7 @@ contains
     if (.not. allocated(booked)) then
       max_plots = max(label, 1)
       max_bins = nbin_l
-      allocate (booked(max_plots), title(max_plots), nbin(max_plots))
+      allocate (booked(max_plots), accumulated(max_plots), title(max_plots), nbin(max_plots))
       allocate (step(max_plots))
       allocate (histxl(max_plots, max_bins), histxm(max_plots, max_bins))
       allocate (histy(nwgts, max_plots, max_bins))
@@ -318,6 +326,7 @@ contains
       allocate (histy2(max_plots, max_bins), histy_err(max_plots, max_bins))
 
       booked = .false.
+      accumulated = .false.
       title = ''
       nbin = 0
       step = 0d0
@@ -341,6 +350,12 @@ contains
       deallocate (booked)
       allocate (booked(label_max))
       booked = ltemp
+
+      ltemp = .false.
+      ltemp(1:max_plots) = accumulated
+      deallocate (accumulated)
+      allocate (accumulated(label_max))
+      accumulated = ltemp
       deallocate (ltemp)
 
       allocate (ctemp(label_max))
