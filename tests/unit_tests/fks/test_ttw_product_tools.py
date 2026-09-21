@@ -291,6 +291,8 @@ DECAY 24 2.05
             self.assertEqual(list(run['rw_fscale']), [1., .5, 2.])
             self.assertFalse(run['cut_decays'])
             self.assertEqual(run['ptj'], 0.)
+            self.assertEqual(run['maxjetflavor'], 5)
+            self.assertEqual(run['req_acc_fo'], -1.)
             archive = process / 'study_cards/S_onshell_core-w-ht-half_separate_42'
             manifest = json.loads((archive / 'manifest.json').read_text())
             self.assertEqual(manifest['top_width_reference_scale'], 173.)
@@ -303,13 +305,25 @@ DECAY 24 2.05
             self.assertEqual(manifest['alpha_s_flavours'], 5)
             self.assertEqual(len(manifest['topology_hashes']), 1)
             self.assertEqual(manifest['production_scale_grouping'], 'W_SYSTEM')
+            self.assertEqual(manifest['production_sampling'], 'flat')
+            self.assertIsNone(manifest['production_sampling_parameters'])
+            self.assertNotIn('production_phase_space_sampling', decay)
             self.assertEqual(len(manifest['scale_runtime_hashes']), 3)
             self.assertEqual((archive / 'before/decay_card.dat').read_text(), 'original decay card\n')
             with self.assertRaisesRegex(ValueError, 'already exists'):
                 setup.configure(args)
             args.decay_scales = 'shared'
+            for invalid in (0., 1., -2., float('nan')):
+                args.accuracy = invalid
+                with self.assertRaisesRegex(ValueError, 'Integration accuracy'):
+                    setup.configure(args)
+            args.accuracy = .03
+            args.job_seconds = 60.
             with contextlib.redirect_stdout(io.StringIO()):
                 setup.configure(args)
+            run = RunCardNLO(str(cards / 'run_card.dat'))
+            self.assertEqual(run['req_acc_fo'], .03)
+            self.assertEqual(run['fo_job_target_time'], 60.)
             self.assertIn('SPECIES = decay_scale_grouping', (cards / 'decay_card.dat').read_text())
             self.assertTrue((process / 'study_cards/S_onshell_core-w-ht-half_shared_42/manifest.json').is_file())
             before = (cards / 'decay_card.dat').read_text()
@@ -350,6 +364,42 @@ DECAY 24 2.05
                     self.assertIn('associated lepton', manifest['production_core_objects'])
                     self.assertIn('associated W system', manifest['production_scale_objects'])
                     self.assertNotIn('native dynamic CORE HT/2', err.getvalue())
+            # Sampling is an opt-in coordinate change, with independent
+            # runtime and card provenance. Invalid/old exports fail before writes.
+            before = {name: (cards / name).read_bytes()
+                      for name in ('param_card.dat', 'run_card.dat', 'decay_card.dat')}
+            args.production_sampling = 'bad'
+            with self.assertRaisesRegex(ValueError, 'flat or w-current'):
+                setup.configure(args)
+            args.production_sampling = 'w-current'
+            self.topology_fixture(process, 'top-bw')
+            args.w_treatment = 'top-bw'
+            with self.assertRaisesRegex(ValueError, 'requires an all-bw'):
+                setup.configure(args)
+            self.topology_fixture(process, 'all-bw')
+            args.w_treatment = 'all-bw'
+            with self.assertRaisesRegex(ValueError, 'both core paths'):
+                setup.configure(args)
+            for name, contents in before.items():
+                self.assertEqual((cards / name).read_bytes(), contents)
+            for name in ('phase_space_kinematics.f90', 'factorized_block_kinematics.f90',
+                         'decay_chain_parameters.f90', 'decay_chain_kinematics.f90',
+                         'nlo_decay_kinematics.f90'):
+                (process / 'SubProcesses' / name).write_bytes(
+                    (Path(MG5DIR) / 'Template/fNLO/SubProcesses' / name).read_bytes())
+            with contextlib.redirect_stdout(io.StringIO()):
+                setup.configure(args)
+            archive = process / 'study_cards/S_all-bw_core-w-ht-half_shared_42_wcurrent'
+            manifest = json.loads((archive / 'manifest.json').read_text())
+            self.assertEqual(manifest['production_sampling'], 'w-current')
+            self.assertEqual(manifest['production_sampling_parameters'],
+                             dict(mass_GeV=80.4, width_GeV=2.05))
+            self.assertEqual(len(manifest['sampling_runtime_hashes']), 5)
+            self.assertIn('W_CURRENT = production_phase_space_sampling',
+                          (cards / 'decay_card.dat').read_text())
+            for name in ('param_card.dat', 'run_card.dat'):
+                self.assertEqual((cards / name).read_bytes(), before[name])
+            del args.production_sampling
             for choice in ('core-ht-half', 'fixed'):
                 args.production_scale = choice
                 with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as err:

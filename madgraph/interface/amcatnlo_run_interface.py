@@ -2660,7 +2660,9 @@ RESTART = %(mint_mode)s
             self.prepare_directories(jobs_to_run_new,mode,fixed_order)
             self.write_nevents_unweighted_file(jobs_to_collect_new,jobs_to_collect)
         else:
-            if fixed_order and self.run_card['req_acc_FO'] > 0:
+            if fixed_order and (self.run_card['req_acc_FO'] > 0 or
+                    ('fo_job_target_time' in self.run_card and
+                     self.run_card['fo_job_target_time'] > 0)):
                 jobs_to_run_new,jobs_to_collect= \
                     self.split_jobs_fixed_order(jobs_to_run_new,jobs_to_collect)
             self.prepare_directories(jobs_to_run_new,mode,fixed_order)
@@ -2887,11 +2889,25 @@ RESTART = %(mint_mode)s
             # strict comparison an expensive job whose projected duration is
             # precisely twice its previous duration is left serial even when
             # multicore slots are available.
-            if time_expected >= max(2*job['time_spend']/job['combined'],time_per_job) \
-                    or job['npoints'] >= __maxint__:
+            if target_time > 0.:
+                # Expensive decay-chain grids can take minutes per iteration.
+                # Requiring each refinement split to take twice that long
+                # leaves most workers idle. Opt-in time targeting changes only
+                # scheduling, preserving independent splits and their weights.
+                # Keep at least 1000 requested points per split to avoid tiny
+                # histogram samples and excessive process-startup overhead.
+                nsplit = min(maximum_splits,
+                             max(minimum_splits, int(math.ceil(time_expected/target_time))))
+                do_split = nsplit > 1
+            else:
+                do_split = time_expected >= max(2*job['time_spend']/job['combined'],time_per_job)
+                nsplit = min(max(int(time_expected/max(2*job['time_spend']/job['combined'],time_per_job)),2),nb_submit)
+                if minimum_splits > 1:
+                    nsplit = min(maximum_splits,max(nsplit,minimum_splits))
+                    do_split = True
+            if do_split or job['npoints'] >= __maxint__:
                 # determine the number of splits needed; the second condition 
                 # (job['npoints'] >= __maxint__) prevents integer overflow in fortran
-                nsplit = min(max(int(time_expected/max(2*job['time_spend']/job['combined'],time_per_job)),2),nb_submit)
                 nsplit*= int(job['npoints'] / __maxint__) + 1
                 for i in range(1,nsplit+1):
                     job_new=copy.copy(job)
@@ -2899,7 +2915,10 @@ RESTART = %(mint_mode)s
                     job_new['wgt_mult']=1./float(nsplit)
                     job_new['dirname']=job['dirname']+'_%i' % job_new['split']
                     job_new['accuracy']=min(job['accuracy']*math.sqrt(float(nsplit)),0.1)
-                    if nsplit >= job['niters']:
+                    if fixed_count:
+                        job_new['npoints']=total_points//nsplit
+                        job_new['niters']=1
+                    elif nsplit >= job['niters']:
                         job_new['npoints']=int(job['npoints']*job['niters']/nsplit)
                         job_new['niters']=1
                     else:
@@ -2973,7 +2992,7 @@ RESTART = %(mint_mode)s
         jobs_new=[]
         if fixed_order:
             if req_acc == -1:
-                if step+1 == 1:
+                if step <= 0:
                     npoints = self.run_card['npoints_FO']
                     niters = self.run_card['niters_FO']
                     for job in jobs:
@@ -3013,6 +3032,20 @@ RESTART = %(mint_mode)s
                         job['niters']=4
                         job['npoints']=int(round(job['npoints_done']*itmax_fl/4.0))*2
                     else:
+        run_card = getattr(self, 'run_card', None)
+        # ConfigFile.get aliases __getitem__ and does not accept dict.get's
+        # default argument. Also allow older cards without this opt-in key.
+        target_time = float(run_card['fo_job_target_time']) if (
+            run_card is not None and 'fo_job_target_time' in run_card) else 0.0
+        if not math.isfinite(target_time) or target_time < 0.:
+            raise aMCatNLOError('fo_job_target_time must be finite and nonnegative')
+        minimum_splits = run_card['fo_job_min_splits'] if (
+            run_card is not None and 'fo_job_min_splits' in run_card) else 1
+        if (not isinstance(minimum_splits, int) or isinstance(minimum_splits, bool)
+                or minimum_splits < 1):
+            raise aMCatNLOError('fo_job_min_splits must be a positive integer')
+        fixed_count = (run_card is not None and 'req_acc_FO' in run_card and
+                       run_card['req_acc_FO'] == -1)
                         if itmax_fl > 100.0 : itmax_fl=50.0
                         job['niters']=int(round(math.sqrt(itmax_fl)))
                         job['npoints']=int(round(job['npoints_done']*itmax_fl/
@@ -3039,6 +3072,11 @@ RESTART = %(mint_mode)s
                 if not hasattr(random, 'mg_seedset'):
                     random.seed(r)  
                     random.mg_seedset = r
+            maximum_splits = min(nb_submit,
+                                 max(1, job['npoints']*job['niters']//1000))
+            if minimum_splits > maximum_splits:
+                raise aMCatNLOError('fo_job_min_splits cannot be met with the available '
+                                    'cores and minimum 1000 points per refinement replica')
                 totevts=nevents
                 for job in jobs:
                     job['nevents'] = 0
@@ -3053,6 +3091,17 @@ RESTART = %(mint_mode)s
                     totevts -= 1
                     i -= 1
                     jobs[i]['nevents'] += 1
+                if fixed_count:
+                    # Fixed-count replicas must use every requested point.
+                    # Equal-size batches retain the existing 1/nsplit weight
+                    # contract; choose a divisor instead of truncating a
+                    # remainder. Each split is one fixed-grid iteration.
+                    total_points = job['npoints']*job['niters']
+                    while nsplit > 1 and total_points % nsplit:
+                        nsplit -= 1
+                    if total_points // nsplit > __maxint__:
+                        raise aMCatNLOError('Exact fixed-count splitting exceeds the Fortran '
+                                           'point limit; choose counts divisible into smaller batches')
             for job in jobs:
                 job['mint_mode']=step+1 # next step
             return jobs
@@ -3138,6 +3187,9 @@ RESTART = %(mint_mode)s
                     raise aMCatNLOError(
                         'Could not collect the resolved NLO contributions '
                         'from %s: %s' % (contribution_path, error))
+                        # A resumed grid may have used an adaptive target.
+                        # Fixed-count replicas must not inherit early stopping.
+                        job['accuracy']=0.
             if job['resultABS'] != 0:
                 job['err_percABS'] = job['errorABS']/job['resultABS']*100.
                 job['err_perc'] = job['error']/job['result']*100.

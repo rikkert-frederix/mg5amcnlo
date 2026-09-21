@@ -192,6 +192,24 @@ def configure(args):
     if treatment != args.w_treatment:
         raise ValueError('Export has W treatment %s, not %s; generate a separate export' %
                          (treatment, args.w_treatment))
+    production_sampling = getattr(args, 'production_sampling', 'flat')
+    if production_sampling not in ('flat', 'w-current'):
+        raise ValueError('Production sampling must be flat or w-current')
+    sampling_sources = {name: process / 'SubProcesses' / name for name in (
+        'phase_space_kinematics.f90', 'factorized_block_kinematics.f90',
+        'decay_chain_parameters.f90', 'decay_chain_kinematics.f90',
+        'nlo_decay_kinematics.f90')}
+    if production_sampling == 'w-current':
+        if treatment != 'all-bw':
+            raise ValueError('W-current sampling requires an all-bw production core')
+        for name, marker in (
+                ('factorized_block_kinematics.f90', 'generate_factorized_current_nbody'),
+                ('decay_chain_parameters.f90', 'PRODUCTION_PHASE_SPACE_SAMPLING'),
+                ('decay_chain_kinematics.f90', 'call generate_current_nbody'),
+                ('nlo_decay_kinematics.f90', 'call generate_current_nbody')):
+            path = sampling_sources[name]
+            if not path.is_file() or marker not in path.read_text():
+                raise ValueError('Re-export to include W-current sampling in both core paths')
     internal_width_paths = [path.with_name('decay_internal_widths.json')
                             for path in topology_paths]
     if treatment != 'onshell':
@@ -232,8 +250,16 @@ def configure(args):
             raise ValueError('Masses, widths and collider energy must be positive and finite')
     if min(args.seed, args.points, args.grid_points, args.iterations) < 1:
         raise ValueError('Seed, integration counts and iterations must be positive')
+    accuracy = getattr(args, 'accuracy', -1.)
+    if not math.isfinite(accuracy) or not (accuracy == -1. or 0. < accuracy < 1.):
+        raise ValueError('Integration accuracy must be -1 (fixed counts) or between zero and one')
+    job_time = getattr(args, 'job_seconds', 0.)
+    if not math.isfinite(job_time) or job_time < 0.:
+        raise ValueError('Job target time must be finite and nonnegative')
     run_name = '%s_%s_%s_%s_%d' % (args.variant, treatment, args.production_scale,
                                   args.decay_scales, args.seed)
+    if production_sampling == 'w-current':
+        run_name += '_wcurrent'
     if decay_mb:
         run_name += '_mb%s' % ('%.12g' % decay_mb).replace('.', 'p')
     archive = process / 'study_cards' / run_name
@@ -242,8 +268,9 @@ def configure(args):
     production, decay, combination = VARIANTS[args.variant]
     fixed = args.production_scale == 'fixed'
     settings = dict(
-        req_acc_fo=-1., npoints_fo_grid=args.grid_points, niters_fo_grid=1,
+        req_acc_fo=accuracy, npoints_fo_grid=args.grid_points, niters_fo_grid=1,
         npoints_fo=args.points, niters_fo=args.iterations, iseed=args.seed,
+        fo_job_target_time=job_time,
         lpp1=1, lpp2=1, ebeam1=args.ecm / 2., ebeam2=args.ecm / 2.,
         fixed_ren_scale=fixed, fixed_fac_scale=fixed, fixed_qes_scale=fixed,
         mur_ref_fixed=mt+mw/2., muf_ref_fixed=mt+mw/2., qes_ref_fixed=mt+mw/2.,
@@ -251,6 +278,7 @@ def configure(args):
         reweight_scale=True, rw_rscale=[1., .5, 2.], rw_fscale=[1., .5, 2.],
         reweight_pdf=args.pdf_id is not None,
         pdlabel='lhapdf' if args.pdf_id is not None else 'nn23nlo',
+        maxjetflavor=5,
         cut_decays=False, ptj=0., etaj=-1., ptl=0., etal=-1.,
         drll=0., drll_sf=0., mll=0., mll_sf=0., ptgmin=0.,
         pt_min_pdg={}, pt_max_pdg={}, mxx_min_pdg={}, custom_fcts=[],
@@ -259,7 +287,9 @@ def configure(args):
         settings['lhaid'] = args.pdf_id
     run = RunCardNLO(str(cards / 'run_card.dat'))
     for key, value in settings.items():
-        run[key] = value
+        # Persist explicit settings even when absent from the default card
+        # (e.g. the hidden maxjetflavor input in an fNLO export).
+        run.set(key, value, user=True, raiseerror=True)
     widths, references = {6: args.top_width_lo}, {6: mt}
     if treatment != 'all-bw':
         widths[24], references[24] = ww, mw
@@ -270,7 +300,10 @@ def configure(args):
         decay_scale_variation_mode='INDEPENDENT', decay_scale_factors=(1., .5, 2.),
         decay_scale_grouping='SIGNED_PDG' if args.decay_scales == 'separate' else 'SPECIES',
         decay_width_scale_modes={6: 'AUTO'}, production_scale_momenta='CORE',
-        production_scale_grouping='W_SYSTEM' if grouped_w else 'NONE')
+        production_scale_grouping='W_SYSTEM' if grouped_w else 'NONE',
+        production_phase_space_sampling='W_CURRENT' if production_sampling == 'w-current' else 'FLAT',
+        production_sampling_mass=mw if production_sampling == 'w-current' else None,
+        production_sampling_width=ww if production_sampling == 'w-current' else None)
     # Preserve the input cards before replacing any of them.
     archive.mkdir(parents=True)
     (archive / 'before').mkdir()
@@ -302,6 +335,11 @@ def configure(args):
                     top_width_w_treatment=args.top_width_w_treatment,
                     width_source=args.width_source, top_width_reference_scale=mt,
                     w_width=ww, production_scale=args.production_scale,
+                    production_sampling=production_sampling,
+                    production_sampling_parameters=(dict(mass_GeV=mw, width_GeV=ww)
+                                                     if production_sampling == 'w-current' else None),
+                    sampling_runtime_hashes={name: hashlib.sha256(path.read_bytes()).hexdigest()
+                                             for name, path in sampling_sources.items() if path.is_file()},
                     production_scale_grouping='W_SYSTEM' if grouped_w else 'NONE',
                     production_scale_objects=('t, tbar, associated W system, radiation' if grouped_w else
                                               'native production-core particles' if not fixed else
@@ -365,6 +403,8 @@ def main():
     config.add_argument('--pdf-id', type=int, help='LHAPDF ID; absent selects bundled nn23nlo for pilots')
     config.add_argument('--production-scale', choices=PRODUCTION_SCALES, default='core-w-ht-half',
                         help='default groups the associated W current; core-ht-half is the native diagnostic')
+    config.add_argument('--production-sampling', choices=['flat', 'w-current'], default='flat',
+                        help='opt-in all-bw current proposal; does not change propagators or physical widths')
     config.add_argument('--decay-scales', choices=['separate', 'shared'], default='separate',
                         help='separate t/tbar axes (81 points), or shared (27); with NLO decays')
     config.add_argument('--ecm', type=float, default=13000.)
@@ -372,6 +412,10 @@ def main():
     config.add_argument('--points', type=int, default=1000)
     config.add_argument('--grid-points', type=int, default=200)
     config.add_argument('--iterations', type=int, default=3)
+    config.add_argument('--accuracy', type=float, default=-1.,
+                        help='positive total-rate target enables adaptive integration; -1 uses fixed counts')
+    config.add_argument('--job-seconds', type=float, default=0.,
+                        help='optional target CPU seconds per refinement split; 0 keeps default scheduling')
     args = parser.parse_args()
     try:
         if args.action == 'commands':

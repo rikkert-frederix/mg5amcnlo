@@ -121,6 +121,58 @@ class TestMadEventCmd(unittest.TestCase):
 
             self.assertEqual(args, ['NLO'])
 
+    def test_fixed_order_time_target_uses_available_workers(self):
+        interface = object.__new__(run_mecmd.aMCatNLOCmd)
+        interface.stop_for_runweb = True
+        interface.options = {'run_mode': 2, 'nb_core': 64}
+        interface.run_card = banner_mod.RunCardNLO()
+        interface.run_card['fo_job_target_time'] = 60.
+        job = dict(p_dir='P0_test', channel='1', dirname='/tmp/P0_test/all_G1',
+                   resultABS=1., time_spend=600., niters=2, npoints=200000,
+                   niters_done=2, npoints_done=100000, combined=1, accuracy=.01)
+        jobs, collected = interface.split_jobs_fixed_order([job], [job])
+        self.assertEqual(len(jobs), 20)
+        self.assertEqual(len(collected), 20)
+        self.assertAlmostEqual(sum(row['wgt_mult'] for row in jobs), 1.)
+        self.assertEqual(sum(row['npoints']*row['niters'] for row in jobs), 400000)
+        self.assertTrue(all(row['npoints'] >= 1000 for row in jobs))
+        # Respect the actual worker cap and avoid tiny point samples.
+        interface.options['nb_core'] = 4
+        self.assertEqual(len(interface.split_jobs_fixed_order([job], [job])[0]), 4)
+        interface.options['nb_core'] = 64
+        job['npoints'] = 750
+        job['time_spend'] = 600000.
+        self.assertEqual(interface.split_jobs_fixed_order([job], [job])[0], [job])
+        for invalid in (-1., float('nan'), float('inf')):
+            interface.run_card['fo_job_target_time'] = invalid
+            with self.assertRaises(run_mecmd.aMCatNLOError):
+                interface.split_jobs_fixed_order([job], [job])
+
+    def test_fixed_order_minimum_splits_are_enforced_or_rejected_early(self):
+        interface = object.__new__(run_mecmd.aMCatNLOCmd)
+        interface.stop_for_runweb = True
+        interface.options = {'run_mode': 2, 'nb_core': 64}
+        interface.run_card = banner_mod.RunCardNLO()
+        interface.run_card['fo_job_target_time'] = 60.
+        interface.run_card['fo_job_min_splits'] = 5
+        job = dict(p_dir='P0_test', channel='1', dirname='/tmp/P0_test/all_G1',
+                   resultABS=1., time_spend=10., niters=1, npoints=6000,
+                   niters_done=1, npoints_done=6000, combined=1, accuracy=.01)
+        jobs, collected = interface.split_jobs_fixed_order([job], [job])
+        self.assertEqual(len(jobs), 5)
+        self.assertEqual(len(collected), 5)
+        self.assertAlmostEqual(sum(row['wgt_mult'] for row in jobs), 1.)
+        interface.options['nb_core'] = 4
+        with self.assertRaisesRegex(run_mecmd.aMCatNLOError, 'fo_job_min_splits'):
+            interface.split_jobs_fixed_order([job], [job])
+        interface.options['nb_core'] = 64
+        job['npoints'] = 4000
+        with self.assertRaisesRegex(run_mecmd.aMCatNLOError, 'fo_job_min_splits'):
+            interface.split_jobs_fixed_order([job], [job])
+        interface.run_card['fo_job_min_splits'] = 0
+        with self.assertRaisesRegex(run_mecmd.aMCatNLOError, 'fo_job_min_splits'):
+            interface.split_jobs_fixed_order([job], [job])
+
     def test_fixed_order_resume_uses_latest_numbered_result(self):
         """An interrupted refinement resumes from its completed grid."""
 

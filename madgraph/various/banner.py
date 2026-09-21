@@ -5636,6 +5636,16 @@ class RunCardNLO(RunCard):
         self.add_param('niters_fo_grid', 4, include=False)
         self.add_param('npoints_fo', 10000, include=False)        
         self.add_param('niters_fo', 6, include=False)
+        self.add_param('fo_job_target_time', 0.0, include=False, hidden=True,
+                       comment='Optional target CPU seconds per adaptive fixed-order refinement job; 0 keeps the default splitting heuristic')
+        self.add_param('fo_job_min_splits', 1, include=False, hidden=True,
+                       comment='Optional minimum fixed-order refinement replicas per integration stratum')
+        self.add_param('fo_split_outlier_threshold', 0.0, include=False, hidden=True,
+                       comment='Opt-in split exclusion: minimum deviation in robust peer standard deviations; 0 disables (filtered estimates may be biased)')
+        self.add_param('fo_split_outlier_variance_fraction', 0.95, include=False, hidden=True,
+                       comment='Minimum fraction of stratum variance carried by one excluded split')
+        self.add_param('fo_split_outlier_min_splits', 8, include=False, hidden=True,
+                       comment='Minimum complete equal-count replicas before considering one split for exclusion')
         #seed and collider
         self.add_param('iseed', 0)
         self.add_param('lpp1', 1, fortran_name='lpp(1)',
