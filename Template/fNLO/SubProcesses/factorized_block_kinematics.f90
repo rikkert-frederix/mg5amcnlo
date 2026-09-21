@@ -1,10 +1,12 @@
 module factorized_block_kinematics
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
   use process_dimensions, only: nexternal
   use phase_space_kinematics, only: phase_space_lambda
   implicit none
   private
 
   public :: generate_factorized_nbody
+  public :: generate_factorized_current_nbody
   public :: generate_factorized_nbody_rest
   public :: generate_factorized_decay_tree_rest
   public :: boost_factorized_block_from_rest
@@ -12,6 +14,84 @@ module factorized_block_kinematics
   public :: factorized_minkowski_square
 
 contains
+
+  subroutine generate_factorized_current_nbody(parent_momentum, particle_count, &
+       masses, pdgs, proposal_mass, proposal_width, x, first_index, momenta, &
+       xjac, xpswgt, pass)
+    ! Opt-in reparameterization of the generic four-body ttbar+l+nu map.
+    ! The proposal does not change a model propagator or a physical width.
+    ! Both production and corrected-decay core paths must call this same map.
+    double precision, intent(in) :: parent_momentum(0:3), masses(:), x(99)
+    double precision, intent(in) :: proposal_mass, proposal_width
+    integer, intent(in) :: particle_count, pdgs(:), first_index
+    double precision, intent(out) :: momenta(0:, :)
+    double precision, intent(inout) :: xjac, xpswgt
+    logical, intent(out) :: pass
+    integer :: order(4), leg, slot
+    double precision :: mapped_x(99), ordered_masses(4), ordered_momenta(0:3,4)
+    double precision :: parent_mass2, upper, invariant, invariant_jacobian
+
+    pass = .false.
+    momenta = 0d0
+    if (particle_count /= 4 .or. size(pdgs) < 4 .or. size(masses) < 4 .or. &
+        size(momenta,1) /= 4 .or. size(momenta,2) < 4) &
+         call fail_current_sampling('W_CURRENT requires a four-particle production core')
+    if (first_index < 1 .or. first_index+7 > 99) &
+         call fail_current_sampling('invalid random-variable range')
+    if (.not.ieee_is_finite(proposal_mass) .or. .not.ieee_is_finite(proposal_width) .or. &
+        proposal_mass <= 0d0 .or. proposal_width <= 0d0) &
+         call fail_current_sampling('proposal mass and width must be positive and finite')
+    order = 0
+    do leg = 1,4
+      select case (pdgs(leg))
+      case (6)
+        slot = 1
+      case (-6)
+        slot = 2
+      case (12,-12,14,-14)
+        slot = 3
+      case (11,-11,13,-13)
+        slot = 4
+      case default
+        call fail_current_sampling('W_CURRENT supports only t,tbar and a direct e/mu current')
+      end select
+      if (order(slot) /= 0) call fail_current_sampling('ambiguous W_CURRENT production core')
+      order(slot) = leg
+    end do
+    if (any(order == 0)) call fail_current_sampling('incomplete W_CURRENT production core')
+    if (pdgs(order(3))*pdgs(order(4)) >= 0 .or. &
+        abs(pdgs(order(3))) /= abs(pdgs(order(4)))+1) &
+         call fail_current_sampling('mismatched charged-current flavour or charge')
+    ordered_masses = masses(order)
+    if (any(.not.ieee_is_finite(ordered_masses)) .or. &
+        any(ordered_masses(1:2) <= 0d0) .or. any(ordered_masses(3:4) /= 0d0)) &
+         call fail_current_sampling('W_CURRENT requires positive top masses and massless current daughters')
+    parent_mass2 = factorized_minkowski_square(parent_momentum)
+    if (parent_mass2 <= 0d0) return
+    if (sqrt(parent_mass2) <= sum(ordered_masses(1:2))) return
+    upper = (sqrt(parent_mass2)-sum(ordered_masses(1:2)))**2
+    call sample_breit_wigner_invariant(x(first_index),0d0,upper, &
+         proposal_mass,proposal_width,invariant,invariant_jacobian)
+    ! Exact endpoints have zero phase-space measure and no rest frame for a
+    ! massless zero-invariant pair. No finite virtuality window is imposed.
+    if (invariant <= 0d0 .or. invariant >= upper) return
+    mapped_x = x
+    mapped_x(first_index) = invariant/upper
+    call generate_factorized_nbody(parent_momentum,4,ordered_masses,mapped_x, &
+         first_index,ordered_momenta,xjac,xpswgt,pass)
+    if (.not.pass) return
+    xjac = xjac*invariant_jacobian/upper
+    do leg = 1,4
+      momenta(:,order(leg)) = ordered_momenta(:,leg)
+    end do
+  end subroutine generate_factorized_current_nbody
+
+
+  subroutine fail_current_sampling(message)
+    character(len=*), intent(in) :: message
+    write(*,'(a)') 'ERROR in factorized current sampling: '//trim(message)
+    stop 1
+  end subroutine fail_current_sampling
 
   subroutine generate_factorized_nbody(parent_momentum, particle_count, &
        masses, x, first_index, momenta, xjac, xpswgt, pass)

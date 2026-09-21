@@ -3434,7 +3434,10 @@ def decay_card_text(widths, renormalization_scales,
                     decay_dynamical_scale_choices=None,
                     decay_width_scale_modes=None,
                     decay_scale_grouping='SPECIES',
-                    production_scale_grouping='NONE'):
+                    production_scale_grouping='NONE',
+                    production_phase_space_sampling='FLAT',
+                    production_sampling_mass=None,
+                    production_sampling_width=None):
     """Return a deterministic runtime card for on-shell decay parameters."""
 
     absolute_widths = dict(
@@ -3503,6 +3506,15 @@ def decay_card_text(widths, renormalization_scales,
         raise ValueError('Production scale grouping must be NONE or W_SYSTEM')
     if production_scale_grouping == 'W_SYSTEM' and production_scale_momenta != 'CORE':
         raise ValueError('W_SYSTEM production scale grouping requires CORE momenta')
+    production_phase_space_sampling = production_phase_space_sampling.upper()
+    if production_phase_space_sampling not in ('FLAT', 'W_CURRENT'):
+        raise ValueError('Production phase-space sampling must be FLAT or W_CURRENT')
+    if production_phase_space_sampling == 'W_CURRENT':
+        if any(value is None or not math.isfinite(value) or value <= 0.
+               for value in (production_sampling_mass, production_sampling_width)):
+            raise ValueError('W_CURRENT requires a finite positive proposal mass and width')
+    elif production_sampling_mass is not None or production_sampling_width is not None:
+        raise ValueError('Proposal mass/width require W_CURRENT sampling')
     decay_scale_variation_mode = decay_scale_variation_mode.upper()
     if decay_scale_variation_mode not in (
             'NONE', 'CORRELATED', 'INDEPENDENT'):
@@ -3724,6 +3736,14 @@ def decay_card_text(widths, renormalization_scales,
             '# grouped at their actual virtuality; applies to production muR/muF/QES.',
             '# Requires CORE momenta and dynamical_scale_choice=3. NONE is the default.',
             '%s = production_scale_grouping' % production_scale_grouping])
+    if production_phase_space_sampling != 'FLAT':
+        lines.extend([
+            '', '# Optional ttbar + massless e/mu current phase-space proposal.',
+            '# These are sampling parameters, NOT model masses/physical widths.',
+            '# Full virtuality range and Jacobian retained; FLAT is the default.',
+            '%s = production_phase_space_sampling' % production_phase_space_sampling,
+            '%.16e = production_sampling_mass' % production_sampling_mass,
+            '%.16e = production_sampling_width' % production_sampling_width])
     return '\n'.join(lines) + '\n'
 
 

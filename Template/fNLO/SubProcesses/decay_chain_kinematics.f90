@@ -11,6 +11,7 @@ module decay_chain_kinematics
        store_factorized_base_measure, compose_factorized_base_measure
   use factorized_block_kinematics, only: &
        generate_nbody => generate_factorized_nbody, &
+       generate_current_nbody => generate_factorized_current_nbody, &
        generate_nbody_rest => generate_factorized_nbody_rest, &
        generate_decay_tree_rest => generate_factorized_decay_tree_rest, &
        boost_nbody_from_rest => boost_factorized_block_from_rest, &
@@ -26,7 +27,7 @@ module decay_chain_kinematics
        node_pdg, node_child_count, node_child_kind, node_child_id, &
        decay_leaf_child, decay_node_child, leaf_pdg, &
        visible_color_pair
-  use decay_chain_parameters, only: decay_physical_width
+  use decay_chain_parameters, only: decay_physical_width, production_current_proposal
   implicit none
   private
 
@@ -145,12 +146,13 @@ contains
     double precision, intent(out) :: visible_momenta(0:3, nexternal - 1)
     logical, intent(out) :: pass
 
-    integer :: context, core_count, final_count, leg, index
+    integer :: context, core_count, final_count, leg, index, final_pdgs(nexternal)
     double precision :: parent(0:3)
     double precision :: final_masses(nexternal)
     double precision :: final_momenta(0:3, nexternal)
     type(factorized_measure_state) :: production_measure
-    logical :: measure_available
+    logical :: measure_available, current_sampling
+    double precision :: proposal_mass, proposal_width
 
     call require_enabled()
     node_rest_storage = 0d0
@@ -166,9 +168,19 @@ contains
 
     production_measure%jacobian = xjac
     production_measure%phase_space_weight = xpswgt
-    call generate_nbody(parent, final_count, final_masses, x, 1, &
-         final_momenta, production_measure%jacobian, &
-         production_measure%phase_space_weight, pass)
+    call production_current_proposal(current_sampling,proposal_mass,proposal_width)
+    if (current_sampling) then
+      do leg = 1, final_count
+        final_pdgs(leg) = core_leg_pdg(context,nincoming+leg)
+      end do
+      call generate_current_nbody(parent,final_count,final_masses,final_pdgs, &
+           proposal_mass,proposal_width,x,1,final_momenta,production_measure%jacobian, &
+           production_measure%phase_space_weight,pass)
+    else
+      call generate_nbody(parent, final_count, final_masses, x, 1, &
+           final_momenta, production_measure%jacobian, &
+           production_measure%phase_space_weight, pass)
+    end if
     if (.not. pass) return
     if (final_count == 1) production_measure%phase_space_weight = &
          production_measure%phase_space_weight/(2d0*sqrtshat)

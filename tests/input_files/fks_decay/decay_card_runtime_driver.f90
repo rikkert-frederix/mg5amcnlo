@@ -19,6 +19,8 @@ program decay_card_runtime_driver
   double precision :: visible(0:3, 8), core(0:3, 8)
   double precision :: saved_p(0:3, 8), mur, muf(2)
   integer :: saved_pdgs(8)
+  logical :: proposal_enabled
+  double precision :: proposal_mass, proposal_width
   integer, allocatable :: factors(:)
   integer :: itop, iantitop, point, kr, kf, i
   character(len=80) :: label
@@ -42,6 +44,11 @@ program decay_card_runtime_driver
     if (mode == 'standalone_tbar') active = 3
   end if
   call initialize_decay_chain_parameters()
+  if (mode == 'proposal') then
+    call production_current_proposal(proposal_enabled,proposal_mass,proposal_width)
+    write(*,'(a,1x,l1,2es25.16)') 'PROPOSAL',proposal_enabled,proposal_mass,proposal_width
+    stop
+  end if
   if (index(mode, 'production') == 1) then
     visible = 0d0
     visible(:, 3) = [200d0, 60d0, 0d0, 80d0]

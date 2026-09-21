@@ -20,6 +20,9 @@ module decay_chain_parameters
   integer, parameter, public :: nlo_decay_multiplicative = 1
   logical, save :: use_decayed_production_momenta_value = .false.
   logical, save :: production_w_system_value = .false.
+  logical, save :: production_current_sampling_value = .false.
+  double precision, save :: production_sampling_mass_value = 0d0
+  double precision, save :: production_sampling_width_value = 0d0
   integer, save :: number_of_width_species = 0
   integer, allocatable, save :: width_pdgs(:)
   double precision, allocatable, save :: lo_width_values(:)
@@ -60,6 +63,7 @@ module decay_chain_parameters
   public :: decay_renormalization_scale
   public :: use_decayed_production_ren_scale_momenta
   public :: production_w_system_scale
+  public :: production_current_proposal
   public :: decay_scale_variation_mode, decay_scale_variation_enabled
   public :: decay_scale_factor_count, decay_scale_factor
   public :: decay_scale_species_count, decay_scale_species
@@ -74,6 +78,7 @@ contains
     logical :: exists, momentum_mode_seen, production_grouping_seen
     logical :: variation_mode_seen, scale_factors_seen, scale_grouping_seen
     logical :: combination_mode_seen, production_order_seen, decay_order_seen
+    logical :: sampling_mode_seen, sampling_mass_seen, sampling_width_seen
     integer :: unit_number, ios, width_count, width_index
     integer :: scale_count, scale_index, factor_count, factor_index
     integer :: lo_variation_count, nlo_variation_count
@@ -181,6 +186,12 @@ contains
     use_decayed_production_momenta_value = .false.
     production_w_system_value = .false.
     production_grouping_seen = .false.
+    production_current_sampling_value = .false.
+    production_sampling_mass_value = 0d0
+    production_sampling_width_value = 0d0
+    sampling_mode_seen = .false.
+    sampling_mass_seen = .false.
+    sampling_width_seen = .false.
     momentum_mode_seen = .false.
     variation_mode_seen = .false.
     scale_grouping_seen = .false.
@@ -197,6 +208,28 @@ contains
       read(line, *, iostat=ios) keyword
       if (ios /= 0) call fail_parameters('malformed decay-card keyword')
       select case (trim(keyword))
+      case ('PRODUCTION_PHASE_SPACE_SAMPLING')
+        if (sampling_mode_seen) call fail_parameters('duplicate PRODUCTION_PHASE_SPACE_SAMPLING record')
+        read(line, *, iostat=ios) keyword, momentum_mode
+        if (ios == 0) then
+          select case (trim(momentum_mode))
+          case ('FLAT')
+            production_current_sampling_value = .false.
+          case ('W_CURRENT')
+            production_current_sampling_value = .true.
+          case default
+            call fail_parameters('production phase-space sampling must be FLAT or W_CURRENT')
+          end select
+        end if
+        sampling_mode_seen = .true.
+      case ('PRODUCTION_SAMPLING_MASS')
+        if (sampling_mass_seen) call fail_parameters('duplicate PRODUCTION_SAMPLING_MASS record')
+        read(line, *, iostat=ios) keyword, production_sampling_mass_value
+        sampling_mass_seen = .true.
+      case ('PRODUCTION_SAMPLING_WIDTH')
+        if (sampling_width_seen) call fail_parameters('duplicate PRODUCTION_SAMPLING_WIDTH record')
+        read(line, *, iostat=ios) keyword, production_sampling_width_value
+        sampling_width_seen = .true.
       case ('PRODUCTION_SCALE_GROUPING')
         if (production_grouping_seen) &
              call fail_parameters('duplicate PRODUCTION_SCALE_GROUPING record')
@@ -406,6 +439,16 @@ contains
     end if
     if (production_w_system_value .and. use_decayed_production_momenta_value) &
          call fail_parameters('W_SYSTEM production scale grouping requires CORE momenta')
+    if (production_current_sampling_value) then
+      if (.not.sampling_mass_seen .or. .not.sampling_width_seen) &
+           call fail_parameters('W_CURRENT requires explicit proposal mass and width')
+      if (.not.ieee_is_finite(production_sampling_mass_value) .or. &
+          .not.ieee_is_finite(production_sampling_width_value) .or. &
+          production_sampling_mass_value <= 0d0 .or. production_sampling_width_value <= 0d0) &
+           call fail_parameters('production proposal mass and width must be positive and finite')
+    else if (sampling_mass_seen .or. sampling_width_seen) then
+      call fail_parameters('proposal mass/width require W_CURRENT sampling')
+    end if
     do width_index = 1, number_of_width_species
       if (.not. has_lo_width(width_index)) &
            call fail_parameters('an LO width is required for every species')
@@ -1040,6 +1083,20 @@ contains
     if (.not. initialized) call initialize_decay_chain_parameters()
     production_w_system_scale = production_w_system_value
   end function production_w_system_scale
+
+
+  subroutine production_current_proposal(enabled, mass, width)
+    logical, intent(out) :: enabled
+    double precision, intent(out) :: mass, width
+    enabled = .false.
+    mass = 0d0
+    width = 0d0
+    if (.not.has_decay_chains() .and. .not.has_nlo_decay()) return
+    if (.not.initialized) call initialize_decay_chain_parameters()
+    enabled = production_current_sampling_value
+    mass = production_sampling_mass_value
+    width = production_sampling_width_value
+  end subroutine production_current_proposal
 
 
   subroutine initialize_scale_species()

@@ -5,6 +5,7 @@ module nlo_decay_kinematics
   use boostwdir2_module, only: boostwdir2_in_place
   use factorized_block_kinematics, only: &
        generate_nbody => generate_factorized_nbody, &
+       generate_current_nbody => generate_factorized_current_nbody, &
        generate_nbody_rest => generate_factorized_nbody_rest, &
        boost_from_rest => boost_factorized_momentum_from_rest, &
        boost_nbody_from_rest => boost_factorized_block_from_rest, &
@@ -17,7 +18,7 @@ module nlo_decay_kinematics
   use decay_chain_metadata, only: has_decay_chain_metadata, &
        canonical_born_context => born_context, leaf_visible_leg
   use decay_chain_kinematics, only: generate_canonical_decay_node_rest
-  use decay_chain_parameters, only: decay_physical_width
+  use decay_chain_parameters, only: decay_physical_width, production_current_proposal
   use nlo_decay_metadata, only: initialize_nlo_decay_metadata, &
        has_nlo_decay, nlo_decay_metadata_revision, corrected_parent_pdg, &
        nlo_decay_born_context, nlo_decay_context_for_fks, &
@@ -57,8 +58,8 @@ module nlo_decay_kinematics
   double precision, save :: parent_born(0:3) = 0d0
 
   public :: initialize_nlo_decay_kinematics
-  public :: nlo_decay_minimum_production_mass
   public :: nlo_decay_born_topology_order
+  public :: nlo_decay_minimum_production_mass
   public :: nlo_decay_production_mass
   public :: get_nlo_decay_production_momenta
   public :: fill_nlo_decay_born_masses
@@ -376,11 +377,12 @@ contains
     double precision, intent(out) :: visible(0:3, nexternal - 1)
     logical, intent(out) :: pass
 
-    integer :: context, final_count, leg, decay_index
+    integer :: context, final_count, leg, decay_index, final_pdgs(nexternal)
     double precision :: system(0:3), final_masses(nexternal)
     double precision :: final_momenta(0:3, nexternal)
     type(factorized_measure_state) :: production_measure
-    logical :: measure_available
+    logical :: measure_available, current_sampling
+    double precision :: proposal_mass, proposal_width
 
     call require_enabled()
     pass = .false.
@@ -401,9 +403,19 @@ contains
     end do
     production_measure%jacobian = xjac
     production_measure%phase_space_weight = xpswgt
-    call generate_nbody(system, final_count, final_masses, x, 1, &
-         final_momenta, production_measure%jacobian, &
-         production_measure%phase_space_weight, pass)
+    call production_current_proposal(current_sampling,proposal_mass,proposal_width)
+    if (current_sampling) then
+      do leg = 1, final_count
+        final_pdgs(leg) = nlo_decay_production_pdg(nincoming+leg)
+      end do
+      call generate_current_nbody(system,final_count,final_masses,final_pdgs, &
+           proposal_mass,proposal_width,x,1,final_momenta,production_measure%jacobian, &
+           production_measure%phase_space_weight,pass)
+    else
+      call generate_nbody(system, final_count, final_masses, x, 1, &
+           final_momenta, production_measure%jacobian, &
+           production_measure%phase_space_weight, pass)
+    end if
     if (.not. pass) return
     if (final_count == 1) production_measure%phase_space_weight = &
          production_measure%phase_space_weight/(2d0*sqrtshat)
@@ -500,18 +512,6 @@ contains
   end subroutine set_nlo_decay_cut_mask
 
 
-  recursive subroutine sample_nlo_decay_node(context, node, x, index, pass)
-    integer, intent(in) :: context, node
-    double precision, intent(in) :: x(99)
-    integer, intent(inout) :: index
-    logical, intent(out) :: pass
-    integer :: child_count, child, child_kind, identifier
-    integer :: leg, final_count, target, order(nexternal), final_index
-    double precision :: child_masses(nexternal)
-    double precision :: rest_momenta(0:3, nexternal)
-    double precision :: local_jacobian, local_weight
-    type(factorized_measure_state) :: decay_measure
-
   subroutine nlo_decay_born_topology_order(order)
     ! Map canonical [parent, topology children] to local Born leg numbers.
     ! Bundled Born visible-leg IDs have already been aligned by the exporter;
@@ -555,6 +555,18 @@ contains
   end subroutine nlo_decay_born_topology_order
 
 
+  recursive subroutine sample_nlo_decay_node(context, node, x, index, pass)
+    integer, intent(in) :: context, node
+    double precision, intent(in) :: x(99)
+    integer, intent(inout) :: index
+    logical, intent(out) :: pass
+    integer :: child_count, child, child_kind, identifier
+    integer :: leg, final_count, target, order(nexternal), final_index
+    double precision :: child_masses(nexternal)
+    double precision :: rest_momenta(0:3, nexternal)
+    double precision :: local_jacobian, local_weight
+    type(factorized_measure_state) :: decay_measure
+
     node_random_start(node) = index
     if (node == nlo_decay_corrected_node() .and. .not. has_decay_chain_metadata()) then
       final_count = 0
@@ -595,18 +607,6 @@ contains
     node_rest_storage(:, :, node) = 0d0
     node_rest_storage(:, 1:child_count, node) = &
          rest_momenta(:, 1:child_count)
-    node_rest_valid(node) = .true.
-    decay_measure%jacobian = local_jacobian
-    decay_measure%phase_space_weight = &
-         local_weight*nlo_decay_node_nwa_weight(node)
-    call store_factorized_base_measure(node, decay_measure)
-    index = index + 3*child_count - 4
-
-    if (node == nlo_decay_corrected_node() .and. .not. has_decay_chain_metadata()) then
-      do leg = 1, nlo_decay_local_count(context)
-        if (.not. nlo_decay_local_is_final(context, leg)) cycle
-        if (nlo_decay_local_target_kind(context, leg) /= &
-            nlo_decay_node_target) cycle
     if (node == nlo_decay_corrected_node() .and. has_decay_chain_metadata()) then
       call nlo_decay_born_topology_order(order)
       final_index = 0
@@ -619,6 +619,18 @@ contains
         end do
       end do
     end if
+    node_rest_valid(node) = .true.
+    decay_measure%jacobian = local_jacobian
+    decay_measure%phase_space_weight = &
+         local_weight*nlo_decay_node_nwa_weight(node)
+    call store_factorized_base_measure(node, decay_measure)
+    index = index + 3*child_count - 4
+
+    if (node == nlo_decay_corrected_node() .and. .not. has_decay_chain_metadata()) then
+      do leg = 1, nlo_decay_local_count(context)
+        if (.not. nlo_decay_local_is_final(context, leg)) cycle
+        if (nlo_decay_local_target_kind(context, leg) /= &
+            nlo_decay_node_target) cycle
         target = nlo_decay_local_target_id(context, leg)
         call sample_nlo_decay_node(context, target, x, index, pass)
         if (.not. pass) return
