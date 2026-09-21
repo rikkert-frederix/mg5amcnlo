@@ -717,8 +717,13 @@ def collect_result(cmd, folder_names=[], jobs=None, main_dir=None):
         P_comb = Combine_results(Pdir)
         if jobs:
             for job in [j for j in jobs if j['p_dir'] == os.path.basename(Pdir)]:
-                    P_comb.add_results(os.path.basename(job['dirname']),\
-                                       pjoin(job['dirname'],'results.dat'))
+                    result = P_comb.add_results(os.path.basename(job['dirname']),\
+                                                pjoin(job['dirname'],'results.dat'))
+                    factor = job.get('split_result_scale', 1.)
+                    for key in ('axsec', 'xsec', 'xerru', 'xerrc'):
+                        setattr(result, key, getattr(result, key)*factor)
+                    for key in ('ysec_iter', 'yerr_iter', 'yasec_iter'):
+                        setattr(result, key, [value*factor for value in getattr(result, key)])
         elif folder_names:
             try:
                 for line in open(pjoin(Pdir, 'symfact.dat')):
@@ -800,4 +805,3 @@ def make_all_html_results(cmd, folder_names = [], jobs=[], get_attr=None):
         return getattr(Presults, get_attr)
 
             
-

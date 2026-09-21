@@ -40,6 +40,8 @@ import datetime
 import tarfile
 import traceback
 import io
+import json
+import statistics
 try:
     import cpickle as pickle
 except:
@@ -2253,6 +2255,11 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
 
         if mode in ['LO', 'NLO']:
             # this is for fixed order runs
+            threshold, _, _ = self.fixed_order_split_outlier_settings()
+            if threshold and (self.analyse_card['fo_analysis_format'].lower()
+                              not in ('hwu', 'none') or self.run_card['pineappl']):
+                raise aMCatNLOError('Split outlier exclusion supports HwU/none '
+                                    'analysis without PineAPPL only')
             mode_dict = {'NLO': 'all', 'LO': 'born'}
             logger.info('Doing fixed order %s' % mode)
             req_acc = self.run_card['req_acc_FO']
@@ -2612,6 +2619,9 @@ RESTART = %(mint_mode)s
         """
 # Get the results of the current integration/MINT step
         self.append_the_results(jobs_to_run,integration_step)
+        if fixed_order:
+            jobs_to_run, jobs_to_collect = self.exclude_fixed_order_split_outliers(
+                jobs_to_run, jobs_to_collect, integration_step)
         self.cross_sect_dict = self.write_res_txt_file(jobs_to_collect,integration_step)
 # Update HTML pages
         if fixed_order:
@@ -2699,23 +2709,170 @@ RESTART = %(mint_mode)s
         with open(pjoin(self.me_dir,'SubProcesses',"nevents_unweighted"),'w') as f:
             f.write('\n'.join(content)+'\n')
 
+    def fixed_order_split_outlier_settings(self):
+        """The default preserves every sample; exclusion is explicitly opt-in."""
+        card = getattr(self, 'run_card', {})
+        def setting(name, default):
+            return card[name] if name in card else default
+        threshold = setting('fo_split_outlier_threshold', 0.)
+        fraction = setting('fo_split_outlier_variance_fraction', .95)
+        minimum = setting('fo_split_outlier_min_splits', 8)
+        if (not math.isfinite(threshold) or threshold < 0. or
+                not math.isfinite(fraction) or not .5 < fraction < 1. or
+                not isinstance(minimum, int) or isinstance(minimum, bool) or minimum < 6):
+            raise aMCatNLOError('Invalid fo_split_outlier settings: threshold >= 0, '
+                                '0.5 < variance fraction < 1, integer min_splits >= 6 required')
+        return threshold, fraction, minimum
+
+    @staticmethod
+    def find_fixed_order_split_outliers(jobs, threshold, fraction=.95, minimum=8):
+        """Find at most one isolated, variance-dominating replica per stratum.
+
+        This is a trimming policy, not a proof that the selected sample is
+        numerically wrong. Never compare distinct channels, training jobs,
+        unequal point allocations, or an already filtered set of replicas.
+        """
+        if not threshold:
+            return []
+        groups = collections.defaultdict(list)
+        for job in jobs:
+            if job['split'] > 0:
+                groups[(job['p_dir'], job['channel'], job['run_mode'])].append(job)
+        selected = []
+        for group in groups.values():
+            n = len(group)
+            if n < minimum or any('split_outlier' in j for j in group):
+                continue
+            if {j['split'] for j in group} != set(range(1, n+1)):
+                continue
+            reference = group[0]
+            if any(j['mint_mode'] != -1 or j['niters_done'] != j['niters'] or
+                   j['npoints_done'] != j['npoints'] or j['npoints_done'] <= 0 or
+                   j['niters_done'] <= 0 or
+                   not math.isclose(j['wgt_mult'], 1./n, rel_tol=1.e-12) or
+                   any(j[k] != reference[k] for k in (
+                       'niters_done', 'npoints_done', 'configs', 'nchans', 'accuracy', 'wgt_frac'))
+                   for j in group):
+                continue
+            if any(not math.isfinite(j[k]) for j in group for k in
+                   ('result', 'resultABS', 'error', 'errorABS')) or any(
+                       j['error'] < 0. or j['errorABS'] < 0. for j in group):
+                continue
+            candidate = max(group, key=lambda j: j['error'])
+            largest = candidate['error']
+            if largest <= 0.:
+                continue
+            share = 1./sum((j['error']/largest)**2 for j in group)
+            if share < fraction:
+                continue
+            peers = [j for j in group if j is not candidate]
+            center = statistics.median(j['result'] for j in peers)
+            scale = max(1.4826*statistics.median(abs(j['result']-center) for j in peers),
+                        statistics.median(j['error'] for j in peers))
+            if scale <= 0. or abs(candidate['result']-center) <= threshold*scale:
+                continue
+            selected.append(dict(group=group, excluded=candidate,
+                                 variance_fraction=share, peer_center=center,
+                                 peer_scale=scale,
+                                 deviation=abs(candidate['result']-center)/scale))
+        return selected
+
+    @staticmethod
+    def scale_fixed_order_split_result(job, factor):
+        """Scale in-memory estimators; the worker's original files stay intact."""
+        if factor == 1.:
+            return
+        for key in ('result', 'resultABS', 'error', 'errorABS'):
+            job[key] *= factor
+        if 'contribution_results' in job:
+            result = copy.deepcopy(job['contribution_results'])
+            for component in result['components']:
+                component['value'] *= factor
+                component['error'] *= factor
+            for key in ('sum', 'total', 'error', 'closure'):
+                if key in result:
+                    result[key] *= factor
+            job['contribution_results'] = result
+
+    def exclude_fixed_order_split_outliers(self, jobs, collected, step):
+        threshold, fraction, minimum = self.fixed_order_split_outlier_settings()
+        if step <= 0 or not threshold:
+            return jobs, collected
+        selected = self.find_fixed_order_split_outliers(jobs, threshold, fraction, minimum)
+        if not selected:
+            return jobs, collected
+        destination = pjoin(self.me_dir, 'Events', self.run_name,
+                            'split_outliers', 'step_%s' % step)
+        os.makedirs(destination)  # Never overwrite earlier exclusion evidence.
+        def totals(rows):
+            return dict(value=sum(j['result']*j['wgt_frac'] for j in rows),
+                        error=math.sqrt(sum(j['error']**2*j['wgt_frac'] for j in rows)))
+        report = dict(format=1, run=self.run_name, step=step,
+                      threshold=threshold, variance_fraction=fraction, min_splits=minimum,
+                      unfiltered_total=totals(collected), groups=[],
+                      limitation='Data-dependent split exclusion can bias the estimator. '
+                                 'Reported errors condition on the retained samples and omit selection bias.')
+        rejected = set()
+        audit = pjoin(destination, 'audit.json')
+        for selection in selected:
+            group, excluded = selection['group'], selection['excluded']
+            rejected.add(excluded['dirname'])
+            factor = len(group)/float(len(group)-1)
+            raw_keys = ('dirname', 'split', 'result', 'error', 'resultABS', 'errorABS',
+                        'wgt_mult', 'wgt_frac', 'npoints_done', 'niters_done')
+            entry = dict(p_dir=excluded['p_dir'], channel=excluded['channel'],
+                         run_mode=excluded['run_mode'], excluded_split=excluded['split'],
+                         original_count=len(group), retained_scale=factor,
+                         variance_fraction=selection['variance_fraction'],
+                         peer_center=selection['peer_center'], peer_scale=selection['peer_scale'],
+                         deviation=selection['deviation'],
+                         raw_jobs=[{k: j[k] for k in raw_keys} for j in group], archived_files=[])
+            archive = pjoin(destination, excluded['p_dir'], os.path.basename(excluded['dirname']))
+            os.makedirs(archive)
+            for name in ('MADatNLO.HwU', 'scale_pdf_dependence.dat', 'results.dat',
+                         'res_%s.dat' % step, 'contribution_results_%s.dat' % step,
+                         'log_MINT%s.txt' % step, 'input_app_MINT%s.txt' % step,
+                         'mint_grids', 'grid.MC_integer'):
+                source = pjoin(excluded['dirname'], name)
+                if os.path.isfile(source):
+                    shutil.copy2(source, pjoin(archive, name))
+                    entry['archived_files'].append(os.path.relpath(pjoin(archive, name), destination))
+            report['groups'].append(entry)
+            for job in group:
+                if job is excluded:
+                    continue
+                self.scale_fixed_order_split_result(job, factor)
+                job['split_result_scale'] = factor
+                job['split_outlier'] = dict(original_count=len(group),
+                                             excluded_splits=[excluded['split']], audit=audit)
+            logger.warning('Excluding split %s in %s channel %s: %.3f%% of variance, '
+                           '%.1f robust peer deviations. Retained splits scaled by %.8g. '
+                           'Filtered errors omit selection bias; audit: %s',
+                           excluded['split'], excluded['p_dir'], excluded['channel'],
+                           100.*selection['variance_fraction'], selection['deviation'], factor, audit)
+        jobs = [j for j in jobs if j['dirname'] not in rejected]
+        collected = [j for j in collected if j['dirname'] not in rejected]
+        report['filtered_total'] = totals(collected)
+        with open(audit, 'w') as stream:
+            json.dump(report, stream, indent=2, allow_nan=False)
+            stream.write('\n')
+        return jobs, collected
+
     def combine_split_order_run(self,jobs_to_run):
         """Combines jobs and grids from split jobs that have been run"""
         # combine the jobs that need to be combined in job
         # groups. Simply combine the ones that have the same p_dir and
         # same channel. 
-        jobgroups_to_combine=[]
+        jobgroups_to_combine=collections.OrderedDict()
         jobs_to_run_new=[]
         for job in jobs_to_run:
             if job['split'] == 0:
                 job['combined']=1
                 jobs_to_run_new.append(job) # this jobs wasn't split
-            elif job['split'] == 1:
-                jobgroups_to_combine.append([j for j in jobs_to_run if j['p_dir'] == job['p_dir'] and \
-                                            j['channel'] == job['channel']])
             else:
-                continue
-        for job_group in jobgroups_to_combine:
+                key = (job['p_dir'], job['channel'])
+                jobgroups_to_combine.setdefault(key, []).append(job)
+        for job_group in jobgroups_to_combine.values():
             # Combine the grids (mint-grids & MC-integer grids) first
             self.combine_split_order_grids(job_group)
             jobs_to_run_new.append(self.combine_split_order_jobs(job_group))
@@ -2730,6 +2887,9 @@ RESTART = %(mint_mode)s
         sum_job['split']=0
         sum_job['wgt_mult']=1.0
         sum_job['combined']=len(job_group)
+        # Any subsequent refinement consists of new, unfiltered replicas.
+        sum_job.pop('split_result_scale', None)
+        sum_job.pop('split_outlier', None)
         # information to be summed:
         keys=['niters_done','npoints_done','niters','npoints',\
               'result','resultABS','time_spend']
@@ -2855,6 +3015,20 @@ RESTART = %(mint_mode)s
            jobs_to_run and jobs_to_collect to replace the split-job by
            its splits.
         """
+        run_card = getattr(self, 'run_card', None)
+        # ConfigFile.get aliases __getitem__ and does not accept dict.get's
+        # default argument. Also allow older cards without this opt-in key.
+        target_time = float(run_card['fo_job_target_time']) if (
+            run_card is not None and 'fo_job_target_time' in run_card) else 0.0
+        if not math.isfinite(target_time) or target_time < 0.:
+            raise aMCatNLOError('fo_job_target_time must be finite and nonnegative')
+        minimum_splits = run_card['fo_job_min_splits'] if (
+            run_card is not None and 'fo_job_min_splits' in run_card) else 1
+        if (not isinstance(minimum_splits, int) or isinstance(minimum_splits, bool)
+                or minimum_splits < 1):
+            raise aMCatNLOError('fo_job_min_splits must be a positive integer')
+        fixed_count = (run_card is not None and 'req_acc_FO' in run_card and
+                       run_card['req_acc_FO'] == -1)
         # determine the number jobs we should have (this is per p_dir)
         if self.options['run_mode'] ==2:
             nb_submit = int(self.options['nb_core'])
@@ -2881,6 +3055,11 @@ RESTART = %(mint_mode)s
                 jobs_to_collect_new.remove(j)
             time_expected=job['time_spend']*(job['niters']*job['npoints'])/  \
                            (job['niters_done']*job['npoints_done'])
+            maximum_splits = min(nb_submit,
+                                 max(1, job['npoints']*job['niters']//1000))
+            if minimum_splits > maximum_splits:
+                raise aMCatNLOError('fo_job_min_splits cannot be met with the available '
+                                    'cores and minimum 1000 points per refinement replica')
             # if the time expected for this job is (much) larger than
             # the time spend in the previous iteration, and larger
             # than the expected time per job, split it
@@ -2909,6 +3088,17 @@ RESTART = %(mint_mode)s
                 # determine the number of splits needed; the second condition 
                 # (job['npoints'] >= __maxint__) prevents integer overflow in fortran
                 nsplit*= int(job['npoints'] / __maxint__) + 1
+                if fixed_count:
+                    # Fixed-count replicas must use every requested point.
+                    # Equal-size batches retain the existing 1/nsplit weight
+                    # contract; choose a divisor instead of truncating a
+                    # remainder. Each split is one fixed-grid iteration.
+                    total_points = job['npoints']*job['niters']
+                    while nsplit > 1 and total_points % nsplit:
+                        nsplit -= 1
+                    if total_points // nsplit > __maxint__:
+                        raise aMCatNLOError('Exact fixed-count splitting exceeds the Fortran '
+                                           'point limit; choose counts divisible into smaller batches')
                 for i in range(1,nsplit+1):
                     job_new=copy.copy(job)
                     job_new['split']=i
@@ -2997,6 +3187,9 @@ RESTART = %(mint_mode)s
                     niters = self.run_card['niters_FO']
                     for job in jobs:
                         job['mint_mode']=-1
+                        # A resumed grid may have used an adaptive target.
+                        # Fixed-count replicas must not inherit early stopping.
+                        job['accuracy']=0.
                         job['niters']=niters
                         job['npoints']=npoints
                         jobs_new.append(job)
@@ -3032,20 +3225,6 @@ RESTART = %(mint_mode)s
                         job['niters']=4
                         job['npoints']=int(round(job['npoints_done']*itmax_fl/4.0))*2
                     else:
-        run_card = getattr(self, 'run_card', None)
-        # ConfigFile.get aliases __getitem__ and does not accept dict.get's
-        # default argument. Also allow older cards without this opt-in key.
-        target_time = float(run_card['fo_job_target_time']) if (
-            run_card is not None and 'fo_job_target_time' in run_card) else 0.0
-        if not math.isfinite(target_time) or target_time < 0.:
-            raise aMCatNLOError('fo_job_target_time must be finite and nonnegative')
-        minimum_splits = run_card['fo_job_min_splits'] if (
-            run_card is not None and 'fo_job_min_splits' in run_card) else 1
-        if (not isinstance(minimum_splits, int) or isinstance(minimum_splits, bool)
-                or minimum_splits < 1):
-            raise aMCatNLOError('fo_job_min_splits must be a positive integer')
-        fixed_count = (run_card is not None and 'req_acc_FO' in run_card and
-                       run_card['req_acc_FO'] == -1)
                         if itmax_fl > 100.0 : itmax_fl=50.0
                         job['niters']=int(round(math.sqrt(itmax_fl)))
                         job['npoints']=int(round(job['npoints_done']*itmax_fl/
@@ -3072,11 +3251,6 @@ RESTART = %(mint_mode)s
                 if not hasattr(random, 'mg_seedset'):
                     random.seed(r)  
                     random.mg_seedset = r
-            maximum_splits = min(nb_submit,
-                                 max(1, job['npoints']*job['niters']//1000))
-            if minimum_splits > maximum_splits:
-                raise aMCatNLOError('fo_job_min_splits cannot be met with the available '
-                                    'cores and minimum 1000 points per refinement replica')
                 totevts=nevents
                 for job in jobs:
                     job['nevents'] = 0
@@ -3091,17 +3265,6 @@ RESTART = %(mint_mode)s
                     totevts -= 1
                     i -= 1
                     jobs[i]['nevents'] += 1
-                if fixed_count:
-                    # Fixed-count replicas must use every requested point.
-                    # Equal-size batches retain the existing 1/nsplit weight
-                    # contract; choose a divisor instead of truncating a
-                    # remainder. Each split is one fixed-grid iteration.
-                    total_points = job['npoints']*job['niters']
-                    while nsplit > 1 and total_points % nsplit:
-                        nsplit -= 1
-                    if total_points // nsplit > __maxint__:
-                        raise aMCatNLOError('Exact fixed-count splitting exceeds the Fortran '
-                                           'point limit; choose counts divisible into smaller batches')
             for job in jobs:
                 job['mint_mode']=step+1 # next step
             return jobs
@@ -3187,15 +3350,13 @@ RESTART = %(mint_mode)s
                     raise aMCatNLOError(
                         'Could not collect the resolved NLO contributions '
                         'from %s: %s' % (contribution_path, error))
-                        # A resumed grid may have used an adaptive target.
-                        # Fixed-count replicas must not inherit early stopping.
-                        job['accuracy']=0.
             if job['resultABS'] != 0:
                 job['err_percABS'] = job['errorABS']/job['resultABS']*100.
                 job['err_perc'] = job['error']/job['result']*100.
             else:
                 job['err_percABS'] = 0.
                 job['err_perc'] = 0.
+            self.scale_fixed_order_split_result(job, job.get('split_result_scale', 1.))
         if error_found:
             raise aMCatNLOError('An error occurred during the collection of results.\n' + 
                    'Please check the .log files inside the directories which failed:\n' +
@@ -3357,6 +3518,9 @@ RESTART = %(mint_mode)s
         """writes the res.txt files in the SubProcess dir"""
         jobs.sort(key = lambda job: -job['errorABS'])
         content=[]
+        if any('split_outlier' in j for j in jobs):
+            content.append('SPLIT OUTLIER FILTER APPLIED: retained replicas renormalized; '
+                           'errors omit selection bias. See Events/%s/split_outliers/.' % self.run_name)
         content.append('\n\nCross section per integration channel:')
         for job in jobs:
             content.append('%(p_dir)20s  %(channel)15s   %(result)10.8e    %(error)6.4e       %(err_perc)6.4f%%  ' %  job)
@@ -3513,7 +3677,7 @@ RESTART = %(mint_mode)s
             evt_wghts=[]
             for job in jobs:
                 evt_files.append(pjoin(job['dirname'],'scale_pdf_dependence.dat'))
-                evt_wghts.append(job['wgt_frac'])
+                evt_wghts.append(job['wgt_frac']*job.get('split_result_scale', 1.))
             scale_pdf_info = self.pdf_scale_from_reweighting(evt_files,evt_wghts)
         return scale_pdf_info
 
@@ -3702,6 +3866,12 @@ RESTART = %(mint_mode)s
         command.append("--gnuplot")
         command.append("--band=[]")
         command.append("--lhapdf-config="+self.options['lhapdf'])
+        split_scales = [job.get('split_result_scale', 1.) for job in jobs]
+        if any(factor != 1. for factor in split_scales):
+            if normalisation is not None and len(normalisation) != len(jobs):
+                raise aMCatNLOError('Histogram normalization count differs from retained jobs')
+            normalisation = [factor*(normalisation[i] if normalisation is not None else 1.)
+                             for i, factor in enumerate(split_scales)]
         if normalisation:
             command.append("--multiply="+(','.join([str(n) for n in normalisation])))
         command.append("--sum")
