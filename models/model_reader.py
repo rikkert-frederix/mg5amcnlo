@@ -207,10 +207,12 @@ class ModelReader(loop_base_objects.LoopModel):
         else:
             # No param_card, use default values
             for param in external_parameters:
-                if scale and parameter_dict[block][id].name == 'aS':
+                value = param.value
+                if scale and param.name == 'aS':
                     runner = Alphas_Runner(value, nloop=3)
                     value = runner(scale)
-                exec("locals()[\'%s\'] = %s" % (param.name, param.value), globals(), all_params)
+                    param.value = float(value)
+                exec("locals()[\'%s\'] = %s" % (param.name, value), globals(), all_params)
             
         # Define all functions used
         for func in self['functions']:
@@ -391,6 +393,5 @@ class Alphas_Runner(object):
                 break
         return a_out
             
-
 
 

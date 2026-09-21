@@ -70,6 +70,29 @@ class TestModelReader(unittest.TestCase):
                 complex
             )
 
+    def test_default_parameters_with_scale(self):
+        """The no-card scale path must not access card-only local variables."""
+        defaults = {param.name: param.value
+                    for param in self.base_model['parameters'][('external',)]}
+        self.assertIn('aS', defaults)
+        for scale in (86.25, 172.5, 345.):
+            reader = copy.deepcopy(self.model_reader)
+            values = reader.set_parameters_and_couplings(scale=scale)
+            expected = model_reader.Alphas_Runner(defaults['aS'], nloop=3)(scale)
+            self.assertAlmostEqual(values['aS'], expected, places=14)
+            self.assertAlmostEqual(reader['parameter_dict']['aS'], expected, places=14)
+            for name, value in defaults.items():
+                if name != 'aS':
+                    self.assertEqual(values[name], value)
+
+    def test_default_parameters_without_scale_are_unchanged(self):
+        defaults = {param.name: param.value
+                    for param in self.base_model['parameters'][('external',)]}
+        values = self.model_reader.set_parameters_and_couplings()
+        for name, value in defaults.items():
+            self.assertEqual(values[name], value)
+            self.assertEqual(self.model_reader['parameter_dict'][name], value)
+
 
 if __name__ == '__main__':
     unittest.unittest.main()
