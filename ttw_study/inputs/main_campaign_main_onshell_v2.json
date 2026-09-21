@@ -1,0 +1,6297 @@
+{
+  "created_utc": "2026-09-14T06:26:05.576413+00:00",
+  "status": "prepared; technical/reference release required",
+  "tag": "main_onshell_v2",
+  "cases": [
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100001
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100002
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100003
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100004
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100005
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100006
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100007
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100008
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100009
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100010
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100011
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100012
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100013
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100014
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100015
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100016
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100017
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100018
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100019
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100020
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100021
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100022
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100023
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100024
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100025
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100026
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100027
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100028
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100029
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100030
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100031
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100032
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100033
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100034
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100035
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100036
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100037
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100038
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100039
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100040
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100041
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100042
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100043
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100044
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100045
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100046
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100047
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100048
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100049
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100050
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100051
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100052
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100053
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100054
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100055
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100056
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100057
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100058
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100059
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100060
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100061
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100062
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100063
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100064
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100065
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100066
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100067
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100068
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100069
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100070
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100071
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100072
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100073
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100074
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100075
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100076
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100077
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100078
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100079
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100080
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100081
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100082
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100083
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100084
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100085
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100086
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100087
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100088
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100089
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100090
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100091
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100092
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100093
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100094
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100095
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100096
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100097
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100098
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100099
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100100
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100101
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100102
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100103
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100104
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100105
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100106
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100107
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100108
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100109
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100110
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100111
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100112
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100113
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100114
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100115
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100116
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100117
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100118
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100119
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100120
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100121
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100122
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100123
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100124
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100125
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100126
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100127
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100128
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100129
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100130
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100131
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100132
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100133
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100134
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100135
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100136
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100137
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100138
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100139
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100140
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100141
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100142
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100143
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100144
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100145
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100146
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100147
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100148
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100149
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100150
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100151
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100152
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100153
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100154
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100155
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100156
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100157
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100158
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100159
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100160
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100161
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100162
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100163
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100164
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100165
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100166
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100167
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100168
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100169
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100170
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100171
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100172
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100173
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100174
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100175
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100176
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100177
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100178
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100179
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100180
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100181
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100182
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100183
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100184
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100185
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100186
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100187
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100188
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100189
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100190
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100191
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100192
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100193
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100194
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100195
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100196
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100197
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100198
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100199
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100200
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100201
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100202
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100203
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100204
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100205
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100206
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100207
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100208
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100209
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100210
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100211
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100212
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100213
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100214
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100215
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100216
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100217
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100218
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100219
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100220
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100221
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100222
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100223
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100224
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100225
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100226
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100227
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100228
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100229
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100230
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100231
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100232
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100233
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100234
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100235
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100236
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100237
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100238
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100239
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100240
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100241
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100242
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100243
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100244
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100245
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100246
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100247
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100248
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100249
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100250
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100251
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100252
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100253
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100254
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100255
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100256
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100257
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100258
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100259
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100260
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100261
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100262
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100263
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100264
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100265
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100266
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100267
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100268
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100269
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100270
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100271
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100272
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100273
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100274
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100275
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100276
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100277
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100278
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100279
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100280
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100281
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100282
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100283
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100284
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100285
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100286
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100287
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100288
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100289
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100290
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100291
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100292
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100293
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100294
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100295
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100296
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100297
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100298
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100299
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100300
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100301
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100302
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100303
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100304
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100305
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100306
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100307
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100308
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100309
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100310
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100311
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100312
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100313
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100314
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100315
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100316
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100317
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100318
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100319
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100320
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100321
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100322
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100323
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100324
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100325
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100326
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100327
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100328
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100329
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100330
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100331
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100332
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100333
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100334
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100335
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100336
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100337
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100338
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100339
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100340
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100341
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100342
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100343
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100344
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100345
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100346
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100347
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100348
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100349
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100350
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100351
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100352
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100353
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100354
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100355
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100356
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100357
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100358
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100359
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100360
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100361
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100362
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100363
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100364
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100365
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100366
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100367
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100368
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100369
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100370
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100371
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100372
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100373
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100374
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100375
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100376
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100377
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100378
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100379
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100380
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100381
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100382
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100383
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100384
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100385
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100386
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100387
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100388
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100389
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100390
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100391
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100392
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100393
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100394
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100395
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100396
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100397
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100398
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100399
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100400
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100401
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100402
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100403
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100404
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100405
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100406
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100407
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100408
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100409
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100410
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100411
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100412
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100413
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100414
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100415
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100416
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100417
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100418
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100419
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100420
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100421
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100422
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100423
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100424
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100425
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100426
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100427
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100428
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100429
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100430
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100431
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100432
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100433
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100434
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100435
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100436
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100437
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100438
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100439
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100440
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100441
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100442
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100443
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100444
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100445
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100446
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100447
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100448
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100449
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100450
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100451
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100452
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100453
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100454
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100455
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100456
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100457
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100458
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100459
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100460
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100461
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100462
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100463
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100464
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100465
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100466
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100467
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100468
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100469
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100470
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100471
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100472
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100473
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100474
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "S",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100475
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "Pi",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100476
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "LO",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100477
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "P",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100478
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "D",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100479
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "variant": "PiD",
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 0.0,
+      "seed": 100480
+    }
+  ],
+  "jobs": [],
+  "source_hashes": {
+    "madgraph/fks/fks_decay.py": "7b24bf01b298ede8a9dfe87d0adbee50520672795cb03db21ea2c3fd419d356f",
+    "models/check_param_card.py": "8fa3e712cf625dbe9ee200effad98a801cf1425ce6db248392448fb62a7dcdaf",
+    "madgraph/iolibs/export_fks.py": "cdf3b0255e241e74f53b71d49b466e804787b00a210eb6e4d44a90446e572b43",
+    "madgraph/iolibs/export_spin_density.py": "9fc2450339689d39e7e90872c660bf02f918f20fa475f3edbc3e9a2da6e14900",
+    "madgraph/interface/amcatnlo_run_interface.py": "a9b0801d0e734904ca4ea4093d73dde9f8e3d63b6b7e0e0f1adf222d17a245cf",
+    "madgraph/various/banner.py": "ed891ef9ea5d8dfcac9f6a39bab8f7a3da97c889635edca1c0d0e663b3d7c457",
+    "Template/fNLO/Source/ranmar.f90": "e1b5e8ed4b6e8b2d9d23d07f1d4f73842d080a8e1fed6d7831a5fe2ed0e04636",
+    "Template/fNLO/SubProcesses/phase_space_kinematics.f90": "d7c6101409295ee3429090c80e86561582f60a9c6e349bac26b6012d6f532ff5",
+    "Template/fNLO/SubProcesses/factorized_block_kinematics.f90": "47b7d4efff73d30f5cdea5c44e4ba2dd4029ba50f68370397777e159f8b3bdfd",
+    "Template/fNLO/SubProcesses/decay_chain_kinematics.f90": "0c3ee7cfd260fb64934af63b8d3eb545aadfc486baf65980a8eec8994a97086e",
+    "Template/fNLO/SubProcesses/nlo_decay_kinematics.f90": "c07ef12f2d4a3182cea558ed277fca157ab8b8841b3482d44b74640f55070bc9",
+    "Template/fNLO/SubProcesses/multiplicative_nlo_decay.f90": "ecfc02ffee348deb0afb8ecf933b1b0457044af0b35dcc2df22dd110c2d581fa",
+    "Template/fNLO/SubProcesses/driver_mintFO.f90": "3ece5b1f51bc7b5d5d70448758f07a2f9c03726d90f1675f012ccc7cc17197b1",
+    "Template/fNLO/SubProcesses/makefile_fks_dir": "01bfbeb58907e93ddf15e79d5c7db391997e7b84e2ff4fa10f664306a309192a",
+    "Template/fNLO/SubProcesses/decay_chain_parameters.f90": "f3a714a9f27642c2afa24c27ba46d5c81493150028926c01eeb3c2b624f800db",
+    "Template/fNLO/SubProcesses/decay_chain_scales.f90": "11830b20dae684a38aa642e537e17509cfbbd4155c489a77b36cd5e1ffc6c291",
+    "Template/fNLO/SubProcesses/setscales.f90": "02443aef23d9833e09ffca8b8c2886463cbdb9994cd8f8112a32192c4390ca67",
+    "Template/fNLO/SubProcesses/fks_weights.f90": "219e87a817f6415724c65d37db428aac55c91772f81dbfb9939fb53aaad32e67",
+    "Template/fNLO/SubProcesses/spin_density_weight_lines.f90": "2857dd47ee2e383a85958e509629ef630949c55ed42f12a21b1afd672e8f1c70",
+    "Template/fNLO/SubProcesses/top_decay_virtual_dispatch.f90": "5953ed908a3b668dcdb327363a01fffcd8d16863229aa8bcdef68358b40980e2",
+    "Template/fNLO/SubProcesses/ajob_template": "b305f7a87db44a97962a3d69b2a09ca6f32571fd9c8c956d60f7c78a99b38043",
+    "Template/fNLO/FixedOrderAnalysis/HwU.f90": "fac716133ddd65736cf42c7f4fdb0975bd8427a371d55311738f3dcd80536ad9",
+    "Template/fNLO/FixedOrderAnalysis/analysis_HwU_pp_ttxw_product.f90": "0938835e1f7508716fec2752abda5887ab30a67653282ff3b9397d2be4c5e109",
+    "Template/fNLO/SubProcesses/mint_module.f90": "60b8892907c2488be42de9a4cb740f4bc4e4a4bad624e6f497ec9ab31ac40302",
+    "Template/fNLO/FixedOrderAnalysis/ttw_product_setup.py": "1a2c148984b59d4628378cd746ed470b4cd04e374a1d2b656f01f6f3560f5e7c",
+    "ttw_study/scripts/campaign.py": "f8a413650efc485bb074e20e822034342c08667d91ae55544d5994ff1121826a",
+    "ttw_study/scripts/run_main_campaign.py": "957981d7b85237bed8f05ee5d892d639c6535981663a7e3c591d24c81fec06d5",
+    "ttw_study/scripts/audit_results.py": "ed2c853516d0fe573d2ba5eab962175258392eedb294ab65fbdcbd189ce6daf5",
+    "ttw_study/scripts/audit_virtuals.py": "506663031cb59c39fd3232006cdb85961d1a36cb8fe49c80662259a6fd964ff8",
+    "ttw_study/scripts/harvest_splits.py": "1951943440ed9186875aa29c3ea3e22ad8e1011dec6756f7cdd4745c97c3a688",
+    "ttw_study/scripts/read_splits.py": "8723280bc168fbf29db9ac146bbdec68729d5557b5a3fa23a7c3e71f7db0590f",
+    "ttw_study/scripts/rng_history.py": "330883c0960e26a787792f8d2a85289ca5fd2b460b061a7a3c7f68c8ca4c07f2",
+    "ttw_study/scripts/run_width_mass_pilots.py": "8dfcb7f71fa20f5e1866bd2ad12aec4de45493cf5c028f67877217f78ceef6d6"
+  },
+  "benchmark_sha256": "11a824d9e5dad562eb3ab0e7bfe4fcc41da94bfbd6c68039eba2d97d6fa6a98d",
+  "max_cores": 64,
+  "settings": {
+    "accuracy": 0.015,
+    "points": 1000,
+    "grid_points": 1000,
+    "iterations": 3,
+    "job_seconds": 1.0,
+    "production_scale": "core-w-ht-half",
+    "ecm": 13000.0
+  },
+  "scope": "All eight ordered direct e/mu assignments, both charges, six on-shell prescriptions. Five or more independently retrained runs per prediction; no flavour rescaling or grid imports.",
+  "precision": "Accuracy is an initial allocation on the total rate, not fiducial/shape certification. Measure between-retraining variance and freeze common bins after full flavour coverage. Require sub-percent fiducial errors and 1--2% retained populated shapes, or explicit sensitivity.",
+  "remaining_scope": "BW/massive companions, parameter/PDF-family/alpha-s/mass/13.6-TeV scans, coefficient attribution where resolved, final figures and paper remain required."
+}

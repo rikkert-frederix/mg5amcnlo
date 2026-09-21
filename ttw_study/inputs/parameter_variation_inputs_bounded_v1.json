@@ -1,0 +1,1470 @@
+{
+  "created_utc": "2026-09-14T09:07:19.964162+00:00",
+  "status": "parameter inputs verified; no variation integrations",
+  "benchmark_sha256": "11a824d9e5dad562eb3ab0e7bfe4fcc41da94bfbd6c68039eba2d97d6fa6a98d",
+  "preflight_sha256": "1191da45f8611f36fe5c556a0c6cf49279e90871a5776a0eb22200f141fbc788",
+  "scenarios": [
+    {
+      "name": "baseline",
+      "family": "baseline",
+      "mt_GeV": 172.5,
+      "top_yukawa_GeV": 172.5,
+      "ecm_GeV": 13000.0,
+      "beam_energy_GeV": 6500.0,
+      "mw_GeV": 80.385,
+      "production_mb_GeV": 0.0,
+      "decay_mb_GeV": 0.0,
+      "alpha_s_flavours": 5,
+      "fixed_W_width_GeV": 2.097673562052797,
+      "top_width_reference_scale_GeV": 172.5,
+      "decay_scale_reference_GeV": 172.5,
+      "production_scale": "core-w-ht-half",
+      "qes_over_ref": 1.0,
+      "PDF": {
+        "name": "NNPDF40_nlo_as_01180",
+        "id": 331700,
+        "member": 0,
+        "DataVersion": 1,
+        "files": {
+          "/export/slow1/rikkert/mg5amcnlo/LHAPDF/share/LHAPDF/NNPDF40_nlo_as_01180/NNPDF40_nlo_as_01180.info": "9362949bda8c0ae1d6ba37542ee31ddbae010369d126ac45ab68ce8b306212a1",
+          "/export/slow1/rikkert/mg5amcnlo/LHAPDF/share/LHAPDF/NNPDF40_nlo_as_01180/NNPDF40_nlo_as_01180_0000.dat": "b9d44f01c1ea60d229d94d370686ab3423a434a97adc5c26911a2f5ee7689ae8"
+        }
+      },
+      "top_widths": [
+        {
+          "command": [
+            "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+            "172.5",
+            "80.385",
+            "0.0",
+            "86.25",
+            "0.0",
+            "0.118",
+            "1.0",
+            "5"
+          ],
+          "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nW treatment                   = on shell (narrow-width limit)\nalpha_s(muR)                 =  1.1899917952042466E-001\nGamma_LO [GeV]               =  1.4806285092499623E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.4045105847446926E-001\nGamma_NLO_QCD [GeV]          =  1.3401774507754931E+000\nDelta_Gamma_QCD/Gamma_LO     = -9.4859080179144434E-002",
+          "values": {
+            "n_f": 5.0,
+            "m_b (on shell) [GeV]": 0.0,
+            "W treatment": "on shell (narrow-width limit)",
+            "alpha_s(muR)": 0.11899917952042466,
+            "Gamma_LO [GeV]": 1.4806285092499623,
+            "Delta_Gamma_QCD^NLO [GeV]": -0.14045105847446926,
+            "Gamma_NLO_QCD [GeV]": 1.340177450775493,
+            "Delta_Gamma_QCD/Gamma_LO": -0.09485908017914443
+          },
+          "mb_GeV": 0.0,
+          "w_treatment": "onshell",
+          "muR_GeV": 86.25,
+          "scale_factor": 0.5,
+          "gamma_lo": 1.4806285092499623,
+          "qcd_coefficient": -1.1802691332872817,
+          "alpha_s_pdf": 0.1190016017859736,
+          "gamma_nlo_pdf": 1.340174591850233
+        },
+        {
+          "command": [
+            "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+            "172.5",
+            "80.385",
+            "0.0",
+            "172.5",
+            "0.0",
+            "0.118",
+            "1.0",
+            "5"
+          ],
+          "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nW treatment                   = on shell (narrow-width limit)\nalpha_s(muR)                 =  1.0767050245640061E-001\nGamma_LO [GeV]               =  1.4806285092499623E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.2708017061482207E-001\nGamma_NLO_QCD [GeV]          =  1.3535483386351401E+000\nDelta_Gamma_QCD/Gamma_LO     = -8.5828531478970849E-002",
+          "values": {
+            "n_f": 5.0,
+            "m_b (on shell) [GeV]": 0.0,
+            "W treatment": "on shell (narrow-width limit)",
+            "alpha_s(muR)": 0.10767050245640061,
+            "Gamma_LO [GeV]": 1.4806285092499623,
+            "Delta_Gamma_QCD^NLO [GeV]": -0.12708017061482207,
+            "Gamma_NLO_QCD [GeV]": 1.3535483386351401,
+            "Delta_Gamma_QCD/Gamma_LO": -0.08582853147897085
+          },
+          "mb_GeV": 0.0,
+          "w_treatment": "onshell",
+          "muR_GeV": 172.5,
+          "scale_factor": 1.0,
+          "gamma_lo": 1.4806285092499623,
+          "qcd_coefficient": -1.1802691332872817,
+          "alpha_s_pdf": 0.10767034778202184,
+          "gamma_nlo_pdf": 1.353548521192535
+        },
+        {
+          "command": [
+            "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+            "172.5",
+            "80.385",
+            "0.0",
+            "345.0",
+            "0.0",
+            "0.118",
+            "1.0",
+            "5"
+          ],
+          "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nW treatment                   = on shell (narrow-width limit)\nalpha_s(muR)                 =  9.8345034033333098E-002\nGamma_LO [GeV]               =  1.4806285092499623E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.1607360808163028E-001\nGamma_NLO_QCD [GeV]          =  1.3645549011683320E+000\nDelta_Gamma_QCD/Gamma_LO     = -7.8394821764190770E-002",
+          "values": {
+            "n_f": 5.0,
+            "m_b (on shell) [GeV]": 0.0,
+            "W treatment": "on shell (narrow-width limit)",
+            "alpha_s(muR)": 0.0983450340333331,
+            "Gamma_LO [GeV]": 1.4806285092499623,
+            "Delta_Gamma_QCD^NLO [GeV]": -0.11607360808163028,
+            "Gamma_NLO_QCD [GeV]": 1.364554901168332,
+            "Delta_Gamma_QCD/Gamma_LO": -0.07839482176419077
+          },
+          "mb_GeV": 0.0,
+          "w_treatment": "onshell",
+          "muR_GeV": 345.0,
+          "scale_factor": 2.0,
+          "gamma_lo": 1.4806285092499623,
+          "qcd_coefficient": -1.1802691332872817,
+          "alpha_s_pdf": 0.098339283253109,
+          "gamma_nlo_pdf": 1.364561688636723
+        },
+        {
+          "command": [
+            "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+            "172.5",
+            "80.385",
+            "0.0",
+            "86.25",
+            "2.097673562052797",
+            "0.118",
+            "1.0",
+            "5"
+          ],
+          "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nGamma_W [GeV]                =  2.0976735620527971E+000\nW treatment                   = Breit-Wigner convolution\nalpha_s(muR)                 =  1.1899917952042466E-001\nGamma_LO [GeV]               =  1.4576010900437490E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.3828071179997867E-001\nGamma_NLO_QCD [GeV]          =  1.3193203782437704E+000\nDelta_Gamma_QCD/Gamma_LO     = -9.4868694009983379E-002",
+          "values": {
+            "n_f": 5.0,
+            "m_b (on shell) [GeV]": 0.0,
+            "Gamma_W [GeV]": 2.097673562052797,
+            "W treatment": "Breit-Wigner convolution",
+            "alpha_s(muR)": 0.11899917952042466,
+            "Gamma_LO [GeV]": 1.457601090043749,
+            "Delta_Gamma_QCD^NLO [GeV]": -0.13828071179997867,
+            "Gamma_NLO_QCD [GeV]": 1.3193203782437704,
+            "Delta_Gamma_QCD/Gamma_LO": -0.09486869400998338
+          },
+          "mb_GeV": 0.0,
+          "w_treatment": "bw",
+          "muR_GeV": 86.25,
+          "scale_factor": 0.5,
+          "gamma_lo": 1.457601090043749,
+          "qcd_coefficient": -1.1620308001892112,
+          "alpha_s_pdf": 0.1190016017859736,
+          "gamma_nlo_pdf": 1.3193175634965963
+        },
+        {
+          "command": [
+            "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+            "172.5",
+            "80.385",
+            "0.0",
+            "172.5",
+            "2.097673562052797",
+            "0.118",
+            "1.0",
+            "5"
+          ],
+          "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nGamma_W [GeV]                =  2.0976735620527971E+000\nW treatment                   = Breit-Wigner convolution\nalpha_s(muR)                 =  1.0767050245640061E-001\nGamma_LO [GeV]               =  1.4576010900437490E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.2511644012618561E-001\nGamma_NLO_QCD [GeV]          =  1.3324846499175633E+000\nDelta_Gamma_QCD/Gamma_LO     = -8.5837230076735410E-002",
+          "values": {
+            "n_f": 5.0,
+            "m_b (on shell) [GeV]": 0.0,
+            "Gamma_W [GeV]": 2.097673562052797,
+            "W treatment": "Breit-Wigner convolution",
+            "alpha_s(muR)": 0.10767050245640061,
+            "Gamma_LO [GeV]": 1.457601090043749,
+            "Delta_Gamma_QCD^NLO [GeV]": -0.1251164401261856,
+            "Gamma_NLO_QCD [GeV]": 1.3324846499175633,
+            "Delta_Gamma_QCD/Gamma_LO": -0.08583723007673541
+          },
+          "mb_GeV": 0.0,
+          "w_treatment": "bw",
+          "muR_GeV": 172.5,
+          "scale_factor": 1.0,
+          "gamma_lo": 1.457601090043749,
+          "qcd_coefficient": -1.162030800189211,
+          "alpha_s_pdf": 0.10767034778202184,
+          "gamma_nlo_pdf": 1.3324848296539555
+        },
+        {
+          "command": [
+            "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+            "172.5",
+            "80.385",
+            "0.0",
+            "345.0",
+            "2.097673562052797",
+            "0.118",
+            "1.0",
+            "5"
+          ],
+          "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nGamma_W [GeV]                =  2.0976735620527971E+000\nW treatment                   = Breit-Wigner convolution\nalpha_s(muR)                 =  9.8345034033333098E-002\nGamma_LO [GeV]               =  1.4576010900437490E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.1427995859238928E-001\nGamma_NLO_QCD [GeV]          =  1.3433211314513598E+000\nDelta_Gamma_QCD/Gamma_LO     = -7.8402766966206947E-002",
+          "values": {
+            "n_f": 5.0,
+            "m_b (on shell) [GeV]": 0.0,
+            "Gamma_W [GeV]": 2.097673562052797,
+            "W treatment": "Breit-Wigner convolution",
+            "alpha_s(muR)": 0.0983450340333331,
+            "Gamma_LO [GeV]": 1.457601090043749,
+            "Delta_Gamma_QCD^NLO [GeV]": -0.11427995859238928,
+            "Gamma_NLO_QCD [GeV]": 1.3433211314513598,
+            "Delta_Gamma_QCD/Gamma_LO": -0.07840276696620695
+          },
+          "mb_GeV": 0.0,
+          "w_treatment": "bw",
+          "muR_GeV": 345.0,
+          "scale_factor": 2.0,
+          "gamma_lo": 1.457601090043749,
+          "qcd_coefficient": -1.1620308001892112,
+          "alpha_s_pdf": 0.098339283253109,
+          "gamma_nlo_pdf": 1.3433278140351053
+        }
+      ],
+      "width_source": "benchmark.top_widths",
+      "coupling_checkpoints": [
+        {
+          "Q_GeV": 80.385,
+          "alpha_s": 0.12029080286224644
+        },
+        {
+          "Q_GeV": 86.25,
+          "alpha_s": 0.1190016017859736
+        },
+        {
+          "Q_GeV": 91.1876,
+          "alpha_s": 0.11800216951342939
+        },
+        {
+          "Q_GeV": 172.5,
+          "alpha_s": 0.10767034778202184
+        },
+        {
+          "Q_GeV": 345.0,
+          "alpha_s": 0.098339283253109
+        }
+      ]
+    },
+    {
+      "name": "ct18",
+      "family": "pdf_family",
+      "mt_GeV": 172.5,
+      "top_yukawa_GeV": 172.5,
+      "ecm_GeV": 13000.0,
+      "beam_energy_GeV": 6500.0,
+      "mw_GeV": 80.385,
+      "production_mb_GeV": 0.0,
+      "decay_mb_GeV": 0.0,
+      "alpha_s_flavours": 5,
+      "fixed_W_width_GeV": 2.097673562052797,
+      "top_width_reference_scale_GeV": 172.5,
+      "decay_scale_reference_GeV": 172.5,
+      "production_scale": "core-w-ht-half",
+      "qes_over_ref": 1.0,
+      "PDF": {
+        "name": "CT18NLO",
+        "id": 14400,
+        "member": 0,
+        "DataVersion": 1,
+        "files": {
+          "/export/slow1/rikkert/mg5amcnlo/LHAPDF/share/LHAPDF/CT18NLO/CT18NLO.info": "be60232d8e6c49982c82f5fa990fd5b0fd1050719944f31602bf27cdb16548b0",
+          "/export/slow1/rikkert/mg5amcnlo/LHAPDF/share/LHAPDF/CT18NLO/CT18NLO_0000.dat": "375db856d2f8c7087a626c92ebf228d3f080e5de83175519778ffaf6e72e5410"
+        }
+      },
+      "top_widths": [
+        {
+          "mb_GeV": 0.0,
+          "w_treatment": "onshell",
+          "scale_factor": 0.5,
+          "muR_GeV": 86.25,
+          "gamma_lo": 1.4806285092499623,
+          "qcd_coefficient": -1.1802691332872817,
+          "alpha_s_pdf": 0.11899919168373403,
+          "gamma_nlo_pdf": 1.3401774364195145
+        },
+        {
+          "mb_GeV": 0.0,
+          "w_treatment": "onshell",
+          "scale_factor": 1.0,
+          "muR_GeV": 172.5,
+          "gamma_lo": 1.4806285092499623,
+          "qcd_coefficient": -1.1802691332872817,
+          "alpha_s_pdf": 0.10767022435873737,
+          "gamma_nlo_pdf": 1.3535486668652281
+        },
+        {
+          "mb_GeV": 0.0,
+          "w_treatment": "onshell",
+          "scale_factor": 2.0,
+          "muR_GeV": 345.0,
+          "gamma_lo": 1.4806285092499623,
+          "qcd_coefficient": -1.1802691332872817,
+          "alpha_s_pdf": 0.09834460400607334,
+          "gamma_nlo_pdf": 1.364555408716233
+        },
+        {
+          "mb_GeV": 0.0,
+          "w_treatment": "bw",
+          "scale_factor": 0.5,
+          "muR_GeV": 86.25,
+          "gamma_lo": 1.457601090043749,
+          "qcd_coefficient": -1.1620308001892112,
+          "alpha_s_pdf": 0.11899919168373403,
+          "gamma_nlo_pdf": 1.3193203641096303
+        },
+        {
+          "mb_GeV": 0.0,
+          "w_treatment": "bw",
+          "scale_factor": 1.0,
+          "muR_GeV": 172.5,
+          "gamma_lo": 1.457601090043749,
+          "qcd_coefficient": -1.162030800189211,
+          "alpha_s_pdf": 0.10767022435873737,
+          "gamma_nlo_pdf": 1.3324849730756136
+        },
+        {
+          "mb_GeV": 0.0,
+          "w_treatment": "bw",
+          "scale_factor": 2.0,
+          "muR_GeV": 345.0,
+          "gamma_lo": 1.457601090043749,
+          "qcd_coefficient": -1.1620308001892112,
+          "alpha_s_pdf": 0.09834460400607334,
+          "gamma_nlo_pdf": 1.3433216311562806
+        }
+      ],
+      "width_source": "parameter_variations_preflight.PDFs.CT18NLO.top_widths",
+      "coupling_checkpoints": [
+        {
+          "Q_GeV": 80.385,
+          "alpha_s": 0.12028783769511955
+        },
+        {
+          "Q_GeV": 86.25,
+          "alpha_s": 0.11899919168373403
+        },
+        {
+          "Q_GeV": 91.1876,
+          "alpha_s": 0.11800071759569249
+        },
+        {
+          "Q_GeV": 172.5,
+          "alpha_s": 0.10767022435873737
+        },
+        {
+          "Q_GeV": 345.0,
+          "alpha_s": 0.09834460400607334
+        }
+      ]
+    },
+    {
+      "name": "msht20",
+      "family": "pdf_family",
+      "mt_GeV": 172.5,
+      "top_yukawa_GeV": 172.5,
+      "ecm_GeV": 13000.0,
+      "beam_energy_GeV": 6500.0,
+      "mw_GeV": 80.385,
+      "production_mb_GeV": 0.0,
+      "decay_mb_GeV": 0.0,
+      "alpha_s_flavours": 5,
+      "fixed_W_width_GeV": 2.097673562052797,
+      "top_width_reference_scale_GeV": 172.5,
+      "decay_scale_reference_GeV": 172.5,
+      "production_scale": "core-w-ht-half",
+      "qes_over_ref": 1.0,
+      "PDF": {
+        "name": "MSHT20nlo_as118",
+        "id": 27100,
+        "member": 0,
+        "DataVersion": 3,
+        "files": {
+          "/export/slow1/rikkert/mg5amcnlo/LHAPDF/share/LHAPDF/MSHT20nlo_as118/MSHT20nlo_as118.info": "779a1526ee529b884db18520af82b37e973366022f82fdddd0fabbeea426a8e8",
+          "/export/slow1/rikkert/mg5amcnlo/LHAPDF/share/LHAPDF/MSHT20nlo_as118/MSHT20nlo_as118_0000.dat": "f11a66436f4dbeb76adb572a727929b9a0f2a4be93a228396946c2685dce31ef"
+        }
+      },
+      "top_widths": [
+        {
+          "mb_GeV": 0.0,
+          "w_treatment": "onshell",
+          "scale_factor": 0.5,
+          "muR_GeV": 86.25,
+          "gamma_lo": 1.4806285092499623,
+          "qcd_coefficient": -1.1802691332872817,
+          "alpha_s_pdf": 0.11899933963136976,
+          "gamma_nlo_pdf": 1.3401772618014867
+        },
+        {
+          "mb_GeV": 0.0,
+          "w_treatment": "onshell",
+          "scale_factor": 1.0,
+          "muR_GeV": 172.5,
+          "gamma_lo": 1.4806285092499623,
+          "qcd_coefficient": -1.1802691332872817,
+          "alpha_s_pdf": 0.10767118808606227,
+          "gamma_nlo_pdf": 1.3535475294076136
+        },
+        {
+          "mb_GeV": 0.0,
+          "w_treatment": "onshell",
+          "scale_factor": 2.0,
+          "muR_GeV": 345.0,
+          "gamma_lo": 1.4806285092499623,
+          "qcd_coefficient": -1.1802691332872817,
+          "alpha_s_pdf": 0.09834476012285397,
+          "gamma_nlo_pdf": 1.3645552244564159
+        },
+        {
+          "mb_GeV": 0.0,
+          "w_treatment": "bw",
+          "scale_factor": 0.5,
+          "muR_GeV": 86.25,
+          "gamma_lo": 1.457601090043749,
+          "qcd_coefficient": -1.1620308001892112,
+          "alpha_s_pdf": 0.11899933963136976,
+          "gamma_nlo_pdf": 1.3193201921899207
+        },
+        {
+          "mb_GeV": 0.0,
+          "w_treatment": "bw",
+          "scale_factor": 1.0,
+          "muR_GeV": 172.5,
+          "gamma_lo": 1.457601090043749,
+          "qcd_coefficient": -1.162030800189211,
+          "alpha_s_pdf": 0.10767118808606227,
+          "gamma_nlo_pdf": 1.3324838531947791
+        },
+        {
+          "mb_GeV": 0.0,
+          "w_treatment": "bw",
+          "scale_factor": 2.0,
+          "muR_GeV": 345.0,
+          "gamma_lo": 1.457601090043749,
+          "qcd_coefficient": -1.1620308001892112,
+          "alpha_s_pdf": 0.09834476012285397,
+          "gamma_nlo_pdf": 1.343321449743773
+        }
+      ],
+      "width_source": "parameter_variations_preflight.PDFs.MSHT20nlo_as118.top_widths",
+      "coupling_checkpoints": [
+        {
+          "Q_GeV": 80.385,
+          "alpha_s": 0.12028767339227364
+        },
+        {
+          "Q_GeV": 86.25,
+          "alpha_s": 0.11899933963136976
+        },
+        {
+          "Q_GeV": 91.1876,
+          "alpha_s": 0.11800079777937698
+        },
+        {
+          "Q_GeV": 172.5,
+          "alpha_s": 0.10767118808606227
+        },
+        {
+          "Q_GeV": 345.0,
+          "alpha_s": 0.09834476012285397
+        }
+      ]
+    },
+    {
+      "name": "as117",
+      "family": "alpha_s",
+      "mt_GeV": 172.5,
+      "top_yukawa_GeV": 172.5,
+      "ecm_GeV": 13000.0,
+      "beam_energy_GeV": 6500.0,
+      "mw_GeV": 80.385,
+      "production_mb_GeV": 0.0,
+      "decay_mb_GeV": 0.0,
+      "alpha_s_flavours": 5,
+      "fixed_W_width_GeV": 2.097673562052797,
+      "top_width_reference_scale_GeV": 172.5,
+      "decay_scale_reference_GeV": 172.5,
+      "production_scale": "core-w-ht-half",
+      "qes_over_ref": 1.0,
+      "PDF": {
+        "name": "NNPDF40_nlo_as_01170",
+        "id": 333900,
+        "member": 0,
+        "DataVersion": 1,
+        "files": {
+          "/export/slow1/rikkert/mg5amcnlo/LHAPDF/share/LHAPDF/NNPDF40_nlo_as_01170/NNPDF40_nlo_as_01170.info": "3c23f448f7ecf7641dce7247740e7192bf79e6a4029faf4fc43f25a8d3023fba",
+          "/export/slow1/rikkert/mg5amcnlo/LHAPDF/share/LHAPDF/NNPDF40_nlo_as_01170/NNPDF40_nlo_as_01170_0000.dat": "f9637fae1e7877579d2acffd80fe0c027684da18735198fccbbbe9c192fb1a21"
+        }
+      },
+      "top_widths": [
+        {
+          "mb_GeV": 0.0,
+          "w_treatment": "onshell",
+          "scale_factor": 0.5,
+          "muR_GeV": 86.25,
+          "gamma_lo": 1.4806285092499623,
+          "qcd_coefficient": -1.1802691332872817,
+          "alpha_s_pdf": 0.1179842430162572,
+          "gamma_nlo_pdf": 1.3413753490036084
+        },
+        {
+          "mb_GeV": 0.0,
+          "w_treatment": "onshell",
+          "scale_factor": 1.0,
+          "muR_GeV": 172.5,
+          "gamma_lo": 1.4806285092499623,
+          "qcd_coefficient": -1.1802691332872817,
+          "alpha_s_pdf": 0.1068404463561316,
+          "gamma_nlo_pdf": 1.3545280282291845
+        },
+        {
+          "mb_GeV": 0.0,
+          "w_treatment": "onshell",
+          "scale_factor": 2.0,
+          "muR_GeV": 345.0,
+          "gamma_lo": 1.4806285092499623,
+          "qcd_coefficient": -1.1802691332872817,
+          "alpha_s_pdf": 0.09764909962588872,
+          "gamma_nlo_pdf": 1.3653762910682312
+        },
+        {
+          "mb_GeV": 0.0,
+          "w_treatment": "bw",
+          "scale_factor": 0.5,
+          "muR_GeV": 86.25,
+          "gamma_lo": 1.457601090043749,
+          "qcd_coefficient": -1.1620308001892112,
+          "alpha_s_pdf": 0.1179842430162572,
+          "gamma_nlo_pdf": 1.3204997657218494
+        },
+        {
+          "mb_GeV": 0.0,
+          "w_treatment": "bw",
+          "scale_factor": 1.0,
+          "muR_GeV": 172.5,
+          "gamma_lo": 1.457601090043749,
+          "qcd_coefficient": -1.162030800189211,
+          "alpha_s_pdf": 0.1068404463561316,
+          "gamma_nlo_pdf": 1.333449200671961
+        },
+        {
+          "mb_GeV": 0.0,
+          "w_treatment": "bw",
+          "scale_factor": 2.0,
+          "muR_GeV": 345.0,
+          "gamma_lo": 1.457601090043749,
+          "qcd_coefficient": -1.1620308001892112,
+          "alpha_s_pdf": 0.09764909962588872,
+          "gamma_nlo_pdf": 1.3441298286677217
+        }
+      ],
+      "width_source": "parameter_variations_preflight.PDFs.NNPDF40_nlo_as_01170.top_widths",
+      "coupling_checkpoints": [
+        {
+          "Q_GeV": 80.385,
+          "alpha_s": 0.1192508688727415
+        },
+        {
+          "Q_GeV": 86.25,
+          "alpha_s": 0.1179842430162572
+        },
+        {
+          "Q_GeV": 91.1876,
+          "alpha_s": 0.11700214005944234
+        },
+        {
+          "Q_GeV": 172.5,
+          "alpha_s": 0.1068404463561316
+        },
+        {
+          "Q_GeV": 345.0,
+          "alpha_s": 0.09764909962588872
+        }
+      ]
+    },
+    {
+      "name": "as119",
+      "family": "alpha_s",
+      "mt_GeV": 172.5,
+      "top_yukawa_GeV": 172.5,
+      "ecm_GeV": 13000.0,
+      "beam_energy_GeV": 6500.0,
+      "mw_GeV": 80.385,
+      "production_mb_GeV": 0.0,
+      "decay_mb_GeV": 0.0,
+      "alpha_s_flavours": 5,
+      "fixed_W_width_GeV": 2.097673562052797,
+      "top_width_reference_scale_GeV": 172.5,
+      "decay_scale_reference_GeV": 172.5,
+      "production_scale": "core-w-ht-half",
+      "qes_over_ref": 1.0,
+      "PDF": {
+        "name": "NNPDF40_nlo_as_01190",
+        "id": 334100,
+        "member": 0,
+        "DataVersion": 1,
+        "files": {
+          "/export/slow1/rikkert/mg5amcnlo/LHAPDF/share/LHAPDF/NNPDF40_nlo_as_01190/NNPDF40_nlo_as_01190.info": "a71506b7a0cfdf266625c9ffd8fcbd0f94796c02cb462d3d200a09639d58c66a",
+          "/export/slow1/rikkert/mg5amcnlo/LHAPDF/share/LHAPDF/NNPDF40_nlo_as_01190/NNPDF40_nlo_as_01190_0000.dat": "e35a8ddaa764aa265e6a2ddcb0a71a0445f76d8f472adb98d3bd0571dcf045aa"
+        }
+      },
+      "top_widths": [
+        {
+          "mb_GeV": 0.0,
+          "w_treatment": "onshell",
+          "scale_factor": 0.5,
+          "muR_GeV": 86.25,
+          "gamma_lo": 1.4806285092499623,
+          "qcd_coefficient": -1.1802691332872817,
+          "alpha_s_pdf": 0.12001911601245968,
+          "gamma_nlo_pdf": 1.3389736512160308
+        },
+        {
+          "mb_GeV": 0.0,
+          "w_treatment": "onshell",
+          "scale_factor": 1.0,
+          "muR_GeV": 172.5,
+          "gamma_lo": 1.4806285092499623,
+          "qcd_coefficient": -1.1802691332872817,
+          "alpha_s_pdf": 0.1084989212754863,
+          "gamma_nlo_pdf": 1.3525705814735391
+        },
+        {
+          "mb_GeV": 0.0,
+          "w_treatment": "onshell",
+          "scale_factor": 2.0,
+          "muR_GeV": 345.0,
+          "gamma_lo": 1.4806285092499623,
+          "qcd_coefficient": -1.1802691332872817,
+          "alpha_s_pdf": 0.09902736119284349,
+          "gamma_nlo_pdf": 1.3637495714831582
+        },
+        {
+          "mb_GeV": 0.0,
+          "w_treatment": "bw",
+          "scale_factor": 0.5,
+          "muR_GeV": 86.25,
+          "gamma_lo": 1.457601090043749,
+          "qcd_coefficient": -1.1620308001892112,
+          "alpha_s_pdf": 0.12001911601245968,
+          "gamma_nlo_pdf": 1.3181351806257888
+        },
+        {
+          "mb_GeV": 0.0,
+          "w_treatment": "bw",
+          "scale_factor": 1.0,
+          "muR_GeV": 172.5,
+          "gamma_lo": 1.457601090043749,
+          "qcd_coefficient": -1.162030800189211,
+          "alpha_s_pdf": 0.1084989212754863,
+          "gamma_nlo_pdf": 1.3315220017343294
+        },
+        {
+          "mb_GeV": 0.0,
+          "w_treatment": "bw",
+          "scale_factor": 2.0,
+          "muR_GeV": 345.0,
+          "gamma_lo": 1.457601090043749,
+          "qcd_coefficient": -1.1620308001892112,
+          "alpha_s_pdf": 0.09902736119284349,
+          "gamma_nlo_pdf": 1.3425282462762032
+        }
+      ],
+      "width_source": "parameter_variations_preflight.PDFs.NNPDF40_nlo_as_01190.top_widths",
+      "coupling_checkpoints": [
+        {
+          "Q_GeV": 80.385,
+          "alpha_s": 0.12133110421904843
+        },
+        {
+          "Q_GeV": 86.25,
+          "alpha_s": 0.12001911601245968
+        },
+        {
+          "Q_GeV": 91.1876,
+          "alpha_s": 0.11900219770112667
+        },
+        {
+          "Q_GeV": 172.5,
+          "alpha_s": 0.1084989212754863
+        },
+        {
+          "Q_GeV": 345.0,
+          "alpha_s": 0.09902736119284349
+        }
+      ]
+    },
+    {
+      "name": "mt171p5",
+      "family": "top_mass",
+      "mt_GeV": 171.5,
+      "top_yukawa_GeV": 171.5,
+      "ecm_GeV": 13000.0,
+      "beam_energy_GeV": 6500.0,
+      "mw_GeV": 80.385,
+      "production_mb_GeV": 0.0,
+      "decay_mb_GeV": 0.0,
+      "alpha_s_flavours": 5,
+      "fixed_W_width_GeV": 2.097673562052797,
+      "top_width_reference_scale_GeV": 171.5,
+      "decay_scale_reference_GeV": 171.5,
+      "production_scale": "core-w-ht-half",
+      "qes_over_ref": 1.0,
+      "PDF": {
+        "name": "NNPDF40_nlo_as_01180",
+        "id": 331700,
+        "member": 0,
+        "DataVersion": 1,
+        "files": {
+          "/export/slow1/rikkert/mg5amcnlo/LHAPDF/share/LHAPDF/NNPDF40_nlo_as_01180/NNPDF40_nlo_as_01180.info": "9362949bda8c0ae1d6ba37542ee31ddbae010369d126ac45ab68ce8b306212a1",
+          "/export/slow1/rikkert/mg5amcnlo/LHAPDF/share/LHAPDF/NNPDF40_nlo_as_01180/NNPDF40_nlo_as_01180_0000.dat": "b9d44f01c1ea60d229d94d370686ab3423a434a97adc5c26911a2f5ee7689ae8"
+        }
+      },
+      "top_widths": [
+        {
+          "command": [
+            "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+            "171.5",
+            "80.385",
+            "0.0",
+            "85.75",
+            "0.0",
+            "0.118",
+            "1.0",
+            "5"
+          ],
+          "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nW treatment                   = on shell (narrow-width limit)\nalpha_s(muR)                 =  1.1910453140605423E-001\nGamma_LO [GeV]               =  1.4507211451230206E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.3765461371196472E-001\nGamma_NLO_QCD [GeV]          =  1.3130665314110559E+000\nDelta_Gamma_QCD/Gamma_LO     = -9.4887025101086292E-002",
+          "values": {
+            "n_f": 5.0,
+            "m_b (on shell) [GeV]": 0.0,
+            "W treatment": "on shell (narrow-width limit)",
+            "alpha_s(muR)": 0.11910453140605423,
+            "Gamma_LO [GeV]": 1.4507211451230206,
+            "Delta_Gamma_QCD^NLO [GeV]": -0.13765461371196472,
+            "Gamma_NLO_QCD [GeV]": 1.313066531411056,
+            "Delta_Gamma_QCD/Gamma_LO": -0.09488702510108629
+          },
+          "mt_GeV": 171.5,
+          "mb_GeV": 0.0,
+          "w_treatment": "onshell",
+          "scale_factor": 0.5,
+          "muR_GeV": 85.75,
+          "gamma_lo": 1.4507211451230206,
+          "qcd_coefficient": -1.155746234731146,
+          "alpha_s_pdf": 0.11910701142858306,
+          "gamma_nlo_pdf": 1.3130636651343561
+        },
+        {
+          "command": [
+            "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+            "171.5",
+            "80.385",
+            "0.0",
+            "171.5",
+            "0.0",
+            "0.118",
+            "1.0",
+            "5"
+          ],
+          "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nW treatment                   = on shell (narrow-width limit)\nalpha_s(muR)                 =  1.0775636810290531E-001\nGamma_LO [GeV]               =  1.4507211451230206E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.2453901670323622E-001\nGamma_NLO_QCD [GeV]          =  1.3261821284197843E+000\nDelta_Gamma_QCD/Gamma_LO     = -8.5846282121072523E-002",
+          "values": {
+            "n_f": 5.0,
+            "m_b (on shell) [GeV]": 0.0,
+            "W treatment": "on shell (narrow-width limit)",
+            "alpha_s(muR)": 0.10775636810290531,
+            "Gamma_LO [GeV]": 1.4507211451230206,
+            "Delta_Gamma_QCD^NLO [GeV]": -0.12453901670323622,
+            "Gamma_NLO_QCD [GeV]": 1.3261821284197843,
+            "Delta_Gamma_QCD/Gamma_LO": -0.08584628212107252
+          },
+          "mt_GeV": 171.5,
+          "mb_GeV": 0.0,
+          "w_treatment": "onshell",
+          "scale_factor": 1.0,
+          "muR_GeV": 171.5,
+          "gamma_lo": 1.4507211451230206,
+          "qcd_coefficient": -1.1557462347311465,
+          "alpha_s_pdf": 0.10775625733945685,
+          "gamma_nlo_pdf": 1.326182256434223
+        },
+        {
+          "command": [
+            "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+            "171.5",
+            "80.385",
+            "0.0",
+            "343.0",
+            "0.0",
+            "0.118",
+            "1.0",
+            "5"
+          ],
+          "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nW treatment                   = on shell (narrow-width limit)\nalpha_s(muR)                 =  9.8416407630884578E-002\nGamma_LO [GeV]               =  1.4507211451230206E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.1374439255516051E-001\nGamma_NLO_QCD [GeV]          =  1.3369767525678602E+000\nDelta_Gamma_QCD/Gamma_LO     = -7.8405414395138651E-002",
+          "values": {
+            "n_f": 5.0,
+            "m_b (on shell) [GeV]": 0.0,
+            "W treatment": "on shell (narrow-width limit)",
+            "alpha_s(muR)": 0.09841640763088458,
+            "Gamma_LO [GeV]": 1.4507211451230206,
+            "Delta_Gamma_QCD^NLO [GeV]": -0.11374439255516051,
+            "Gamma_NLO_QCD [GeV]": 1.3369767525678602,
+            "Delta_Gamma_QCD/Gamma_LO": -0.07840541439513865
+          },
+          "mt_GeV": 171.5,
+          "mb_GeV": 0.0,
+          "w_treatment": "onshell",
+          "scale_factor": 2.0,
+          "muR_GeV": 343.0,
+          "gamma_lo": 1.4507211451230206,
+          "qcd_coefficient": -1.1557462347311465,
+          "alpha_s_pdf": 0.09841068624083525,
+          "gamma_nlo_pdf": 1.336983365042867
+        },
+        {
+          "command": [
+            "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+            "171.5",
+            "80.385",
+            "0.0",
+            "85.75",
+            "2.097673562052797",
+            "0.118",
+            "1.0",
+            "5"
+          ],
+          "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nGamma_W [GeV]                =  2.0976735620527971E+000\nW treatment                   = Breit-Wigner convolution\nalpha_s(muR)                 =  1.1910453140605423E-001\nGamma_LO [GeV]               =  1.4280472441443366E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.3551713391148618E-001\nGamma_NLO_QCD [GeV]          =  1.2925301102328504E+000\nDelta_Gamma_QCD/Gamma_LO     = -9.4896814140547500E-002",
+          "values": {
+            "n_f": 5.0,
+            "m_b (on shell) [GeV]": 0.0,
+            "Gamma_W [GeV]": 2.097673562052797,
+            "W treatment": "Breit-Wigner convolution",
+            "alpha_s(muR)": 0.11910453140605423,
+            "Gamma_LO [GeV]": 1.4280472441443366,
+            "Delta_Gamma_QCD^NLO [GeV]": -0.13551713391148618,
+            "Gamma_NLO_QCD [GeV]": 1.2925301102328504,
+            "Delta_Gamma_QCD/Gamma_LO": -0.0948968141405475
+          },
+          "mt_GeV": 171.5,
+          "mb_GeV": 0.0,
+          "w_treatment": "bw",
+          "scale_factor": 0.5,
+          "muR_GeV": 85.75,
+          "gamma_lo": 1.4280472441443366,
+          "qcd_coefficient": -1.1377999838602082,
+          "alpha_s_pdf": 0.11910701142858306,
+          "gamma_nlo_pdf": 1.292527288463257
+        },
+        {
+          "command": [
+            "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+            "171.5",
+            "80.385",
+            "0.0",
+            "171.5",
+            "2.097673562052797",
+            "0.118",
+            "1.0",
+            "5"
+          ],
+          "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nGamma_W [GeV]                =  2.0976735620527971E+000\nW treatment                   = Breit-Wigner convolution\nalpha_s(muR)                 =  1.0775636810290531E-001\nGamma_LO [GeV]               =  1.4280472441443366E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.2260519388832036E-001\nGamma_NLO_QCD [GeV]          =  1.3054420502560162E+000\nDelta_Gamma_QCD/Gamma_LO     = -8.5855138470424669E-002",
+          "values": {
+            "n_f": 5.0,
+            "m_b (on shell) [GeV]": 0.0,
+            "Gamma_W [GeV]": 2.097673562052797,
+            "W treatment": "Breit-Wigner convolution",
+            "alpha_s(muR)": 0.10775636810290531,
+            "Gamma_LO [GeV]": 1.4280472441443366,
+            "Delta_Gamma_QCD^NLO [GeV]": -0.12260519388832036,
+            "Gamma_NLO_QCD [GeV]": 1.3054420502560162,
+            "Delta_Gamma_QCD/Gamma_LO": -0.08585513847042467
+          },
+          "mt_GeV": 171.5,
+          "mb_GeV": 0.0,
+          "w_treatment": "bw",
+          "scale_factor": 1.0,
+          "muR_GeV": 171.5,
+          "gamma_lo": 1.4280472441443366,
+          "qcd_coefficient": -1.1377999838602086,
+          "alpha_s_pdf": 0.10775625733945685,
+          "gamma_nlo_pdf": 1.305442176282666
+        },
+        {
+          "command": [
+            "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+            "171.5",
+            "80.385",
+            "0.0",
+            "343.0",
+            "2.097673562052797",
+            "0.118",
+            "1.0",
+            "5"
+          ],
+          "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nGamma_W [GeV]                =  2.0976735620527971E+000\nW treatment                   = Breit-Wigner convolution\nalpha_s(muR)                 =  9.8416407630884578E-002\nGamma_LO [GeV]               =  1.4280472441443366E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.1197818701400018E-001\nGamma_NLO_QCD [GeV]          =  1.3160690571303364E+000\nDelta_Gamma_QCD/Gamma_LO     = -7.8413503105841401E-002",
+          "values": {
+            "n_f": 5.0,
+            "m_b (on shell) [GeV]": 0.0,
+            "Gamma_W [GeV]": 2.097673562052797,
+            "W treatment": "Breit-Wigner convolution",
+            "alpha_s(muR)": 0.09841640763088458,
+            "Gamma_LO [GeV]": 1.4280472441443366,
+            "Delta_Gamma_QCD^NLO [GeV]": -0.11197818701400018,
+            "Gamma_NLO_QCD [GeV]": 1.3160690571303364,
+            "Delta_Gamma_QCD/Gamma_LO": -0.0784135031058414
+          },
+          "mt_GeV": 171.5,
+          "mb_GeV": 0.0,
+          "w_treatment": "bw",
+          "scale_factor": 2.0,
+          "muR_GeV": 343.0,
+          "gamma_lo": 1.4280472441443366,
+          "qcd_coefficient": -1.1377999838602086,
+          "alpha_s_pdf": 0.09841068624083525,
+          "gamma_nlo_pdf": 1.316075566927842
+        }
+      ],
+      "width_source": "parameter_variations_preflight.top_mass_scan.mt=171.5",
+      "coupling_checkpoints": [
+        {
+          "Q_GeV": 80.385,
+          "alpha_s": 0.12029080286224644
+        },
+        {
+          "Q_GeV": 85.75,
+          "alpha_s": 0.11910701142858306
+        },
+        {
+          "Q_GeV": 91.1876,
+          "alpha_s": 0.11800216951342939
+        },
+        {
+          "Q_GeV": 171.5,
+          "alpha_s": 0.10775625733945685
+        },
+        {
+          "Q_GeV": 343.0,
+          "alpha_s": 0.09841068624083525
+        }
+      ]
+    },
+    {
+      "name": "mt173p5",
+      "family": "top_mass",
+      "mt_GeV": 173.5,
+      "top_yukawa_GeV": 173.5,
+      "ecm_GeV": 13000.0,
+      "beam_energy_GeV": 6500.0,
+      "mw_GeV": 80.385,
+      "production_mb_GeV": 0.0,
+      "decay_mb_GeV": 0.0,
+      "alpha_s_flavours": 5,
+      "fixed_W_width_GeV": 2.097673562052797,
+      "top_width_reference_scale_GeV": 173.5,
+      "decay_scale_reference_GeV": 173.5,
+      "production_scale": "core-w-ht-half",
+      "qes_over_ref": 1.0,
+      "PDF": {
+        "name": "NNPDF40_nlo_as_01180",
+        "id": 331700,
+        "member": 0,
+        "DataVersion": 1,
+        "files": {
+          "/export/slow1/rikkert/mg5amcnlo/LHAPDF/share/LHAPDF/NNPDF40_nlo_as_01180/NNPDF40_nlo_as_01180.info": "9362949bda8c0ae1d6ba37542ee31ddbae010369d126ac45ab68ce8b306212a1",
+          "/export/slow1/rikkert/mg5amcnlo/LHAPDF/share/LHAPDF/NNPDF40_nlo_as_01180/NNPDF40_nlo_as_01180_0000.dat": "b9d44f01c1ea60d229d94d370686ab3423a434a97adc5c26911a2f5ee7689ae8"
+        }
+      },
+      "top_widths": [
+        {
+          "command": [
+            "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+            "173.5",
+            "80.385",
+            "0.0",
+            "86.75",
+            "0.0",
+            "0.118",
+            "1.0",
+            "5"
+          ],
+          "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nW treatment                   = on shell (narrow-width limit)\nalpha_s(muR)                 =  1.1889462540758941E-001\nGamma_LO [GeV]               =  1.5108734146985914E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.4327752964932092E-001\nGamma_NLO_QCD [GeV]          =  1.3675958850492704E+000\nDelta_Gamma_QCD/Gamma_LO     = -9.4830929087400595E-002",
+          "values": {
+            "n_f": 5.0,
+            "m_b (on shell) [GeV]": 0.0,
+            "W treatment": "on shell (narrow-width limit)",
+            "alpha_s(muR)": 0.11889462540758941,
+            "Gamma_LO [GeV]": 1.5108734146985914,
+            "Delta_Gamma_QCD^NLO [GeV]": -0.14327752964932092,
+            "Gamma_NLO_QCD [GeV]": 1.3675958850492704,
+            "Delta_Gamma_QCD/Gamma_LO": -0.0948309290874006
+          },
+          "mt_GeV": 173.5,
+          "mb_GeV": 0.0,
+          "w_treatment": "onshell",
+          "scale_factor": 0.5,
+          "muR_GeV": 86.75,
+          "gamma_lo": 1.5108734146985914,
+          "qcd_coefficient": -1.2050799534305532,
+          "alpha_s_pdf": 0.11889699321476586,
+          "gamma_nlo_pdf": 1.3675930316523086
+        },
+        {
+          "command": [
+            "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+            "173.5",
+            "80.385",
+            "0.0",
+            "173.5",
+            "0.0",
+            "0.118",
+            "1.0",
+            "5"
+          ],
+          "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nW treatment                   = on shell (narrow-width limit)\nalpha_s(muR)                 =  1.0758527150128959E-001\nGamma_LO [GeV]               =  1.5108734146985914E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.2964885397058751E-001\nGamma_NLO_QCD [GeV]          =  1.3812245607280038E+000\nDelta_Gamma_QCD/Gamma_LO     = -8.5810533635242728E-002",
+          "values": {
+            "n_f": 5.0,
+            "m_b (on shell) [GeV]": 0.0,
+            "W treatment": "on shell (narrow-width limit)",
+            "alpha_s(muR)": 0.10758527150128959,
+            "Gamma_LO [GeV]": 1.5108734146985914,
+            "Delta_Gamma_QCD^NLO [GeV]": -0.1296488539705875,
+            "Gamma_NLO_QCD [GeV]": 1.3812245607280038,
+            "Delta_Gamma_QCD/Gamma_LO": -0.08581053363524273
+          },
+          "mt_GeV": 173.5,
+          "mb_GeV": 0.0,
+          "w_treatment": "onshell",
+          "scale_factor": 1.0,
+          "muR_GeV": 173.5,
+          "gamma_lo": 1.5108734146985914,
+          "qcd_coefficient": -1.2050799534305534,
+          "alpha_s_pdf": 0.10758506827634459,
+          "gamma_nlo_pdf": 1.3812248056303111
+        },
+        {
+          "command": [
+            "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+            "173.5",
+            "80.385",
+            "0.0",
+            "347.0",
+            "0.0",
+            "0.118",
+            "1.0",
+            "5"
+          ],
+          "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nW treatment                   = on shell (narrow-width limit)\nalpha_s(muR)                 =  9.8274177499812113E-002\nGamma_LO [GeV]               =  1.5108734146985914E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.1842824124489951E-001\nGamma_NLO_QCD [GeV]          =  1.3924451734536918E+000\nDelta_Gamma_QCD/Gamma_LO     = -7.8383959961678920E-002",
+          "values": {
+            "n_f": 5.0,
+            "m_b (on shell) [GeV]": 0.0,
+            "W treatment": "on shell (narrow-width limit)",
+            "alpha_s(muR)": 0.09827417749981211,
+            "Gamma_LO [GeV]": 1.5108734146985914,
+            "Delta_Gamma_QCD^NLO [GeV]": -0.11842824124489951,
+            "Gamma_NLO_QCD [GeV]": 1.3924451734536918,
+            "Delta_Gamma_QCD/Gamma_LO": -0.07838395996167892
+          },
+          "mt_GeV": 173.5,
+          "mb_GeV": 0.0,
+          "w_treatment": "onshell",
+          "scale_factor": 2.0,
+          "muR_GeV": 347.0,
+          "gamma_lo": 1.5108734146985914,
+          "qcd_coefficient": -1.2050799534305532,
+          "alpha_s_pdf": 0.09826839891368443,
+          "gamma_nlo_pdf": 1.3924521371119936
+        },
+        {
+          "command": [
+            "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+            "173.5",
+            "80.385",
+            "0.0",
+            "86.75",
+            "2.097673562052797",
+            "0.118",
+            "1.0",
+            "5"
+          ],
+          "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nGamma_W [GeV]                =  2.0976735620527971E+000\nW treatment                   = Breit-Wigner convolution\nalpha_s(muR)                 =  1.1889462540758941E-001\nGamma_LO [GeV]               =  1.4874906593242505E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.4107415704277268E-001\nGamma_NLO_QCD [GeV]          =  1.3464165022814778E+000\nDelta_Gamma_QCD/Gamma_LO     = -9.4840364985458808E-002",
+          "values": {
+            "n_f": 5.0,
+            "m_b (on shell) [GeV]": 0.0,
+            "Gamma_W [GeV]": 2.097673562052797,
+            "W treatment": "Breit-Wigner convolution",
+            "alpha_s(muR)": 0.11889462540758941,
+            "Gamma_LO [GeV]": 1.4874906593242505,
+            "Delta_Gamma_QCD^NLO [GeV]": -0.14107415704277268,
+            "Gamma_NLO_QCD [GeV]": 1.3464165022814778,
+            "Delta_Gamma_QCD/Gamma_LO": -0.09484036498545881
+          },
+          "mt_GeV": 173.5,
+          "mb_GeV": 0.0,
+          "w_treatment": "bw",
+          "scale_factor": 0.5,
+          "muR_GeV": 86.75,
+          "gamma_lo": 1.4874906593242505,
+          "qcd_coefficient": -1.1865478070110265,
+          "alpha_s_pdf": 0.11889699321476586,
+          "gamma_nlo_pdf": 1.3464136927650652
+        },
+        {
+          "command": [
+            "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+            "173.5",
+            "80.385",
+            "0.0",
+            "173.5",
+            "2.097673562052797",
+            "0.118",
+            "1.0",
+            "5"
+          ],
+          "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nGamma_W [GeV]                =  2.0976735620527971E+000\nW treatment                   = Breit-Wigner convolution\nalpha_s(muR)                 =  1.0758527150128959E-001\nGamma_LO [GeV]               =  1.4874906593242505E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.2765506796654102E-001\nGamma_NLO_QCD [GeV]          =  1.3598355913577094E+000\nDelta_Gamma_QCD/Gamma_LO     = -8.5819071982968426E-002",
+          "values": {
+            "n_f": 5.0,
+            "m_b (on shell) [GeV]": 0.0,
+            "Gamma_W [GeV]": 2.097673562052797,
+            "W treatment": "Breit-Wigner convolution",
+            "alpha_s(muR)": 0.10758527150128959,
+            "Gamma_LO [GeV]": 1.4874906593242505,
+            "Delta_Gamma_QCD^NLO [GeV]": -0.12765506796654102,
+            "Gamma_NLO_QCD [GeV]": 1.3598355913577094,
+            "Delta_Gamma_QCD/Gamma_LO": -0.08581907198296843
+          },
+          "mt_GeV": 173.5,
+          "mb_GeV": 0.0,
+          "w_treatment": "bw",
+          "scale_factor": 1.0,
+          "muR_GeV": 173.5,
+          "gamma_lo": 1.4874906593242505,
+          "qcd_coefficient": -1.1865478070110262,
+          "alpha_s_pdf": 0.10758506827634459,
+          "gamma_nlo_pdf": 1.3598358324938222
+        },
+        {
+          "command": [
+            "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+            "173.5",
+            "80.385",
+            "0.0",
+            "347.0",
+            "2.097673562052797",
+            "0.118",
+            "1.0",
+            "5"
+          ],
+          "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nGamma_W [GeV]                =  2.0976735620527971E+000\nW treatment                   = Breit-Wigner convolution\nalpha_s(muR)                 =  9.8274177499812113E-002\nGamma_LO [GeV]               =  1.4874906593242505E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.1660700979821442E-001\nGamma_NLO_QCD [GeV]          =  1.3708836495260361E+000\nDelta_Gamma_QCD/Gamma_LO     = -7.8391759348047013E-002",
+          "values": {
+            "n_f": 5.0,
+            "m_b (on shell) [GeV]": 0.0,
+            "Gamma_W [GeV]": 2.097673562052797,
+            "W treatment": "Breit-Wigner convolution",
+            "alpha_s(muR)": 0.09827417749981211,
+            "Gamma_LO [GeV]": 1.4874906593242505,
+            "Delta_Gamma_QCD^NLO [GeV]": -0.11660700979821442,
+            "Gamma_NLO_QCD [GeV]": 1.3708836495260361,
+            "Delta_Gamma_QCD/Gamma_LO": -0.07839175934804701
+          },
+          "mt_GeV": 173.5,
+          "mb_GeV": 0.0,
+          "w_treatment": "bw",
+          "scale_factor": 2.0,
+          "muR_GeV": 347.0,
+          "gamma_lo": 1.4874906593242505,
+          "qcd_coefficient": -1.1865478070110265,
+          "alpha_s_pdf": 0.09826839891368443,
+          "gamma_nlo_pdf": 1.3708905060947336
+        }
+      ],
+      "width_source": "parameter_variations_preflight.top_mass_scan.mt=173.5",
+      "coupling_checkpoints": [
+        {
+          "Q_GeV": 80.385,
+          "alpha_s": 0.12029080286224644
+        },
+        {
+          "Q_GeV": 86.75,
+          "alpha_s": 0.11889699321476586
+        },
+        {
+          "Q_GeV": 91.1876,
+          "alpha_s": 0.11800216951342939
+        },
+        {
+          "Q_GeV": 173.5,
+          "alpha_s": 0.10758506827634459
+        },
+        {
+          "Q_GeV": 347.0,
+          "alpha_s": 0.09826839891368443
+        }
+      ]
+    },
+    {
+      "name": "ecm13600",
+      "family": "beam_energy",
+      "mt_GeV": 172.5,
+      "top_yukawa_GeV": 172.5,
+      "ecm_GeV": 13600.0,
+      "beam_energy_GeV": 6800.0,
+      "mw_GeV": 80.385,
+      "production_mb_GeV": 0.0,
+      "decay_mb_GeV": 0.0,
+      "alpha_s_flavours": 5,
+      "fixed_W_width_GeV": 2.097673562052797,
+      "top_width_reference_scale_GeV": 172.5,
+      "decay_scale_reference_GeV": 172.5,
+      "production_scale": "core-w-ht-half",
+      "qes_over_ref": 1.0,
+      "PDF": {
+        "name": "NNPDF40_nlo_as_01180",
+        "id": 331700,
+        "member": 0,
+        "DataVersion": 1,
+        "files": {
+          "/export/slow1/rikkert/mg5amcnlo/LHAPDF/share/LHAPDF/NNPDF40_nlo_as_01180/NNPDF40_nlo_as_01180.info": "9362949bda8c0ae1d6ba37542ee31ddbae010369d126ac45ab68ce8b306212a1",
+          "/export/slow1/rikkert/mg5amcnlo/LHAPDF/share/LHAPDF/NNPDF40_nlo_as_01180/NNPDF40_nlo_as_01180_0000.dat": "b9d44f01c1ea60d229d94d370686ab3423a434a97adc5c26911a2f5ee7689ae8"
+        }
+      },
+      "top_widths": [
+        {
+          "command": [
+            "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+            "172.5",
+            "80.385",
+            "0.0",
+            "86.25",
+            "0.0",
+            "0.118",
+            "1.0",
+            "5"
+          ],
+          "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nW treatment                   = on shell (narrow-width limit)\nalpha_s(muR)                 =  1.1899917952042466E-001\nGamma_LO [GeV]               =  1.4806285092499623E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.4045105847446926E-001\nGamma_NLO_QCD [GeV]          =  1.3401774507754931E+000\nDelta_Gamma_QCD/Gamma_LO     = -9.4859080179144434E-002",
+          "values": {
+            "n_f": 5.0,
+            "m_b (on shell) [GeV]": 0.0,
+            "W treatment": "on shell (narrow-width limit)",
+            "alpha_s(muR)": 0.11899917952042466,
+            "Gamma_LO [GeV]": 1.4806285092499623,
+            "Delta_Gamma_QCD^NLO [GeV]": -0.14045105847446926,
+            "Gamma_NLO_QCD [GeV]": 1.340177450775493,
+            "Delta_Gamma_QCD/Gamma_LO": -0.09485908017914443
+          },
+          "mb_GeV": 0.0,
+          "w_treatment": "onshell",
+          "muR_GeV": 86.25,
+          "scale_factor": 0.5,
+          "gamma_lo": 1.4806285092499623,
+          "qcd_coefficient": -1.1802691332872817,
+          "alpha_s_pdf": 0.1190016017859736,
+          "gamma_nlo_pdf": 1.340174591850233
+        },
+        {
+          "command": [
+            "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+            "172.5",
+            "80.385",
+            "0.0",
+            "172.5",
+            "0.0",
+            "0.118",
+            "1.0",
+            "5"
+          ],
+          "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nW treatment                   = on shell (narrow-width limit)\nalpha_s(muR)                 =  1.0767050245640061E-001\nGamma_LO [GeV]               =  1.4806285092499623E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.2708017061482207E-001\nGamma_NLO_QCD [GeV]          =  1.3535483386351401E+000\nDelta_Gamma_QCD/Gamma_LO     = -8.5828531478970849E-002",
+          "values": {
+            "n_f": 5.0,
+            "m_b (on shell) [GeV]": 0.0,
+            "W treatment": "on shell (narrow-width limit)",
+            "alpha_s(muR)": 0.10767050245640061,
+            "Gamma_LO [GeV]": 1.4806285092499623,
+            "Delta_Gamma_QCD^NLO [GeV]": -0.12708017061482207,
+            "Gamma_NLO_QCD [GeV]": 1.3535483386351401,
+            "Delta_Gamma_QCD/Gamma_LO": -0.08582853147897085
+          },
+          "mb_GeV": 0.0,
+          "w_treatment": "onshell",
+          "muR_GeV": 172.5,
+          "scale_factor": 1.0,
+          "gamma_lo": 1.4806285092499623,
+          "qcd_coefficient": -1.1802691332872817,
+          "alpha_s_pdf": 0.10767034778202184,
+          "gamma_nlo_pdf": 1.353548521192535
+        },
+        {
+          "command": [
+            "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+            "172.5",
+            "80.385",
+            "0.0",
+            "345.0",
+            "0.0",
+            "0.118",
+            "1.0",
+            "5"
+          ],
+          "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nW treatment                   = on shell (narrow-width limit)\nalpha_s(muR)                 =  9.8345034033333098E-002\nGamma_LO [GeV]               =  1.4806285092499623E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.1607360808163028E-001\nGamma_NLO_QCD [GeV]          =  1.3645549011683320E+000\nDelta_Gamma_QCD/Gamma_LO     = -7.8394821764190770E-002",
+          "values": {
+            "n_f": 5.0,
+            "m_b (on shell) [GeV]": 0.0,
+            "W treatment": "on shell (narrow-width limit)",
+            "alpha_s(muR)": 0.0983450340333331,
+            "Gamma_LO [GeV]": 1.4806285092499623,
+            "Delta_Gamma_QCD^NLO [GeV]": -0.11607360808163028,
+            "Gamma_NLO_QCD [GeV]": 1.364554901168332,
+            "Delta_Gamma_QCD/Gamma_LO": -0.07839482176419077
+          },
+          "mb_GeV": 0.0,
+          "w_treatment": "onshell",
+          "muR_GeV": 345.0,
+          "scale_factor": 2.0,
+          "gamma_lo": 1.4806285092499623,
+          "qcd_coefficient": -1.1802691332872817,
+          "alpha_s_pdf": 0.098339283253109,
+          "gamma_nlo_pdf": 1.364561688636723
+        },
+        {
+          "command": [
+            "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+            "172.5",
+            "80.385",
+            "0.0",
+            "86.25",
+            "2.097673562052797",
+            "0.118",
+            "1.0",
+            "5"
+          ],
+          "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nGamma_W [GeV]                =  2.0976735620527971E+000\nW treatment                   = Breit-Wigner convolution\nalpha_s(muR)                 =  1.1899917952042466E-001\nGamma_LO [GeV]               =  1.4576010900437490E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.3828071179997867E-001\nGamma_NLO_QCD [GeV]          =  1.3193203782437704E+000\nDelta_Gamma_QCD/Gamma_LO     = -9.4868694009983379E-002",
+          "values": {
+            "n_f": 5.0,
+            "m_b (on shell) [GeV]": 0.0,
+            "Gamma_W [GeV]": 2.097673562052797,
+            "W treatment": "Breit-Wigner convolution",
+            "alpha_s(muR)": 0.11899917952042466,
+            "Gamma_LO [GeV]": 1.457601090043749,
+            "Delta_Gamma_QCD^NLO [GeV]": -0.13828071179997867,
+            "Gamma_NLO_QCD [GeV]": 1.3193203782437704,
+            "Delta_Gamma_QCD/Gamma_LO": -0.09486869400998338
+          },
+          "mb_GeV": 0.0,
+          "w_treatment": "bw",
+          "muR_GeV": 86.25,
+          "scale_factor": 0.5,
+          "gamma_lo": 1.457601090043749,
+          "qcd_coefficient": -1.1620308001892112,
+          "alpha_s_pdf": 0.1190016017859736,
+          "gamma_nlo_pdf": 1.3193175634965963
+        },
+        {
+          "command": [
+            "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+            "172.5",
+            "80.385",
+            "0.0",
+            "172.5",
+            "2.097673562052797",
+            "0.118",
+            "1.0",
+            "5"
+          ],
+          "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nGamma_W [GeV]                =  2.0976735620527971E+000\nW treatment                   = Breit-Wigner convolution\nalpha_s(muR)                 =  1.0767050245640061E-001\nGamma_LO [GeV]               =  1.4576010900437490E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.2511644012618561E-001\nGamma_NLO_QCD [GeV]          =  1.3324846499175633E+000\nDelta_Gamma_QCD/Gamma_LO     = -8.5837230076735410E-002",
+          "values": {
+            "n_f": 5.0,
+            "m_b (on shell) [GeV]": 0.0,
+            "Gamma_W [GeV]": 2.097673562052797,
+            "W treatment": "Breit-Wigner convolution",
+            "alpha_s(muR)": 0.10767050245640061,
+            "Gamma_LO [GeV]": 1.457601090043749,
+            "Delta_Gamma_QCD^NLO [GeV]": -0.1251164401261856,
+            "Gamma_NLO_QCD [GeV]": 1.3324846499175633,
+            "Delta_Gamma_QCD/Gamma_LO": -0.08583723007673541
+          },
+          "mb_GeV": 0.0,
+          "w_treatment": "bw",
+          "muR_GeV": 172.5,
+          "scale_factor": 1.0,
+          "gamma_lo": 1.457601090043749,
+          "qcd_coefficient": -1.162030800189211,
+          "alpha_s_pdf": 0.10767034778202184,
+          "gamma_nlo_pdf": 1.3324848296539555
+        },
+        {
+          "command": [
+            "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+            "172.5",
+            "80.385",
+            "0.0",
+            "345.0",
+            "2.097673562052797",
+            "0.118",
+            "1.0",
+            "5"
+          ],
+          "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nGamma_W [GeV]                =  2.0976735620527971E+000\nW treatment                   = Breit-Wigner convolution\nalpha_s(muR)                 =  9.8345034033333098E-002\nGamma_LO [GeV]               =  1.4576010900437490E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.1427995859238928E-001\nGamma_NLO_QCD [GeV]          =  1.3433211314513598E+000\nDelta_Gamma_QCD/Gamma_LO     = -7.8402766966206947E-002",
+          "values": {
+            "n_f": 5.0,
+            "m_b (on shell) [GeV]": 0.0,
+            "Gamma_W [GeV]": 2.097673562052797,
+            "W treatment": "Breit-Wigner convolution",
+            "alpha_s(muR)": 0.0983450340333331,
+            "Gamma_LO [GeV]": 1.457601090043749,
+            "Delta_Gamma_QCD^NLO [GeV]": -0.11427995859238928,
+            "Gamma_NLO_QCD [GeV]": 1.3433211314513598,
+            "Delta_Gamma_QCD/Gamma_LO": -0.07840276696620695
+          },
+          "mb_GeV": 0.0,
+          "w_treatment": "bw",
+          "muR_GeV": 345.0,
+          "scale_factor": 2.0,
+          "gamma_lo": 1.457601090043749,
+          "qcd_coefficient": -1.1620308001892112,
+          "alpha_s_pdf": 0.098339283253109,
+          "gamma_nlo_pdf": 1.3433278140351053
+        }
+      ],
+      "width_source": "benchmark.top_widths",
+      "coupling_checkpoints": [
+        {
+          "Q_GeV": 80.385,
+          "alpha_s": 0.12029080286224644
+        },
+        {
+          "Q_GeV": 86.25,
+          "alpha_s": 0.1190016017859736
+        },
+        {
+          "Q_GeV": 91.1876,
+          "alpha_s": 0.11800216951342939
+        },
+        {
+          "Q_GeV": 172.5,
+          "alpha_s": 0.10767034778202184
+        },
+        {
+          "Q_GeV": 345.0,
+          "alpha_s": 0.098339283253109
+        }
+      ]
+    }
+  ],
+  "script_sha256": "617ca8f0003f2ab80f4d918967638e40af0efc76c88928c7bfb5a388106ffccc",
+  "width_sources": {
+    "test_top_decay_width_nlo.f90": "4dae46fe64669942ccc5fe6db33b4e66db5adf8ef0a86234eca1111420b13c52",
+    "top_decay_width.f90": "fb3b8437336fa4ae14cd0063b1805a435d540e77edcd6258b2b0e950f69fc68e",
+    "top_decay_width_nlo.f90": "5b8499d6eaa8964b114bb1606fc2a5b5d035375db7a67b6d38a2df96da11a884",
+    "test_w_decay_width_nlo.f90": "286e27e4b0a11efaf046b5debbf863c7c12c1304b955e1a59a9909fa23c0e10b",
+    "w_decay_width.f90": "28bc4d52fccd8a7f2348487f2dc11360dc4694dc6a34885548256279aae3685c",
+    "w_decay_width_nlo.f90": "1c363f2070cb42e628ca683b76e101bd2f6542a8b4d6db79b539dd9b9a057d26"
+  },
+  "width_executable_sha256": "03f46f8a32338716659e9481bfb562e1dd4d07295833408247f17fd74aeb30b0",
+  "lhapdf_version": "6.5.4",
+  "scope": "Baseline plus seven bounded member-0 PDF-family, alpha-s, top-mass and beam-energy scenarios. Matched massless-decay widths support on-shell, top-BW and all-BW exports.",
+  "conventions": "W width and weak inputs remain fixed. Top mass, Yukawa, phase-space mass, decay-scale reference and width coefficient move together. Every PDF or alpha-s scenario requires a fresh numerator integration with the same coupling as its widths.",
+  "remaining": "Choose S/Pi allocation and observables after main S/Pi convergence. Sum actual ordered flavour cross sections for any inclusive e/mu prediction. These inputs are not MC results."
+}

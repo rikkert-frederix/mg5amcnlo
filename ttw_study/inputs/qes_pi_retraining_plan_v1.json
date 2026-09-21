@@ -1,0 +1,74 @@
+{
+  "created_utc": "2026-09-14T19:19:48.151Z",
+  "status": "conditional Pi QES independent-retraining pair planned; no export, card, run or controller launched",
+  "trigger": "The completed direct QES-two minus QES-half Pi uncut-rate contrast is -3.443 conditional errors nominally; its input-minus-leptons component is -3.661 and remains nonzero under every one-batch deletion examined. The study requires cancellation of qes_over_ref, a subtraction/virtual convention.",
+  "evidence": "ttw_study/results/technical_validation_tech_v4_Pi_rate_influence_inspection_v1.json",
+  "original_queue": "ttw_study/inputs/scale_validation_queue_tech_v4.json",
+  "original_pending_integrations_at_planning": 36,
+  "additional_integrations": 2,
+  "resulting_preproduction_preliminary_total": 38,
+  "jobs": [
+    {
+      "name": "qes_half_Pi_independent_retraining",
+      "variant": "Pi",
+      "qes_over_ref": 0.5,
+      "factors": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "seed": 71401,
+      "mode": "onshell",
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "production_scale": "core-w-ht-half",
+      "requested_total_rate_accuracy": 0.01,
+      "grid": "fresh grid and fresh split streams; no saved-grid transfer or reuse",
+      "process_prelaunch_target": "ttw_study/processes/TTWplus_onshell_eemu_mb0p0_both_tech_v4_qes"
+    },
+    {
+      "name": "qes_two_Pi_independent_retraining",
+      "variant": "Pi",
+      "qes_over_ref": 2,
+      "factors": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "seed": 71402,
+      "mode": "onshell",
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "production_scale": "core-w-ht-half",
+      "requested_total_rate_accuracy": 0.01,
+      "grid": "fresh grid and fresh split streams; no saved-grid transfer or reuse",
+      "process_prelaunch_target": "ttw_study/processes/TTWplus_onshell_eemu_mb0p0_both_tech_v4_qes"
+    }
+  ],
+  "schedule": "Do not alter the four original controller dependencies. Recheck all original serial-queue results, frozen sources, inactive-export state and storage budget after smallmass_v2 finishes; then launch the pair serially with at most 64 MG5 workers.",
+  "prelaunch_gates": [
+    "The four original pilot queues must have terminal successful results for every planned integration and their required inspections must be complete.",
+    "The reused QES export must have no live process handle or queued use, and its archived reference/case manifests must still match their hashes.",
+    "All frozen campaign source inventories must still match, and the final storage plan must have enough verified headroom.",
+    "Each new run must use a distinct actual stage-initialization pair from all earlier QES Pi, asymmetric Pi and reference Pi runs."
+  ],
+  "required_analysis": [
+    "Audit native output, final HwU, 128-worker batch array and all archived virtual checks for each repeat.",
+    "Compare each repeat against the same central Pi reference only at matching physical scale coordinates; preserve common-reference covariance.",
+    "Compare the two new direct estimates to each other; reproduce raw input, selected-lepton and input-minus-leptons rate contrasts from raw batches.",
+    "Assess independent-pair consistency without a global-significance or calibrated-coverage claim."
+  ],
+  "decision_after_pair": "If the independent pair again has a one-sided QES contrast, isolate the source-level QES dependence before main physics production. If the pairs differ at the available precision, retain the observed conditional instability and assess independent-retraining coverage before deciding whether further statistics are informative. Neither branch authorizes a publication QES-cancellation claim automatically.",
+  "source_audit_at_plan": "ttw_study/inputs/resource_audit_20260914_bw_production_S_after_qes_v1.json",
+  "new_integrations_started": 0
+}

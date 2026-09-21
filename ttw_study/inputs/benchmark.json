@@ -1,0 +1,990 @@
+{
+  "created_utc": "2026-09-10T10:52:21.378588+00:00",
+  "specification_sha256": "5b30a4d29909865bfeb96e39199108550b0c9790d048a67d3e87f7d9a2fe7644",
+  "git_head": "a3de8eec66c60bd3160c4fce988300b93fdf7cbf",
+  "width_git_head": "f5e73bc68caddf926a59998e48e7aa75e340decb",
+  "width_sources": {
+    "test_top_decay_width_nlo.f90": "4dae46fe64669942ccc5fe6db33b4e66db5adf8ef0a86234eca1111420b13c52",
+    "top_decay_width.f90": "fb3b8437336fa4ae14cd0063b1805a435d540e77edcd6258b2b0e950f69fc68e",
+    "top_decay_width_nlo.f90": "5b8499d6eaa8964b114bb1606fc2a5b5d035375db7a67b6d38a2df96da11a884",
+    "test_w_decay_width_nlo.f90": "286e27e4b0a11efaf046b5debbf863c7c12c1304b955e1a59a9909fa23c0e10b",
+    "w_decay_width.f90": "28bc4d52fccd8a7f2348487f2dc11360dc4694dc6a34885548256279aae3685c",
+    "w_decay_width_nlo.f90": "1c363f2070cb42e628ca683b76e101bd2f6542a8b4d6db79b539dd9b9a057d26"
+  },
+  "compiler": "GNU Fortran (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+  "cxx_compiler": "g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+  "python": "3.12.3 (main, Jun 19 2026, 12:46:00) [GCC 13.3.0]",
+  "lhapdf": "6.5.4",
+  "fastjet": "3.5.1",
+  "PDF": {
+    "name": "NNPDF40_nlo_as_01180",
+    "id": 331700,
+    "DataVersion": 1,
+    "metadata_sha256": "9362949bda8c0ae1d6ba37542ee31ddbae010369d126ac45ab68ce8b306212a1",
+    "members": [
+      {
+        "member": 0,
+        "sha256": "b9d44f01c1ea60d229d94d370686ab3423a434a97adc5c26911a2f5ee7689ae8",
+        "xg_at_x0p1_Qmt": 0.8097645843881587
+      },
+      {
+        "member": 1,
+        "sha256": "51729ebf1e7182ed22d570e10563125670d73367a24ede2d2c930b61658eef43",
+        "xg_at_x0p1_Qmt": 0.8094314216132165
+      },
+      {
+        "member": 2,
+        "sha256": "63aca868af2a1fb1e8f0539b30ddd0e122d0e25f56327ef01ed61bbb4572ea4f",
+        "xg_at_x0p1_Qmt": 0.807453943154023
+      },
+      {
+        "member": 3,
+        "sha256": "0101e6f793c0ff0f67cd3aa63ce91f7c3aefd80ba54b56ad964ab0f17ed43a98",
+        "xg_at_x0p1_Qmt": 0.8140809298180935
+      },
+      {
+        "member": 4,
+        "sha256": "e8fa6f0a433ccdeaec781be065a9a214b46e4acaf645f1161c4aeca07fb84335",
+        "xg_at_x0p1_Qmt": 0.8135173801116699
+      },
+      {
+        "member": 5,
+        "sha256": "6cb45a7dad4a8b910932fd7aa79f2bf3856f756678234be9622686ccccd37fac",
+        "xg_at_x0p1_Qmt": 0.8033344887974102
+      },
+      {
+        "member": 6,
+        "sha256": "93d68d53f364405069d9d289cef6912657ff6e155f0ea9ce80c3f265cf2be02d",
+        "xg_at_x0p1_Qmt": 0.8115385073497773
+      },
+      {
+        "member": 7,
+        "sha256": "a06c844d2e250a29613c5c1145bad779a9158c2f224ee1570460a9ea33af2255",
+        "xg_at_x0p1_Qmt": 0.8150667335435944
+      },
+      {
+        "member": 8,
+        "sha256": "478d25174e5c399f8101a0dbb889e31bf19354ee739dd677c60677517abb739f",
+        "xg_at_x0p1_Qmt": 0.8030085857697269
+      },
+      {
+        "member": 9,
+        "sha256": "8f9652cf2eba499b479ee0d1f67e09df1e8f2f722a3b07fb2c819bace446f6ab",
+        "xg_at_x0p1_Qmt": 0.8024463727606918
+      },
+      {
+        "member": 10,
+        "sha256": "453259285bff8fff28afdfdafda080b38a18797172d5a273fa4cc5254b5d1628",
+        "xg_at_x0p1_Qmt": 0.8181697455587595
+      },
+      {
+        "member": 11,
+        "sha256": "d4a5bb26aaa634cb2abe0960ab57a67705aa5dee3d0bbf2bb19d068cd61587d0",
+        "xg_at_x0p1_Qmt": 0.8115180905211328
+      },
+      {
+        "member": 12,
+        "sha256": "74481e34eff9e2650f311b061b4e4fbe63d3df718e39725b11783ff556a4b5be",
+        "xg_at_x0p1_Qmt": 0.8123844557523306
+      },
+      {
+        "member": 13,
+        "sha256": "c4cceb735ec28a2666561b7585e5502480c751162bc56964f241848e0468a97d",
+        "xg_at_x0p1_Qmt": 0.8076646494510338
+      },
+      {
+        "member": 14,
+        "sha256": "687672daba253c27d98c0e9a89cbb2161f8b0303f278a4c2e9311f17c44e3d0f",
+        "xg_at_x0p1_Qmt": 0.8080379367165498
+      },
+      {
+        "member": 15,
+        "sha256": "f31257134a2c638c4a2ec7abce65d4830c771ba9dafe193365585df51d0216d4",
+        "xg_at_x0p1_Qmt": 0.8089464621554301
+      },
+      {
+        "member": 16,
+        "sha256": "35dce0649da9fa56d9d71061ffdec73cd4818e4cd23577dbb9fcc7ef69378bca",
+        "xg_at_x0p1_Qmt": 0.8151034814905569
+      },
+      {
+        "member": 17,
+        "sha256": "40bec23af37428782e1b1690861fa770db327366512761af75ce02851691a637",
+        "xg_at_x0p1_Qmt": 0.7972174866027983
+      },
+      {
+        "member": 18,
+        "sha256": "25e52a709839ab084d55859b3de0324e661d50475c6b9236e320694809bdf482",
+        "xg_at_x0p1_Qmt": 0.8159022089801405
+      },
+      {
+        "member": 19,
+        "sha256": "66880f3a65591eb2934dd17b3a2f3568ef5752ad9b86d4ce2efafca6a92c7f1b",
+        "xg_at_x0p1_Qmt": 0.8200739191968687
+      },
+      {
+        "member": 20,
+        "sha256": "04f66576bc7e775ce9e6713b50f424888551ee37067157777960e772de4223ac",
+        "xg_at_x0p1_Qmt": 0.8174562861446729
+      },
+      {
+        "member": 21,
+        "sha256": "d5b116f0d8b636726ba4fd9c8def243695a9b2b327e7bf94c0fcae6fb7a3b065",
+        "xg_at_x0p1_Qmt": 0.7974273926051194
+      },
+      {
+        "member": 22,
+        "sha256": "d5d32ea96aa467358357fc7f0aa9fc15b95d8206eb841699181bc6d104e50a32",
+        "xg_at_x0p1_Qmt": 0.8119840622361897
+      },
+      {
+        "member": 23,
+        "sha256": "32133d99631c230d6d03d3dec42a484dcc6b7f3c04eacc5453abca41e5cc47f6",
+        "xg_at_x0p1_Qmt": 0.8010578216235865
+      },
+      {
+        "member": 24,
+        "sha256": "20ffdd7f99469fb31ff6c5bbd2b1f11c461b759e44b04886f550e52a1d8c121b",
+        "xg_at_x0p1_Qmt": 0.8115405027406315
+      },
+      {
+        "member": 25,
+        "sha256": "70ec5a132af7980026579b0a1403687b12baa45545f6f7a5ea6b141a1fe3bcf9",
+        "xg_at_x0p1_Qmt": 0.8199196346701982
+      },
+      {
+        "member": 26,
+        "sha256": "543e941ff9c7f2a734652ed41c30c379ed159e943cd8509df26f39fa4e34e653",
+        "xg_at_x0p1_Qmt": 0.8072604678079726
+      },
+      {
+        "member": 27,
+        "sha256": "aec2eab96c3787eae24d3f50ceae587c3c799e7c3895be40383f7291157776b1",
+        "xg_at_x0p1_Qmt": 0.8061218717948598
+      },
+      {
+        "member": 28,
+        "sha256": "8e3e6d5821b3e6a6a682eb117a6969f92c2dbc508d8ee84ceea33f3b02747563",
+        "xg_at_x0p1_Qmt": 0.8116375486070201
+      },
+      {
+        "member": 29,
+        "sha256": "e1553e241df360bded5228ffe797826e264791de5ccc1ef0e276b4fcd047757a",
+        "xg_at_x0p1_Qmt": 0.81703805435502
+      },
+      {
+        "member": 30,
+        "sha256": "2410fc3cba742bc0d216952a49cdce302f794f4b7a2cbe3b4c490dc92457949a",
+        "xg_at_x0p1_Qmt": 0.819628016994207
+      },
+      {
+        "member": 31,
+        "sha256": "ebc00df9408fcfd5e7c988add49c34673bbb7fe9a9a59a0c263e2b448fc1da6c",
+        "xg_at_x0p1_Qmt": 0.810836449937688
+      },
+      {
+        "member": 32,
+        "sha256": "b65ee81797d00b737cc16f907e38095df42e533f674ba6b26bf066cf5f8fbe53",
+        "xg_at_x0p1_Qmt": 0.8118930465067391
+      },
+      {
+        "member": 33,
+        "sha256": "4799925e01c13693c9d83fa0350c95ff6c8987aca8918eb293649673d5f8a84f",
+        "xg_at_x0p1_Qmt": 0.8132071698019702
+      },
+      {
+        "member": 34,
+        "sha256": "2422d0c9558d703315d8c5f9356e4f6a9af25766ce936a26c2d9379c1cd10110",
+        "xg_at_x0p1_Qmt": 0.8136520462545737
+      },
+      {
+        "member": 35,
+        "sha256": "be4855c7ec6fea3f085cd9a989ba3ce5158b669b9f38af337870de40d6ed10d6",
+        "xg_at_x0p1_Qmt": 0.8127797339192804
+      },
+      {
+        "member": 36,
+        "sha256": "5024a6aebff3b6f065071627522418390312203cc7ef4df585378931d91aea33",
+        "xg_at_x0p1_Qmt": 0.805082841698803
+      },
+      {
+        "member": 37,
+        "sha256": "b66898760ac860f6335f1777f31ad20dec9057f8cae63861a3979f18c8941e6f",
+        "xg_at_x0p1_Qmt": 0.8091842861268399
+      },
+      {
+        "member": 38,
+        "sha256": "106822aa2a9e583b68713c41f97b3e4bb4514ecf7c85fdd1a2d631b0262df0ea",
+        "xg_at_x0p1_Qmt": 0.8064900240496203
+      },
+      {
+        "member": 39,
+        "sha256": "7dbad9a6f15116720e70cdd2500f26fb3851715a9fdd25600222cdd2b3f4c4d3",
+        "xg_at_x0p1_Qmt": 0.8160339816267705
+      },
+      {
+        "member": 40,
+        "sha256": "0acc011272719e087c469f9530f97a09d1b4ab757e28fd5206bdf4b03af32d0b",
+        "xg_at_x0p1_Qmt": 0.7949004864607245
+      },
+      {
+        "member": 41,
+        "sha256": "148d4f1d4b435c25e53615c1f09366c7a704cd7bf17618ac5c49177a71881e38",
+        "xg_at_x0p1_Qmt": 0.8086198118361899
+      },
+      {
+        "member": 42,
+        "sha256": "0f71ebfb4704509070ce57f0ab26e3bd92fd5b67babc7167deab6425b2ed2165",
+        "xg_at_x0p1_Qmt": 0.8127096473383513
+      },
+      {
+        "member": 43,
+        "sha256": "843d540541bb76a0ba78d3b0cfdb3b6a23a0505861b6a30ba1ed15585dd985b6",
+        "xg_at_x0p1_Qmt": 0.8136822108590873
+      },
+      {
+        "member": 44,
+        "sha256": "75be60def9c1ce06adb15b8c2904912380daa66c50b72dcfadec97c2528af2fa",
+        "xg_at_x0p1_Qmt": 0.8142686991691936
+      },
+      {
+        "member": 45,
+        "sha256": "d995d0a144cfd4cce1788e96c2e5d751f7ccfb15f073fad76a284694a39a3933",
+        "xg_at_x0p1_Qmt": 0.8096780846635591
+      },
+      {
+        "member": 46,
+        "sha256": "1777c7990b546233e106809b73d02d499437d7dccdd6e9a3e263ef9e8e4e4038",
+        "xg_at_x0p1_Qmt": 0.8097503311995259
+      },
+      {
+        "member": 47,
+        "sha256": "8d61592ad90475019c9f162855c7c1836022240995ac44e4bc67fc7ed9077206",
+        "xg_at_x0p1_Qmt": 0.8122707646600588
+      },
+      {
+        "member": 48,
+        "sha256": "22d0781ec1093f7b4221537bfff6636e3a247ae5fc68603740b3ff4425c15e19",
+        "xg_at_x0p1_Qmt": 0.807647229568614
+      },
+      {
+        "member": 49,
+        "sha256": "ca1ef5b0da05f5e97f31d50463a7b60dfc7bfbdba5f527e8bd303e47f333aff7",
+        "xg_at_x0p1_Qmt": 0.8035657020471283
+      },
+      {
+        "member": 50,
+        "sha256": "1c31c97e1ac4ed4b3a1fc69d4727710c06d98e8f40d74e28810f41953af6b184",
+        "xg_at_x0p1_Qmt": 0.8085485324797435
+      },
+      {
+        "member": 51,
+        "sha256": "348cc9ef9d403f435b3c1d13ae21db4b134c29a769c42ee6babdb7695444d288",
+        "xg_at_x0p1_Qmt": 0.8150449005155629
+      },
+      {
+        "member": 52,
+        "sha256": "c93c81bf5f3c62d2e0f28a0b7becb805219b9a3db66bddd11eef1b2c6158b2f2",
+        "xg_at_x0p1_Qmt": 0.7967081758540927
+      },
+      {
+        "member": 53,
+        "sha256": "0c23c43f40580a3d5e406c3d7efe53e1b4084d69b1dfa88580eb44ec1a3ddc1c",
+        "xg_at_x0p1_Qmt": 0.8030616386558037
+      },
+      {
+        "member": 54,
+        "sha256": "9539946627131a576cef10dedb2c54059a4420b52d6813420471690c32b81e1f",
+        "xg_at_x0p1_Qmt": 0.8131937069452466
+      },
+      {
+        "member": 55,
+        "sha256": "c906f6f374b4b069e59d42dde5bc1047fb8734f1f38828b3fc9422b8d7944ea2",
+        "xg_at_x0p1_Qmt": 0.8200749826695123
+      },
+      {
+        "member": 56,
+        "sha256": "a58e702b667413a7f1c1c9a3bbf8d2994a395ddfc0eef6f2d65799536f184c85",
+        "xg_at_x0p1_Qmt": 0.8176885953680872
+      },
+      {
+        "member": 57,
+        "sha256": "9bf645926fad1b8a6a0b8761c473e40d6dc1588ef9b3c13918d306c238bd04c6",
+        "xg_at_x0p1_Qmt": 0.8204694584755848
+      },
+      {
+        "member": 58,
+        "sha256": "5da11397f3aa9f905da94200d610b343cb6d437a4c80a3a14f10566014c28411",
+        "xg_at_x0p1_Qmt": 0.8060235617032581
+      },
+      {
+        "member": 59,
+        "sha256": "2283532dffe704f3435c248af403ec5e1929ce5cc6aa69c15c73fefc2f917f99",
+        "xg_at_x0p1_Qmt": 0.8104322945453376
+      },
+      {
+        "member": 60,
+        "sha256": "e30eb8a71446450b5f5422255b7209e8decf89de79be810380607daf1139f96f",
+        "xg_at_x0p1_Qmt": 0.7999011695940589
+      },
+      {
+        "member": 61,
+        "sha256": "56ccf79662067e6b1aea85a69185d650972fa520f121ede81aa28c2fb2530dc9",
+        "xg_at_x0p1_Qmt": 0.8135285131765708
+      },
+      {
+        "member": 62,
+        "sha256": "7691f0c653401ce78a27319e8de361263ebdef0f482b8a3921a156b93b5739f1",
+        "xg_at_x0p1_Qmt": 0.801670833662518
+      },
+      {
+        "member": 63,
+        "sha256": "66cd6b9bcde0c9433cc4a855e1baf3619664618f6c4f5a5502745024f1471f2a",
+        "xg_at_x0p1_Qmt": 0.8108752141136
+      },
+      {
+        "member": 64,
+        "sha256": "b2da206af8a91bfe9d753af9c2483d1f064e698181f793793aa6ac6655d9b961",
+        "xg_at_x0p1_Qmt": 0.8093855203353635
+      },
+      {
+        "member": 65,
+        "sha256": "f53a119070959a592798d6e913ab45013e7481b020e4b98c1595e000c64c9b88",
+        "xg_at_x0p1_Qmt": 0.8107524845159331
+      },
+      {
+        "member": 66,
+        "sha256": "2bac1944f0d3d12be4693b41ecae81c8d2270ccf44ef917faf5c4aaa8522b565",
+        "xg_at_x0p1_Qmt": 0.8162071041304352
+      },
+      {
+        "member": 67,
+        "sha256": "73d242f7bd9338fba395db2ed651bc8817ba72061c8a559bf42be794e4519aa1",
+        "xg_at_x0p1_Qmt": 0.8182770567015967
+      },
+      {
+        "member": 68,
+        "sha256": "1360ac883a711c3ca9db9bd5913e3eb096500a31076f1ec6469d349e4e48e210",
+        "xg_at_x0p1_Qmt": 0.813743805734131
+      },
+      {
+        "member": 69,
+        "sha256": "19f9d14ec0452e6dafc9e629a525426e9eb8197b3e94d0a51d62a10da40de579",
+        "xg_at_x0p1_Qmt": 0.8167270622793555
+      },
+      {
+        "member": 70,
+        "sha256": "860c477a06c628cd1d9fad5bc153c13dd39e00d93d226141f82cfdf5ac8a1c6d",
+        "xg_at_x0p1_Qmt": 0.8211414001877803
+      },
+      {
+        "member": 71,
+        "sha256": "57e605a410771b89d67a757de5c54a2296c7ea6aefb8678e5a56a08d033ee592",
+        "xg_at_x0p1_Qmt": 0.8141882440883201
+      },
+      {
+        "member": 72,
+        "sha256": "f07d535049891b4924312f307bc6d1c95601f9e6d7449bdcd7c7f6fd0fd18820",
+        "xg_at_x0p1_Qmt": 0.8091367401244619
+      },
+      {
+        "member": 73,
+        "sha256": "84fbfefdaaf18c96d7296cef8c1cdc93937492d2dd95ad947754ddd881c87a9e",
+        "xg_at_x0p1_Qmt": 0.82007562321539
+      },
+      {
+        "member": 74,
+        "sha256": "384b9882de4fa58453e852ed5f3952edc4df340f06192a9f21b4e4ff2932b288",
+        "xg_at_x0p1_Qmt": 0.8118911698064842
+      },
+      {
+        "member": 75,
+        "sha256": "5fb6e17d0e7ceb9f5ff820fe510b9fbca0c0a05056f171c5dd1a467643609261",
+        "xg_at_x0p1_Qmt": 0.8141926522975388
+      },
+      {
+        "member": 76,
+        "sha256": "8e7321e80a0e2fa97b87104a641939cd5d12161106132465521a10c575991aae",
+        "xg_at_x0p1_Qmt": 0.7974061652639173
+      },
+      {
+        "member": 77,
+        "sha256": "c3eba69fa452083db99a284bc2433a77b620a5a88ff243fed3a1333ad778ac39",
+        "xg_at_x0p1_Qmt": 0.8256308057726278
+      },
+      {
+        "member": 78,
+        "sha256": "850209286c558946ba2ea9af4f065e59027a0114ebbbe22fb81b4ffbef37c27d",
+        "xg_at_x0p1_Qmt": 0.8112772464685514
+      },
+      {
+        "member": 79,
+        "sha256": "a945ed1aa8fded1388ca1d54be3f98a81ad3c057b6eed6101febc5880d850743",
+        "xg_at_x0p1_Qmt": 0.8044470384324504
+      },
+      {
+        "member": 80,
+        "sha256": "7aa74150db3ff73af1c51866a668cf1a6f5b0a738a3399fbe8a04b7f2112ee18",
+        "xg_at_x0p1_Qmt": 0.8118051869204955
+      },
+      {
+        "member": 81,
+        "sha256": "83f20ed4c1f616c22744803f942267bd35f6c2cf6e22ef8543625193fd7effbc",
+        "xg_at_x0p1_Qmt": 0.8040459898492793
+      },
+      {
+        "member": 82,
+        "sha256": "61214e0039a1c605b7386a02f5d61273bca03bd2667dca789e4284c1e679fa20",
+        "xg_at_x0p1_Qmt": 0.8130537862450117
+      },
+      {
+        "member": 83,
+        "sha256": "72dd42e3e6b5ba53617e6cafcff7f4616cdbe75ed584599c4297d909ce6711f5",
+        "xg_at_x0p1_Qmt": 0.8084174991798769
+      },
+      {
+        "member": 84,
+        "sha256": "6abb76720791866bcfb78fff10273dd3916db0b687982a5daa7fb7be54eec263",
+        "xg_at_x0p1_Qmt": 0.8014742641165505
+      },
+      {
+        "member": 85,
+        "sha256": "db361315a62ddd517f4702d01b44f89ffd71b6a02687d1359c9b405db54a6315",
+        "xg_at_x0p1_Qmt": 0.7899325604772756
+      },
+      {
+        "member": 86,
+        "sha256": "ad39776fedbe945c3450b614bcbf8609e53db82a2647adb01f77afd8c2be08da",
+        "xg_at_x0p1_Qmt": 0.8058415826839957
+      },
+      {
+        "member": 87,
+        "sha256": "0d0b85109ed54bd688249c8284e9c0f90a1bfedd956710ed007389ee6ae522e8",
+        "xg_at_x0p1_Qmt": 0.8022357686451069
+      },
+      {
+        "member": 88,
+        "sha256": "78bff87c00ca48b2b33f39db47fcf4c6e4350b81dce4f2dc6ebb3894b7c2b039",
+        "xg_at_x0p1_Qmt": 0.7969910575542285
+      },
+      {
+        "member": 89,
+        "sha256": "c96b1572073488c2a11733f41b4423497da751699f916ddbf58960a1a291aaad",
+        "xg_at_x0p1_Qmt": 0.8099660695626744
+      },
+      {
+        "member": 90,
+        "sha256": "de107d0c81d45f5512d8a5eaebcd60c77ca30785b6a6212560896ad493e35ac0",
+        "xg_at_x0p1_Qmt": 0.8129935421828854
+      },
+      {
+        "member": 91,
+        "sha256": "0ddb5b6a08408a6c65fb34b28b8941bc5bae99f7e6281df248e0a013095ced9a",
+        "xg_at_x0p1_Qmt": 0.8038662308066598
+      },
+      {
+        "member": 92,
+        "sha256": "572018c8b28f286fef4da890f116e725bed44ef9727bf3d63a7cbf84783e386b",
+        "xg_at_x0p1_Qmt": 0.7932219309190112
+      },
+      {
+        "member": 93,
+        "sha256": "efabcecc9e9dc96df3274ffd3c6a2c996b1a5caa2da8263331b2145c681c7f5c",
+        "xg_at_x0p1_Qmt": 0.8081996498354868
+      },
+      {
+        "member": 94,
+        "sha256": "cfda819cd7e058baa9c472ef4782d1e890b4c223981e8c81011089ccdcaed680",
+        "xg_at_x0p1_Qmt": 0.8126501458468335
+      },
+      {
+        "member": 95,
+        "sha256": "861f3a78711c183506636d93b5a1b02703b1cdb9423290936b8e7108ed7486f9",
+        "xg_at_x0p1_Qmt": 0.815203075005441
+      },
+      {
+        "member": 96,
+        "sha256": "4287a473763e782e05e9a4cf46b2d8ccb09aaf4088057132fd3160acc8e44990",
+        "xg_at_x0p1_Qmt": 0.8082600969187275
+      },
+      {
+        "member": 97,
+        "sha256": "8d2b599e41ae8246e78359c9e5b7524d4a8412afb886ae2c60a50742f5935e4f",
+        "xg_at_x0p1_Qmt": 0.81541326162495
+      },
+      {
+        "member": 98,
+        "sha256": "804fe4ad62eed42245c927f657eca638baaabfa0b24ba2d3ba84cc12a8d22b93",
+        "xg_at_x0p1_Qmt": 0.7981209995844929
+      },
+      {
+        "member": 99,
+        "sha256": "0f77f1e93ccbcd2ad60518c7bb73d04cb6c4feedb4a838a58f778fb8efd0c8f9",
+        "xg_at_x0p1_Qmt": 0.8094926611008494
+      },
+      {
+        "member": 100,
+        "sha256": "d403f1a2b912db9469c35c9c2ab995f51b51f1548161aa9597633579a4b1e061",
+        "xg_at_x0p1_Qmt": 0.8013503651760333
+      }
+    ]
+  },
+  "inputs": {
+    "mt": 172.5,
+    "mw": 80.385,
+    "mz": 91.1876,
+    "GF": 1.1663787e-05,
+    "alpha_Gmu_inverse": 132.23322979128372,
+    "sin2_theta_W": 0.2228972225239182,
+    "Gamma_W_fixed": 2.097673562052797,
+    "production_mb": 0.0,
+    "nf": 5
+  },
+  "coupling_checkpoints": [
+    {
+      "Q_GeV": 80.385,
+      "alpha_s": 0.12029080286224644,
+      "benchmark": 0.1202908028622
+    },
+    {
+      "Q_GeV": 86.25,
+      "alpha_s": 0.1190016017859736,
+      "benchmark": 0.119001601786
+    },
+    {
+      "Q_GeV": 91.1876,
+      "alpha_s": 0.11800216951342939,
+      "benchmark": 0.1180021695134
+    },
+    {
+      "Q_GeV": 172.5,
+      "alpha_s": 0.10767034778202184,
+      "benchmark": 0.107670347782
+    },
+    {
+      "Q_GeV": 345.0,
+      "alpha_s": 0.098339283253109,
+      "benchmark": 0.0983392832531
+    }
+  ],
+  "W_width": {
+    "command": [
+      "/export/slow1/rikkert/top-decay-virtual-cdr/width/w_decay_width",
+      "80.385",
+      "80.385",
+      "5",
+      "0.118"
+    ],
+    "stdout": "n_f                         = 5\nalpha_s(muR)                 =  1.2028824120672370E-001\nGamma(W -> l nu) [GeV]       =  2.2727334687129314E-001\nGamma_leptonic [GeV]         =  6.8182004061387946E-001\nGamma_hadronic_LO [GeV]      =  1.3636400812277589E+000\nDelta_Gamma_QCD_NLO [GeV]    =  5.2212328298657532E-002\nGamma_hadronic_NLO [GeV]     =  1.4158524095264164E+000\nGamma_W_LO [GeV]             =  2.0454601218416384E+000\nGamma_W_NLO_QCD [GeV]        =  2.0976724501402959E+000",
+    "values": {
+      "n_f": 5.0,
+      "alpha_s(muR)": 0.1202882412067237,
+      "Gamma(W -> l nu) [GeV]": 0.22727334687129314,
+      "Gamma_leptonic [GeV]": 0.6818200406138795,
+      "Gamma_hadronic_LO [GeV]": 1.363640081227759,
+      "Delta_Gamma_QCD_NLO [GeV]": 0.05221232829865753,
+      "Gamma_hadronic_NLO [GeV]": 1.4158524095264164,
+      "Gamma_W_LO [GeV]": 2.0454601218416384,
+      "Gamma_W_NLO_QCD [GeV]": 2.097672450140296
+    },
+    "gamma_lo": 2.0454601218416384,
+    "qcd_coefficient": 0.434060119051263,
+    "gamma_nlo_pdf": 2.097673562052797,
+    "gamma_lepton": 0.22727334687129314,
+    "branching_e": 0.108345431330546
+  },
+  "top_widths": [
+    {
+      "command": [
+        "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+        "172.5",
+        "80.385",
+        "0.0",
+        "86.25",
+        "0.0",
+        "0.118",
+        "1.0",
+        "5"
+      ],
+      "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nW treatment                   = on shell (narrow-width limit)\nalpha_s(muR)                 =  1.1899917952042466E-001\nGamma_LO [GeV]               =  1.4806285092499623E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.4045105847446926E-001\nGamma_NLO_QCD [GeV]          =  1.3401774507754931E+000\nDelta_Gamma_QCD/Gamma_LO     = -9.4859080179144434E-002",
+      "values": {
+        "n_f": 5.0,
+        "m_b (on shell) [GeV]": 0.0,
+        "W treatment": "on shell (narrow-width limit)",
+        "alpha_s(muR)": 0.11899917952042466,
+        "Gamma_LO [GeV]": 1.4806285092499623,
+        "Delta_Gamma_QCD^NLO [GeV]": -0.14045105847446926,
+        "Gamma_NLO_QCD [GeV]": 1.340177450775493,
+        "Delta_Gamma_QCD/Gamma_LO": -0.09485908017914443
+      },
+      "mb_GeV": 0.0,
+      "w_treatment": "onshell",
+      "muR_GeV": 86.25,
+      "scale_factor": 0.5,
+      "gamma_lo": 1.4806285092499623,
+      "qcd_coefficient": -1.1802691332872817,
+      "alpha_s_pdf": 0.1190016017859736,
+      "gamma_nlo_pdf": 1.340174591850233
+    },
+    {
+      "command": [
+        "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+        "172.5",
+        "80.385",
+        "0.0",
+        "172.5",
+        "0.0",
+        "0.118",
+        "1.0",
+        "5"
+      ],
+      "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nW treatment                   = on shell (narrow-width limit)\nalpha_s(muR)                 =  1.0767050245640061E-001\nGamma_LO [GeV]               =  1.4806285092499623E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.2708017061482207E-001\nGamma_NLO_QCD [GeV]          =  1.3535483386351401E+000\nDelta_Gamma_QCD/Gamma_LO     = -8.5828531478970849E-002",
+      "values": {
+        "n_f": 5.0,
+        "m_b (on shell) [GeV]": 0.0,
+        "W treatment": "on shell (narrow-width limit)",
+        "alpha_s(muR)": 0.10767050245640061,
+        "Gamma_LO [GeV]": 1.4806285092499623,
+        "Delta_Gamma_QCD^NLO [GeV]": -0.12708017061482207,
+        "Gamma_NLO_QCD [GeV]": 1.3535483386351401,
+        "Delta_Gamma_QCD/Gamma_LO": -0.08582853147897085
+      },
+      "mb_GeV": 0.0,
+      "w_treatment": "onshell",
+      "muR_GeV": 172.5,
+      "scale_factor": 1.0,
+      "gamma_lo": 1.4806285092499623,
+      "qcd_coefficient": -1.1802691332872817,
+      "alpha_s_pdf": 0.10767034778202184,
+      "gamma_nlo_pdf": 1.353548521192535
+    },
+    {
+      "command": [
+        "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+        "172.5",
+        "80.385",
+        "0.0",
+        "345.0",
+        "0.0",
+        "0.118",
+        "1.0",
+        "5"
+      ],
+      "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nW treatment                   = on shell (narrow-width limit)\nalpha_s(muR)                 =  9.8345034033333098E-002\nGamma_LO [GeV]               =  1.4806285092499623E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.1607360808163028E-001\nGamma_NLO_QCD [GeV]          =  1.3645549011683320E+000\nDelta_Gamma_QCD/Gamma_LO     = -7.8394821764190770E-002",
+      "values": {
+        "n_f": 5.0,
+        "m_b (on shell) [GeV]": 0.0,
+        "W treatment": "on shell (narrow-width limit)",
+        "alpha_s(muR)": 0.0983450340333331,
+        "Gamma_LO [GeV]": 1.4806285092499623,
+        "Delta_Gamma_QCD^NLO [GeV]": -0.11607360808163028,
+        "Gamma_NLO_QCD [GeV]": 1.364554901168332,
+        "Delta_Gamma_QCD/Gamma_LO": -0.07839482176419077
+      },
+      "mb_GeV": 0.0,
+      "w_treatment": "onshell",
+      "muR_GeV": 345.0,
+      "scale_factor": 2.0,
+      "gamma_lo": 1.4806285092499623,
+      "qcd_coefficient": -1.1802691332872817,
+      "alpha_s_pdf": 0.098339283253109,
+      "gamma_nlo_pdf": 1.364561688636723
+    },
+    {
+      "command": [
+        "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+        "172.5",
+        "80.385",
+        "0.0",
+        "86.25",
+        "2.097673562052797",
+        "0.118",
+        "1.0",
+        "5"
+      ],
+      "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nGamma_W [GeV]                =  2.0976735620527971E+000\nW treatment                   = Breit-Wigner convolution\nalpha_s(muR)                 =  1.1899917952042466E-001\nGamma_LO [GeV]               =  1.4576010900437490E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.3828071179997867E-001\nGamma_NLO_QCD [GeV]          =  1.3193203782437704E+000\nDelta_Gamma_QCD/Gamma_LO     = -9.4868694009983379E-002",
+      "values": {
+        "n_f": 5.0,
+        "m_b (on shell) [GeV]": 0.0,
+        "Gamma_W [GeV]": 2.097673562052797,
+        "W treatment": "Breit-Wigner convolution",
+        "alpha_s(muR)": 0.11899917952042466,
+        "Gamma_LO [GeV]": 1.457601090043749,
+        "Delta_Gamma_QCD^NLO [GeV]": -0.13828071179997867,
+        "Gamma_NLO_QCD [GeV]": 1.3193203782437704,
+        "Delta_Gamma_QCD/Gamma_LO": -0.09486869400998338
+      },
+      "mb_GeV": 0.0,
+      "w_treatment": "bw",
+      "muR_GeV": 86.25,
+      "scale_factor": 0.5,
+      "gamma_lo": 1.457601090043749,
+      "qcd_coefficient": -1.1620308001892112,
+      "alpha_s_pdf": 0.1190016017859736,
+      "gamma_nlo_pdf": 1.3193175634965963
+    },
+    {
+      "command": [
+        "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+        "172.5",
+        "80.385",
+        "0.0",
+        "172.5",
+        "2.097673562052797",
+        "0.118",
+        "1.0",
+        "5"
+      ],
+      "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nGamma_W [GeV]                =  2.0976735620527971E+000\nW treatment                   = Breit-Wigner convolution\nalpha_s(muR)                 =  1.0767050245640061E-001\nGamma_LO [GeV]               =  1.4576010900437490E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.2511644012618561E-001\nGamma_NLO_QCD [GeV]          =  1.3324846499175633E+000\nDelta_Gamma_QCD/Gamma_LO     = -8.5837230076735410E-002",
+      "values": {
+        "n_f": 5.0,
+        "m_b (on shell) [GeV]": 0.0,
+        "Gamma_W [GeV]": 2.097673562052797,
+        "W treatment": "Breit-Wigner convolution",
+        "alpha_s(muR)": 0.10767050245640061,
+        "Gamma_LO [GeV]": 1.457601090043749,
+        "Delta_Gamma_QCD^NLO [GeV]": -0.1251164401261856,
+        "Gamma_NLO_QCD [GeV]": 1.3324846499175633,
+        "Delta_Gamma_QCD/Gamma_LO": -0.08583723007673541
+      },
+      "mb_GeV": 0.0,
+      "w_treatment": "bw",
+      "muR_GeV": 172.5,
+      "scale_factor": 1.0,
+      "gamma_lo": 1.457601090043749,
+      "qcd_coefficient": -1.162030800189211,
+      "alpha_s_pdf": 0.10767034778202184,
+      "gamma_nlo_pdf": 1.3324848296539555
+    },
+    {
+      "command": [
+        "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+        "172.5",
+        "80.385",
+        "0.0",
+        "345.0",
+        "2.097673562052797",
+        "0.118",
+        "1.0",
+        "5"
+      ],
+      "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nGamma_W [GeV]                =  2.0976735620527971E+000\nW treatment                   = Breit-Wigner convolution\nalpha_s(muR)                 =  9.8345034033333098E-002\nGamma_LO [GeV]               =  1.4576010900437490E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.1427995859238928E-001\nGamma_NLO_QCD [GeV]          =  1.3433211314513598E+000\nDelta_Gamma_QCD/Gamma_LO     = -7.8402766966206947E-002",
+      "values": {
+        "n_f": 5.0,
+        "m_b (on shell) [GeV]": 0.0,
+        "Gamma_W [GeV]": 2.097673562052797,
+        "W treatment": "Breit-Wigner convolution",
+        "alpha_s(muR)": 0.0983450340333331,
+        "Gamma_LO [GeV]": 1.457601090043749,
+        "Delta_Gamma_QCD^NLO [GeV]": -0.11427995859238928,
+        "Gamma_NLO_QCD [GeV]": 1.3433211314513598,
+        "Delta_Gamma_QCD/Gamma_LO": -0.07840276696620695
+      },
+      "mb_GeV": 0.0,
+      "w_treatment": "bw",
+      "muR_GeV": 345.0,
+      "scale_factor": 2.0,
+      "gamma_lo": 1.457601090043749,
+      "qcd_coefficient": -1.1620308001892112,
+      "alpha_s_pdf": 0.098339283253109,
+      "gamma_nlo_pdf": 1.3433278140351053
+    },
+    {
+      "command": [
+        "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+        "172.5",
+        "80.385",
+        "4.8",
+        "86.25",
+        "0.0",
+        "0.118",
+        "1.0",
+        "5"
+      ],
+      "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  4.7999999999999998E+000\nW treatment                   = on shell (narrow-width limit)\nalpha_s(muR)                 =  1.1899917952042466E-001\nGamma_LO [GeV]               =  1.4765338514811330E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.3836787508447712E-001\nGamma_NLO_QCD [GeV]          =  1.3381659763966560E+000\nDelta_Gamma_QCD/Gamma_LO     = -9.3711278576971507E-002",
+      "values": {
+        "n_f": 5.0,
+        "m_b (on shell) [GeV]": 4.8,
+        "W treatment": "on shell (narrow-width limit)",
+        "alpha_s(muR)": 0.11899917952042466,
+        "Gamma_LO [GeV]": 1.476533851481133,
+        "Delta_Gamma_QCD^NLO [GeV]": -0.13836787508447712,
+        "Gamma_NLO_QCD [GeV]": 1.338165976396656,
+        "Delta_Gamma_QCD/Gamma_LO": -0.09371127857697151
+      },
+      "mb_GeV": 4.8,
+      "w_treatment": "onshell",
+      "muR_GeV": 86.25,
+      "scale_factor": 0.5,
+      "gamma_lo": 1.476533851481133,
+      "qcd_coefficient": -1.16276326981505,
+      "alpha_s_pdf": 0.1190016017859736,
+      "gamma_nlo_pdf": 1.338163159875246
+    },
+    {
+      "command": [
+        "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+        "172.5",
+        "80.385",
+        "4.8",
+        "172.5",
+        "0.0",
+        "0.118",
+        "1.0",
+        "5"
+      ],
+      "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  4.7999999999999998E+000\nW treatment                   = on shell (narrow-width limit)\nalpha_s(muR)                 =  1.0767050245640061E-001\nGamma_LO [GeV]               =  1.4765338514811330E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.2519530549883376E-001\nGamma_NLO_QCD [GeV]          =  1.3513385459822993E+000\nDelta_Gamma_QCD/Gamma_LO     = -8.4790000156954398E-002",
+      "values": {
+        "n_f": 5.0,
+        "m_b (on shell) [GeV]": 4.8,
+        "W treatment": "on shell (narrow-width limit)",
+        "alpha_s(muR)": 0.10767050245640061,
+        "Gamma_LO [GeV]": 1.476533851481133,
+        "Delta_Gamma_QCD^NLO [GeV]": -0.12519530549883376,
+        "Gamma_NLO_QCD [GeV]": 1.3513385459822993,
+        "Delta_Gamma_QCD/Gamma_LO": -0.0847900001569544
+      },
+      "mb_GeV": 4.8,
+      "w_treatment": "onshell",
+      "muR_GeV": 172.5,
+      "scale_factor": 1.0,
+      "gamma_lo": 1.476533851481133,
+      "qcd_coefficient": -1.16276326981505,
+      "alpha_s_pdf": 0.10767034778202184,
+      "gamma_nlo_pdf": 1.3513387258319858
+    },
+    {
+      "command": [
+        "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+        "172.5",
+        "80.385",
+        "4.8",
+        "345.0",
+        "0.0",
+        "0.118",
+        "1.0",
+        "5"
+      ],
+      "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  4.7999999999999998E+000\nW treatment                   = on shell (narrow-width limit)\nalpha_s(muR)                 =  9.8345034033333098E-002\nGamma_LO [GeV]               =  1.4765338514811330E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.1435199334267079E-001\nGamma_NLO_QCD [GeV]          =  1.3621818581384622E+000\nDelta_Gamma_QCD/Gamma_LO     = -7.7446238857282287E-002",
+      "values": {
+        "n_f": 5.0,
+        "m_b (on shell) [GeV]": 4.8,
+        "W treatment": "on shell (narrow-width limit)",
+        "alpha_s(muR)": 0.0983450340333331,
+        "Gamma_LO [GeV]": 1.476533851481133,
+        "Delta_Gamma_QCD^NLO [GeV]": -0.1143519933426708,
+        "Gamma_NLO_QCD [GeV]": 1.3621818581384622,
+        "Delta_Gamma_QCD/Gamma_LO": -0.07744623885728229
+      },
+      "mb_GeV": 4.8,
+      "w_treatment": "onshell",
+      "muR_GeV": 345.0,
+      "scale_factor": 2.0,
+      "gamma_lo": 1.476533851481133,
+      "qcd_coefficient": -1.1627632698150503,
+      "alpha_s_pdf": 0.098339283253109,
+      "gamma_nlo_pdf": 1.3621885449344795
+    },
+    {
+      "command": [
+        "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+        "172.5",
+        "80.385",
+        "4.8",
+        "86.25",
+        "2.097673562052797",
+        "0.118",
+        "1.0",
+        "5"
+      ],
+      "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  4.7999999999999998E+000\nGamma_W [GeV]                =  2.0976735620527971E+000\nW treatment                   = Breit-Wigner convolution\nalpha_s(muR)                 =  1.1899917952042466E-001\nGamma_LO [GeV]               =  1.4535389807942054E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.3621969072514187E-001\nGamma_NLO_QCD [GeV]          =  1.3173192900690636E+000\nDelta_Gamma_QCD/Gamma_LO     = -9.3715884145544007E-002",
+      "values": {
+        "n_f": 5.0,
+        "m_b (on shell) [GeV]": 4.8,
+        "Gamma_W [GeV]": 2.097673562052797,
+        "W treatment": "Breit-Wigner convolution",
+        "alpha_s(muR)": 0.11899917952042466,
+        "Gamma_LO [GeV]": 1.4535389807942054,
+        "Delta_Gamma_QCD^NLO [GeV]": -0.13621969072514187,
+        "Gamma_NLO_QCD [GeV]": 1.3173192900690636,
+        "Delta_Gamma_QCD/Gamma_LO": -0.093715884145544
+      },
+      "mb_GeV": 4.8,
+      "w_treatment": "bw",
+      "muR_GeV": 86.25,
+      "scale_factor": 0.5,
+      "gamma_lo": 1.4535389807942054,
+      "qcd_coefficient": -1.144711175943541,
+      "alpha_s_pdf": 0.1190016017859736,
+      "gamma_nlo_pdf": 1.3173165172746186
+    },
+    {
+      "command": [
+        "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+        "172.5",
+        "80.385",
+        "4.8",
+        "172.5",
+        "2.097673562052797",
+        "0.118",
+        "1.0",
+        "5"
+      ],
+      "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  4.7999999999999998E+000\nGamma_W [GeV]                =  2.0976735620527971E+000\nW treatment                   = Breit-Wigner convolution\nalpha_s(muR)                 =  1.0767050245640061E-001\nGamma_LO [GeV]               =  1.4535389807942054E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.2325162748129827E-001\nGamma_NLO_QCD [GeV]          =  1.3302873533129072E+000\nDelta_Gamma_QCD/Gamma_LO     = -8.4794167277133695E-002",
+      "values": {
+        "n_f": 5.0,
+        "m_b (on shell) [GeV]": 4.8,
+        "Gamma_W [GeV]": 2.097673562052797,
+        "W treatment": "Breit-Wigner convolution",
+        "alpha_s(muR)": 0.10767050245640061,
+        "Gamma_LO [GeV]": 1.4535389807942054,
+        "Delta_Gamma_QCD^NLO [GeV]": -0.12325162748129827,
+        "Gamma_NLO_QCD [GeV]": 1.3302873533129072,
+        "Delta_Gamma_QCD/Gamma_LO": -0.0847941672771337
+      },
+      "mb_GeV": 4.8,
+      "w_treatment": "bw",
+      "muR_GeV": 172.5,
+      "scale_factor": 1.0,
+      "gamma_lo": 1.4535389807942054,
+      "qcd_coefficient": -1.144711175943541,
+      "alpha_s_pdf": 0.10767034778202184,
+      "gamma_nlo_pdf": 1.3302875303703972
+    },
+    {
+      "command": [
+        "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+        "172.5",
+        "80.385",
+        "4.8",
+        "345.0",
+        "2.097673562052797",
+        "0.118",
+        "1.0",
+        "5"
+      ],
+      "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  4.7999999999999998E+000\nGamma_W [GeV]                =  2.0976735620527971E+000\nW treatment                   = Breit-Wigner convolution\nalpha_s(muR)                 =  9.8345034033333098E-002\nGamma_LO [GeV]               =  1.4535389807942054E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.1257665955650431E-001\nGamma_NLO_QCD [GeV]          =  1.3409623212377011E+000\nDelta_Gamma_QCD/Gamma_LO     = -7.7450045058298375E-002",
+      "values": {
+        "n_f": 5.0,
+        "m_b (on shell) [GeV]": 4.8,
+        "Gamma_W [GeV]": 2.097673562052797,
+        "W treatment": "Breit-Wigner convolution",
+        "alpha_s(muR)": 0.0983450340333331,
+        "Gamma_LO [GeV]": 1.4535389807942054,
+        "Delta_Gamma_QCD^NLO [GeV]": -0.11257665955650431,
+        "Gamma_NLO_QCD [GeV]": 1.340962321237701,
+        "Delta_Gamma_QCD/Gamma_LO": -0.07745004505829838
+      },
+      "mb_GeV": 4.8,
+      "w_treatment": "bw",
+      "muR_GeV": 345.0,
+      "scale_factor": 2.0,
+      "gamma_lo": 1.4535389807942054,
+      "qcd_coefficient": -1.144711175943541,
+      "alpha_s_pdf": 0.098339283253109,
+      "gamma_nlo_pdf": 1.340968904220094
+    }
+  ],
+  "max_MG5_cores": 64,
+  "status": "preflight passed; no integration"
+}

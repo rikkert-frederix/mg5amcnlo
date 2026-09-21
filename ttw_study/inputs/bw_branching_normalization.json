@@ -1,0 +1,227 @@
+{
+  "created_utc": "2026-09-10T14:47:49.599461+00:00",
+  "status": "LO fixed-current pointwise and full-support integral checks passed",
+  "benchmark_sha256": "11a824d9e5dad562eb3ab0e7bfe4fcc41da94bfbd6c68039eba2d97d6fa6a98d",
+  "script_sha256": "4dc5e8f26dfef8d2955cdc48f7c3f53e20a5778458c22decd19b86aa4528fca3",
+  "records": [
+    {
+      "mb_GeV": 0.0,
+      "W_width_factor": 1.0,
+      "W_width_GeV": 2.097673562052797,
+      "leptonic_partial_LO_GeV": 0.1579244188086641,
+      "quadrature_error_GeV": 2.884453775287281e-15,
+      "total_BW_LO_GeV": 1.457601090043749,
+      "integrated_branching": 0.10834543133054605,
+      "expected_branching": 0.108345431330546,
+      "residual_GeV": 8.326672684688674e-17,
+      "calculator": {
+        "command": [
+          "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+          "172.5",
+          "80.385",
+          "0.0",
+          "172.5",
+          "2.097673562052797",
+          "0.118",
+          "1.0",
+          "5"
+        ],
+        "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nGamma_W [GeV]                =  2.0976735620527971E+000\nW treatment                   = Breit-Wigner convolution\nalpha_s(muR)                 =  1.0767050245640061E-001\nGamma_LO [GeV]               =  1.4576010900437490E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.2511644012618561E-001\nGamma_NLO_QCD [GeV]          =  1.3324846499175633E+000\nDelta_Gamma_QCD/Gamma_LO     = -8.5837230076735410E-002",
+        "values": {
+          "n_f": 5.0,
+          "m_b (on shell) [GeV]": 0.0,
+          "Gamma_W [GeV]": 2.097673562052797,
+          "W treatment": "Breit-Wigner convolution",
+          "alpha_s(muR)": 0.10767050245640061,
+          "Gamma_LO [GeV]": 1.457601090043749,
+          "Delta_Gamma_QCD^NLO [GeV]": -0.1251164401261856,
+          "Gamma_NLO_QCD [GeV]": 1.3324846499175633,
+          "Delta_Gamma_QCD/Gamma_LO": -0.08583723007673541
+        }
+      }
+    },
+    {
+      "mb_GeV": 0.0,
+      "W_width_factor": 0.2,
+      "W_width_GeV": 0.41953471241055945,
+      "leptonic_partial_LO_GeV": 0.7995935298406436,
+      "quadrature_error_GeV": 6.313745044626173e-14,
+      "total_BW_LO_GeV": 1.4760078390406728,
+      "integrated_branching": 0.5417271566527297,
+      "expected_branching": 0.54172715665273,
+      "residual_GeV": -4.440892098500626e-16,
+      "calculator": {
+        "command": [
+          "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+          "172.5",
+          "80.385",
+          "0.0",
+          "172.5",
+          "0.41953471241055945",
+          "0.118",
+          "1.0",
+          "5"
+        ],
+        "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nGamma_W [GeV]                =  4.1953471241055945E-001\nW treatment                   = Breit-Wigner convolution\nalpha_s(muR)                 =  1.0767050245640061E-001\nGamma_LO [GeV]               =  1.4760078390406728E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.2668641257028268E-001\nGamma_NLO_QCD [GeV]          =  1.3493214264703901E+000\nDelta_Gamma_QCD/Gamma_LO     = -8.5830446979619140E-002",
+        "values": {
+          "n_f": 5.0,
+          "m_b (on shell) [GeV]": 0.0,
+          "Gamma_W [GeV]": 0.41953471241055945,
+          "W treatment": "Breit-Wigner convolution",
+          "alpha_s(muR)": 0.10767050245640061,
+          "Gamma_LO [GeV]": 1.4760078390406728,
+          "Delta_Gamma_QCD^NLO [GeV]": -0.12668641257028268,
+          "Gamma_NLO_QCD [GeV]": 1.34932142647039,
+          "Delta_Gamma_QCD/Gamma_LO": -0.08583044697961914
+        }
+      }
+    },
+    {
+      "mb_GeV": 0.0,
+      "W_width_factor": 0.05,
+      "W_width_GeV": 0.10488367810263986,
+      "leptonic_partial_LO_GeV": 3.2058820445602634,
+      "quadrature_error_GeV": 9.124540121104231e-14,
+      "total_BW_LO_GeV": 1.4794726483572664,
+      "integrated_branching": 2.166908626610919,
+      "expected_branching": 2.16690862661092,
+      "residual_GeV": -1.3322676295501878e-15,
+      "calculator": {
+        "command": [
+          "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+          "172.5",
+          "80.385",
+          "0.0",
+          "172.5",
+          "0.10488367810263986",
+          "0.118",
+          "1.0",
+          "5"
+        ],
+        "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  0.0000000000000000E+000\nGamma_W [GeV]                =  1.0488367810263986E-001\nW treatment                   = Breit-Wigner convolution\nalpha_s(muR)                 =  1.0767050245640061E-001\nGamma_LO [GeV]               =  1.4794726483572664E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.2698168548656974E-001\nGamma_NLO_QCD [GeV]          =  1.3524909628706967E+000\nDelta_Gamma_QCD/Gamma_LO     = -8.5829018621982597E-002",
+        "values": {
+          "n_f": 5.0,
+          "m_b (on shell) [GeV]": 0.0,
+          "Gamma_W [GeV]": 0.10488367810263986,
+          "W treatment": "Breit-Wigner convolution",
+          "alpha_s(muR)": 0.10767050245640061,
+          "Gamma_LO [GeV]": 1.4794726483572664,
+          "Delta_Gamma_QCD^NLO [GeV]": -0.12698168548656974,
+          "Gamma_NLO_QCD [GeV]": 1.3524909628706967,
+          "Delta_Gamma_QCD/Gamma_LO": -0.0858290186219826
+        }
+      }
+    },
+    {
+      "mb_GeV": 4.8,
+      "W_width_factor": 1.0,
+      "W_width_GeV": 2.097673562052797,
+      "leptonic_partial_LO_GeV": 0.15748430782991038,
+      "quadrature_error_GeV": 2.0905499553691698e-13,
+      "total_BW_LO_GeV": 1.4535389807942054,
+      "integrated_branching": 0.10834543133054599,
+      "expected_branching": 0.108345431330546,
+      "residual_GeV": -2.7755575615628914e-17,
+      "calculator": {
+        "command": [
+          "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+          "172.5",
+          "80.385",
+          "4.8",
+          "172.5",
+          "2.097673562052797",
+          "0.118",
+          "1.0",
+          "5"
+        ],
+        "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  4.7999999999999998E+000\nGamma_W [GeV]                =  2.0976735620527971E+000\nW treatment                   = Breit-Wigner convolution\nalpha_s(muR)                 =  1.0767050245640061E-001\nGamma_LO [GeV]               =  1.4535389807942054E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.2325162748129827E-001\nGamma_NLO_QCD [GeV]          =  1.3302873533129072E+000\nDelta_Gamma_QCD/Gamma_LO     = -8.4794167277133695E-002",
+        "values": {
+          "n_f": 5.0,
+          "m_b (on shell) [GeV]": 4.8,
+          "Gamma_W [GeV]": 2.097673562052797,
+          "W treatment": "Breit-Wigner convolution",
+          "alpha_s(muR)": 0.10767050245640061,
+          "Gamma_LO [GeV]": 1.4535389807942054,
+          "Delta_Gamma_QCD^NLO [GeV]": -0.12325162748129827,
+          "Gamma_NLO_QCD [GeV]": 1.3302873533129072,
+          "Delta_Gamma_QCD/Gamma_LO": -0.0847941672771337
+        }
+      }
+    },
+    {
+      "mb_GeV": 4.8,
+      "W_width_factor": 0.2,
+      "W_width_GeV": 0.41953471241055945,
+      "leptonic_partial_LO_GeV": 0.7973788589158085,
+      "quadrature_error_GeV": 1.431965657161527e-12,
+      "total_BW_LO_GeV": 1.4719196723360184,
+      "integrated_branching": 0.5417271566527295,
+      "expected_branching": 0.54172715665273,
+      "residual_GeV": -6.661338147750939e-16,
+      "calculator": {
+        "command": [
+          "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+          "172.5",
+          "80.385",
+          "4.8",
+          "172.5",
+          "0.41953471241055945",
+          "0.118",
+          "1.0",
+          "5"
+        ],
+        "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  4.7999999999999998E+000\nGamma_W [GeV]                =  4.1953471241055945E-001\nW treatment                   = Breit-Wigner convolution\nalpha_s(muR)                 =  1.0767050245640061E-001\nGamma_LO [GeV]               =  1.4719196723360184E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.2480555339609911E-001\nGamma_NLO_QCD [GeV]          =  1.3471141189399192E+000\nDelta_Gamma_QCD/Gamma_LO     = -8.4791008464494361E-002",
+        "values": {
+          "n_f": 5.0,
+          "m_b (on shell) [GeV]": 4.8,
+          "Gamma_W [GeV]": 0.41953471241055945,
+          "W treatment": "Breit-Wigner convolution",
+          "alpha_s(muR)": 0.10767050245640061,
+          "Gamma_LO [GeV]": 1.4719196723360184,
+          "Delta_Gamma_QCD^NLO [GeV]": -0.12480555339609911,
+          "Gamma_NLO_QCD [GeV]": 1.3471141189399192,
+          "Delta_Gamma_QCD/Gamma_LO": -0.08479100846449436
+        }
+      }
+    },
+    {
+      "mb_GeV": 4.8,
+      "W_width_factor": 0.05,
+      "W_width_GeV": 0.10488367810263986,
+      "leptonic_partial_LO_GeV": 3.1970128096831307,
+      "quadrature_error_GeV": 1.4233059175694507e-12,
+      "total_BW_LO_GeV": 1.475379612422012,
+      "integrated_branching": 2.166908626610918,
+      "expected_branching": 2.16690862661092,
+      "residual_GeV": -2.6645352591003757e-15,
+      "calculator": {
+        "command": [
+          "/export/slow1/rikkert/top-decay-virtual-cdr/width/top_decay_width",
+          "172.5",
+          "80.385",
+          "4.8",
+          "172.5",
+          "0.10488367810263986",
+          "0.118",
+          "1.0",
+          "5"
+        ],
+        "stdout": "n_f                         = 5\nm_b (on shell) [GeV]         =  4.7999999999999998E+000\nGamma_W [GeV]                =  1.0488367810263986E-001\nW treatment                   = Breit-Wigner convolution\nalpha_s(muR)                 =  1.0767050245640061E-001\nGamma_LO [GeV]               =  1.4753796124220120E+000\nDelta_Gamma_QCD^NLO [GeV]    = -1.2509782161246921E-001\nGamma_NLO_QCD [GeV]          =  1.3502817908095428E+000\nDelta_Gamma_QCD/Gamma_LO     = -8.4790260458531205E-002",
+        "values": {
+          "n_f": 5.0,
+          "m_b (on shell) [GeV]": 4.8,
+          "Gamma_W [GeV]": 0.10488367810263986,
+          "W treatment": "Breit-Wigner convolution",
+          "alpha_s(muR)": 0.10767050245640061,
+          "Gamma_LO [GeV]": 1.475379612422012,
+          "Delta_Gamma_QCD^NLO [GeV]": -0.1250978216124692,
+          "Gamma_NLO_QCD [GeV]": 1.3502817908095428,
+          "Delta_Gamma_QCD/Gamma_LO": -0.0847902604585312
+        }
+      }
+    }
+  ],
+  "source": "Campbell-Ellis arXiv:1204.1513 Eqs. 2.2 and 2.8; direct fixed-g current factorization",
+  "NLO_argument": "Top QCD corrections replace the transverse-current kernel while retaining the same fixed weak-coupling factors. Thus Gamma_leptonic_i=B_l*Gamma_BW_i for i=0,1 with the matched convolution and a fixed external GammaW. This is an algebraic argument, not an independent NLO integration.",
+  "scope": "Stable-ttW branching comparison extends to top-bw with an on-shell associated W. It does not extend to all-bw production. No extra branching factor is applied to events. The generator narrow-W and virtuality-support tests remain separate."
+}

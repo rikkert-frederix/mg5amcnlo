@@ -74,3 +74,48 @@ check_sa_born_splitOrders.f
 models/*.tgz
 tests/status
 nsqso_born.inc
+
+# Local ttW study dependencies and generated numerical artifacts.
+/LHAPDF/
+/ttw_study/downloads/
+/ttw_study/local/
+/ttw_study/venv/
+/ttw_study/processes/
+/ttw_study/checks/
+/ttw_study/results/
+/ttw_study/logs/
+/ttw_study/mg5.lock
+
+# Keep reusable inputs and prepared campaign definitions; queues and snapshots
+# are local execution records, often containing paths to large worker archives.
+/ttw_study/inputs/*
+!/ttw_study/inputs/benchmark.json
+!/ttw_study/inputs/bw_branching_normalization.json
+!/ttw_study/inputs/narrow_w_common_inputs_v1.json
+!/ttw_study/inputs/small_mass_inputs_v1.json
+!/ttw_study/inputs/parameter_variations_preflight.json
+!/ttw_study/inputs/parameter_variation_inputs_bounded_v1.json
+!/ttw_study/inputs/ttbar_reference_preflight.json
+!/ttw_study/inputs/qes_pi_retraining_plan_v1.json
+!/ttw_study/inputs/main_campaign_main_onshell_v2.json
+!/ttw_study/inputs/robustness_campaign_fullflavour_v1.json
+/ttw_study/widths/*
+!/ttw_study/widths/continuity_scans.json
+
+# Downloaded literature/data and rendered inspection copies stay local.
+/ttw_study/references/*.pdf
+/ttw_study/references/*.txt
+/ttw_study/references/*.html
+/ttw_study/references/data-expanded-ratios/
+/ttw_study/references/ttbar_nnlo_2008.11133/
+/ttw_study/paper/*
+!/ttw_study/paper/*.tex
+!/ttw_study/paper/*.bib
+/ttw_study/figures/*
+!/ttw_study/figures/generated_narrow_w.pdf
+!/ttw_study/figures/generated_narrow_w.json
+!/ttw_study/figures/w_treatment_pilot_width_mass_v2.pdf
+!/ttw_study/figures/w_treatment_pilot_width_mass_v2.json
+
+# Official UFO dependency downloaded by the interface regression suite.
+/models/loop_qcd_qed_sm/

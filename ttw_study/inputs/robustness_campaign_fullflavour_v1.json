@@ -1,0 +1,9578 @@
+{
+  "created_utc": "2026-09-14T10:38:30.929187+00:00",
+  "status": "full-flavour robustness campaign prepared; validation and main-convergence release required",
+  "tag": "fullflavour_v1",
+  "replicas": 5,
+  "seed_start": 300001,
+  "cases": [
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300001,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300002,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300003,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300004,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300005,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300006,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300007,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300008,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300009,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300010,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300011,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300012,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300013,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300014,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300015,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300016,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300017,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300018,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300019,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300020,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300021,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300022,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300023,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300024,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300025,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300026,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300027,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300028,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300029,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300030,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300031,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300032,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300033,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300034,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300035,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300036,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300037,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300038,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300039,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300040,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300041,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300042,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300043,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300044,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300045,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300046,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300047,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300048,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300049,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300050,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300051,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300052,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300053,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300054,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300055,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300056,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300057,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300058,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300059,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300060,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300061,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300062,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300063,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300064,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300065,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300066,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300067,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300068,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300069,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300070,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300071,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300072,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300073,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300074,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300075,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300076,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300077,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300078,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300079,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300080,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300081,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300082,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300083,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300084,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300085,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300086,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300087,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300088,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300089,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300090,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300091,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300092,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300093,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300094,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300095,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300096,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300097,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300098,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300099,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300100,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300101,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300102,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300103,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300104,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300105,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300106,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300107,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300108,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300109,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300110,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300111,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300112,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300113,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300114,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300115,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300116,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300117,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300118,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300119,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300120,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300121,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300122,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300123,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300124,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300125,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300126,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300127,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 0,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300128,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300129,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300130,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300131,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300132,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300133,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300134,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300135,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300136,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300137,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300138,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300139,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300140,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300141,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300142,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300143,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300144,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300145,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300146,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300147,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300148,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300149,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300150,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300151,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300152,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300153,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300154,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300155,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300156,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300157,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300158,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300159,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300160,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300161,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300162,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300163,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300164,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300165,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300166,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300167,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300168,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300169,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300170,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300171,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300172,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300173,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300174,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300175,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300176,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300177,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300178,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300179,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300180,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300181,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300182,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300183,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300184,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300185,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300186,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300187,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300188,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300189,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300190,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300191,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300192,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300193,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300194,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300195,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300196,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300197,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300198,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300199,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300200,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300201,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300202,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300203,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300204,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300205,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300206,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300207,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300208,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300209,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300210,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300211,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300212,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300213,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300214,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300215,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300216,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300217,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300218,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300219,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300220,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300221,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300222,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300223,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300224,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300225,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300226,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300227,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300228,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300229,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300230,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300231,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300232,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300233,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300234,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300235,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300236,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300237,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300238,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300239,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300240,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300241,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300242,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300243,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300244,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300245,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300246,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300247,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300248,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300249,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300250,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300251,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300252,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300253,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300254,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300255,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 1,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300256,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300257,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300258,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300259,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300260,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300261,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300262,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300263,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300264,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300265,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300266,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300267,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300268,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300269,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300270,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300271,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300272,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300273,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300274,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300275,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300276,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300277,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300278,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300279,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300280,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300281,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300282,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300283,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300284,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300285,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300286,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300287,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300288,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300289,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300290,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300291,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300292,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300293,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300294,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300295,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300296,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300297,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300298,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300299,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300300,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300301,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300302,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300303,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300304,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300305,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300306,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300307,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300308,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300309,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300310,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300311,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300312,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300313,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300314,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300315,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300316,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300317,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300318,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300319,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300320,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300321,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300322,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300323,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300324,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300325,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300326,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300327,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300328,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300329,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300330,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300331,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300332,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300333,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300334,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300335,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300336,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300337,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300338,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300339,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300340,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300341,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300342,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300343,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300344,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300345,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300346,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300347,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300348,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300349,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300350,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300351,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300352,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300353,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300354,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300355,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300356,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300357,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300358,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300359,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300360,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300361,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300362,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300363,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300364,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300365,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300366,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300367,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300368,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300369,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300370,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300371,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300372,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300373,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300374,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300375,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300376,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300377,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300378,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300379,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300380,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300381,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300382,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300383,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 2,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300384,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300385,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300386,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300387,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300388,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300389,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300390,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300391,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300392,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300393,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300394,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300395,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300396,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300397,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300398,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300399,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300400,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300401,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300402,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300403,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300404,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300405,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300406,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300407,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300408,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300409,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300410,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300411,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300412,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300413,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300414,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300415,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300416,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300417,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300418,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300419,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300420,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300421,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300422,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300423,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300424,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300425,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300426,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300427,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300428,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300429,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300430,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300431,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300432,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300433,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300434,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300435,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300436,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300437,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300438,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300439,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300440,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300441,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300442,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300443,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300444,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300445,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300446,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300447,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300448,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300449,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300450,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300451,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300452,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300453,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300454,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300455,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300456,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300457,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300458,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300459,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300460,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300461,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300462,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300463,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300464,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300465,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300466,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300467,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300468,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300469,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300470,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300471,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300472,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300473,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300474,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300475,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300476,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300477,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300478,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300479,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300480,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300481,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300482,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300483,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300484,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300485,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300486,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300487,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300488,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300489,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300490,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300491,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300492,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300493,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300494,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300495,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300496,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300497,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300498,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300499,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300500,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300501,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300502,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300503,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300504,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300505,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300506,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300507,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300508,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300509,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300510,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300511,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 3,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300512,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300513,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300514,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300515,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300516,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300517,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300518,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300519,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300520,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300521,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300522,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300523,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300524,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300525,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300526,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300527,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300528,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300529,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300530,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300531,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300532,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300533,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300534,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300535,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300536,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300537,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300538,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300539,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300540,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300541,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300542,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300543,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300544,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300545,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300546,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300547,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300548,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300549,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300550,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300551,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300552,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300553,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300554,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300555,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300556,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300557,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300558,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300559,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300560,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300561,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300562,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300563,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300564,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300565,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300566,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300567,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300568,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300569,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300570,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300571,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300572,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300573,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300574,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300575,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "plus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300576,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300577,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300578,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300579,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300580,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300581,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300582,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300583,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300584,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300585,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300586,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300587,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300588,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300589,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300590,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300591,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300592,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300593,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300594,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300595,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300596,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300597,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300598,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300599,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300600,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300601,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300602,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300603,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300604,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300605,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300606,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300607,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "e",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300608,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300609,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300610,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300611,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300612,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300613,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300614,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300615,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300616,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300617,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300618,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300619,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300620,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300621,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300622,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300623,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "e",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300624,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300625,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300626,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300627,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300628,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300629,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300630,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300631,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "e"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300632,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300633,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "top-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300634,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "S",
+      "seed": 300635,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 0.0,
+      "variant": "Pi",
+      "seed": 300636,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300637,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "onshell",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300638,
+      "production_sampling": "flat"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "S",
+      "seed": 300639,
+      "production_sampling": "w-current"
+    },
+    {
+      "replica": 4,
+      "charge": "minus",
+      "flavours": [
+        "mu",
+        "mu",
+        "mu"
+      ],
+      "w_treatment": "all-bw",
+      "decay_bottom_mass": 4.8,
+      "variant": "Pi",
+      "seed": 300640,
+      "production_sampling": "w-current"
+    }
+  ],
+  "jobs": [],
+  "exports": {},
+  "comparisons": [
+    {
+      "name": "top_W",
+      "charge": "plus",
+      "target": {
+        "w_treatment": "top-bw",
+        "decay_bottom_mass": 0.0
+      },
+      "reference": {
+        "w_treatment": "onshell",
+        "decay_bottom_mass": 0.0
+      },
+      "flavours": [
+        [
+          "e",
+          "e",
+          "e"
+        ],
+        [
+          "e",
+          "e",
+          "mu"
+        ],
+        [
+          "e",
+          "mu",
+          "e"
+        ],
+        [
+          "e",
+          "mu",
+          "mu"
+        ],
+        [
+          "mu",
+          "e",
+          "e"
+        ],
+        [
+          "mu",
+          "e",
+          "mu"
+        ],
+        [
+          "mu",
+          "mu",
+          "e"
+        ],
+        [
+          "mu",
+          "mu",
+          "mu"
+        ]
+      ]
+    },
+    {
+      "name": "associated_W",
+      "charge": "plus",
+      "target": {
+        "w_treatment": "all-bw",
+        "decay_bottom_mass": 0.0
+      },
+      "reference": {
+        "w_treatment": "top-bw",
+        "decay_bottom_mass": 0.0
+      },
+      "flavours": [
+        [
+          "e",
+          "e",
+          "e"
+        ],
+        [
+          "e",
+          "e",
+          "mu"
+        ],
+        [
+          "e",
+          "mu",
+          "e"
+        ],
+        [
+          "e",
+          "mu",
+          "mu"
+        ],
+        [
+          "mu",
+          "e",
+          "e"
+        ],
+        [
+          "mu",
+          "e",
+          "mu"
+        ],
+        [
+          "mu",
+          "mu",
+          "e"
+        ],
+        [
+          "mu",
+          "mu",
+          "mu"
+        ]
+      ]
+    },
+    {
+      "name": "all_W",
+      "charge": "plus",
+      "target": {
+        "w_treatment": "all-bw",
+        "decay_bottom_mass": 0.0
+      },
+      "reference": {
+        "w_treatment": "onshell",
+        "decay_bottom_mass": 0.0
+      },
+      "flavours": [
+        [
+          "e",
+          "e",
+          "e"
+        ],
+        [
+          "e",
+          "e",
+          "mu"
+        ],
+        [
+          "e",
+          "mu",
+          "e"
+        ],
+        [
+          "e",
+          "mu",
+          "mu"
+        ],
+        [
+          "mu",
+          "e",
+          "e"
+        ],
+        [
+          "mu",
+          "e",
+          "mu"
+        ],
+        [
+          "mu",
+          "mu",
+          "e"
+        ],
+        [
+          "mu",
+          "mu",
+          "mu"
+        ]
+      ]
+    },
+    {
+      "name": "bottom_mass_onshell",
+      "charge": "plus",
+      "target": {
+        "w_treatment": "onshell",
+        "decay_bottom_mass": 4.8
+      },
+      "reference": {
+        "w_treatment": "onshell",
+        "decay_bottom_mass": 0.0
+      },
+      "flavours": [
+        [
+          "e",
+          "e",
+          "e"
+        ],
+        [
+          "e",
+          "e",
+          "mu"
+        ],
+        [
+          "e",
+          "mu",
+          "e"
+        ],
+        [
+          "e",
+          "mu",
+          "mu"
+        ],
+        [
+          "mu",
+          "e",
+          "e"
+        ],
+        [
+          "mu",
+          "e",
+          "mu"
+        ],
+        [
+          "mu",
+          "mu",
+          "e"
+        ],
+        [
+          "mu",
+          "mu",
+          "mu"
+        ]
+      ]
+    },
+    {
+      "name": "bottom_mass_all_bw",
+      "charge": "plus",
+      "target": {
+        "w_treatment": "all-bw",
+        "decay_bottom_mass": 4.8
+      },
+      "reference": {
+        "w_treatment": "all-bw",
+        "decay_bottom_mass": 0.0
+      },
+      "flavours": [
+        [
+          "e",
+          "e",
+          "e"
+        ],
+        [
+          "e",
+          "e",
+          "mu"
+        ],
+        [
+          "e",
+          "mu",
+          "e"
+        ],
+        [
+          "e",
+          "mu",
+          "mu"
+        ],
+        [
+          "mu",
+          "e",
+          "e"
+        ],
+        [
+          "mu",
+          "e",
+          "mu"
+        ],
+        [
+          "mu",
+          "mu",
+          "e"
+        ],
+        [
+          "mu",
+          "mu",
+          "mu"
+        ]
+      ]
+    },
+    {
+      "name": "top_W",
+      "charge": "minus",
+      "target": {
+        "w_treatment": "top-bw",
+        "decay_bottom_mass": 0.0
+      },
+      "reference": {
+        "w_treatment": "onshell",
+        "decay_bottom_mass": 0.0
+      },
+      "flavours": [
+        [
+          "e",
+          "e",
+          "e"
+        ],
+        [
+          "e",
+          "e",
+          "mu"
+        ],
+        [
+          "e",
+          "mu",
+          "e"
+        ],
+        [
+          "e",
+          "mu",
+          "mu"
+        ],
+        [
+          "mu",
+          "e",
+          "e"
+        ],
+        [
+          "mu",
+          "e",
+          "mu"
+        ],
+        [
+          "mu",
+          "mu",
+          "e"
+        ],
+        [
+          "mu",
+          "mu",
+          "mu"
+        ]
+      ]
+    },
+    {
+      "name": "associated_W",
+      "charge": "minus",
+      "target": {
+        "w_treatment": "all-bw",
+        "decay_bottom_mass": 0.0
+      },
+      "reference": {
+        "w_treatment": "top-bw",
+        "decay_bottom_mass": 0.0
+      },
+      "flavours": [
+        [
+          "e",
+          "e",
+          "e"
+        ],
+        [
+          "e",
+          "e",
+          "mu"
+        ],
+        [
+          "e",
+          "mu",
+          "e"
+        ],
+        [
+          "e",
+          "mu",
+          "mu"
+        ],
+        [
+          "mu",
+          "e",
+          "e"
+        ],
+        [
+          "mu",
+          "e",
+          "mu"
+        ],
+        [
+          "mu",
+          "mu",
+          "e"
+        ],
+        [
+          "mu",
+          "mu",
+          "mu"
+        ]
+      ]
+    },
+    {
+      "name": "all_W",
+      "charge": "minus",
+      "target": {
+        "w_treatment": "all-bw",
+        "decay_bottom_mass": 0.0
+      },
+      "reference": {
+        "w_treatment": "onshell",
+        "decay_bottom_mass": 0.0
+      },
+      "flavours": [
+        [
+          "e",
+          "e",
+          "e"
+        ],
+        [
+          "e",
+          "e",
+          "mu"
+        ],
+        [
+          "e",
+          "mu",
+          "e"
+        ],
+        [
+          "e",
+          "mu",
+          "mu"
+        ],
+        [
+          "mu",
+          "e",
+          "e"
+        ],
+        [
+          "mu",
+          "e",
+          "mu"
+        ],
+        [
+          "mu",
+          "mu",
+          "e"
+        ],
+        [
+          "mu",
+          "mu",
+          "mu"
+        ]
+      ]
+    },
+    {
+      "name": "bottom_mass_onshell",
+      "charge": "minus",
+      "target": {
+        "w_treatment": "onshell",
+        "decay_bottom_mass": 4.8
+      },
+      "reference": {
+        "w_treatment": "onshell",
+        "decay_bottom_mass": 0.0
+      },
+      "flavours": [
+        [
+          "e",
+          "e",
+          "e"
+        ],
+        [
+          "e",
+          "e",
+          "mu"
+        ],
+        [
+          "e",
+          "mu",
+          "e"
+        ],
+        [
+          "e",
+          "mu",
+          "mu"
+        ],
+        [
+          "mu",
+          "e",
+          "e"
+        ],
+        [
+          "mu",
+          "e",
+          "mu"
+        ],
+        [
+          "mu",
+          "mu",
+          "e"
+        ],
+        [
+          "mu",
+          "mu",
+          "mu"
+        ]
+      ]
+    },
+    {
+      "name": "bottom_mass_all_bw",
+      "charge": "minus",
+      "target": {
+        "w_treatment": "all-bw",
+        "decay_bottom_mass": 4.8
+      },
+      "reference": {
+        "w_treatment": "all-bw",
+        "decay_bottom_mass": 0.0
+      },
+      "flavours": [
+        [
+          "e",
+          "e",
+          "e"
+        ],
+        [
+          "e",
+          "e",
+          "mu"
+        ],
+        [
+          "e",
+          "mu",
+          "e"
+        ],
+        [
+          "e",
+          "mu",
+          "mu"
+        ],
+        [
+          "mu",
+          "e",
+          "e"
+        ],
+        [
+          "mu",
+          "e",
+          "mu"
+        ],
+        [
+          "mu",
+          "mu",
+          "e"
+        ],
+        [
+          "mu",
+          "mu",
+          "mu"
+        ]
+      ]
+    }
+  ],
+  "source_hashes": {
+    "Template/fNLO/FixedOrderAnalysis/HwU.f90": "fac716133ddd65736cf42c7f4fdb0975bd8427a371d55311738f3dcd80536ad9",
+    "Template/fNLO/FixedOrderAnalysis/analysis_HwU_pp_ttxw_product.f90": "0938835e1f7508716fec2752abda5887ab30a67653282ff3b9397d2be4c5e109",
+    "Template/fNLO/FixedOrderAnalysis/ttw_product_setup.py": "1a2c148984b59d4628378cd746ed470b4cd04e374a1d2b656f01f6f3560f5e7c",
+    "Template/fNLO/Source/kin_functions.f90": "f521e4ecc5c08a9763b51a88707c31a26c1113dd247fa2699a6efbd6a07ab5cf",
+    "Template/fNLO/Source/ranmar.f90": "e1b5e8ed4b6e8b2d9d23d07f1d4f73842d080a8e1fed6d7831a5fe2ed0e04636",
+    "Template/fNLO/SubProcesses/ajob_template": "b305f7a87db44a97962a3d69b2a09ca6f32571fd9c8c956d60f7c78a99b38043",
+    "Template/fNLO/SubProcesses/decay_chain_kinematics.f90": "0c3ee7cfd260fb64934af63b8d3eb545aadfc486baf65980a8eec8994a97086e",
+    "Template/fNLO/SubProcesses/decay_chain_parameters.f90": "f3a714a9f27642c2afa24c27ba46d5c81493150028926c01eeb3c2b624f800db",
+    "Template/fNLO/SubProcesses/decay_chain_scales.f90": "11830b20dae684a38aa642e537e17509cfbbd4155c489a77b36cd5e1ffc6c291",
+    "Template/fNLO/SubProcesses/driver_mintFO.f90": "3ece5b1f51bc7b5d5d70448758f07a2f9c03726d90f1675f012ccc7cc17197b1",
+    "Template/fNLO/SubProcesses/factorized_block_kinematics.f90": "47b7d4efff73d30f5cdea5c44e4ba2dd4029ba50f68370397777e159f8b3bdfd",
+    "Template/fNLO/SubProcesses/fks_weights.f90": "219e87a817f6415724c65d37db428aac55c91772f81dbfb9939fb53aaad32e67",
+    "Template/fNLO/SubProcesses/makefile_fks_dir": "01bfbeb58907e93ddf15e79d5c7db391997e7b84e2ff4fa10f664306a309192a",
+    "Template/fNLO/SubProcesses/mint_module.f90": "60b8892907c2488be42de9a4cb740f4bc4e4a4bad624e6f497ec9ab31ac40302",
+    "Template/fNLO/SubProcesses/multiplicative_nlo_decay.f90": "ecfc02ffee348deb0afb8ecf933b1b0457044af0b35dcc2df22dd110c2d581fa",
+    "Template/fNLO/SubProcesses/nlo_decay_kinematics.f90": "c07ef12f2d4a3182cea558ed277fca157ab8b8841b3482d44b74640f55070bc9",
+    "Template/fNLO/SubProcesses/phase_space_kinematics.f90": "d7c6101409295ee3429090c80e86561582f60a9c6e349bac26b6012d6f532ff5",
+    "Template/fNLO/SubProcesses/setscales.f90": "02443aef23d9833e09ffca8b8c2886463cbdb9994cd8f8112a32192c4390ca67",
+    "Template/fNLO/SubProcesses/spin_density_weight_lines.f90": "2857dd47ee2e383a85958e509629ef630949c55ed42f12a21b1afd672e8f1c70",
+    "Template/fNLO/SubProcesses/top_decay_virtual_dispatch.f90": "5953ed908a3b668dcdb327363a01fffcd8d16863229aa8bcdef68358b40980e2",
+    "madgraph/fks/fks_decay.py": "7b24bf01b298ede8a9dfe87d0adbee50520672795cb03db21ea2c3fd419d356f",
+    "madgraph/fks/fks_decay_masses.py": "464def8755d9410b4a8643e0c312e43bb97652a0154a105fcce1c09dd8f37f33",
+    "madgraph/interface/amcatnlo_run_interface.py": "a9b0801d0e734904ca4ea4093d73dde9f8e3d63b6b7e0e0f1adf222d17a245cf",
+    "madgraph/iolibs/export_fks.py": "cdf3b0255e241e74f53b71d49b466e804787b00a210eb6e4d44a90446e572b43",
+    "madgraph/iolibs/export_spin_density.py": "9fc2450339689d39e7e90872c660bf02f918f20fa475f3edbc3e9a2da6e14900",
+    "madgraph/various/banner.py": "ed891ef9ea5d8dfcac9f6a39bab8f7a3da97c889635edca1c0d0e663b3d7c457",
+    "models/check_param_card.py": "8fa3e712cf625dbe9ee200effad98a801cf1425ce6db248392448fb62a7dcdaf",
+    "models/model_reader.py": "5b8627cbe96cbc770dc64fb1213b6ff1d4c3af3992c2e0859215861e56528e00",
+    "tests/input_files/fks_decay/bw_support_checks.f90": "6d42ca816e1bd86b86682e501e4309509aa3a9524b78e67983e77daafce8d0c2",
+    "tests/input_files/fks_decay/phase_space_test_dimensions.f90": "a3d0b63a1b6693d03d4ecc13b662b55dd7630c82cfa189421ea4d7a04cc1851c",
+    "ttw_study/scripts/audit_results.py": "ed2c853516d0fe573d2ba5eab962175258392eedb294ab65fbdcbd189ce6daf5",
+    "ttw_study/scripts/audit_virtuals.py": "506663031cb59c39fd3232006cdb85961d1a36cb8fe49c80662259a6fd964ff8",
+    "ttw_study/scripts/bw_branching.py": "4dc5e8f26dfef8d2955cdc48f7c3f53e20a5778458c22decd19b86aa4528fca3",
+    "ttw_study/scripts/campaign.py": "f8a413650efc485bb074e20e822034342c08667d91ae55544d5994ff1121826a",
+    "ttw_study/scripts/check_phase_space_support.py": "b28041bc4761c25d9d1468a3561205fc2424f84254885e1c3279301b21d984a9",
+    "ttw_study/scripts/compare_current_batches.py": "c615e7f6467e61a3f2e5ac0607d96324ed80d51d2ecb193077ede39fca67be10",
+    "ttw_study/scripts/full_flavour_statistics.py": "feee35baf1ff208058ac6a2521ff386398df45054edfb88522e57d16c0f80bbb",
+    "ttw_study/scripts/harvest_splits.py": "1951943440ed9186875aa29c3ea3e22ad8e1011dec6756f7cdd4745c97c3a688",
+    "ttw_study/scripts/inclusive_report.py": "60fd50aef6d0d13a3d81431caa5a6cc593bc64efb94b90cfcf57bb90164a3326",
+    "ttw_study/scripts/load_results.py": "dccaa64d7448c860693cc4d04a7d1a9c778f61972809dd9bf745a08941e090cc",
+    "ttw_study/scripts/production_invariance.py": "faa6a062c5cf450d08c22fe737492997ada9b86881e43f1bcbe80d8b234f2fae",
+    "ttw_study/scripts/read_splits.py": "8723280bc168fbf29db9ac146bbdec68729d5557b5a3fa23a7c3e71f7db0590f",
+    "ttw_study/scripts/replica_statistics.py": "1a18b0ce70a68a09cfbeb0ea4bb4784c829551d3ddd52f55a44cbcfbeefbed65",
+    "ttw_study/scripts/rng_history.py": "330883c0960e26a787792f8d2a85289ca5fd2b460b061a7a3c7f68c8ca4c07f2",
+    "ttw_study/scripts/run_robustness_campaign.py": "bd6c0791cf48b138109eb81c836eb882fde55a69242e6d41aaf995080f622798",
+    "ttw_study/scripts/run_sampler_pilots.py": "33eef70d181bbb675689cbc4c6f87afff5a4ef085a9f3520808a43c7fae7ba9f",
+    "ttw_study/scripts/run_width_mass_pilots.py": "8dfcb7f71fa20f5e1866bd2ad12aec4de45493cf5c028f67877217f78ceef6d6"
+  },
+  "benchmark_sha256": "11a824d9e5dad562eb3ab0e7bfe4fcc41da94bfbd6c68039eba2d97d6fa6a98d",
+  "max_cores": 64,
+  "settings": {
+    "accuracy": 0.015,
+    "points": 1000,
+    "grid_points": 1000,
+    "iterations": 3,
+    "job_seconds": 1.0,
+    "production_scale": "core-w-ht-half",
+    "ecm": 13000.0
+  },
+  "reference_scope": "At least five independent main massless on-shell S/Pi runs per ordered flavour and charge. References are shared, never counted as new integrations.",
+  "scope": "All eight ordered direct e/mu assignments in both charges, S/Pi in massless top-bw/all-bw and in onshell/all-bw with 4.8 GeV decay-only bottom mass. Production remains massless 5FS. Common dynamic W-system scale, matched top widths and all 81 scales plus 101 PDF members.",
+  "precision": "Total-rate accuracy is an initial allocation. Measure full-flavour fiducial/shape precision and mixed-term sensitivity using independent whole-run covariance; inspect common bins and retraining convergence before publication.",
+  "remaining": "Conditional top-bw massive or mb=4.6/5.0 sensitivity, selected PDF/alpha-s/top-mass/energy checks, resolved-shift attribution and final paper conclusions remain separate tasks.",
+  "plan_sha256": "0051a4064d9d75416baf63c42df672999f2ac4e3d8b8229a589cb61dcc025f41"
+}
