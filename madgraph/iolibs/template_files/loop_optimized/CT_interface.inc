@@ -181,8 +181,9 @@ C
 C    	LOCAL VARIABLES
 C
      	INTEGER I,J,K
-     	%(complex_dp_format)s DIFFSQ
-     	%(real_dp_format)s REF_NORMALIZATION
+        %(complex_dp_format)s DIFFSQ
+        %(real_dp_format)s REF_NORMALIZATION
+        %(real_dp_format)s ROUNDING_TOL
 
 C     	----------
 C     	BEGIN CODE
@@ -200,15 +201,23 @@ C     	----------
 	          enddo
 C             Default value of the kinematic matrix
 	          s_mat(i,j)=DIFFSQ-M2L(i)-M2L(j)
-C             And we now test various thresholds. Normaly, at most one applies.
+C             Allow for cancellation in boosted, rounded input momenta.
+              ROUNDING_TOL=0.0D0
+              DO K=0,3
+                ROUNDING_TOL=ROUNDING_TOL+(ABS(P_LOOP(I,K))+ABS(P_LOOP(J,K)))**2
+              ENDDO
+              ROUNDING_TOL=8.0D0*EPSILON(1.0D0)*ROUNDING_TOL
+C             A recognized massive shell must not subsequently become massless.
 	          IF(ABS(M2L(i)).NE.0.0D0)THEN
-	            IF(ABS((DIFFSQ-M2L(i))/M2L(i)).LT.OSThres)THEN
+	            IF(ABS(DIFFSQ-M2L(i)).LT.MAX(OSThres*ABS(M2L(i)),ROUNDING_TOL))THEN
 	              s_mat(i,j)=-M2L(j)
+                  CYCLE
  	            ENDIF
 	          ENDIF
 		      IF(ABS(M2L(j)).NE.0.0D0)THEN
-	            IF(ABS((DIFFSQ-M2L(j))/M2L(j)).LT.OSThres)THEN
+	            IF(ABS(DIFFSQ-M2L(j)).LT.MAX(OSThres*ABS(M2L(j)),ROUNDING_TOL))THEN
 	              s_mat(i,j)=-M2L(i)
+                  CYCLE
 	            ENDIF
 		      ENDIF
 C             Choose what seems the most appropriate way to compare
@@ -253,8 +262,9 @@ C
 C    	LOCAL VARIABLES
 C
      	INTEGER I,J,K
-     	%(complex_mp_format)s DIFFSQ
-     	%(real_mp_format)s REF_NORMALIZATION
+        %(complex_mp_format)s DIFFSQ
+        %(real_mp_format)s REF_NORMALIZATION
+        %(real_mp_format)s ROUNDING_TOL
 
 C     	----------
 C     	BEGIN CODE
@@ -272,15 +282,22 @@ C     	----------
 	          enddo
 C             Default value of the kinematic matrix
 	          s_mat(i,j)=DIFFSQ-M2L(i)-M2L(j)
-C             And we now test various thresholds. Normaly, at most one applies.
+C             Use the same mass-shell priority in quadruple precision.
+              ROUNDING_TOL=0.0E0_16
+              DO K=0,3
+                ROUNDING_TOL=ROUNDING_TOL+(ABS(P_LOOP(I,K))+ABS(P_LOOP(J,K)))**2
+              ENDDO
+              ROUNDING_TOL=8.0E0_16*EPSILON(1.0E0_16)*ROUNDING_TOL
 	          IF(ABS(M2L(i)).NE.0.0e0_16)THEN
-	            IF(ABS((DIFFSQ-M2L(i))/M2L(i)).LT.OSThres)THEN
+	            IF(ABS(DIFFSQ-M2L(i)).LT.MAX(OSThres*ABS(M2L(i)),ROUNDING_TOL))THEN
 	              s_mat(i,j)=-M2L(j)
+                  CYCLE
  	            ENDIF
 	          ENDIF
 		      IF(ABS(M2L(j)).NE.0.0e0_16)THEN
-	            IF(ABS((DIFFSQ-M2L(j))/M2L(j)).LT.OSThres)THEN
+	            IF(ABS(DIFFSQ-M2L(j)).LT.MAX(OSThres*ABS(M2L(j)),ROUNDING_TOL))THEN
 	              s_mat(i,j)=-M2L(i)
+                  CYCLE
 	            ENDIF
 		      ENDIF
 C             Choose what seems the most appropriate way to compare
