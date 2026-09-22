@@ -97,7 +97,8 @@ def validate_physics(results,identities,*,width_inputs=None):
     for path in identities:
         proof=json.loads(path.read_text())
         reference,candidate=Path(proof['reference']),Path(proof['candidate'])
-        if (proof['status']!='production source and FKS-region identity passed' or
+        if (proof['status'] not in ('production source and FKS-region identity passed',
+                'production amplitude and FKS-region identity passed with kinematic-helper transition') or
                 reference not in processes[:2] or candidate not in processes[2:]):
             raise ValueError('Production identity does not cover these samples')
         if digest(candidate/'Cards/decay_mass_scheme.json')!=proof['scheme_sha256']:
@@ -107,7 +108,8 @@ def validate_physics(results,identities,*,width_inputs=None):
             if hashlib.sha256(production_getter.encode()).hexdigest()!=proof['production_getter_sha256']:
                 raise ValueError('Production mass/width getter changed since its identity audit')
         for row in proof['subprocesses'].values():
-            current=compare_subprocess(Path(row['reference_directory']),Path(row['candidate_directory']))
+            current=compare_subprocess(Path(row['reference_directory']),Path(row['candidate_directory']),
+                allow_kinematic_update=bool(row.get('kinematic_matrix_transition')))
             if any(current[key]!=row[key] for key in current):
                 raise ValueError('Production source/FKS evidence changed')
         covered.add(candidate)

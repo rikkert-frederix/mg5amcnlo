@@ -139,15 +139,37 @@ def subprocess_inventory(process):
     return result
 
 
-def compare_subprocess(reference,candidate):
+def kinematic_helpers(source):
+    """Separate only the two generic reduction helpers from generated amplitudes."""
+    pattern=r'(?ims)^      SUBROUTINE (\w*BUILD_KINEMATIC_MATRIX)\(.*?^      END[ \t]*$'
+    matches=list(re.finditer(pattern,source))
+    if (len(matches)!=2 or matches[1].group(1).upper()!=
+            matches[0].group(1).upper().replace('BUILD_KINEMATIC_MATRIX','MP_BUILD_KINEMATIC_MATRIX')):
+        raise ValueError('Missing unique DP/QP kinematic-matrix helper pair')
+    bodies='\n'.join(match.group(0) for match in matches)
+    return re.sub(pattern,'',source),bodies
+
+
+def compare_subprocess(reference,candidate,*,allow_kinematic_update=False):
     left,right=production_files(reference),production_files(candidate)
     if set(left)!=set(right):
         raise ValueError('Production source inventory differs')
     hashes={}
+    transitions={}
     for name in sorted(left):
         a,b=digest(left[name]),digest(right[name])
         if a!=b:
-            raise ValueError('Production source changed: '+str(right[name]))
+            if not allow_kinematic_update or name!='VContribution1/CT_interface.f':
+                raise ValueError('Production source changed: '+str(right[name]))
+            old_code,old_helpers=kinematic_helpers(left[name].read_text())
+            new_code,new_helpers=kinematic_helpers(right[name].read_text())
+            if old_code!=new_code:
+                raise ValueError('Production source changed outside kinematic helpers: '+str(right[name]))
+            transitions[name]=dict(reference_sha256=a,candidate_sha256=b,
+                unchanged_source_sha256=hashlib.sha256(old_code.encode()).hexdigest(),
+                reference_helpers_sha256=hashlib.sha256(old_helpers.encode()).hexdigest(),
+                candidate_helpers_sha256=hashlib.sha256(new_helpers.encode()).hexdigest())
+            continue
         hashes[name]=a
     owners=[]
     regions=[]
@@ -157,10 +179,13 @@ def compare_subprocess(reference,candidate):
         regions.append(production_fks((directory/'fks_info.inc').read_text(),owner['first'],owner['last']))
     if owners[0]!=owners[1] or regions[0]!=regions[1]:
         raise ValueError('Production FKS ownership, grids or region data changed')
-    return dict(production_sources_sha256=hashes,production_ownership=owners[0],
+    result=dict(production_sources_sha256=hashes,production_ownership=owners[0],
                 production_fks_data=regions[0],
                 full_fks_source_hashes={str(p/'fks_info.inc'):digest(p/'fks_info.inc')
                                         for p in (reference,candidate)})
+    if transitions:
+        result['kinematic_matrix_transition']=transitions
+    return result
 
 
 def model_functions(path):
@@ -174,7 +199,7 @@ def model_functions(path):
     return production,decay
 
 
-def run(reference,candidate,output):
+def run(reference,candidate,output,*,allow_kinematic_update=False):
     reference,candidate=reference.resolve(),candidate.resolve()
     if output.exists() or reference==candidate:
         raise ValueError('Require distinct exports and a new audit destination')
@@ -216,7 +241,8 @@ def run(reference,candidate,output):
         raise ValueError('Production subprocess inventory differs')
     records={str(key):dict(reference_directory=str(directories[0][key]),
                           candidate_directory=str(directories[1][key]),
-                          **compare_subprocess(directories[0][key],directories[1][key]))
+                          **compare_subprocess(directories[0][key],directories[1][key],
+                                               allow_kinematic_update=allow_kinematic_update))
              for key in sorted(directories[0])}
     report=dict(created_utc=now(),status='production source and FKS-region identity passed',
                 reference=str(reference),candidate=str(candidate),scheme=scheme,
@@ -227,6 +253,12 @@ def run(reference,candidate,output):
                             'Common coupling declarations may include additional private decay parameters. '
                             'This does not replace model-reader, numerical-amplitude, massive pole/soft, '
                             'or small-mass continuity checks. Top total widths are intentionally allowed to differ.')
+    if any('kinematic_matrix_transition' in row for row in records.values()):
+        report['status']='production amplitude and FKS-region identity passed with kinematic-helper transition'
+        report['limitations']=('The two generic DP/QP kinematic-matrix helpers changed; both versions and '
+            'the unchanged remainder are hashed explicitly. Every production amplitude, loop routing, '
+            'coupling input and FKS-region check remains required. This is not byte identity of the '
+            'entire numerical backend or a numerical convergence certificate. Top widths may differ.')
     save(output,report)
     print('Production source/FKS identity passed for',len(records),'subprocesses:',output,flush=True)
     return report
@@ -237,5 +269,7 @@ if __name__=='__main__':
     parser.add_argument('--reference',required=True,type=Path)
     parser.add_argument('--candidate',required=True,type=Path)
     parser.add_argument('--output',required=True,type=Path)
+    parser.add_argument('--allow-kinematic-update',action='store_true',
+        help='Audit a change confined to the two generic reduction-matrix helpers; all amplitudes must match')
     args=parser.parse_args()
-    run(args.reference,args.candidate,args.output)
+    run(args.reference,args.candidate,args.output,allow_kinematic_update=args.allow_kinematic_update)

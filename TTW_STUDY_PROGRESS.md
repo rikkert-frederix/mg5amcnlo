@@ -64,12 +64,21 @@ robust peer deviations. It changes the recorded second-stage scalar estimate
 from 5.32819e-4 +/- 4.21648e-5 pb to 4.90943e-4 +/- 3.59676e-6 pb.
 This replay does not replace any archived physics result.
 
-The restart is prepared as `smallmass_v4`, retaining the same physical
-settings, 1% target, initial seed 85001 and twelve-case inventory
-(mb=0,1,0.1 GeV S/Pi in on-shell/all-BW). Its live state is recorded in
-`ttw_study/inputs/small_mass_queue_smallmass_v4.json`; the launch command/PID
-is recorded in `ttw_study/inputs/queue_launch_smallmass_v4_20260921.json`.
-Use at most 64 cores and resume passive half-hour monitoring once launched.
+The protected `smallmass_v4` completed four jobs (on-shell mb=0/1 GeV,
+S/Pi) and stopped at 15:57 UTC on 22 September during the mb=0.1 GeV S
+analytic/MadLoop validation. The loop reduction interface had rounded a
+boosted nonzero bottom-mass invariant to zero; bug 27 below records the
+fix and exact-point replay. All six replay validations now pass, with
+maximum discrepancy 4.2521e-10 against the unchanged 1e-8 tolerance.
+The four completed archives are revalidated (840 distinct stage pairs,
+zero overlap) and retained. `smallmass_v5` continues with eight unfinished
+jobs in fresh exports, replacing only the failed seed 85005 by 85013.
+The 1% target, physical inventory and outlier policy are preserved.
+State and launch records are `ttw_study/inputs/small_mass_queue_smallmass_v5.json`
+and `ttw_study/inputs/queue_launch_smallmass_v5_20260922.json`.
+See `ttw_study/references/small_mass_virtual_recovery.md` for the two
+numerical fixes, validation and explicit production-helper transition.
+Use at most 64 cores and passive half-hour monitoring once launched.
 The technical audit inspected all eight matching-scale identities: their
 maximum conditional rate residual is 2.14 standard errors, with no rate
 entry above three. All sixteen native/decayed normalization comparisons are
@@ -620,7 +629,39 @@ decisions in the study plan rather than being silently omitted.
     other numerical results text is byte-for-byte unchanged. Evidence:
     `checks/paper_charge_covariance_and_citation_v1.json`.
 
+27. **Boosted small-mass invariant lost in loop reduction; corrected and replayed:**
+    `smallmass_v4` mb=0.1 GeV S seed 85005 stopped before final output on
+    a normalized analytic/MadLoop discrepancy of 1.5318475377293412.
+    The DP relative-only mass-shell test missed the rounded 0.01 GeV-squared
+    invariant, and the subsequent energy-normalized test set it to zero.
+    That second test also overwrote a recognized massive shell in QP.
+    Both generic helpers now account for roundoff and preserve a massive
+    match. The remaining complex off-diagonal reference mismatch is
+    handled by a conditional uniform-QP retry of the initialized decay
+    reference, saving/restoring the normal MadLoop modes. The same hard
+    density check follows the retry; the tolerance is not relaxed.
+    A private native-worker replay passes all six validation points,
+    with maximum 4.2521e-10; no replay enters physics results. The 45
+    export/precision tests and 25 recovery/statistics tests pass (four
+    precision tests overlap). Original failures and four completed runs
+    remain preserved. The continuation revalidates retained artifacts
+    and records the narrowly scoped kinematic-helper source transition.
+    Details: `ttw_study/references/small_mass_virtual_recovery.md`.
+
 ## Activity log
+
+### 2026-09-22 — small-mass validation fix and retained-result continuation
+
+`smallmass_v4` was already stopped with no live numerical workers when
+work resumed. The first four jobs passed histogram/card/batch checks,
+their worker archives and virtual audits retain their recorded checksums,
+and the three original failed-export checksums saved before the private
+replay are unchanged. The original seed/stage was replayed privately to
+diagnose bug 27. The replacement allocation is `smallmass_v5`, using
+seed 85013 for the failed fifth case and retaining seeds 85006--85012
+for the seven pending cases. Source guards now include the generic
+loop-reduction template. The launch record and queue above are the
+authoritative live state; main/paper production remains unreleased.
 
 ### 2026-09-14 18:44 UTC — QES-two Pi inspected; uncut-rate flag and archive-copy test
 

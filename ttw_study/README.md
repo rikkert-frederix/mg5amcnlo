@@ -253,6 +253,20 @@ the five fresh on-shell references with the original narrow-W controls,
 and `scripts/small_mass_report.py` compares the two small masses jointly.
 Both preserve correlations from shared controls and reject incomplete input.
 
+The protected `smallmass_v4` completed its first four cases, then stopped
+on a boosted mb=0.1 GeV virtual-validation failure. The corrected private
+replay passes all six native checks at the unchanged tolerance.
+`smallmass_v5` retains the four revalidated runs and continues only the
+eight unfinished cases in fresh exports. The recovery arguments are
+`--resume-stopped-queue inputs/small_mass_queue_smallmass_v4.json`
+and `--replacement-seed 85013`, together with the original predecessor,
+width inputs, 1% accuracy and `--exclude-split-outliers`.
+The queue stores the stopped record's checksum and retained export paths;
+its production audit permits only the explicitly hashed change to the
+two generic kinematic-matrix helpers. Details and validation evidence are
+in `references/small_mass_virtual_recovery.md`. Read the v5 queue and
+launch record for current execution state.
+
 For the completed 480-case main campaign, `scripts/main_replicas.py` will
 collect complete independent run vectors and conditional-variance diagnostics.
 `scripts/full_flavour_statistics.py` averages retrainings within each flavour,

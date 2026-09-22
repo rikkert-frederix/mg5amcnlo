@@ -1,8 +1,11 @@
 import copy
+from pathlib import Path
+import tempfile
 import unittest
 
-from campaign import STUDY
-from production_invariance import compare_subprocess, core_key, fixed_statements, production_fks, production_owner
+from campaign import STUDY, digest
+from production_invariance import (compare_subprocess, core_key, fixed_statements,
+                                  kinematic_helpers, production_fks, production_owner)
 
 
 def fks_fixture():
@@ -17,6 +20,63 @@ def fks_fixture():
 
 
 class TestProductionInvariance(unittest.TestCase):
+    def ct_fixture(self):
+        return ('      SUBROUTINE TEST_LOOP()\n      CALL ROUTING(1)\n      END\n\n'
+                '      SUBROUTINE TEST_BUILD_KINEMATIC_MATRIX(N,P,M,S)\n'
+                '      S=1D0\n      END\n\n'
+                '      SUBROUTINE TEST_MP_BUILD_KINEMATIC_MATRIX(N,P,M,S)\n'
+                '      S=1E0_16\n      END\n\n'
+                'C     Ninja interface\n      SUBROUTINE TEST_NINJA()\n      END\n')
+
+    def test_helper_boundary_requires_exact_dp_qp_pair(self):
+        source=self.ct_fixture()
+        unchanged,helpers=kinematic_helpers(source)
+        self.assertIn('CALL ROUTING(1)',unchanged)
+        self.assertIn('C     Ninja interface',unchanged)
+        self.assertNotIn('S=1D0',unchanged)
+        self.assertIn('S=1D0',helpers)
+        for broken in (source.replace('TEST_MP_BUILD','OTHER_MP_BUILD'),
+                       source.replace('TEST_MP_BUILD','TEST_BUILD'),source+source):
+            with self.assertRaises(ValueError):
+                kinematic_helpers(broken)
+
+    def test_opt_in_transition_hashes_helpers_and_rejects_all_other_changes(self):
+        with tempfile.TemporaryDirectory(prefix='production_transition_') as temporary:
+            reference,candidate=[Path(temporary)/name for name in ('reference','candidate')]
+            names=['spin_density_production_'+name+'.f' for name in
+                   ('born','real_1','born_contribution_1_link_1','virtual_contribution_1')]
+            names+=['VContribution1/'+name+'.f' for name in
+                    ('born_matrix','loop_matrix','loop_num','helas_calls_uvct_1')]
+            names+=['born_leshouche.inc']
+            for directory in (reference,candidate):
+                (directory/'VContribution1').mkdir(parents=True)
+                for name in names:
+                    (directory/name).write_text('      CALL PRODUCTION(1)\n')
+                (directory/'VContribution1/CT_interface.f').write_text(self.ct_fixture())
+                (directory/'nlo_contribution_info.dat').write_text(
+                    'FORMAT 3\nCONTRIBUTION 1 PRODUCTION 1 2 1 1 0 0 0\nVIRTUAL_GRID 1 1 2 4\n')
+                (directory/'fks_info.inc').write_text(fks_fixture())
+            interface=candidate/'VContribution1/CT_interface.f'
+            interface.write_text(self.ct_fixture().replace('S=1D0','S=2D0'))
+            with self.assertRaisesRegex(ValueError,'Production source changed'):
+                compare_subprocess(reference,candidate)
+            row=compare_subprocess(reference,candidate,allow_kinematic_update=True)
+            transition=row['kinematic_matrix_transition']['VContribution1/CT_interface.f']
+            self.assertEqual(transition['reference_sha256'],digest(reference/'VContribution1/CT_interface.f'))
+            self.assertEqual(transition['candidate_sha256'],digest(interface))
+            self.assertNotEqual(transition['reference_helpers_sha256'],transition['candidate_helpers_sha256'])
+            self.assertEqual(set(row['production_sources_sha256']),set(names))
+            interface.write_text(interface.read_text().replace('S=2D0','S=3D0'))
+            changed=compare_subprocess(reference,candidate,allow_kinematic_update=True)
+            self.assertNotEqual(changed['kinematic_matrix_transition'],row['kinematic_matrix_transition'])
+            interface.write_text(interface.read_text().replace('ROUTING(1)','ROUTING(2)'))
+            with self.assertRaisesRegex(ValueError,'outside kinematic helpers'):
+                compare_subprocess(reference,candidate,allow_kinematic_update=True)
+            interface.write_text(self.ct_fixture())
+            (candidate/names[0]).write_text('      CALL PRODUCTION(2)\n')
+            with self.assertRaisesRegex(ValueError,'Production source changed'):
+                compare_subprocess(reference,candidate,allow_kinematic_update=True)
+
     def test_core_identity_uses_ordered_pdgs_not_particle_aliases(self):
         source=('FORMAT 4\nCONTEXT 1 BORN 1 5 10\n'
                 'CORE_LEG 1 1 -1 I\nCORE_LEG 1 2 2 I\nCORE_LEG 1 3 6 F\n'

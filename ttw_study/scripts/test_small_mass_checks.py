@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 from campaign import ROOT, STUDY, digest
-from run_small_mass_checks import cases, configure
+from run_small_mass_checks import cases, completed_exports, configure, recovery_plan, validate_cases
 from small_mass_inputs import validate
 
 
@@ -39,6 +39,65 @@ class TestSmallMassChecks(unittest.TestCase):
             selected=[r for r in rows if r['w_treatment']==mode]
             self.assertEqual([r['decay_bottom_mass'] for r in selected],[0.,0.,1.,1.,.1,.1])
             self.assertEqual([r['variant'] for r in selected],['S','Pi']*3)
+
+    def stopped_queue(self):
+        selected=cases()
+        return dict(status='stopped',cases=selected,current_case=selected[4],
+                    jobs=[dict(case=case,process='kept',audit='frozen') for case in selected[:4]])
+
+    def test_recovery_preserves_completed_jobs_and_only_reseeds_failed_case(self):
+        previous=self.stopped_queue()
+        original=copy.deepcopy(previous)
+        plan=recovery_plan(previous,85013)
+        self.assertEqual(plan['carried_jobs'],previous['jobs'])
+        self.assertEqual(plan['cases'][:4],previous['cases'][:4])
+        self.assertEqual(plan['cases'][5:],previous['cases'][5:])
+        self.assertEqual(plan['cases'][4],dict(previous['current_case'],seed=85013))
+        self.assertEqual(plan['failed_index'],4)
+        self.assertEqual(len(plan['cases'][len(plan['carried_jobs']):]),8)
+        plan['carried_jobs'][0]['audit']='altered copy'
+        self.assertEqual(previous,original)
+        validate_cases(plan['cases'])
+
+    def test_recovery_rejects_unverified_order_status_and_reused_seed(self):
+        previous=self.stopped_queue()
+        for change in ('status','missing','order','wrong_case'):
+            broken=copy.deepcopy(previous)
+            if change=='status': broken['status']='running'
+            elif change=='missing': broken['jobs'].pop()
+            elif change=='order': broken['jobs'].reverse()
+            else: broken['current_case']=dict(broken['current_case'],seed=99999)
+            with self.subTest(change=change),self.assertRaises(ValueError):
+                recovery_plan(broken,85013)
+        for seed in (85001,85005,85012,0,900000001,True,85013.,None,[]):
+            with self.subTest(seed=seed),self.assertRaises(ValueError):
+                recovery_plan(previous,seed)
+
+    def test_physical_inventory_cannot_change_when_replacing_a_seed(self):
+        for change in ('mass','variant','order','missing','duplicate_seed','unknown_field'):
+            broken=cases()
+            if change=='mass': broken[4]['decay_bottom_mass']=.2
+            elif change=='variant': broken[4]['variant']='Pi'
+            elif change=='order': broken.reverse()
+            elif change=='missing': broken.pop()
+            elif change=='duplicate_seed': broken[4]['seed']=broken[0]['seed']
+            else: broken[4]['extra']=True
+            with self.subTest(change=change),self.assertRaises(ValueError):
+                validate_cases(broken)
+
+    def test_carried_exports_follow_actual_jobs_across_recoveries(self):
+        previous=dict(carried_exports={'old':dict(process='old',production_identity='old_proof')},
+            exports={'same_mass':dict(process='new',production_identity='new_proof'),
+                     'failed':dict(process='unused')})
+        jobs=[dict(process='old'),dict(process='old'),dict(process='new')]
+        retained=completed_exports(previous,jobs)
+        self.assertEqual(set(retained),{'old','new'})
+        self.assertEqual([retained[p]['production_identity'] for p in ('old','new')],
+                         ['old_proof','new_proof'])
+        retained['old']['process']='changed copy'
+        self.assertEqual(previous['carried_exports']['old']['process'],'old')
+        with self.assertRaises(ValueError):
+            completed_exports(previous,[dict(process='missing')])
 
     def test_actual_cards_use_matching_small_mass_widths_and_5fs_production(self):
         from models.check_param_card import ParamCard

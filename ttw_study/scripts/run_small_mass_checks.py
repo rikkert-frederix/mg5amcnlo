@@ -19,6 +19,7 @@ from audit_virtuals import audit as audit_virtuals
 from campaign import ROOT, STUDY, RUNTIME_SOURCES, benchmark_param_card, digest, generate, now, save, setup_module
 from check_phase_space_support import run as check_support
 from harvest_splits import harvest
+from load_results import load
 from production_invariance import run as check_production
 from read_splits import read
 from run_inclusive import launch
@@ -38,6 +39,59 @@ def cases(seed_start=85001):
         for i,(mode,mass,variant) in enumerate(
             (mode,mass,variant) for mode in ('onshell','all-bw')
             for mass in (0.,1.,.1) for variant in ('S','Pi'))]
+
+
+def validate_cases(selected):
+    """Keep the twelve physical cases fixed while permitting audited replacement seeds."""
+    if not isinstance(selected,list) or len(selected)!=12:
+        raise ValueError('Require the complete twelve-case small-mass allocation')
+    seeds=[]
+    for actual,expected in zip(selected,cases()):
+        if (not isinstance(actual,dict) or
+                {k:v for k,v in actual.items() if k!='seed'}!=
+                {k:v for k,v in expected.items() if k!='seed'}):
+            raise ValueError('Small-mass physical inventory or ordering changed')
+        seed=actual.get('seed')
+        if not isinstance(seed,int) or isinstance(seed,bool) or not 0<seed<=900000000:
+            raise ValueError('Invalid small-mass seed')
+        seeds.append(seed)
+    if len(set(seeds))!=12:
+        raise ValueError('Small-mass cases have duplicate seeds')
+
+
+def recovery_plan(previous,replacement_seed):
+    if previous.get('status')!='stopped':
+        raise ValueError('Recovery requires a stopped small-mass queue')
+    selected=previous.get('cases')
+    validate_cases(selected)
+    failed=previous.get('current_case')
+    completed=previous.get('jobs')
+    if failed not in selected or not isinstance(completed,list):
+        raise ValueError('Stopped small-mass queue has no recoverable case')
+    index=selected.index(failed)
+    if (len(completed)!=index or any(not isinstance(job,dict) for job in completed)
+            or [job.get('case') for job in completed]!=selected[:index]):
+        raise ValueError('Completed small-mass jobs are not an ordered prefix')
+    repaired=copy.deepcopy(selected)
+    if (not isinstance(replacement_seed,int) or isinstance(replacement_seed,bool)
+            or not 0<replacement_seed<=900000000):
+        raise ValueError('Invalid replacement seed')
+    if replacement_seed in {case['seed'] for case in selected}:
+        raise ValueError('Replacement seed must be new')
+    repaired[index]['seed']=replacement_seed
+    validate_cases(repaired)
+    return dict(cases=repaired,carried_jobs=copy.deepcopy(completed),failed_index=index,
+                failed_case=copy.deepcopy(failed),replacement_case=copy.deepcopy(repaired[index]))
+
+
+def completed_exports(previous,jobs):
+    """Retain the exact exports used by completed jobs, including earlier recoveries."""
+    available={row['process']:row for rows in
+               (previous.get('carried_exports',{}),previous['exports']) for row in rows.values()}
+    required={job['process'] for job in jobs}
+    if not required.issubset(available):
+        raise ValueError('Completed job has no recorded export')
+    return {process:copy.deepcopy(available[process]) for process in sorted(required)}
 
 
 def local_benchmark(width_inputs):
@@ -137,13 +191,30 @@ def main():
     parser.add_argument('--seed-start',type=int,default=85001)
     parser.add_argument('--exclude-split-outliers',action='store_true',
         help='Archive and exclude at most one extreme equal-count split per stratum; filtered errors omit selection bias')
+    parser.add_argument('--resume-stopped-queue',type=Path)
+    parser.add_argument('--replacement-seed',type=int)
     args=parser.parse_args()
-    if not args.tag.replace('_','').isalnum() or not 0<args.accuracy<1:
+    if (not args.tag.replace('_','').isalnum() or not 0<args.accuracy<1 or
+            (args.resume_stopped_queue is None)!=(args.replacement_seed is None)):
         raise ValueError('Invalid generated continuity settings')
     args.width_inputs=args.width_inputs.resolve()
     inputs=json.loads(args.width_inputs.read_text())
     benchmark=local_benchmark(inputs)
     selected=cases(args.seed_start)
+    recovery=None
+    previous=None
+    if args.resume_stopped_queue:
+        args.resume_stopped_queue=args.resume_stopped_queue.resolve()
+        previous=json.loads(args.resume_stopped_queue.read_text())
+        recovery=recovery_plan(previous,args.replacement_seed)
+        if (Path(previous['after_queue']).resolve()!=args.after_queue.resolve() or
+                previous.get('predecessor_sha256')!=digest(args.after_queue) or
+                previous.get('accuracy')!=args.accuracy or
+                previous.get('exclude_split_outliers',False)!=args.exclude_split_outliers or
+                Path(previous['width_inputs']).resolve()!=args.width_inputs or
+                previous['source_hashes'].get(str(args.width_inputs.relative_to(ROOT)))!=digest(args.width_inputs)):
+            raise ValueError('Recovery must preserve predecessor, widths, accuracy and outlier policy')
+        selected=recovery['cases']
     destination=STUDY/'inputs'/('small_mass_queue_'+args.tag+'.json')
     if destination.exists():
         raise ValueError('Existing small-mass queue; inspect before further action')
@@ -156,6 +227,8 @@ def main():
         *[ROOT/'tests/input_files/fks_decay'/name for name in (
             'phase_space_test_dimensions.f90','bw_support_checks.f90')],
         ROOT/'Template/fNLO/Source/kin_functions.f90']
+    if recovery:
+        files.append(args.resume_stopped_queue)
     sources.update({str(p.relative_to(ROOT)):digest(p) for p in files})
     record=dict(created_utc=now(),status='waiting for narrow-W reference retrainings',max_cores=64,
         after_queue=str(args.after_queue.resolve()),width_inputs=str(args.width_inputs),
@@ -164,6 +237,15 @@ def main():
               'Dynamic W-system production scales and matched five-flavour top widths. '
               'Pilot allocation only; remeasure fiducial/shape sensitivity and retraining convergence.')
     record['exclude_split_outliers']=args.exclude_split_outliers
+    if recovery:
+        record['jobs']=recovery['carried_jobs']
+        record['carried_exports']=completed_exports(previous,record['jobs'])
+        record['recovery']=dict(stopped_queue=str(args.resume_stopped_queue),
+            stopped_queue_sha256=digest(args.resume_stopped_queue),failed_index=recovery['failed_index'],
+            failed_case=recovery['failed_case'],replacement_case=recovery['replacement_case'],
+            carried_job_count=len(record['jobs']),
+            convention='Revalidate completed archives; restart only the failed case with a fresh seed and '
+                       'run all pending cases in fresh exports. Preserve the original stopped queue.')
     save(destination,record)
     def unchanged():
         if any(digest(ROOT/p)!=sha for p,sha in sources.items()):
@@ -179,7 +261,20 @@ def main():
         unchanged()
         record.update(status='running generated small-mass controls',predecessor_sha256=digest(args.after_queue))
         references,streams={},set()
-        for case in selected:
+        for job in record['jobs']:
+            result=load(job['audit'])
+            if (result['report']['manifest']['small_mass_test']!=job['case'] or
+                    Path(result['report']['path'])!=Path(job['process'])/'Events'/job['run']/'MADatNLO.HwU'):
+                raise ValueError('Carried archive does not match its recorded small-mass job')
+            del result
+            pairs=verified_pairs(job)
+            if streams & pairs:
+                raise ValueError('Carried small-mass stage streams overlap')
+            streams.update(pairs)
+            if job['case']['decay_bottom_mass']==0.:
+                references[job['case']['w_treatment']]=Path(job['process'])
+        record['distinct_stage_pairs']=len(streams)
+        for case in selected[len(record['jobs']):]:
             unchanged()
             key=case['w_treatment']+'_mb'+str(case['decay_bottom_mass']).replace('.','p')
             process=STUDY/'processes'/('TTWplus_%s_eemu_mb%s_both_%s'%(
@@ -197,7 +292,8 @@ def main():
                     with (STUDY/'mg5.lock').open('a') as lock:
                         fcntl.flock(lock,fcntl.LOCK_EX | fcntl.LOCK_NB)
                         benchmark_param_card(process,benchmark,case['w_treatment'])
-                        check_production(references[case['w_treatment']],process,identity)
+                        check_production(references[case['w_treatment']],process,identity,
+                                         allow_kinematic_update=recovery is not None)
                     exported['production_identity']=str(identity)
                 else:
                     references[case['w_treatment']]=process

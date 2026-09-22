@@ -13,7 +13,7 @@ from narrow_w_report import SPECTRA, selected_vectors
 from pilot_report import RATES, clean
 from read_splits import split_ensembles
 from replica_statistics import independent_jackknife_many, ratio
-from run_small_mass_checks import DONE, cases, local_benchmark
+from run_small_mass_checks import DONE, completed_exports, local_benchmark, validate_cases
 from run_width_mass_pilots import verified_pairs
 
 
@@ -37,8 +37,8 @@ def run(queue_path,output):
     queue=json.loads(queue_path.read_text())
     if queue['status']!=DONE or not queue['cases']:
         raise ValueError('Require the complete generated small-mass queue')
-    expected=cases(queue['cases'][0]['seed'])
-    if queue['cases']!=expected or [j['case'] for j in queue['jobs']]!=expected:
+    validate_cases(queue['cases'])
+    if [j['case'] for j in queue['jobs']]!=queue['cases']:
         raise ValueError('Small-mass case inventory differs from the complete allocation')
     inputs_path=Path(queue['width_inputs'])
     local_benchmark(json.loads(inputs_path.read_text()))
@@ -64,10 +64,12 @@ def run(queue_path,output):
         jobs=[j for j in queue['jobs'] if j['case']['w_treatment']==mode]
         results=[load(j['audit']) for j in jobs]
         identities=[]
+        exports=completed_exports(queue,jobs)
         for mass,index in ((1.,2),(.1,4)):
-            proof=Path(queue['exports'][mode+'_mb'+str(mass).replace('.','p')]['production_identity'])
-            validate_physics(results[:2]+results[index:index+2],[proof],width_inputs=inputs_path)
-            identities.append(proof)
+            proofs=[Path(exports[process]['production_identity'])
+                    for process in sorted({job['process'] for job in jobs[index:index+2]})]
+            validate_physics(results[:2]+results[index:index+2],proofs,width_inputs=inputs_path)
+            identities.extend(proofs)
         selected,source_rows,counts=[],[],[]
         for job,result in zip(jobs,results):
             manifest=result['report']['manifest']

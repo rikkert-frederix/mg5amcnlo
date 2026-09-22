@@ -24,6 +24,7 @@ CORES = 64
 RUNTIME_SOURCES = (
     'madgraph/fks/fks_decay.py', 'models/check_param_card.py',
     'madgraph/iolibs/export_fks.py', 'madgraph/iolibs/export_spin_density.py',
+    'madgraph/iolibs/template_files/loop_optimized/CT_interface.inc',
     'madgraph/interface/amcatnlo_run_interface.py', 'madgraph/various/banner.py',
     'madgraph/madevent/sum_html.py',
     'Template/fNLO/Source/ranmar.f90',
