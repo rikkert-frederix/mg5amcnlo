@@ -23,6 +23,7 @@ module top_decay_virtual_dispatch
   public :: tdv_evaluate_three_body_top
   public :: tdv_madloop_required
   public :: tdv_validation_precision
+  public :: tdv_reference_needs_rescue
   public :: tdv_validate_against_madloop
 
 contains
@@ -134,6 +135,23 @@ contains
       tdv_validation_precision = min(requested, tdv_validation_precision)
     end if
   end function tdv_validation_precision
+
+
+  logical function tdv_reference_needs_rescue(analytic_density, madloop_density)
+    complex(kind=8), intent(in) :: analytic_density(:, :, :), madloop_density(:, :, :)
+    double precision :: scale
+
+    if (any(shape(analytic_density) /= shape(madloop_density))) then
+      call fail_dispatch('the validation densities have incompatible shapes')
+    end if
+    tdv_reference_needs_rescue = .true.
+    if (.not. density_is_finite(analytic_density) .or. &
+        .not. density_is_finite(madloop_density)) return
+    scale = max(maxval(abs(analytic_density)), &
+                maxval(abs(madloop_density)), tiny(1d0))
+    tdv_reference_needs_rescue = &
+         maxval(abs(analytic_density-madloop_density))/scale > validation_tolerance
+  end function tdv_reference_needs_rescue
 
 
   subroutine tdv_validate_against_madloop(contribution, momenta, &

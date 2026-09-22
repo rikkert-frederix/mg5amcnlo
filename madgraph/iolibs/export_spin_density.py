@@ -229,6 +229,7 @@ class SpinDensityExporter(object):
             "INCLUDE 'coupl.inc'",
             'LOGICAL TDV_ANALYTIC_AVAILABLE,TDV_NEEDS_MADLOOP',
             'REAL*8 TDV_PRECISION_ASKED',
+            'INTEGER TDV_SAVED_CT_MODE_INIT,TDV_SAVED_CT_MODE_RUN',
             'REAL*8 TDV_VALIDATION_P(0:3,4)',
             'COMPLEX*16 TDV_ANALYTIC_RHO(3,%d,%d)' % (
                 open_size, open_size)]
@@ -283,6 +284,21 @@ class SpinDensityExporter(object):
                 variant['fortran_name'], 'TDV_PRECISION_ASKED'),
             '     $ SDM_PRECISION,SDM_RET_CODE)',
             '  IF (TDV_ANALYTIC_AVAILABLE) THEN',
+            '    IF (TDV_REFERENCE_NEEDS_RESCUE(TDV_ANALYTIC_RHO,SDM_INSERTION_RHO)) THEN',
+            # The scalar stability estimate does not constrain every complex
+            # spin-density entry. Retry the entire initialized reference in
+            # uniform quadruple precision, then retain the same hard check.
+            '      TDV_SAVED_CT_MODE_INIT=CTMODEINIT',
+            '      TDV_SAVED_CT_MODE_RUN=CTMODERUN',
+            '      CTMODEINIT=4',
+            '      CTMODERUN=4',
+            "      WRITE(*,*) 'INFO: retrying analytic top-decay validation',",
+            "     $ ' with a uniform quadruple-precision MadLoop reference'",
+            '      CALL %s(SDM_INSERTION_P,SDM_INSERTION_RHO,' % variant['fortran_name'],
+            '     $ TDV_PRECISION_ASKED,SDM_PRECISION,SDM_RET_CODE)',
+            '      CTMODEINIT=TDV_SAVED_CT_MODE_INIT',
+            '      CTMODERUN=TDV_SAVED_CT_MODE_RUN',
+            '    ENDIF',
             '    CALL TDV_VALIDATE_AGAINST_MADLOOP(%d,' % contribution,
             '     $ TDV_VALIDATION_P,TDV_ANALYTIC_RHO,',
             '     $ SDM_INSERTION_RHO,SDM_PRECISION,SDM_RET_CODE)',
@@ -1783,6 +1799,8 @@ class SpinDensityExporter(object):
         if analytic_top_decay is not None:
             declarations.extend(self._analytic_top_decay_declarations(
                 analytic_top_decay))
+            declarations.append("INCLUDE 'VContribution%d/MadLoopParams.inc'" %
+                                variant.get('contribution_id', 1))
         else:
             # A decay-space fold keeps the active production block fixed
             # while changing its LO decay spectators.  Cache the expensive
