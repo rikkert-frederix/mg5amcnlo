@@ -87,10 +87,16 @@ The completed comparison is
 `ttw_study/results/small_mass_continuity_smallmass_v5.json`; details are
 in `ttw_study/references/small_mass_continuity_inspection.md`.
 The old conditional Pi QES retraining plan reused seeds later assigned
-to central-scale runs. A fresh two-run allocation uses seeds 93001/93002
-in new exports and will be recorded in
-`ttw_study/inputs/qes_pi_retraining_queue_qes_pi_retrain_v1.json`.
-At most 64 cores may be used for the pair. Main physics remains unreleased.
+to central-scale runs. The fresh two-run allocation used seeds 93001/93002
+in a new export and completed with at most 64 cores. Its authoritative
+record is `ttw_study/inputs/qes_pi_retraining_queue_qes_pi_retrain_v1.json`.
+The covariance-aware direct comparison is
+`ttw_study/results/qes_pi_retraining_comparison_qes_pi_retrain_v1.json`;
+the interpretation is in `ttw_study/references/qes_pi_retraining_inspection.md`.
+The fresh uncut half-minus-two difference is -0.84 +/- 4.09 ab, or -0.20
+conditional errors, whereas the older pair was -3.44 errors. This pair
+does not establish error coverage across independent retrainings or certify
+QES cancellation for publication. Main physics remains unreleased.
 The technical audit inspected all eight matching-scale identities: their
 maximum conditional rate residual is 2.14 standard errors, with no rate
 entry above three. All sixteen native/decayed normalization comparisons are
@@ -662,18 +668,20 @@ decisions in the study plan rather than being silently omitted.
 
 ## Activity log
 
-### 2026-09-24 — small-mass reduction and independent Pi QES preparation
+### 2026-09-24 — small-mass reduction and independent Pi QES retraining
 
 The complete `smallmass_v5` archive was reduced with shared-control
 covariance. All twelve case/card/production checks, 2,072 distinct stage
 pairs, zero cross-sample overlap and the single original protected split
 are recorded in `results/small_mass_inspection_smallmass_v5.json`.
 No additional small-mass integration is allocated from these conditional
-extrema alone. The two independent Pi QES retrainings are prepared with
-fresh 93001/93002 seeds after the earlier proposal's 71401/71402 seeds
-were used by other technical cases. They will use a new matched export;
-their exact run state is in the queue above. The source comparison must
-pass before any integration starts, and the current 64-core limit remains.
+extrema alone. The two independent Pi QES retrainings used fresh
+93001/93002 seeds after the earlier proposal's 71401/71402 seeds were used
+by other technical cases. Their new matched export passed the production
+source comparison before integration. Both runs and their 128-worker batch,
+combined-output and analytic-virtual audits completed. The direct
+covariance-aware comparison and its limits are described in
+`ttw_study/references/qes_pi_retraining_inspection.md`.
 
 ### 2026-09-22 — small-mass validation fix and retained-result continuation
 

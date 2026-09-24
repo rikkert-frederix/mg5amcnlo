@@ -268,9 +268,12 @@ in `references/small_mass_virtual_recovery.md`. The joint continuity
 reduction and conditional-precision limits are in
 `results/small_mass_continuity_smallmass_v5.json` and
 `references/small_mass_continuity_inspection.md`. The independent Pi QES
-retraining pair follows with fresh seeds 93001/93002 because 71401/71402
-from the older unlaunched plan were used by central-scale runs. Its live
-state is in `inputs/qes_pi_retraining_queue_qes_pi_retrain_v1.json`.
+retraining pair completed with fresh seeds 93001/93002 because 71401/71402
+from the older unlaunched plan were used by central-scale runs. Its final
+state is in `inputs/qes_pi_retraining_queue_qes_pi_retrain_v1.json`;
+`results/qes_pi_retraining_comparison_qes_pi_retrain_v1.json` and
+`references/qes_pi_retraining_inspection.md` give the direct comparison
+and interpretation.
 
 For the completed 480-case main campaign, `scripts/main_replicas.py` will
 collect complete independent run vectors and conditional-variance diagnostics.
@@ -283,8 +286,10 @@ attempts and successful reusable samples retain their original records.
 Check these records and live processes before taking any further action.
 
 The fixed-source W+/W- S/Pi and mass controls are technically complete.
-Their full-flavour counterparts, main statistics, small-mass continuity,
-independent retraining and remaining parameter scans are still required.
+Their full-flavour counterparts, main statistics, between-retraining error
+coverage and remaining parameter scans are still required. The generated
+small-mass continuity pilots and the independent Pi QES pair have been
+inspected at conditional pilot precision.
 Both W- mass comparisons have been reduced with four-sample covariance in
 `results/width_mass_v4_minus_{onshell,all_bw}_mass_effects.*`; neither
 resolves a fiducial mass dependence at pilot precision. The main on-shell
