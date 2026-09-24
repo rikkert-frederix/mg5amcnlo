@@ -256,16 +256,21 @@ Both preserve correlations from shared controls and reject incomplete input.
 The protected `smallmass_v4` completed its first four cases, then stopped
 on a boosted mb=0.1 GeV virtual-validation failure. The corrected private
 replay passes all six native checks at the unchanged tolerance.
-`smallmass_v5` retains the four revalidated runs and continues only the
-eight unfinished cases in fresh exports. The recovery arguments are
+`smallmass_v5` retained the four revalidated runs and completed the
+eight unfinished cases in fresh exports. The recovery arguments were
 `--resume-stopped-queue inputs/small_mass_queue_smallmass_v4.json`
 and `--replacement-seed 85013`, together with the original predecessor,
 width inputs, 1% accuracy and `--exclude-split-outliers`.
 The queue stores the stopped record's checksum and retained export paths;
 its production audit permits only the explicitly hashed change to the
 two generic kinematic-matrix helpers. Details and validation evidence are
-in `references/small_mass_virtual_recovery.md`. Read the v5 queue and
-launch record for current execution state.
+in `references/small_mass_virtual_recovery.md`. The joint continuity
+reduction and conditional-precision limits are in
+`results/small_mass_continuity_smallmass_v5.json` and
+`references/small_mass_continuity_inspection.md`. The independent Pi QES
+retraining pair follows with fresh seeds 93001/93002 because 71401/71402
+from the older unlaunched plan were used by central-scale runs. Its live
+state is in `inputs/qes_pi_retraining_queue_qes_pi_retrain_v1.json`.
 
 For the completed 480-case main campaign, `scripts/main_replicas.py` will
 collect complete independent run vectors and conditional-variance diagnostics.

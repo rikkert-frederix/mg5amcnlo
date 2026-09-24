@@ -150,6 +150,13 @@ def assert_technical_match(direct, reference, case):
         raise ValueError('Technical comparison analysis mismatch')
     ignored = {'iseed','req_acc_fo','npoints_fo','niters_fo','npoints_fo_grid',
                'niters_fo_grid','fo_job_target_time','mur_over_ref','muf_over_ref','qes_over_ref'}
+    # Older references predate these statistical controls. Missing means the
+    # default disabled policy; an enabled policy needs its own matched audit.
+    outlier_controls={'fo_split_outlier_threshold','fo_split_outlier_variance_fraction',
+                      'fo_split_outlier_min_splits'}
+    if any(m['settings'].get('fo_split_outlier_threshold',0.)!=0. for m in (a,b)):
+        raise ValueError('Direct/reference split-exclusion policies differ or are active')
+    ignored.update(outlier_controls)
     physics = lambda m: {k:v for k,v in m['settings'].items() if k not in ignored}
     if physics(a)!=physics(b) or a['production_scale']!=b['production_scale']:
         raise ValueError('Unexpected run-setting/central-scale change in identity test')

@@ -69,6 +69,17 @@ class TestScaleValidation(unittest.TestCase):
                 with self.subTest(case=case['name'],change=change), self.assertRaises(ValueError):
                     assert_technical_match(bad,reference,case)
 
+    def test_disabled_split_policy_matches_an_older_control(self):
+        config=next(case for case in cases() if case['name']=='qes_half')
+        direct,reference=self.samples(config)
+        direct['report']['manifest']['settings'].update(
+            fo_split_outlier_threshold=0.,fo_split_outlier_variance_fraction=.95,
+            fo_split_outlier_min_splits=8)
+        assert_technical_match(direct,reference,config)
+        direct['report']['manifest']['settings']['fo_split_outlier_threshold']=10.
+        with self.assertRaisesRegex(ValueError,'split-exclusion'):
+            assert_technical_match(direct,reference,config)
+
     def test_hook_installation_is_private_and_never_replaces_a_used_run(self):
         with tempfile.TemporaryDirectory() as temporary:
             process=Path(temporary)

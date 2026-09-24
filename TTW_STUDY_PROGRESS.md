@@ -70,15 +70,27 @@ analytic/MadLoop validation. The loop reduction interface had rounded a
 boosted nonzero bottom-mass invariant to zero; bug 27 below records the
 fix and exact-point replay. All six replay validations now pass, with
 maximum discrepancy 4.2521e-10 against the unchanged 1e-8 tolerance.
-The four completed archives are revalidated (840 distinct stage pairs,
-zero overlap) and retained. `smallmass_v5` continues with eight unfinished
-jobs in fresh exports, replacing only the failed seed 85005 by 85013.
-The 1% target, physical inventory and outlier policy are preserved.
+The four completed archives were revalidated and retained. `smallmass_v5`
+finished its eight fresh jobs on 23 September, replacing only the failed
+seed 85005 by 85013. The complete twelve-case queue has 2,072 distinct
+stage pairs and zero overlap. The joint report and inspection find no
+nominal rate ratio beyond 2.66 conditional errors in 320 populated
+entries. One of 420 selected normalized shape entries reaches 3.34;
+it is a localized flag, not a global significance. The single protected
+split exclusion omits selection bias from its quoted errors. The 1%
+total-rate target, physical inventory and outlier policy were preserved.
 State and launch records are `ttw_study/inputs/small_mass_queue_smallmass_v5.json`
 and `ttw_study/inputs/queue_launch_smallmass_v5_20260922.json`.
 See `ttw_study/references/small_mass_virtual_recovery.md` for the two
 numerical fixes, validation and explicit production-helper transition.
-Use at most 64 cores and passive half-hour monitoring once launched.
+The completed comparison is
+`ttw_study/results/small_mass_continuity_smallmass_v5.json`; details are
+in `ttw_study/references/small_mass_continuity_inspection.md`.
+The old conditional Pi QES retraining plan reused seeds later assigned
+to central-scale runs. A fresh two-run allocation uses seeds 93001/93002
+in new exports and will be recorded in
+`ttw_study/inputs/qes_pi_retraining_queue_qes_pi_retrain_v1.json`.
+At most 64 cores may be used for the pair. Main physics remains unreleased.
 The technical audit inspected all eight matching-scale identities: their
 maximum conditional rate residual is 2.14 standard errors, with no rate
 entry above three. All sixteen native/decayed normalization comparisons are
@@ -649,6 +661,19 @@ decisions in the study plan rather than being silently omitted.
     Details: `ttw_study/references/small_mass_virtual_recovery.md`.
 
 ## Activity log
+
+### 2026-09-24 — small-mass reduction and independent Pi QES preparation
+
+The complete `smallmass_v5` archive was reduced with shared-control
+covariance. All twelve case/card/production checks, 2,072 distinct stage
+pairs, zero cross-sample overlap and the single original protected split
+are recorded in `results/small_mass_inspection_smallmass_v5.json`.
+No additional small-mass integration is allocated from these conditional
+extrema alone. The two independent Pi QES retrainings are prepared with
+fresh 93001/93002 seeds after the earlier proposal's 71401/71402 seeds
+were used by other technical cases. They will use a new matched export;
+their exact run state is in the queue above. The source comparison must
+pass before any integration starts, and the current 64-core limit remains.
 
 ### 2026-09-22 — small-mass validation fix and retained-result continuation
 
