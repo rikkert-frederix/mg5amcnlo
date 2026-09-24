@@ -144,11 +144,14 @@ passes. The `tech_v4` report records four later source drifts and validates
 eight identities with no pending case; it does not reinterpret those old runs
 as having used the later code.
 
-The main campaign is prepared as `main_campaign_main_onshell_v2.json`:
-480 runs covering all eight ordered e/mu assignments, both charges, all six
-prescriptions and five independent retrainings. It has not launched;
-technical-scale and absolute-normalization evidence still needs inspection.
-The older prepared v1 is superseded before execution by the precision fix.
+The main campaign is now launched as `main_campaign_main_onshell_v3.json`:
+480 serial runs covering all eight ordered e/mu assignments, both charges,
+all six prescriptions and five independent retrainings. The prepared v1/v2
+records were never executed; v2's frozen source hashes became stale after
+documented simulation, validation and split-audit fixes. The internal
+scientific release is `inputs/main_release_main_onshell_v3_20260924.json`;
+the authoritative run state and launch are in the v3 queue and launch record.
+This starts convergence measurement, not publication certification.
 A full-flavour W/mass companion campaign is also prepared as
 `robustness_campaign_fullflavour_v1.json`: 640 new S/Pi integrations in
 four additional W/mass states, reusing at least 160 independently retrained
@@ -682,6 +685,18 @@ source comparison before integration. Both runs and their 128-worker batch,
 combined-output and analytic-virtual audits completed. The direct
 covariance-aware comparison and its limits are described in
 `ttw_study/references/qes_pi_retraining_inspection.md`.
+
+The completed reference, technical-scale, sixteen absolute-normalization
+and independent Pi QES inspections were reviewed for the main scientific
+release. The largest absolute nominal normalization pull is 2.19; the eight
+matching-scale identities have maximum rate residual 2.14 conditional
+errors. These pilots permit full-flavour convergence measurement but do not
+certify publication precision. The never-executed `main_onshell_v2` record
+has nine frozen source differences after later documented fixes, so a new
+`main_onshell_v3` allocation freezes the current source inventory. Its
+480-case serial controller launched at 07:43:38 UTC with affinity 0--63 and
+one numerical thread per worker. The queue is authoritative for progress;
+no companion integration may run concurrently.
 
 ### 2026-09-22 — small-mass validation fix and retained-result continuation
 

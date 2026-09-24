@@ -293,14 +293,14 @@ inspected at conditional pilot precision.
 Both W- mass comparisons have been reduced with four-sample covariance in
 `results/width_mass_v4_minus_{onshell,all_bw}_mass_effects.*`; neither
 resolves a fiducial mass dependence at pilot precision. The main on-shell
-case inventory is `inputs/main_campaign_main_onshell_v2.json`, prepared by
+case inventory is `inputs/main_campaign_main_onshell_v3.json`, prepared by
 `scripts/run_main_campaign.py`: all eight assignments, both charges, six
-prescriptions and five independent retrainings (480 runs). It is prepared,
-not running; technical/reference/inclusive numerical evidence still needs
-inspection before its internal scientific release. No additional user
-permission is required by this workflow.
-The unexecuted v1 preparation was superseded to freeze the corrected virtual
-validation source and its exporters; no main integration was discarded.
+prescriptions and five independent retrainings (480 runs). The internal
+scientific release is `inputs/main_release_main_onshell_v3_20260924.json`.
+The v3 serial controller has launched; inspect the queue and
+`inputs/queue_launch_main_onshell_v3_20260924.json` for its exact state.
+The unexecuted v1/v2 preparations were superseded after the corrected virtual
+validation and later simulation/audit fixes; no main integration was discarded.
 Older sampler, seed-reuse and Born-alignment failures remain documented in
 `TTW_STUDY_PROGRESS.md` and `references/`; they are excluded from certified
 comparisons. No existing grid was transferred across those source changes.
