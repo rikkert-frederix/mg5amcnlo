@@ -49,6 +49,11 @@ program decay_card_runtime_driver
     write(*,'(a,1x,l1,2es25.16)') 'PROPOSAL',proposal_enabled,proposal_mass,proposal_width
     stop
   end if
+  if (mode == 'hard_proposal') then
+    call production_hard_proposal(proposal_enabled, proposal_mass)
+    write (*, '(a,1x,l1,es25.16)') 'HARD_PROPOSAL', proposal_enabled, proposal_mass
+    stop
+  end if
   if (index(mode, 'production') == 1) then
     visible = 0d0
     visible(:, 3) = [200d0, 60d0, 0d0, 80d0]

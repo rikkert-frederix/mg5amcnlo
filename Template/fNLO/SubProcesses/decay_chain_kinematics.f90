@@ -18,6 +18,7 @@ module decay_chain_kinematics
        boost_from_rest => boost_factorized_momentum_from_rest, &
        minkowski_square => factorized_minkowski_square
   use phase_space_kinematics, only: phase_space_lambda
+  use hard_real_kinematics, only: hard_real_point_available, fetch_hard_born_point
   use decay_chain_metadata, only: has_decay_chains, &
        has_decay_chain_metadata, decay_node_count, &
        decay_leaf_count, decay_random_dimension, born_context, &
@@ -146,12 +147,13 @@ contains
     double precision, intent(out) :: visible_momenta(0:3, nexternal - 1)
     logical, intent(out) :: pass
 
-    integer :: context, core_count, final_count, leg, index, final_pdgs(nexternal)
+    integer :: context, core_count, final_count, leg, index, final_pdgs(nexternal),hard_count
     double precision :: parent(0:3)
     double precision :: final_masses(nexternal)
     double precision :: final_momenta(0:3, nexternal)
     type(factorized_measure_state) :: production_measure
-    logical :: measure_available, current_sampling
+    logical :: measure_available, current_sampling,hard_available
+    double precision :: hard_born(0:3,nexternal),hard_xborn(2)
     double precision :: proposal_mass, proposal_width
 
     call require_enabled()
@@ -169,7 +171,13 @@ contains
     production_measure%jacobian = xjac
     production_measure%phase_space_weight = xpswgt
     call production_current_proposal(current_sampling,proposal_mass,proposal_width)
-    if (current_sampling) then
+    if (hard_real_point_available()) then
+      call fetch_hard_born_point(hard_born,hard_xborn,hard_count,hard_available)
+      if (.not.hard_available .or. hard_count/=core_count) &
+           call fail_kinematics('hard production Born multiplicity differs from decay context')
+      final_momenta(:,1:final_count)=hard_born(:,nincoming+1:core_count)
+      pass=.true.
+    else if (current_sampling) then
       do leg = 1, final_count
         final_pdgs(leg) = core_leg_pdg(context,nincoming+leg)
       end do

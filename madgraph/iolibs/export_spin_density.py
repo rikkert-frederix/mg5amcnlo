@@ -542,6 +542,18 @@ class SpinDensityExporter(object):
         definition, without replacing the factorized Born result.
         """
 
+        return self.channel_weight_lines(matrix_element, 'SDM_BORN_CHANNEL')
+
+    def channel_weight_lines(self, matrix_element, prefix):
+        """Emit positive diagram proxies without changing the physical ME.
+
+        The Born and hard-real proposals use the standard MG ``AMP2``
+        definition with the same minimum-vertex filter as the diagram maps.
+        A hard production provider is an undecayed core matrix element, so
+        its helicity sum contains no artificial resonance denominators.
+        These unnormalised proxies are used only in SDE partition ratios.
+        """
+
         helicities = [tuple(row)
                       for row in matrix_element.get_helicity_matrix()]
         ncomb = len(helicities)
@@ -559,7 +571,7 @@ class SpinDensityExporter(object):
 
         lines = [
             '',
-            'SUBROUTINE SDM_BORN_CHANNEL_WEIGHTS(P,AMP2)',
+            'SUBROUTINE %s_WEIGHTS(P,AMP2)' % prefix,
             'IMPLICIT NONE',
             'INTEGER NEXTERNAL,NCOMB,NGRAPHS',
             ('PARAMETER (NEXTERNAL=%d,NCOMB=%d,NGRAPHS=%d)') % (
@@ -579,7 +591,7 @@ class SpinDensityExporter(object):
             'IF (NTRY.LT.3) NTRY=NTRY+1',
             'DO H=1,NCOMB',
             '  IF (GOODHEL(H).OR.NTRY.LE.2) THEN',
-            '    CALL SDM_BORN_CHANNEL_AMPLITUDES(P,NHEL(1,H),',
+            '    CALL %s_AMPLITUDES(P,NHEL(1,H),' % prefix,
             '     $   AMPLITUDES)',
             '    IF (NTRY.LE.2.AND.',
             '     $  ANY(ABS(AMPLITUDES).GT.0D0)) GOODHEL(H)=.TRUE.',
@@ -591,7 +603,7 @@ class SpinDensityExporter(object):
             'ENDDO',
             'END',
             '',
-            'SUBROUTINE SDM_BORN_CHANNEL_AMPLITUDES(P,NHEL,AMP)',
+            'SUBROUTINE %s_AMPLITUDES(P,NHEL,AMP)' % prefix,
             'IMPLICIT NONE',
             'INTEGER NEXTERNAL,NGRAPHS,NWAVEFUNCS',
             ('PARAMETER (NEXTERNAL=%d,NGRAPHS=%d,NWAVEFUNCS=%d)') % (

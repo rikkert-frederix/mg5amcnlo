@@ -71,6 +71,7 @@ contains
     character(len=13) :: temp
     integer :: kk, n, nn, nwgt, point
 
+    if (plot_initialized) return
     call validate_process_dimensions()
     ! Determine the PDF members before allocating the weight descriptions.
     nwgt = 1
@@ -119,9 +120,8 @@ contains
       call InitPDFm(1, 0)
     end if
 
-    ! MINT can restart the integration and call initplot again after resetting
-    ! the grids.  Some supported builds retain local variables between calls,
-    ! so release the previous descriptions before rebuilding them.
+    ! Some supported builds retain local variables between calls, so release
+    ! any local descriptions before allocating the first analysis setup.
     if (allocated(weights_info)) deallocate(weights_info)
     allocate(weights_info(nwgt))
     weights_info = ''
@@ -246,6 +246,7 @@ contains
     integer :: istatus(nexternal)
 
     call validate_process_dimensions()
+    if (.not. plot_initialized) call initplot_impl()
     select case (itype)
     case (11)
       ibody = 1                 ! (n+1)-body
@@ -301,6 +302,9 @@ contains
     integer :: i
 
     call validate_process_dimensions()
+    ! A production hard leaf with LO decays never evaluates an n-body
+    ! prefactor.  Book its histograms here before the first direct fill.
+    if (.not. plot_initialized) call initplot_impl()
     if (particle_count < nincoming .or. particle_count > size(pp, 2) .or. &
         particle_count > size(ipdg) .or. &
         particle_count > size(istatus)) then

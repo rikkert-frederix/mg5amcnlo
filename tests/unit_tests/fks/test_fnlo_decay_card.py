@@ -26,6 +26,7 @@ class TestFNLODecayCard(unittest.TestCase):
         cls.executable = os.path.join(cls.build.name, 'check_card')
         sources = [os.path.join(fixtures, 'decay_card_runtime_stubs.f90')]
         sources += [os.path.join(template, name + '.f90') for name in (
+            'production_hard_split', 'hard_real_kinematics',
             'decay_chain_parameters', 'factorized_phase_space',
             'dummy_fct', 'decay_chain_scales', 'setscales', 'fnlo_scale_variations',
             'weight_lines', 'spin_density_weight_lines')]

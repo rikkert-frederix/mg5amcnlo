@@ -1,6 +1,7 @@
 module genps_fks
   use boostwdir2_module, only: boostwdir2_in_place
   use process_dimensions, only: validate_process_dimensions
+  use fks_metadata, only: pdg_type_d
   use run_state
   use timing_state, only: tGenPS
   use kin_functions_module, only: dot => dot_impl, rho => rho_impl
@@ -12,6 +13,7 @@ module genps_fks
   use factorized_phase_space, only: factorized_radiation_state, &
        factorized_measure_state, &
        reset_factorized_phase_space, store_factorized_kernel_momenta, &
+       fetch_factorized_kernel_momenta, &
        prepare_factorized_born_reuse, &
        store_factorized_radiation_state, &
        scale_factorized_radiation_jacobians, &
@@ -20,15 +22,25 @@ module genps_fks
        compose_factorized_event_measure, &
        scale_factorized_event_measures
   use decay_chain_metadata, only: has_decay_chains, context_for_fks, &
-                                  real_phase_space_dimension
+                                  real_phase_space_dimension, core_leg_pdg
   use decay_chain_kinematics, only: get_core_born_momenta, &
        get_core_mass_buffer, active_core_count, expand_real_decay_momenta, &
        store_core_event_momenta, fks_leg_mass
   use nlo_decay_metadata, only: has_nlo_decay, nlo_decay_corrected_node
   use nlo_contribution_bundle, only: active_nlo_contribution
+  use production_hard_split, only: production_hard_branch_active, &
+       production_hard_channel_config
+  use hard_real_kinematics, only: generate_real_diagram_phase_space, &
+       inverse_fks_initial, inverse_fks_final, initial_xi_maximum, final_xi_maximum, &
+       hard_boost, hard_real_point_available, cache_hard_real_point, &
+       fetch_hard_real_point, fetch_hard_born_point, hard_minkowski_square, &
+       clear_hard_real_point, cache_production_real_parent_point, &
+       clear_production_real_parent_point
   use nlo_decay_kinematics, only: generate_nlo_decay_fks_event, &
                                   nlo_decay_fks_sister_mass, &
                                   nlo_decay_parent_mass, &
+                                  real_production_decay_embedding, &
+                                  fetch_real_production_decay_parents, &
                                   fill_nlo_decay_event_masses
   ! Generated parameters keep the phase-space normalization bit-identical
   ! to the NLO template's compile-time arithmetic.
@@ -52,6 +64,8 @@ module genps_fks
   implicit none
   private
   public :: generate_momenta, generate_momenta_reusing_born
+  public :: prepare_hard_real_point, generate_hard_real_momenta
+  public :: cache_current_production_real_parents
 
   double precision :: massive_xjac_cache = 1d0
   type(born_phase_space), save :: reusable_born
@@ -92,11 +106,30 @@ contains
 
     type(born_phase_space) :: born
     real :: tBefore, tAfter
-    double precision :: jac
+    double precision :: jac,initialization_x(99)
     integer :: i
     logical :: pass
     call validate_process_dimensions()
     call cpu_time(tBefore)
+
+    if (production_hard_branch_active() .and. .not.has_nlo_decay()) then
+      if (.not.hard_real_point_available()) then
+        call prepare_hard_real_point(ndim,production_hard_channel_config(),x,pass)
+        if (.not.pass) then
+          call reject_hard_real_point(wgt,p)
+          return
+        end if
+      end if
+      if (.not.nbody) then
+        call generate_hard_real_momenta(wgt,p,pass)
+        if (.not.pass) then
+          call reject_hard_real_point(wgt,p)
+        end if
+        call cpu_time(tAfter)
+        tGenPS=tGenPS+(tAfter-tBefore)
+        return
+      end if
+    end if
 
     ! Block-local momenta belong to this one event/counterevent family.  Each
     ! block is generated in its own rest frame and boosted independently;
@@ -123,7 +156,15 @@ contains
              born%sqrtshat, born%ycm, born%xbjrk, &
              jac, p, pass)
       else
-        call generate_FKS_kinematics(x, ndim, born%xjac, born%xpswgt, &
+        initialization_x=x
+        if (production_hard_branch_active() .and. nbody) then
+          ! This pass initializes the cached Born decay tree only.  Keep its
+          ! dummy forward map on the first massive-FSR solution, which always
+          ! has a soft projection; the actual real event is independently
+          ! sampled and already cached above.
+          initialization_x(ndim-2)=1d-4
+        end if
+        call generate_FKS_kinematics(initialization_x, ndim, born%xjac, born%xpswgt, &
                                      born%stot, born%shat, born%sqrtshat, &
                                      born%tau, born%ycm, born%ycmhat, &
                                      born%xbjrk, born%masses, &
@@ -155,6 +196,186 @@ contains
     call cpu_time(tAfter)
     tGenPS = tGenPS + (tAfter - tBefore)
   end subroutine generate_momenta_impl
+
+  subroutine reject_hard_real_point(wgt,p)
+    double precision, intent(out) :: wgt,p(0:3,nexternal)
+    call invalidate_born_phase_space()
+    born_lab_momenta(0,1)=-99d0
+    call clear_hard_real_point()
+    call reset_factorized_phase_space()
+    reusable_born_is_available=.false.
+    stored_event_momenta=0d0
+    stored_event_momenta(0,1,:)=-99d0
+    stored_event_jacobian=-222d0
+    event_fks_momentum=-1d0
+    event_xi=-1d0; event_y=-2d0; event_xi_hat=-1d0
+    event_xi_max=-1d0; event_xi_norm=-1d0
+    event_bjorken_x=0d0; event_shat=0d0; event_sqrt_shat=0d0
+    p=0d0; p(0,1)=-99d0; wgt=-222d0
+    nocntevents=.true.
+  end subroutine reject_hard_real_point
+
+  subroutine prepare_hard_real_point(ndim,real_channel,x,pass)
+    integer, intent(in) :: ndim,real_channel
+    double precision, intent(in) :: x(99)
+    logical, intent(out) :: pass
+    integer :: count,ninitial,nbranch,b,core_dimension,born_dimension,emitted_pdg
+    integer :: tree(2,nexternal),sprop(nexternal),tprid(nexternal),powers(nexternal)
+    double precision :: pmass(nexternal),pwidth(nexternal),masses(nexternal)
+    double precision :: compact_x(99),real_cm(0:3,nexternal),real_tilde(0:3,nexternal)
+    double precision :: born(0:3,nexternal),xborn(2),xreal(2),xi,y,phi,jac,weight
+    double precision :: stot,minimum_tau,tau,rapidity,shat,q,omega,sl,beta_factor,y_to_cm
+    external :: sdm_real_core_channel_topology
+    pass=.false.
+    if (nincoming/=2 .or. abs(lpp(1))<1 .or. abs(lpp(2))<1) &
+         call fail_genps_fks('hard real production currently requires two hadron beams')
+    call sdm_real_core_channel_topology(nfksprocess,real_channel,count,ninitial,nbranch, &
+         tree,sprop,tprid,pmass,pwidth,powers)
+    if (ninitial/=2 .or. count>nexternal .or. nbranch/=count-2) &
+         call fail_genps_fks('invalid real production topology')
+    if (has_decay_chains()) then
+      call get_core_mass_buffer(context_for_fks(nfksprocess),masses)
+      emitted_pdg=core_leg_pdg(context_for_fks(nfksprocess),i_fks)
+      if (count/=active_core_count(nfksprocess)) &
+           call fail_genps_fks('real topology and decay production core disagree')
+    else
+      masses=particle_masses(1:nexternal)
+      emitted_pdg=pdg_type_d(nfksprocess,i_fks)
+    end if
+    core_dimension=3*(count-2)-4
+    born_dimension=core_dimension-3
+    compact_x=0d0
+    compact_x(1:born_dimension)=x(1:born_dimension)
+    compact_x(born_dimension+1:core_dimension)=x(ndim-2:ndim)
+    stot=4d0*ebeam(1)*ebeam(2)
+    minimum_tau=sum(masses(3:count))**2/stot
+    minimum_tau=max(minimum_tau,tau_lower_bound)
+    if (minimum_tau<=0d0 .or. minimum_tau>=1d0) return
+    tau=exp(log(minimum_tau)*(1d0-x(ndim-4)))
+    rapidity=(x(ndim-3)-0.5d0)*(-log(tau))
+    xreal(1)=sqrt(tau)*exp(rapidity); xreal(2)=sqrt(tau)*exp(-rapidity)
+    shat=tau*stot; q=sqrt(shat)
+    call generate_real_diagram_phase_space(count,nbranch,tree,pmass,pwidth, &
+         masses,q,compact_x,1,real_cm,jac,weight,pass)
+    if (.not.pass) return
+    ! The shared flux normalization retains three 2*pi factors belonging
+    ! to the ordinary FKS radiation map.  A complete R_(n+1) needs them here.
+    weight=weight/(2d0*3.1415926535897932d0)**3
+    jac=jac*tau*(-log(minimum_tau))*(-log(tau))
+    born=0d0
+    if (j_fks<=nincoming) then
+      call inverse_fks_initial(real_cm(:,1:count),i_fks,j_fks,xreal, &
+           born(:,1:count-1),xborn,xi,y,phi,pass)
+      if (.not.pass) return
+      omega=xborn(1)/(xreal(1)*sqrt(1d0-xi))
+      y_to_cm=-log(omega)
+      beta_factor=sqrt((2d0-xi*(1d0-real_cm(3,i_fks)/real_cm(0,i_fks)))* &
+           (2d0-xi*(1d0+real_cm(3,i_fks)/real_cm(0,i_fks))))
+      sl=xi*(real_cm(3,i_fks)/real_cm(0,i_fks))/beta_factor
+      real_tilde=0d0
+      do b=1,count
+        call hard_boost(real_cm(:,b),(/0d0,0d0,1d0/),sl,real_tilde(:,b))
+      end do
+    else
+      call inverse_fks_final(real_cm(:,1:count),i_fks,j_fks,masses(j_fks), &
+           born(:,1:count-1),xi,y,phi,pass)
+      if (.not.pass) return
+      xborn=xreal; y_to_cm=0d0; real_tilde=real_cm
+    end if
+    call cache_hard_real_point(real_tilde(:,1:count),born(:,1:count-1), &
+         xreal,xborn,xi,y,phi,jac,weight,y_to_cm,emitted=i_fks,emitted_pdg=emitted_pdg)
+  end subroutine prepare_hard_real_point
+
+  subroutine generate_hard_real_momenta(wgt,p,pass)
+    double precision, intent(inout) :: wgt
+    double precision, intent(out) :: p(0:3,nexternal)
+    logical, intent(out) :: pass
+    double precision :: core(0:3,nexternal),visible(0:3,nexternal),xreal(2)
+    double precision :: xi,y,phi,xjac,xpswgt,y_to_cm,q,shat,xi_max,xi_hat,real_jac
+    double precision :: pihat(0:3),radiation_jacobian,radiation_weight,recoil(0:3)
+    double precision :: born(0:3,nexternal),xborn(2),sister_mass,recoil_mass2
+    integer :: count,slot,born_count,leg
+    logical :: available
+    call fetch_hard_real_point(core,xreal,xi,y,phi,xjac,xpswgt,y_to_cm,count,available)
+    pass=available
+    if (.not.pass) return
+    call prepare_factorized_born_reuse()
+    shat=4d0*ebeam(1)*ebeam(2)*product(xreal); q=sqrt(shat)
+    radiation_jacobian=xjac; radiation_weight=xpswgt
+    if (has_decay_chains()) then
+      call finalize_factorized_event_measure(real_event,0,xjac,xpswgt,shat,q, &
+           0d0,0d0,real_jac)
+      call store_core_event_momenta(real_event,core,count)
+      call expand_real_decay_momenta(nfksprocess,real_event,core,visible,pass)
+      if (.not.pass) return
+    else
+      real_jac=xjac
+      call compute_flux(shat,q,0d0,0d0,xpswgt,real_jac)
+      call store_factorized_kernel_momenta(real_event,0,count,core)
+      visible=core
+    end if
+    do slot=first_counterevent,last_counterevent
+      stored_event_jacobian(slot)=-299d0
+      stored_event_momenta(0,1,slot)=-99d0
+    end do
+    event_shat(real_event)=shat; event_sqrt_shat(real_event)=q
+    event_bjorken_x(:,real_event)=xreal
+    ybst_til_tocm(real_event)=y_to_cm
+    pihat=core(:,i_fks)/xi
+    if (j_fks<=nincoming) then
+      call fetch_hard_born_point(born,xborn,born_count,available)
+      if (.not.available) call fail_genps_fks('hard real event lost its underlying Born cache')
+      xi_max=initial_xi_maximum(xborn,y,j_fks)
+    else
+      recoil=0d0
+      do leg=nincoming+1,count
+        if (leg==i_fks .or. leg==j_fks) cycle
+        recoil=recoil+core(:,leg)
+      end do
+      recoil_mass2=max(0d0,hard_minkowski_square(recoil))
+      sister_mass=sqrt(max(0d0,hard_minkowski_square(core(:,j_fks))))
+      xi_max=final_xi_maximum(shat,sister_mass,recoil_mass2,y)
+    end if
+    if (xi_max<=0d0) then
+      pass=.false.
+      return
+    end if
+    ! The direct hard map has no folded forward-FKS proposal coordinate.
+    ! xi_hat records its physical fraction of the fixed-y energy bound;
+    ! xi_norm remains unity because the full real measure is already stored.
+    xi_hat=xi/xi_max
+    call store_FKS_event(real_event,xi_max,1d0,xi,xi_hat,pihat,y,visible,p, &
+         real_jac,real_jac,0,pihat,shat,q,y_to_cm,radiation_jacobian,radiation_weight)
+    ! Apply sector/channel/MINT weights exactly once, in the same layers as
+    ! the ordinary generator.  The direct n+1 measure contains the xi factor.
+    stored_event_jacobian(real_event)=stored_event_jacobian(real_event)*wgt
+    call scale_factorized_event_measures(wgt)
+    call scale_factorized_radiation_jacobians(wgt)
+    wgt=stored_event_jacobian(real_event)
+    nocntevents=.true.
+  end subroutine generate_hard_real_momenta
+
+  subroutine cache_current_production_real_parents()
+    double precision :: core(0:3,nexternal)
+    integer :: count,emitted_pdg
+    logical :: available
+    if (has_nlo_decay()) call fail_genps_fks('a decay sector cannot cache production real parents')
+    call clear_production_real_parent_point()
+    ! A rejected real context can still have valid Born counterevents.
+    ! Retain that B integral and leave the conditional R tree absent.
+    if (stored_event_jacobian(real_event)<=0d0 .or. &
+        stored_event_momenta(0,1,real_event)<=0d0) return
+    count=nexternal
+    if (has_decay_chains()) count=active_core_count(nfksprocess)
+    call fetch_factorized_kernel_momenta(real_event,0,count,core(:,1:count),available)
+    if (.not.available) call fail_genps_fks('production real parent momenta are unavailable')
+    if (has_decay_chains()) then
+      emitted_pdg=core_leg_pdg(context_for_fks(nfksprocess),i_fks)
+    else
+      emitted_pdg=pdg_type_d(nfksprocess,i_fks)
+    end if
+    call cache_production_real_parent_point(core(:,1:count),i_fks,emitted_pdg)
+  end subroutine cache_current_production_real_parents
 
 
   subroutine require_reusable_born(ndim, iconfig, x)
@@ -263,8 +484,8 @@ contains
            xjac, xpswgt, visible, xiimax, xinorm, xi_i, xi_hat, y_ij, &
            p_i_hat, kernel_p_i_hat, solution_sign, event_pass)
       if (event_pass .and. xjac > 0d0) then
-        call phspncheck_nocms(nexternal, sqrtshat_born, event_masses, &
-                              visible, event_pass)
+        call check_nlo_decay_visible_event(visible,event_masses, &
+             sqrtshat_born,event_pass)
         if (.not. event_pass) xjac = -197d0
       end if
       if (event_pass .and. xjac > 0d0) then
@@ -301,6 +522,36 @@ contains
          first_counterevent:last_counterevent) <= 0d0)
     pass = real_pass
   end subroutine generate_nlo_decay_FKS_kinematics
+
+  subroutine check_nlo_decay_visible_event(visible,masses,sqrtshat_born,pass)
+    double precision, intent(in) :: visible(0:3,nexternal)
+    double precision, intent(in) :: masses(-max_branch:max_particles),sqrtshat_born
+    logical, intent(out) :: pass
+    double precision :: complete(0:3,nexternal+1),radiation(0:3),ecm
+    double precision :: complete_masses(-max_branch:max(max_particles,nexternal+1))
+    integer :: parent_count
+    logical :: available
+
+    if (.not.real_production_decay_embedding()) then
+      call phspncheck_nocms(nexternal,sqrtshat_born,masses,visible,pass)
+      return
+    end if
+    ! Local decay contexts contain the incoming beams and every decay leaf,
+    ! but omit the independent production radiation.  Restore that parton
+    ! only in this validation buffer, retaining the existing local maps.
+    call fetch_real_production_decay_parents(complete,parent_count,available,radiation)
+    if (.not.available) call fail_genps_fks('conditional production radiation is unavailable')
+    complete(:,1:nexternal)=visible
+    complete(:,nexternal+1)=radiation
+    complete_masses=0d0
+    complete_masses(-max_branch:max_particles)=masses
+    if (nincoming==2) then
+      ecm=sqrt(2d0*dot(visible(:,1),visible(:,2)))
+    else
+      ecm=visible(0,1)
+    end if
+    call phspncheck_nocms(nexternal+1,ecm,complete_masses,complete,pass)
+  end subroutine check_nlo_decay_visible_event
 
   subroutine generate_FKS_kinematics(x, ndim, xjac0, xpswgt0, &
     & stot, shat_born, sqrtshat_born, tau_born, ycm_born, ycmhat, &

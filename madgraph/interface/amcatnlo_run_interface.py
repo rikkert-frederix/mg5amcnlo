@@ -2401,6 +2401,34 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
         return
 
 
+    def production_hard_channels(self, p_dir, mode):
+        """Additional real-diagram channels for the production-only FO split."""
+        if mode != 'NLO':
+            return []
+        card = pjoin(self.me_dir, 'Cards', 'decay_card.dat')
+        if not os.path.exists(card):
+            return []
+        sampling = 'NONE'
+        with open(card) as stream:
+            for line in stream:
+                line = line.split('!', 1)[0].split('#', 1)[0]
+                if '=' not in line:
+                    continue
+                value, key = line.split('=', 1)
+                if key.strip().lower() == 'production_hard_split':
+                    sampling = value.strip().strip('\"\'').upper()
+        if sampling == 'NONE':
+            return []
+        if sampling != 'REAL_DIAGRAMS':
+            raise aMCatNLOError('production_hard_split must be NONE or REAL_DIAGRAMS')
+        filename = pjoin(self.me_dir, 'SubProcesses', p_dir, 'hard_symfact.dat')
+        if not os.path.isfile(filename):
+            raise aMCatNLOError('Real-diagram hard channels are absent. Re-export '
+                               'this process with the updated fNLO exporter.')
+        with open(filename) as stream:
+            return [fields[0] for fields in (line.split() for line in stream)
+                    if fields and float(fields[1]) > 0.]
+
     def create_jobs_to_run(self,options,p_dirs,req_acc,run_mode,\
                            integration_step,mode,fixed_order=True):
         """Creates a list of dictionaries with all the jobs to be run"""
@@ -2419,37 +2447,44 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
                     logger.warning('No integration channels found for contribution %s (too large masses/low energy?)' % p_dir)
                     continue
                 if fixed_order:
-                    lch=len(channels)
                     maxchannels=20    # combine up to 20 channels in a single job
-                    njobs=(int(lch/maxchannels)+1 if lch%maxchannels!= 0 \
-                           else int(lch/maxchannels))
-                    for nj in range(1,njobs+1):
-                        job={}
-                        job['p_dir']=p_dir
-                        job['p_label']=p_dir[1:].split('_')[0]
-                        job['channel']=str(nj)
-                        job['nchans']=(int(lch/njobs)+1 if nj <= lch%njobs else int(lch/njobs))
-                        job['configs']=' '.join(channels[:job['nchans']])
-                        del channels[:job['nchans']]
-                        job['split']=0
-                        if req_acc == -1:
-                            job['accuracy']=0
-                            job['niters']=niters
-                            job['npoints']=npoints
-                        elif req_acc > 0:
-                            job['accuracy']=0.05
-                            job['niters']=6
-                            job['npoints']=-1
-                        else:
-                            raise aMCatNLOError('No consistent "req_acc_FO" set. Use a value '+
-                                                'between 0 and 1 or set it equal to -1.')
-                        job['mint_mode']=0
-                        job['run_mode']=run_mode
-                        job['wgt_frac']=1.0
-                        job['wgt_mult']=1.0
-                        jobs_to_run.append(job)
-                    if channels:
-                        raise aMCatNLOError('"channels" is not empty %s' % channels)
+                    # Train and refine the hard real contribution separately
+                    # from the Born-based channels, retaining balanced batches
+                    # within each family and unique job-directory numbers.
+                    channel_families = [channels, self.production_hard_channels(p_dir, mode)]
+                    job_number = 0
+                    for family in channel_families:
+                        lch=len(family)
+                        njobs=(int(lch/maxchannels)+1 if lch%maxchannels!= 0 \
+                               else int(lch/maxchannels))
+                        for nj in range(1,njobs+1):
+                            job_number += 1
+                            job={}
+                            job['p_dir']=p_dir
+                            job['p_label']=p_dir[1:].split('_')[0]
+                            job['channel']=str(job_number)
+                            job['nchans']=(int(lch/njobs)+1 if nj <= lch%njobs else int(lch/njobs))
+                            job['configs']=' '.join(family[:job['nchans']])
+                            del family[:job['nchans']]
+                            job['split']=0
+                            if req_acc == -1:
+                                job['accuracy']=0
+                                job['niters']=niters
+                                job['npoints']=npoints
+                            elif req_acc > 0:
+                                job['accuracy']=0.05
+                                job['niters']=6
+                                job['npoints']=-1
+                            else:
+                                raise aMCatNLOError('No consistent "req_acc_FO" set. Use a value '+
+                                                    'between 0 and 1 or set it equal to -1.')
+                            job['mint_mode']=0
+                            job['run_mode']=run_mode
+                            job['wgt_frac']=1.0
+                            job['wgt_mult']=1.0
+                            jobs_to_run.append(job)
+                        if family:
+                            raise aMCatNLOError('"channels" is not empty %s' % family)
                 else:
                     for channel in channels:
                         job={}

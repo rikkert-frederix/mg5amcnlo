@@ -11,6 +11,9 @@ module ranmar_module
   ! Coprime to seed_pair_count: translating the flattened pair is a
   ! permutation, with no repeat for a fixed worker before a full cycle.
   integer(kind=ranmar_seed_kind), parameter :: stage_stride = 32452843_ranmar_seed_kind
+  ! A second coprime translation separates independent integration groups.
+  ! Group zero preserves the existing stage/split sequences exactly.
+  integer(kind=ranmar_seed_kind), parameter :: group_stride = 49979687_ranmar_seed_kind
 
   real(kind=ranmar_real_kind) :: random_values(97) = 0.0_ranmar_real_kind
   real(kind=ranmar_real_kind) :: carry = 0.0_ranmar_real_kind
@@ -38,7 +41,7 @@ contains
     integer :: joffset
     integer(kind=ranmar_seed_kind) :: iseed
     integer(kind=ranmar_seed_kind) :: scaled_seed, split_offset, seed_ij, seed_kl
-    integer(kind=ranmar_seed_kind) :: stage, pair_index
+    integer(kind=ranmar_seed_kind) :: stage, integration_group, pair_index
 
     if (ntuple_needs_initialization) then
       ntuple_needs_initialization = .false.
@@ -66,7 +69,9 @@ contains
       if (seed_ij > 31328) seed_ij = modulo(seed_ij - 1, 31328_ranmar_seed_kind) + 1
       if (seed_kl > 30081) seed_kl = modulo(seed_kl - 1, 30081_ranmar_seed_kind) + 1
       call get_refinement_stage(stage)
-      pair_index = modulo(seed_ij * seed_kl_count + seed_kl + stage * stage_stride, seed_pair_count)
+      call get_integration_group(integration_group)
+      pair_index = modulo(seed_ij * seed_kl_count + seed_kl + stage * stage_stride &
+                          + integration_group * group_stride, seed_pair_count)
       ntuple_ij = int(pair_index / seed_kl_count)
       ntuple_kl = int(modulo(pair_index, seed_kl_count))
 
@@ -74,6 +79,7 @@ contains
            'Using random seed offsets:', jconfig, ' , ', ioffset, ' , ', split_offset
       write (*, *) ' with seed', iseed
       write (*, '(a,i0,a,i0)') 'Ranmar stream namespace refinement-v1 stage ', stage, ' split ', joffset
+      write (*, '(a,i0)') 'Ranmar stream namespace integration-group-v1 group ', integration_group
       call rmarin(ntuple_ij, ntuple_kl)
     end if
 
@@ -103,6 +109,27 @@ contains
     if (status /= 0) error stop 'Invalid MG5AMC_REFINEMENT_STAGE'
     if (stage < 0 .or. stage >= seed_pair_count) error stop 'RANMAR refinement stage exceeds its namespace'
   end subroutine get_refinement_stage
+
+
+  subroutine get_integration_group(integration_group)
+    integer(kind=ranmar_seed_kind), intent(out) :: integration_group
+    character(len=64) :: value
+    integer :: length, status, i
+
+    call get_environment_variable('MG5AMC_INTEGRATION_GROUP', value, length, status)
+    integration_group = 0
+    if (status == 1) return ! Standalone and shower calls retain their streams.
+    if (status /= 0 .or. length == 0 .or. length > len(value)) then
+      error stop 'Invalid MG5AMC_INTEGRATION_GROUP'
+    end if
+    do i = 1, length
+      if (value(i:i) < '0' .or. value(i:i) > '9') error stop 'Invalid MG5AMC_INTEGRATION_GROUP'
+    end do
+    read(value, *, iostat=status) integration_group
+    if (status /= 0) error stop 'Invalid MG5AMC_INTEGRATION_GROUP'
+    if (integration_group < 0 .or. integration_group >= seed_pair_count) &
+      error stop 'RANMAR integration group exceeds its namespace'
+  end subroutine get_integration_group
 
 
   subroutine get_base(iseed)

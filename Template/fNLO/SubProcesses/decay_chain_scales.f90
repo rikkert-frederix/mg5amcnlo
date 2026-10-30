@@ -5,7 +5,10 @@ module decay_chain_scales
   use decay_chain_parameters, only: decay_renormalization_scale, &
        use_decayed_production_ren_scale_momenta, &
        decay_scale_species_count, decay_scale_species_index, &
-       decay_dynamical_scale_choice, decay_scale_factor
+       decay_dynamical_scale_choice, decay_scale_factor, multiplicative_nlo_enabled
+  use hard_real_kinematics, only: hard_real_point_available, hard_production_radiation_pdg, &
+       production_real_parent_point_available, production_real_radiation_pdg
+  use production_hard_split, only: production_conditional_real_branch
   use factorized_phase_space, only: factorized_block_size, &
        fetch_factorized_block_momenta
   use fixed_order_user_hooks, only: fixed_user_decay_scale
@@ -335,6 +338,19 @@ contains
       do leg = 1, core_count
         pdgs(leg) = nlo_decay_production_pdg(leg)
       end do
+      if (hard_real_point_available()) then
+        if (multiplicative_nlo_enabled()) then
+          core_count=core_count+1
+          if (core_count>nexternal) call fail_scales('hard real production core is too large')
+          pdgs(core_count)=hard_production_radiation_pdg()
+        end if
+      else if (production_conditional_real_branch()) then
+        if (production_real_parent_point_available() .and. multiplicative_nlo_enabled()) then
+          core_count=core_count+1
+          if (core_count>nexternal) call fail_scales('conditional real production core is too large')
+          pdgs(core_count)=production_real_radiation_pdg()
+        end if
+      end if
     else if (has_decay_chains()) then
       context = context_for_fks(configuration)
       core_count = context_core_count(context)

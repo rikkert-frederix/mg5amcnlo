@@ -3,6 +3,10 @@ module nlo_decay_kinematics
                                 validate_process_dimensions
   use phase_space_kinematics, only: phase_space_lambda, rotate_invar
   use boostwdir2_module, only: boostwdir2_in_place
+  use hard_real_kinematics, only: hard_real_point_available, fetch_hard_born_point, &
+       fetch_hard_decay_parent_point, production_real_parent_point_available, &
+       fetch_production_decay_parent_point
+  use production_hard_split, only: production_conditional_real_branch
   use factorized_block_kinematics, only: &
        generate_nbody => generate_factorized_nbody, &
        generate_current_nbody => generate_factorized_current_nbody, &
@@ -18,7 +22,8 @@ module nlo_decay_kinematics
   use decay_chain_metadata, only: has_decay_chain_metadata, &
        canonical_born_context => born_context, leaf_visible_leg
   use decay_chain_kinematics, only: generate_canonical_decay_node_rest
-  use decay_chain_parameters, only: decay_physical_width, production_current_proposal
+  use decay_chain_parameters, only: decay_physical_width, production_current_proposal, &
+       multiplicative_nlo_enabled
   use nlo_decay_metadata, only: initialize_nlo_decay_metadata, &
        has_nlo_decay, nlo_decay_metadata_revision, corrected_parent_pdg, &
        nlo_decay_born_context, nlo_decay_context_for_fks, &
@@ -71,6 +76,7 @@ module nlo_decay_kinematics
   public :: get_nlo_decay_mass_buffer
   public :: nlo_decay_parent_mass
   public :: set_nlo_decay_cut_mask
+  public :: real_production_decay_embedding, fetch_real_production_decay_parents
 
   interface
     double precision function get_mass_from_id(id)
@@ -226,11 +232,45 @@ contains
 
   subroutine get_nlo_decay_production_momenta(momenta)
     double precision, intent(out) :: momenta(0:3, nexternal)
+    double precision :: radiation(0:3)
+    integer :: count
+    logical :: available
     call require_enabled()
     momenta = 0d0
+    if (real_production_decay_embedding()) then
+        ! Scale selection needs the full production real event, including
+        ! the extra parton omitted from the decay-parent embedding buffer.
+        call fetch_real_production_decay_parents(momenta,count,available,radiation)
+        if (.not.available .or. count+1>nexternal) &
+             call fail_kinematics('hard real production scale buffer is unavailable')
+        momenta(:,count+1)=radiation
+        return
+    end if
     momenta(:, 1:nlo_decay_production_count()) = &
          production_born(:, 1:nlo_decay_production_count())
   end subroutine get_nlo_decay_production_momenta
+
+  logical function real_production_decay_embedding()
+    real_production_decay_embedding=.false.
+    if (.not.multiplicative_nlo_enabled()) return
+    if (hard_real_point_available()) then
+      real_production_decay_embedding=.true.
+    else if (production_conditional_real_branch()) then
+      real_production_decay_embedding=production_real_parent_point_available()
+    end if
+  end function real_production_decay_embedding
+
+  subroutine fetch_real_production_decay_parents(momenta,count,available,radiation)
+    double precision, intent(out) :: momenta(0:,:)
+    integer, intent(out) :: count
+    logical, intent(out) :: available
+    double precision, intent(out), optional :: radiation(0:3)
+    if (hard_real_point_available()) then
+      call fetch_hard_decay_parent_point(momenta,count,available,radiation)
+    else
+      call fetch_production_decay_parent_point(momenta,count,available,radiation)
+    end if
+  end subroutine fetch_real_production_decay_parents
 
 
   double precision function nlo_decay_fks_sister_mass(configuration)
@@ -377,11 +417,12 @@ contains
     double precision, intent(out) :: visible(0:3, nexternal - 1)
     logical, intent(out) :: pass
 
-    integer :: context, final_count, leg, decay_index, final_pdgs(nexternal)
+    integer :: context, final_count, leg, decay_index, final_pdgs(nexternal),hard_count
     double precision :: system(0:3), final_masses(nexternal)
     double precision :: final_momenta(0:3, nexternal)
     type(factorized_measure_state) :: production_measure
-    logical :: measure_available, current_sampling
+    logical :: measure_available, current_sampling,hard_available
+    double precision :: hard_born(0:3,nexternal),hard_xborn(2)
     double precision :: proposal_mass, proposal_width
 
     call require_enabled()
@@ -404,7 +445,19 @@ contains
     production_measure%jacobian = xjac
     production_measure%phase_space_weight = xpswgt
     call production_current_proposal(current_sampling,proposal_mass,proposal_width)
-    if (current_sampling) then
+    if (real_production_decay_embedding()) then
+      call fetch_real_production_decay_parents(hard_born,hard_count,hard_available)
+      if (.not.hard_available .or. hard_count/=nlo_decay_production_count()) &
+           call fail_kinematics('real production multiplicity differs from NLO decay context')
+      final_momenta(:,1:final_count)=hard_born(:,nincoming+1:hard_count)
+      pass=.true.
+    else if (hard_real_point_available()) then
+      call fetch_hard_born_point(hard_born,hard_xborn,hard_count,hard_available)
+      if (.not.hard_available .or. hard_count/=nlo_decay_production_count()) &
+           call fail_kinematics('hard production Born multiplicity differs from NLO decay context')
+      final_momenta(:,1:final_count)=hard_born(:,nincoming+1:hard_count)
+      pass=.true.
+    else if (current_sampling) then
       do leg = 1, final_count
         final_pdgs(leg) = nlo_decay_production_pdg(nincoming+leg)
       end do
@@ -425,6 +478,12 @@ contains
     do leg = 1, final_count
       production_born(:, nincoming + leg) = final_momenta(:, leg)
     end do
+    if (real_production_decay_embedding()) then
+        ! The incoming legs and all decay parents share the actual real
+        ! event frame.  Production is evaluated separately with its extra
+        ! parton; this reduced buffer is used only to embed local decays.
+        production_born(:,1:hard_count)=hard_born(:,1:hard_count)
+    end if
     call store_factorized_block_momenta(soft_counterevent, 0, &
          nlo_decay_production_count(), production_born)
     call store_factorized_embedded_momenta(soft_counterevent, 0, &

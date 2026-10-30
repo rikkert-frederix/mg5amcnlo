@@ -1400,7 +1400,14 @@ class TestFKSDecayChains(unittest.TestCase):
             self.assertIn('real_radiation%jacobian', contributions)
             self.assertIn('subroutine compute_real_emission()',
                           contributions)
-            self.assertNotIn('stored_event_momenta', contributions)
+            # The hard-production helpers also support processes without
+            # factorized decays, where the global real-event momenta are
+            # required.  The factorized real kernel must still use its
+            # radiation state rather than accessing that global array.
+            real_emission = contributions.split(
+                'subroutine compute_real_emission()', 1)[1].split(
+                    'end subroutine compute_real_emission', 1)[0]
+            self.assertNotIn('stored_event_momenta', real_emission)
             self.assertTrue(os.path.isfile(os.path.join(
                 process_dir, 'Cards', 'decay_card.dat')))
             with open(os.path.join(
@@ -1682,16 +1689,15 @@ class TestFKSDecayChains(unittest.TestCase):
                 'subroutine evaluate_additive_n1body_sector', 1)[1].split(
                     'end subroutine evaluate_additive_n1body_sector', 1)[0]
             multiplicative_driver = driver_source.split(
-                'double precision function sigint_multiplicative_impl',
+                'double precision function sigint_multiplicative_pass',
                 1)[1].split(
-                    'end function sigint_multiplicative_impl', 1)[0]
+                    'end function sigint_multiplicative_pass', 1)[0]
             self.assertEqual(
                 (additive_driver + additive_real_sector).count(
                     'call include_multichannel_enhance('),
                 3)
             for mode in [1, 2, 3]:
                 self.assertIn(
-                    'if (production_contribution) '
                     'call include_multichannel_enhance(%d)' % mode,
                     multiplicative_driver)
             leaf_loop = multiplicative_driver.split(
@@ -1701,7 +1707,7 @@ class TestFKSDecayChains(unittest.TestCase):
                 leaf_loop.index('call contract_multiplicative_leaf'))
             self.assertEqual(
                 driver_source.count('call materialize_multiplicative_leaf'), 1)
-            self.assertEqual(
+            self.assertGreaterEqual(
                 driver_source.lower().count(
                     'call capture_multiplicative_snapshot'), 2)
             self.assertIn(

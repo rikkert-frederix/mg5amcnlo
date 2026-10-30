@@ -1,4 +1,5 @@
 module fks_contributions_module
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
   use process_dimensions, only: nexternal, nsplitorders, qcd_pos, &
                                 amp_split_size
   use timing_state, only: tBorn, tIS, tReal, tCount, tf_nb, tf_all
@@ -8,7 +9,8 @@ module fks_contributions_module
   use madfks_plot_module, only: initplot_impl
   use fks_model_state_module, only: g => strong_coupling, external_masses
   use factorized_phase_space, only: factorized_radiation_state, &
-       fetch_factorized_radiation_state, compose_factorized_block_measure
+       fetch_factorized_radiation_state, compose_factorized_block_measure, &
+       fetch_factorized_kernel_momenta, fetch_factorized_block_momenta
   use decay_chain_metadata, only: has_decay_chains
   use decay_chain_kinematics, only: fks_leg_mass
   use nlo_decay_metadata, only: has_nlo_decay, nlo_decay_corrected_node
@@ -17,7 +19,7 @@ module fks_contributions_module
        active_virtual_grid_index, active_contribution_is_production
   use fks_singular_module, only: evaluate_fks_sij, sreal, sreal_deg, &
                                  bornsoftvirtual, fks_subtraction_shat, &
-                                 evaluate_born_matrix
+                                 evaluate_born_matrix, evaluate_hard_real_matrix
   use spin_density_fks_matrices, only: &
        spin_density_fks_collection_enabled, &
        spin_density_active_open_size, &
@@ -36,6 +38,9 @@ module fks_contributions_module
        spin_density_real_branch
   use decay_chain_scales, only: active_block_qcd_squared_order
   use decay_chain_parameters, only: multiplicative_nlo_enabled
+  use production_hard_split, only: production_hard_split_enabled, &
+       production_hard_branch_active, production_hard_channel_config, &
+       production_split_factors
   use fks_weights_module, only: add_wgt, real_contribution, &
                                 born_contribution, integrated_contribution, &
                                 soft_contribution, collinear_contribution, &
@@ -49,6 +54,7 @@ module fks_contributions_module
                                  event_xi_max, event_xi_norm, &
                                  event_shat, &
                                  stored_event_jacobian => event_jacobian, &
+                                 stored_event_momenta => event_momenta, &
                                  p_born, nfksprocess, i_fks, j_fks, &
                                  f_b, f_nb, f_r, f_s, f_c, f_dc, f_sc, &
                                  f_dsc, &
@@ -101,6 +107,20 @@ module fks_contributions_module
     integer function sdm_branch_component_id(position)
       integer, intent(in) :: position
     end function sdm_branch_component_id
+
+    integer function sdm_real_core_leg_count(configuration)
+      integer, intent(in) :: configuration
+    end function sdm_real_core_leg_count
+
+    integer function sdm_real_core_channel_count(configuration)
+      integer, intent(in) :: configuration
+    end function sdm_real_core_channel_count
+
+    subroutine sdm_real_core_channel_weights(configuration, momenta, weights)
+      integer, intent(in) :: configuration
+      double precision, intent(in) :: momenta(0:3, *)
+      double precision, intent(out) :: weights(*)
+    end subroutine sdm_real_core_channel_weights
 
   end interface
 
@@ -267,10 +287,11 @@ contains
 
 
   subroutine record_multiplicative_spectator_born_densities( &
-       excluded_component)
+       excluded_component, event_slot)
     integer, intent(in), optional :: excluded_component
+    integer, intent(in), optional :: event_slot
     integer :: component, component_count, open_size, maximum_open_size
-    integer :: production_component
+    integer :: production_component, density_event
     integer :: qcd_power, scale_pdg, block
     double precision :: jacobian, phase_space_weight, measure
     logical :: available
@@ -281,6 +302,8 @@ contains
     if (.not. spin_density_fks_collection_enabled() .or. &
         .not. multiplicative_nlo_enabled() .or. &
         .not. active_contribution_is_production()) return
+    density_event = soft_counterevent
+    if (present(event_slot)) density_event = event_slot
     component_count = sdm_branch_component_count()
     maximum_open_size = sdm_branch_max_open_size()
     if (component_count < 1 .or. maximum_open_size < 1) then
@@ -298,13 +321,14 @@ contains
     end if
     allocate(raw_density(2, maximum_open_size, maximum_open_size))
     do component = 1, component_count
-      ! Production defines the common global Born embedding.  Record every
-      ! other block here, including NLO-corrected decays; their own FKS
-      ! contributions subsequently add only the local NLO increment.
+      ! Production defines the common embedding for this branch.  Record
+      ! every other block here, including NLO-corrected decays; their own
+      ! FKS contributions subsequently add only the local NLO increment.
+      ! A hard production R branch uses its real parent momenta throughout.
       if (component == production_component) cycle
       raw_density = (0d0, 0d0)
       call sdm_component_born_density( &
-           component, soft_counterevent, open_size, qcd_power, &
+           component, density_event, open_size, qcd_power, &
            scale_pdg, raw_density)
       if (open_size < 1 .or. open_size > maximum_open_size .or. &
           qcd_power < 0) then
@@ -313,7 +337,7 @@ contains
       end if
       block = sdm_branch_component_id(component)
       call compose_factorized_block_measure( &
-           block, soft_counterevent, .false., .false., jacobian, &
+           block, density_event, .false., .false., jacobian, &
            phase_space_weight, available)
       if (.not. available) then
         write (*, *) 'ERROR: spectator Born measure is unavailable', block
@@ -333,7 +357,7 @@ contains
              density_coefficients(1, :, :)/g**qcd_power
       end if
       call add_wgt( &
-           soft_counterevent, born_contribution, 0d0, 0d0, 0d0, &
+           density_event, born_contribution, 0d0, 0d0, 0d0, &
            density_coefficients=density_coefficients, &
            density_component=component, &
            density_branch=spin_density_bornlike_branch, &
@@ -560,24 +584,44 @@ contains
     integer orders(nsplitorders)
     integer iamp
     integer :: open_size, component, local_qcd_power
-    double precision s_ev, wgt1, fx_ev
+    double precision s_ev, wgt1, fx_ev, production_partition
     complex(kind=8), allocatable :: reduced_density(:, :)
     complex(kind=8), allocatable :: density_coefficients(:, :, :)
     type(factorized_radiation_state) :: real_radiation
     call cpu_time(tBefore)
     if (f_r .eq. 0d0) return
     call load_radiation_state(real_event, real_radiation)
+    production_partition = 1d0
+    if (production_hard_split_enabled() .and. &
+        active_contribution_is_production()) then
+      call production_real_split_partition( &
+           real_radiation, production_partition)
+      if (production_partition == 0d0) return
+    end if
     s_ev = evaluate_fks_sij(real_event, i_fks, j_fks, &
                             real_radiation%xi, real_radiation%y)
     if (s_ev .le. 0.d0) return
-    call sreal(real_event, real_radiation%xi, real_radiation%y, fx_ev)
+    if (production_hard_branch_active() .and. &
+        active_contribution_is_production()) then
+      call evaluate_hard_real_matrix(real_event, fx_ev)
+      production_partition = production_partition* &
+                             production_real_channel_partition()
+    else
+      call sreal(real_event, real_radiation%xi, real_radiation%y, fx_ev)
+    end if
     do iamp = 1, amp_split_size
-      if (amp_split(iamp) .eq. 0d0) cycle
+      if (amp_split(iamp) .eq. 0d0 .and. &
+          .not. (production_hard_split_enabled() .and. &
+                 multiplicative_nlo_enabled() .and. &
+                 .not. active_contribution_is_production() .and. &
+                 spin_density_fks_collection_enabled() .and. &
+                 spin_density_reduced_matrix_available() .and. &
+                 iamp == spin_density_nlo_amp_position())) cycle
       call amp_split_pos_to_orders(iamp, orders)
       QCD_power = orders(qcd_pos)
       orders_tag = get_orders_tag(orders)
       amp_pos = iamp
-      wgt1 = amp_split(iamp)*s_ev*f_r/g**(qcd_power)
+      wgt1 = amp_split(iamp)*s_ev*f_r*production_partition/g**(qcd_power)
       if (spin_density_fks_collection_enabled() .and. &
           iamp == spin_density_nlo_amp_position() .and. &
           spin_density_reduced_matrix_available()) then
@@ -589,7 +633,7 @@ contains
         call get_spin_density_reduced_matrix(reduced_density)
         density_coefficients = (0d0, 0d0)
         density_coefficients(1, :, :) = reduced_density*s_ev* &
-             density_f_r/g**local_qcd_power
+             density_f_r*production_partition/g**local_qcd_power
         call add_wgt(real_event, real_contribution, wgt1, 0d0, 0d0, &
              density_coefficients=density_coefficients, &
              density_component=component, &
@@ -603,6 +647,95 @@ contains
     tReal = tReal + (tAfter - tBefore)
     return
   end subroutine compute_real_emission
+
+
+  subroutine production_real_split_partition(radiation, partition)
+    type(factorized_radiation_state), intent(in) :: radiation
+    double precision, intent(out) :: partition
+    double precision :: core_momenta(0:3, nexternal)
+    double precision :: singular, hard, sister_mass
+    integer :: core_count
+    logical :: available
+
+    core_count = sdm_real_core_leg_count(nfksprocess)
+    if (core_count < max(i_fks, j_fks) .or. core_count > nexternal) then
+      write (*, '(a)') 'ERROR: invalid real core layout in production hard split'
+      stop 1
+    end if
+    core_momenta = 0d0
+    if (uses_factorized_radiation_state()) then
+      call fetch_factorized_kernel_momenta( &
+           real_event, 0, core_count, &
+           core_momenta(:, 1:core_count), available)
+      if (.not. available) then
+        write (*, '(a)') 'ERROR: production hard split has no real core momenta'
+        stop 1
+      end if
+    else
+      core_momenta = stored_event_momenta(:, :, real_event)
+    end if
+    if (has_decay_chains()) then
+      sister_mass = fks_leg_mass(nfksprocess, j_fks)
+    else
+      sister_mass = external_masses(j_fks)
+    end if
+    call production_split_factors( &
+         core_momenta(:, 1:core_count), i_fks, j_fks, radiation%shat, &
+         singular, hard, sister_mass)
+    partition = singular
+    if (production_hard_branch_active()) partition = hard
+  end subroutine production_real_split_partition
+
+
+  double precision function production_real_channel_partition()
+    double precision :: core_momenta(0:3, nexternal)
+    double precision, allocatable :: diagram_weights(:)
+    double precision :: normalization, largest_weight
+    integer :: core_count, channel_count, channel
+    logical :: available
+
+    core_count = sdm_real_core_leg_count(nfksprocess)
+    channel_count = sdm_real_core_channel_count(nfksprocess)
+    channel = production_hard_channel_config()
+    if (core_count < 1 .or. core_count > nexternal .or. &
+        channel < 1 .or. channel > channel_count) then
+      write (*, '(a)') 'ERROR: invalid production real diagram channel'
+      stop 1
+    end if
+    core_momenta = 0d0
+    if (uses_factorized_radiation_state()) then
+      call fetch_factorized_block_momenta( &
+           real_event, 0, core_count, &
+           core_momenta(:, 1:core_count), available)
+      if (.not. available) then
+        write (*, '(a)') 'ERROR: production real SDE has no real core momenta'
+        stop 1
+      end if
+    else
+      core_momenta = stored_event_momenta(:, :, real_event)
+    end if
+    allocate(diagram_weights(channel_count))
+    call sdm_real_core_channel_weights( &
+         nfksprocess, core_momenta, diagram_weights)
+    if (any(.not. ieee_is_finite(diagram_weights)) .or. &
+        any(diagram_weights < 0d0)) then
+      write (*, '(a)') 'ERROR: invalid production real SDE diagram weights'
+      stop 1
+    end if
+    ! Rescaling all positive diagram proxies leaves the partition unchanged
+    ! and prevents their sum from overflowing for a very peaked point.
+    largest_weight = maxval(diagram_weights)
+    ! A simultaneous zero of every proxy must not leave a hole in the
+    ! partition.  Equal channel weights preserve its sum even at such a
+    ! point; no physical matrix-element weight is clipped or discarded.
+    production_real_channel_partition = 1d0/channel_count
+    if (largest_weight > 0d0) then
+      diagram_weights = diagram_weights/largest_weight
+      normalization = sum(diagram_weights)
+      production_real_channel_partition = diagram_weights(channel)/normalization
+    end if
+    deallocate(diagram_weights)
+  end function production_real_channel_partition
 
   subroutine compute_soft_counter_term
 ! This subroutine computes the soft counter term and adds its value to
@@ -934,6 +1067,11 @@ contains
 
     call cpu_time(tBefore)
 
+    ! Hard production uses real-diagram SDE, applied once together with its
+    ! real density.  The Born partition must never multiply that branch.
+    if (production_hard_branch_active() .and. &
+        active_contribution_is_production()) return
+
 ! Compute the multi-channel enhancement factor 'enhance'.  With one Born
 ! channel the normalized partition is identically one, so evaluating the
 ! full helicity-summed Born solely to divide it by itself is wasted work.
@@ -1020,6 +1158,34 @@ contains
     parameter(pi=3.1415926535897932385d0)
     call cpu_time(tBefore)
     call load_radiation_state(real_event, real_radiation)
+    if (production_hard_branch_active() .and. &
+        active_contribution_is_production()) then
+      ! The hard generator samples the complete real phase space directly.
+      ! Its real matrix and spin density are evaluated without artificial
+      ! FKS damping, so their coefficient is just this direct measure.
+      f_r = 0d0
+      density_f_r = 0d0
+      f_s = 0d0
+      f_c = 0d0
+      f_dc = 0d0
+      f_sc = 0d0
+      f_dsc = 0d0
+      density_f_s = 0d0
+      density_f_c = 0d0
+      density_f_dc = 0d0
+      density_f_sc = 0d0
+      density_f_dsc = 0d0
+      f_r = real_radiation%jacobian*fkssymmetryfactor*vegas_wgt
+      density_f_r = f_r
+      if (spin_density_fks_collection_enabled()) then
+        call active_block_measure(real_event, .true., real_block_measure)
+        block_vegas = active_block_vegas_weight(vegas_wgt)
+        density_f_r = real_block_measure*fkssymmetryfactor*block_vegas
+      end if
+      call cpu_time(tAfter)
+      tf_all = tf_all + (tAfter - tBefore)
+      return
+    end if
     call load_radiation_state(soft_counterevent, soft_radiation)
     call load_radiation_state(collinear_counterevent, collinear_radiation)
     call load_radiation_state(soft_collinear_counterevent, &

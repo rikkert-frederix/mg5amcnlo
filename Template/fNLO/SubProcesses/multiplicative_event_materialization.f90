@@ -40,12 +40,17 @@ contains
 
   subroutine materialize_multiplicative_leaf( &
        workspace, momenta, statuses, pdgs, &
-       particle_from_decay, particle_count)
+       particle_from_decay, particle_count, block_momenta, block_counts)
     type(multiplicative_nlo_workspace), intent(in) :: workspace
     double precision, intent(out) :: momenta(0:, :)
     integer, intent(out) :: statuses(:), pdgs(:)
     logical, intent(out) :: particle_from_decay(:)
     integer, intent(out) :: particle_count
+    ! Optional block-local momenta after the recursive embedding.  These
+    ! expose the actual parent helicity frames of this leaf, rather than
+    ! the frames in which its reusable snapshots were first evaluated.
+    double precision, intent(out), optional :: block_momenta(0:, :, :)
+    integer, intent(out), optional :: block_counts(:)
     integer :: production_position, position
     double precision :: unused_parent(0:3)
     double precision :: scratch_momenta( &
@@ -71,6 +76,18 @@ contains
         .not. allocated(workspace%branch_by_component) .or. &
         .not. allocated(workspace%real_configuration_by_component)) then
       call fail_materialization('the multiplicative workspace is invalid')
+    end if
+    if (present(block_momenta)) then
+      if (size(block_momenta, 1) < 4 .or. &
+          size(block_momenta, 2) < sdm_leaf_max_block_size() .or. &
+          size(block_momenta, 3) < workspace%component_count) &
+           call fail_materialization('leaf block momentum storage is too small')
+      block_momenta = 0d0
+    end if
+    if (present(block_counts)) then
+      if (size(block_counts) < workspace%component_count) &
+           call fail_materialization('leaf block count storage is too small')
+      block_counts = 0
     end if
 
     production_position = 0
@@ -159,8 +176,12 @@ contains
              ' selected branch ', branch, ' requires ', block_count
         stop 1
       end if
+      if (present(block_counts)) block_counts(component_position) = block_count
 
       if (.not. has_parent) then
+        if (present(block_momenta)) &
+             block_momenta(:, 1:block_count, component_position) = &
+             scratch_momenta(:, 1:block_count, component_position)
         do leg = 1, block_count
           if (scratch_target_kinds(leg, component_position) == 1) then
             if (scratch_statuses(leg, component_position) < 0) then
@@ -214,13 +235,19 @@ contains
       inverse_parent(1:3) = -inverse_parent(1:3)
 
       do leg = 1, block_count
-        if (scratch_statuses(leg, component_position) < 0) cycle
+        if (scratch_statuses(leg, component_position) < 0) then
+          if (present(block_momenta)) &
+               block_momenta(:, leg, component_position) = new_parent
+          cycle
+        end if
         call boost_factorized_momentum_from_rest( &
              scratch_momenta(:, leg, component_position), &
              inverse_parent, parent_mass, &
              rest_momentum)
         call boost_factorized_momentum_from_rest( &
              rest_momentum, new_parent, parent_mass, event_momentum)
+        if (present(block_momenta)) &
+             block_momenta(:, leg, component_position) = event_momentum
         if (scratch_target_kinds(leg, component_position) == 1) then
           child_position = component_position_for_id( &
                scratch_target_ids(leg, component_position))

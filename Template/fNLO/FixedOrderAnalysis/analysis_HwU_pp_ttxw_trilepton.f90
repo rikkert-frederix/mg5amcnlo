@@ -7,17 +7,13 @@ module analysis_hwu_pp_ttxw_trilepton_module
   double precision, parameter :: pi = 3.141592653589793d0
   double precision, parameter :: tiny = 1d-12
   double precision, parameter :: jet_radius = 0.4d0
-  double precision, parameter :: opposite_sign_lepton_pt_cut = 10d0
-  double precision, parameter :: same_sign_lepton_pt_cut = 20d0
-  double precision, parameter :: electron_eta_cut = 2.47d0
-  double precision, parameter :: muon_eta_cut = 2.5d0
+  double precision, parameter :: lepton_pt_cut = 20d0
+  double precision, parameter :: lepton_eta_cut = 2.5d0
   double precision, parameter :: bjet_pt_cut = 25d0
   double precision, parameter :: bjet_eta_cut = 2.5d0
   double precision, parameter :: analysis_jet_pt_cut = 25d0
   double precision, parameter :: analysis_jet_eta_cut = 2.5d0
   double precision, parameter :: ossf_mass_cut = 12d0
-  double precision, parameter :: z_mass_reference = 91.1876d0
-  double precision, parameter :: z_veto_half_width = 10d0
 
   integer, parameter :: g_rate = 0
   integer, parameter :: g_production = 4
@@ -25,18 +21,19 @@ module analysis_hwu_pp_ttxw_trilepton_module
   integer, parameter :: g_decay = 70
   integer, parameter :: g_neutrino = 94
   integer, parameter :: g_jet = 110
-  integer, parameter :: g_fiducial = 138
-  integer, parameter :: g_reco = 178
-  integer, parameter :: g_spin = 214
-  integer, parameter :: g_reco_spin = 240
-  integer, parameter :: g_assoc_spin = 266
-  integer, parameter :: g_diagnostic = 278
-  integer, parameter :: number_of_histograms = 286
+  integer, parameter :: g_spin = 138
+  integer, parameter :: g_assoc_spin = 164
+  integer, parameter :: g_diagnostic = 170
+  integer, parameter :: g_fiducial_categories = 173
+  integer, parameter :: fiducial_category_stride = 136
+  integer, parameter :: number_of_histograms = &
+       g_fiducial_categories + 3*fiducial_category_stride
 
   double precision :: top_mass_reference = 172.5d0
   double precision :: w_mass_reference = 80.379d0
 
   public :: analysis_begin, analysis_end, analysis_fill
+  public :: passes_fiducial_baseline
 
   interface
     subroutine amcatnlo_fastjetppgenkt_etamax(pqcd, nn, rfj, sycut, &
@@ -89,7 +86,7 @@ contains
     integer :: qe1, qe2, qmu, qassoc
     integer :: ibjet, iabjet, njet, njet25, njet40, nextra25
     integer :: lead_jet, trail_jet, lead_extra_jet, lead_bjet
-    integer :: assigned_radiation, pairing, stage, n_b_accepted
+    integer :: stage, cut_stage, n_b_accepted
     integer :: jet_of_parton(size(p, 2))
     double precision :: pjet(0:3, size(p, 2))
     double precision :: e1(0:3), e2(0:3), ep(0:3), em(0:3), mu(0:3)
@@ -104,27 +101,17 @@ contains
     double precision :: third_lepton(0:3)
     double precision :: bjet(0:3), abjet(0:3), bbjet(0:3)
     double precision :: visible(0:3), met(0:1), truth_met(0:1)
-    double precision :: reco_nue(0:3), reco_anue(0:3), reco_nua(0:3)
-    double precision :: reco_wp(0:3), reco_wm(0:3), reco_wa(0:3)
-    double precision :: reco_top(0:3), reco_atop(0:3)
-    double precision :: reco_ttbar(0:3), reco_ttw(0:3)
-    double precision :: reco_lp(0:3), reco_lm(0:3), reco_la(0:3)
-    double precision :: truth_score, reco_score, mt2_ee
+    double precision :: truth_score
     double precision :: min_dr_lepton_jet, min_dr_lepton_b, max_dr_lepton_b
     double precision :: lead_lepton_lead_b_dr
     double precision :: leading_extra_pt, leading_extra_y, extra_ht
     double precision :: jet_ht, lepton_ht, visible_ht, st
-    double precision :: bjet_pt, abjet_pt, bjet_eta, abjet_eta
     double precision :: met_closure
     double precision :: spin_values(6), spin_products(9), spin_extra(11)
-    double precision :: reco_spin_values(6), reco_spin_products(9)
-    double precision :: reco_spin_extra(11)
-    double precision :: assoc_spin_values(6), reco_assoc_spin_values(6)
+    double precision :: assoc_spin_values(6)
     double precision :: wp_helicity, wm_helicity, wa_helicity
-    double precision :: reco_wp_helicity, reco_wm_helicity
-    double precision :: reco_wa_helicity
-    logical :: fiducial, two_b_reconstruction, reco_success, pass_overlap
-    logical :: theory_available, has_ossf_ee
+    logical :: fiducial, pass_overlap
+    logical :: theory_available, has_ossf_ee, separated_b_jets
 
     particle_count = size(p, 2)
     if (size(istatus) /= particle_count .or. size(ipdg) /= particle_count) then
@@ -173,7 +160,6 @@ contains
     ttbar = 0d0
     ttw = 0d0
     truth_score = 0d0
-    assigned_radiation = 0
     if (theory_available) then
       ep = p(0:3, iep)
       em = p(0:3, iem)
@@ -186,7 +172,7 @@ contains
       www = wp + wm + wa
       trineutrino = nue + anue + nua
       call reconstruct_truth_tops(p, istatus, ipdg, wp, wm, b, ab, &
-           top, atop, truth_score, assigned_radiation)
+           top, atop, truth_score)
       ttbar = top + atop
       ttw = ttbar + wa
     end if
@@ -198,6 +184,7 @@ contains
     end if
     bjet = pjet(:, ibjet)
     abjet = pjet(:, iabjet)
+    separated_b_jets = ibjet /= iabjet
     if (ibjet == iabjet) then
       bbjet = bjet
     else
@@ -246,7 +233,8 @@ contains
       call fill_truth_leptons(wgts, ep, em, mu, trilepton, &
            same_sign_pair, opposite_sign_pair, qassoc)
       call fill_truth_decays(wgts, top, atop, wp, wm, wa, www, ep, em, mu, &
-           b, ab, qassoc, wp_helicity, wm_helicity, wa_helicity)
+           bjet, abjet, qassoc, wp_helicity, wm_helicity, wa_helicity, &
+           separated_b_jets)
       call fill_truth_neutrinos(wgts, nue, anue, nua, trineutrino, met, &
            ep, em, mu, trilepton, met_closure)
       call fill_spin(g_spin, spin_values, spin_products, spin_extra, wgts)
@@ -255,148 +243,37 @@ contains
     call fill_truth_jets(wgts, bjet, abjet, bbjet, pjet, njet25, njet40, &
          nextra25, lead_jet, trail_jet, leading_extra_pt, leading_extra_y, &
          extra_ht, jet_ht, lepton_ht, visible_ht, st, visible, &
-         lead_lepton_lead_b_dr, min_dr_lepton_b)
+         lead_lepton_lead_b_dr, min_dr_lepton_b, separated_b_jets)
     call HwU_fill(g_rate + 1, 1d0, wgts)
     call HwU_fill(g_rate + 2, dble(qassoc), wgts)
     call HwU_fill(g_rate + 3, 1d0, wgts)
 
-    bjet_pt = transverse_momentum(bjet)
-    abjet_pt = transverse_momentum(abjet)
-    bjet_eta = abs(pseudorapidity(bjet))
-    abjet_eta = abs(pseudorapidity(abjet))
-
-    stage = 1
-    if (transverse_momentum(same_sign_first) >= &
-             same_sign_lepton_pt_cut .and. &
-        transverse_momentum(same_sign_second) >= &
-             same_sign_lepton_pt_cut .and. &
-        transverse_momentum(opposite_sign_lepton) >= &
-             opposite_sign_lepton_pt_cut .and. &
-        abs(pseudorapidity(e1)) < electron_eta_cut .and. &
-        abs(pseudorapidity(e2)) < electron_eta_cut .and. &
-        abs(pseudorapidity(mu)) < muon_eta_cut) then
-      stage = 2
-      call HwU_fill(g_rate + 3, 2d0, wgts)
-    end if
-    if (stage == 2 .and. (.not. has_ossf_ee .or. &
-        invariant_mass(e1 + e2) > ossf_mass_cut)) then
-      stage = 3
-      call HwU_fill(g_rate + 3, 3d0, wgts)
-    end if
-    if (stage == 3 .and. (.not. has_ossf_ee .or. &
-        abs(invariant_mass(e1 + e2) - z_mass_reference) > &
-             z_veto_half_width)) then
+    stage = trilepton_lepton_cut_stage(e1, e2, mu, has_ossf_ee)
+    do cut_stage = 2, stage
+      call HwU_fill(g_rate + 3, dble(cut_stage), wgts)
+    end do
+    ! The common lepton selection has no minimum jet or b-tag count.
+    ! This makes 0b, 1b and 2b exclusive partitions of the same baseline.
+    pass_overlap = passes_trilepton_jet_separation(e1, e2, mu, pjet, njet)
+    if (stage == 3 .and. pass_overlap) then
       stage = 4
       call HwU_fill(g_rate + 3, 4d0, wgts)
     end if
-    if (stage == 4 .and. &
-        abs(invariant_mass(trilepton) - z_mass_reference) > &
-             z_veto_half_width) then
-      stage = 5
-      call HwU_fill(g_rate + 3, 5d0, wgts)
-    end if
-    if (stage == 5 .and. njet25 >= 1) then
-      stage = 6
-      call HwU_fill(g_rate + 3, 6d0, wgts)
-    end if
-    if (stage == 6 .and. n_b_accepted >= 1) then
-      stage = 7
-      call HwU_fill(g_rate + 3, 7d0, wgts)
-    end if
-    pass_overlap = passes_trilepton_jet_separation(e1, e2, mu, pjet, njet)
-    if (stage == 7 .and. pass_overlap) then
-      stage = 8
-      call HwU_fill(g_rate + 3, 8d0, wgts)
-    end if
-    fiducial = stage >= 8
-    two_b_reconstruction = fiducial .and. ibjet /= iabjet .and. &
-         bjet_pt >= bjet_pt_cut .and. abjet_pt >= bjet_pt_cut .and. &
-         bjet_eta < bjet_eta_cut .and. abjet_eta < bjet_eta_cut
-    if (two_b_reconstruction) call HwU_fill(g_rate + 3, 9d0, wgts)
-    if (fiducial) call HwU_fill(g_rate + 4, dble(qassoc), wgts)
-
-    reco_success = .false.
-    reco_score = 0d0
-    pairing = 0
-    reco_nue = 0d0
-    reco_anue = 0d0
-    reco_nua = 0d0
-    reco_wp = 0d0
-    reco_wm = 0d0
-    reco_wa = 0d0
-    reco_top = 0d0
-    reco_atop = 0d0
-    reco_ttbar = 0d0
-    reco_ttw = 0d0
-    mt2_ee = 0d0
+    fiducial = stage == 4
     if (fiducial) then
-      call compute_mt2(e1, e2, met, mt2_ee)
-      call fill_ttw_fiducial(wgts, e1, e2, mu, trilepton, &
-           same_sign_first, same_sign_second, same_sign_pair, &
-           opposite_sign_lepton, opposite_sign_pair, lead_lepton, bjet, abjet, &
-           bbjet, met, qassoc, n_b_accepted, njet25, nextra25, &
-           jet_ht, lepton_ht, visible_ht, st, lead_lepton_lead_b_dr, mt2_ee)
+      call HwU_fill(g_rate + 4, dble(qassoc), wgts)
+      call fill_fiducial_categories(g_fiducial_categories + 1, &
+           p, istatus, ipdg, pjet, njet, ibjet, iabjet, &
+           n_b_accepted, met, wgts, same_sign_first, same_sign_second, &
+           opposite_sign_lepton)
     end if
-    if (two_b_reconstruction) then
-      call reconstruct_three_neutrinos(same_sign_first, same_sign_second, &
-           opposite_sign_lepton, qassoc, bjet, abjet, met, reco_nue, &
-           reco_anue, reco_nua, reco_lp, reco_lm, reco_la, pairing, &
-           reco_score, reco_success)
-      if (reco_success) then
-        reco_wp = reco_lp + reco_nue
-        reco_wm = reco_lm + reco_anue
-        reco_wa = reco_la + reco_nua
-        if (pairing == 1) then
-          reco_top = reco_wp + bjet
-          reco_atop = reco_wm + abjet
-        else
-          reco_top = reco_wp + abjet
-          reco_atop = reco_wm + bjet
-        end if
-        reco_ttbar = reco_top + reco_atop
-        reco_ttw = reco_ttbar + reco_wa
-        call compute_spin_observables(reco_top, reco_atop, reco_lp, reco_lm, &
-             reco_spin_values, reco_spin_products, reco_spin_extra)
-        call w_helicity_cosines(reco_top, reco_atop, reco_wp, reco_wm, &
-             reco_lp, reco_lm, reco_wp_helicity, reco_wm_helicity)
-        call associated_w_helicity(reco_ttw, reco_wa, reco_la, &
-             reco_wa_helicity)
-        call compute_associated_spin_observables(reco_ttw, reco_wa, &
-             reco_top, reco_atop, reco_lp, reco_lm, reco_la, qassoc, &
-             reco_assoc_spin_values)
-        call fill_ttw_reconstructed(wgts, reco_nue, reco_anue, reco_nua, &
-             reco_wp, reco_wm, reco_wa, reco_top, reco_atop, reco_ttbar, &
-             reco_ttw, qassoc, reco_score, pairing, reco_wp_helicity, &
-             reco_wm_helicity, reco_wa_helicity)
-        call fill_spin(g_reco_spin, reco_spin_values, reco_spin_products, &
-             reco_spin_extra, wgts)
-        call fill_associated_spin(g_assoc_spin + 6, &
-             reco_assoc_spin_values, wgts)
-        call HwU_fill(g_rate + 3, 10d0, wgts)
-      end if
-    end if
-
     if (theory_available) then
       call HwU_fill(g_diagnostic + 1, min(truth_score, 99.999d0), wgts)
-      call HwU_fill(g_diagnostic + 2, dble(assigned_radiation), wgts)
-      call HwU_fill(g_diagnostic + 3, &
+      call HwU_fill(g_diagnostic + 2, &
            min(max(abs(invariant_mass(top) - top_mass_reference), &
                    abs(invariant_mass(atop) - top_mass_reference)), &
                49.999d0), wgts)
-      call HwU_fill(g_diagnostic + 4, min(met_closure, 9.999d0), wgts)
-    end if
-    if (reco_success) then
-      call HwU_fill(g_diagnostic + 5, min(reco_score, 99.999d0), wgts)
-      call HwU_fill(g_diagnostic + 6, min(max( &
-           abs(invariant_mass(reco_wp) - w_mass_reference), &
-           abs(invariant_mass(reco_wm) - w_mass_reference), &
-           abs(invariant_mass(reco_wa) - w_mass_reference)), 49.999d0), &
-           wgts)
-      call HwU_fill(g_diagnostic + 7, min(max( &
-           abs(invariant_mass(reco_top) - top_mass_reference), &
-           abs(invariant_mass(reco_atop) - top_mass_reference)), &
-           49.999d0), wgts)
-      call HwU_fill(g_diagnostic + 8, 1d0, wgts)
+      call HwU_fill(g_diagnostic + 3, min(met_closure, 9.999d0), wgts)
     end if
 
     ! ibody is deliberately not used to split these distributions.  Every
@@ -408,12 +285,54 @@ contains
   end subroutine analysis_fill
 
 
+  integer function trilepton_lepton_cut_stage(e1, e2, mu, has_ossf_ee) &
+       result(stage)
+    implicit none
+    double precision, intent(in) :: e1(0:3), e2(0:3), mu(0:3)
+    logical, intent(in) :: has_ossf_ee
+
+    stage = 1
+    if (transverse_momentum(e1) < lepton_pt_cut .or. &
+        transverse_momentum(e2) < lepton_pt_cut .or. &
+        transverse_momentum(mu) < lepton_pt_cut .or. &
+        abs(pseudorapidity(e1)) >= lepton_eta_cut .or. &
+        abs(pseudorapidity(e2)) >= lepton_eta_cut .or. &
+        abs(pseudorapidity(mu)) >= lepton_eta_cut) return
+    stage = 2
+    if (has_ossf_ee .and. invariant_mass(e1 + e2) <= ossf_mass_cut) return
+    stage = 3
+  end function trilepton_lepton_cut_stage
+
+
+  logical function passes_fiducial_baseline(p, istatus, ipdg) result(passes)
+    ! Generation-cut entry point: full physical event in the lab frame.
+    ! Reuse the histogram selection, without imposing any tag requirement
+    ! or reconstructing truth objects. Reject failed leptons before FastJet.
+    implicit none
+    double precision, intent(in) :: p(0:, :)
+    integer, intent(in) :: istatus(:), ipdg(:)
+    integer :: ie1, ie2, imu, ib, iab, qe1, qe2, qmu, qassoc
+    integer :: njet, ibjet, iabjet, jet_of_parton(size(p, 2))
+    double precision :: pjet(0:3, size(p, 2))
+
+    passes = .false.
+    call find_visible_objects(p, istatus, ipdg, ie1, ie2, imu, ib, iab, &
+         qe1, qe2, qmu, qassoc)
+    if (trilepton_lepton_cut_stage(p(0:3, ie1), p(0:3, ie2), &
+         p(0:3, imu), qe1*qe2 == -1) /= 3) return
+    call cluster_qcd_jets(p, istatus, ipdg, pjet, njet, jet_of_parton, &
+         ibjet, iabjet)
+    passes = passes_trilepton_jet_separation( &
+         p(0:3, ie1), p(0:3, ie2), p(0:3, imu), pjet, njet)
+  end function passes_fiducial_baseline
+
+
   subroutine book_histograms()
     implicit none
 
     call book(g_rate + 1, 'inclusive rate', 1, 0.5d0, 1.5d0)
     call book(g_rate + 2, 'inclusive associated W charge', 3, -1.5d0, 1.5d0)
-    call book(g_rate + 3, 'fiducial and reconstruction cutflow', 10, 0.5d0, 10.5d0)
+    call book(g_rate + 3, 'fiducial cutflow', 4, 0.5d0, 4.5d0)
     call book(g_rate + 4, 'fiducial charge yield summary', 3, -1.5d0, 1.5d0)
 
     call book(g_production + 1, 'truth top pT', 50, 0d0, 1000d0)
@@ -496,9 +415,9 @@ contains
     call book(g_decay + 10, 'truth three W mass', 50, 0d0, 1800d0)
     call book(g_decay + 11, 'truth three W pT', 50, 0d0, 1000d0)
     call book(g_decay + 12, 'truth three W rapidity', 50, -5d0, 5d0)
-    call book(g_decay + 13, 'truth correct positron b mass', 50, 0d0, 250d0)
-    call book(g_decay + 14, 'truth correct electron bbar mass', 50, 0d0, 250d0)
-    call book(g_decay + 15, 'truth maximum correct electron b mass', 50, 0d0, 250d0)
+    call book(g_decay + 13, 'truth correct positron b jet mass', 50, 0d0, 250d0)
+    call book(g_decay + 14, 'truth correct electron bbar jet mass', 50, 0d0, 250d0)
+    call book(g_decay + 15, 'truth maximum correct electron b jet mass', 50, 0d0, 250d0)
     call book(g_decay + 16, 'truth positron energy top frame', 50, 0d0, 120d0)
     call book(g_decay + 17, 'truth electron energy antitop frame', 50, 0d0, 120d0)
     call book(g_decay + 18, 'truth top Wplus helicity cosine', 40, -1d0, 1d0)
@@ -555,86 +474,7 @@ contains
     call book(g_jet + 27, 'leading lepton leading b jet delta R', 40, 0d0, 8d0)
     call book(g_jet + 28, 'minimum lepton b jet delta R', 40, 0d0, 8d0)
 
-    call book(g_fiducial + 1, 'fiducial rate', 1, 0.5d0, 1.5d0)
-    call book(g_fiducial + 2, 'fiducial associated W charge distribution', 3, -1.5d0, 1.5d0)
-    call book(g_fiducial + 3, 'fiducial leading lepton pT', 50, 0d0, 500d0)
-    call book(g_fiducial + 4, 'fiducial subleading lepton pT', 50, 0d0, 400d0)
-    call book(g_fiducial + 5, 'fiducial third lepton pT', 50, 0d0, 300d0)
-    call book(g_fiducial + 6, 'fiducial leading electron flavor eta', 40, -2.5d0, 2.5d0)
-    call book(g_fiducial + 7, 'fiducial subleading electron flavor eta', 40, -2.5d0, 2.5d0)
-    call book(g_fiducial + 8, 'fiducial muon eta', 40, -2.5d0, 2.5d0)
-    call book(g_fiducial + 9, 'fiducial trilepton mass', 50, 0d0, 1200d0)
-    call book(g_fiducial + 10, 'fiducial trilepton pT', 50, 0d0, 800d0)
-    call book(g_fiducial + 11, 'fiducial trilepton rapidity', 40, -4d0, 4d0)
-    call book(g_fiducial + 12, 'fiducial lepton HT', 50, 0d0, 1000d0)
-    call book(g_fiducial + 13, 'fiducial dielectron mass', 50, 0d0, 1000d0)
-    call book(g_fiducial + 14, 'fiducial dielectron delta phi', 32, 0d0, pi)
-    call book(g_fiducial + 15, 'fiducial dielectron delta R', 40, 0d0, 8d0)
-    call book(g_fiducial + 16, 'fiducial same sign pair mass', 50, 0d0, 1000d0)
-    call book(g_fiducial + 17, 'fiducial same sign abs delta phi', 32, 0d0, pi)
-    call book(g_fiducial + 18, 'fiducial same sign abs delta eta', 25, 0d0, 5d0)
-    call book(g_fiducial + 19, 'fiducial same sign delta R', 40, 0d0, 8d0)
-    call book(g_fiducial + 20, 'fiducial leading opposite sign pair mass', 50, 0d0, 1000d0)
-    call book(g_fiducial + 21, 'fiducial lead OS pair delta phi', 32, 0d0, pi)
-    call book(g_fiducial + 22, 'fiducial leading opposite sign pair delta R', 40, 0d0, 8d0)
-    call book(g_fiducial + 23, 'fiducial missing pT', 50, 0d0, 800d0)
-    call book(g_fiducial + 24, 'fiducial min delta phi missing lepton', 32, 0d0, pi)
-    call book(g_fiducial + 25, 'fiducial max delta phi missing lepton', 32, 0d0, pi)
-    call book(g_fiducial + 26, 'fiducial leading lepton missing mT', 50, 0d0, 800d0)
-    call book(g_fiducial + 27, 'fiducial muon missing mT', 50, 0d0, 800d0)
-    call book(g_fiducial + 28, 'fiducial trilepton missing cluster mT', 50, 0d0, 1500d0)
-    call book(g_fiducial + 29, 'fiducial leading b jet pT', 50, 0d0, 600d0)
-    call book(g_fiducial + 30, 'fiducial trailing b jet pT', 50, 0d0, 400d0)
-    call book(g_fiducial + 31, 'fiducial bb jet mass', 50, 0d0, 1200d0)
-    call book(g_fiducial + 32, 'fiducial bb jet delta R', 40, 0d0, 8d0)
-    call book(g_fiducial + 33, 'fiducial jet multiplicity', 10, -0.5d0, 9.5d0)
-    call book(g_fiducial + 34, 'fiducial additional jet multiplicity', 8, -0.5d0, 7.5d0)
-    call book(g_fiducial + 35, 'fiducial jet HT', 50, 0d0, 1800d0)
-    call book(g_fiducial + 36, 'fiducial visible HT', 50, 0d0, 2500d0)
-    call book(g_fiducial + 37, 'fiducial ST', 50, 0d0, 3000d0)
-    call book(g_fiducial + 38, 'fiducial leading lepton leading b delta R', 40, 0d0, 8d0)
-    call book(g_fiducial + 39, 'fiducial mT2 ee with total missing pT', 50, 0d0, 400d0)
-    call book(g_fiducial + 40, 'fiducial accepted b jet multiplicity', 3, -0.5d0, 2.5d0)
-
-    call book(g_reco + 1, 'reconstructed rate', 1, 0.5d0, 1.5d0)
-    call book(g_reco + 2, 'reconstructed top Wplus pT', 50, 0d0, 600d0)
-    call book(g_reco + 3, 'reconstructed top Wplus rapidity', 40, -4d0, 4d0)
-    call book(g_reco + 4, 'reconstructed top Wplus mass', 50, 0d0, 150d0)
-    call book(g_reco + 5, 'reconstructed antitop Wminus pT', 50, 0d0, 600d0)
-    call book(g_reco + 6, 'reconstructed antitop Wminus rapidity', 40, -4d0, 4d0)
-    call book(g_reco + 7, 'reconstructed antitop Wminus mass', 50, 0d0, 150d0)
-    call book(g_reco + 8, 'reconstructed associated W pT', 50, 0d0, 800d0)
-    call book(g_reco + 9, 'reconstructed associated W rapidity', 40, -4d0, 4d0)
-    call book(g_reco + 10, 'reconstructed associated W mass', 50, 0d0, 150d0)
-    call book(g_reco + 11, 'reconstructed top pT', 50, 0d0, 1000d0)
-    call book(g_reco + 12, 'reconstructed top rapidity', 40, -4d0, 4d0)
-    call book(g_reco + 13, 'reconstructed top mass', 50, 100d0, 250d0)
-    call book(g_reco + 14, 'reconstructed antitop pT', 50, 0d0, 1000d0)
-    call book(g_reco + 15, 'reconstructed antitop rapidity', 40, -4d0, 4d0)
-    call book(g_reco + 16, 'reconstructed antitop mass', 50, 100d0, 250d0)
-    call book(g_reco + 17, 'reconstructed ttbar mass', 54, 300d0, 3000d0)
-    call book(g_reco + 18, 'reconstructed ttbar pT', 50, 0d0, 1000d0)
-    call book(g_reco + 19, 'reconstructed ttbar rapidity', 40, -4d0, 4d0)
-    call book(g_reco + 20, 'reconstructed ttW mass', 60, 400d0, 3400d0)
-    call book(g_reco + 21, 'reconstructed ttW pT', 50, 0d0, 1000d0)
-    call book(g_reco + 22, 'reconstructed ttW rapidity', 40, -4d0, 4d0)
-    call book(g_reco + 23, 'reconstructed electron neutrino pT', 50, 0d0, 500d0)
-    call book(g_reco + 24, 'reconstructed electron neutrino pz', 50, -1000d0, 1000d0)
-    call book(g_reco + 25, 'reconstructed electron antineutrino pT', 50, 0d0, 500d0)
-    call book(g_reco + 26, 'reconstructed electron antineutrino pz', 50, -1000d0, 1000d0)
-    call book(g_reco + 27, 'reconstructed associated neutrino pT', 50, 0d0, 500d0)
-    call book(g_reco + 28, 'reconstructed associated neutrino pz', 50, -1000d0, 1000d0)
-    call book(g_reco + 29, 'reconstructed trineutrino mass', 50, 0d0, 1200d0)
-    call book(g_reco + 30, 'reconstruction score', 50, 0d0, 100d0)
-    call book(g_reco + 31, 'reconstruction b pairing', 2, 0.5d0, 2.5d0)
-    call book(g_reco + 32, 'reconstructed top Wplus helicity', 40, -1d0, 1d0)
-    call book(g_reco + 33, 'reconstructed antitop Wminus helicity', 40, -1d0, 1d0)
-    call book(g_reco + 34, 'reconstructed associated W helicity', 40, -1d0, 1d0)
-    call book(g_reco + 35, 'reco qW signed associated W helicity', 40, -1d0, 1d0)
-    call book(g_reco + 36, 'reconstructed ttW threshold rho', 40, 0d0, 1d0)
-
     call book_spin_histograms(g_spin, 'truth ttbar spin')
-    call book_spin_histograms(g_reco_spin, 'reco ttbar spin')
 
     call book(g_assoc_spin + 1, 'truth associated lepton beam cosine', 40, -1d0, 1d0)
     call book(g_assoc_spin + 2, 'truth qW associated lepton beam cosine', 40, -1d0, 1d0)
@@ -642,23 +482,14 @@ contains
     call book(g_assoc_spin + 4, 'truth trilepton triple product', 40, -1d0, 1d0)
     call book(g_assoc_spin + 5, 'truth qW trilepton triple product', 40, -1d0, 1d0)
     call book(g_assoc_spin + 6, 'truth qW associated lepton top contrast', 40, -2d0, 2d0)
-    call book(g_assoc_spin + 7, 'reco associated lepton beam cosine', 40, -1d0, 1d0)
-    call book(g_assoc_spin + 8, 'reco qW associated lepton beam cosine', 40, -1d0, 1d0)
-    call book(g_assoc_spin + 9, 'reco associated top SS lepton cosine', 40, -1d0, 1d0)
-    call book(g_assoc_spin + 10, 'reco trilepton triple product', 40, -1d0, 1d0)
-    call book(g_assoc_spin + 11, 'reco charge signed trilepton triple product', 40, -1d0, 1d0)
-    call book(g_assoc_spin + 12, 'reco qW associated lepton top contrast', 40, -2d0, 2d0)
 
     call book(g_diagnostic + 1, 'diagnostic truth top assignment score', 50, 0d0, 100d0)
-    call book(g_diagnostic + 2, 'diagnostic assigned radiation count', 6, -0.5d0, 5.5d0)
-    call book(g_diagnostic + 3, 'diagnostic truth top mass residual', 50, 0d0, 50d0)
-    call book(g_diagnostic + 4, 'diagnostic missing pT closure residual', 50, 0d0, 10d0)
-    call book(g_diagnostic + 5, 'diagnostic reconstruction score', 50, 0d0, 100d0)
-    call book(g_diagnostic + 6, 'diagnostic reco W mass residual', 50, 0d0, 50d0)
-    call book(g_diagnostic + 7, 'diagnostic reco top mass residual', 50, 0d0, 50d0)
-    call book(g_diagnostic + 8, 'diagnostic reconstruction rate', 1, 0.5d0, 1.5d0)
+    call book(g_diagnostic + 2, 'diagnostic truth top mass residual', 50, 0d0, 50d0)
+    call book(g_diagnostic + 3, 'diagnostic missing pT closure residual', 50, 0d0, 10d0)
 
-    if (g_diagnostic + 8 /= number_of_histograms) then
+    call book_fiducial_categories(g_fiducial_categories + 1)
+    if (g_fiducial_categories + fiducial_category_histogram_count() /= &
+        number_of_histograms) then
       call fail_analysis('internal histogram count is inconsistent')
     end if
   end subroutine book_histograms
@@ -869,15 +700,14 @@ contains
 
 
   subroutine reconstruct_truth_tops(p, istatus, ipdg, wp, wm, b, ab, &
-                                    top, atop, best_score, assigned_count)
+                                    top, atop, best_score)
     implicit none
     double precision, intent(in) :: p(0:, :), wp(0:3), wm(0:3)
     double precision, intent(in) :: b(0:3), ab(0:3)
     integer, intent(in) :: istatus(:), ipdg(:)
     double precision, intent(out) :: top(0:3), atop(0:3), best_score
-    integer, intent(out) :: assigned_count
     integer :: extra_indices(size(p, 2)), nextra, i, code, work, digit
-    integer :: combinations, count
+    integer :: combinations
     double precision :: candidate_top(0:3), candidate_atop(0:3), score
 
     nextra = 0
@@ -894,22 +724,18 @@ contains
     best_score = huge(1d0)
     top = wp + b
     atop = wm + ab
-    assigned_count = 0
     combinations = 3**nextra
     do code = 0, combinations - 1
       candidate_top = wp + b
       candidate_atop = wm + ab
       work = code
-      count = 0
       do i = 1, nextra
         digit = mod(work, 3)
         work = work/3
         if (digit == 1) then
           candidate_top = candidate_top + p(0:3, extra_indices(i))
-          count = count + 1
         else if (digit == 2) then
           candidate_atop = candidate_atop + p(0:3, extra_indices(i))
-          count = count + 1
         end if
       end do
       score = ((invariant_mass(candidate_top) - top_mass_reference)/5d0)**2 + &
@@ -918,7 +744,6 @@ contains
         best_score = score
         top = candidate_top
         atop = candidate_atop
-        assigned_count = count
       end if
     end do
   end subroutine reconstruct_truth_tops
@@ -984,7 +809,7 @@ contains
       jet_pt = transverse_momentum(pjet(:, i))
       jet_eta = abs(pseudorapidity(pjet(:, i)))
       if (jet_eta >= analysis_jet_eta_cut) cycle
-      if (jet_pt > analysis_jet_pt_cut) then
+      if (jet_pt >= analysis_jet_pt_cut) then
         njet25 = njet25 + 1
         jet_ht = jet_ht + jet_pt
         if (lead == 0) then
@@ -992,7 +817,7 @@ contains
         else if (trail == 0) then
           trail = i
         end if
-        if (i /= ibjet .and. i /= iabjet) then
+        if (ibjet == iabjet .or. (i /= ibjet .and. i /= iabjet)) then
           nextra25 = nextra25 + 1
           extra_ht = extra_ht + jet_pt
           if (lead_extra == 0) lead_extra = i
@@ -1019,96 +844,6 @@ contains
       met(1) = met(1) - p(2, i)
     end do
   end subroutine missing_transverse_momentum
-
-
-  subroutine w_constraint_pz(lepton, qx, qy, roots, number_of_roots)
-    implicit none
-    double precision, intent(in) :: lepton(0:3), qx, qy
-    double precision, intent(out) :: roots(2)
-    integer, intent(out) :: number_of_roots
-    double precision :: denominator, mu, discriminant, root_disc
-
-    denominator = lepton(0)**2 - lepton(3)**2
-    if (denominator <= tiny) then
-      roots = 0d0
-      number_of_roots = 1
-      return
-    end if
-    mu = 0.5d0*(w_mass_reference**2 - invariant_mass2(lepton)) + &
-         lepton(1)*qx + lepton(2)*qy
-    discriminant = mu**2 - denominator*(qx**2 + qy**2)
-    if (discriminant >= 0d0) then
-      root_disc = sqrt(discriminant)
-      roots(1) = (mu*lepton(3) + lepton(0)*root_disc)/denominator
-      roots(2) = (mu*lepton(3) - lepton(0)*root_disc)/denominator
-      number_of_roots = 2
-    else
-      roots(1) = mu*lepton(3)/denominator
-      roots(2) = roots(1)
-      number_of_roots = 1
-    end if
-  end subroutine w_constraint_pz
-
-
-  subroutine compute_mt2(first, second, met, result)
-    implicit none
-    double precision, intent(in) :: first(0:3), second(0:3), met(0:1)
-    double precision, intent(out) :: result
-    double precision :: qx, qy, scale, step, candidate, best
-    double precision :: candidate_qx, candidate_qy
-    integer :: ix, iy, iteration, direction
-    logical :: improved
-    double precision, parameter :: directions(2, 8) = reshape((/ &
-         1d0, 0d0, -1d0, 0d0, 0d0, 1d0, 0d0, -1d0, &
-         1d0, 1d0, 1d0, -1d0, -1d0, 1d0, -1d0, -1d0 /), (/2, 8/))
-
-    scale = max(50d0, vector_magnitude_2(met), &
-                transverse_momentum(first), transverse_momentum(second))
-    best = huge(1d0)
-    qx = 0.5d0*met(0)
-    qy = 0.5d0*met(1)
-    do ix = -2, 2
-      do iy = -2, 2
-        candidate_qx = 0.5d0*met(0) + 0.5d0*scale*dble(ix)
-        candidate_qy = 0.5d0*met(1) + 0.5d0*scale*dble(iy)
-        candidate = mt2_objective(first, second, met, &
-                                  candidate_qx, candidate_qy)
-        if (candidate < best) then
-          best = candidate
-          qx = candidate_qx
-          qy = candidate_qy
-        end if
-      end do
-    end do
-    step = 0.5d0*scale
-    do iteration = 1, 12
-      improved = .false.
-      do direction = 1, 8
-        candidate_qx = qx + step*directions(1, direction)
-        candidate_qy = qy + step*directions(2, direction)
-        candidate = mt2_objective(first, second, met, &
-                                  candidate_qx, candidate_qy)
-        if (candidate < best) then
-          best = candidate
-          qx = candidate_qx
-          qy = candidate_qy
-          improved = .true.
-        end if
-      end do
-      if (.not. improved) step = 0.5d0*step
-      if (step < 0.25d0) exit
-    end do
-    result = best
-  end subroutine compute_mt2
-
-
-  double precision function mt2_objective(first, second, met, qx, qy)
-    implicit none
-    double precision, intent(in) :: first(0:3), second(0:3), met(0:1)
-    double precision, intent(in) :: qx, qy
-    mt2_objective = max(transverse_mass(first, qx, qy), &
-         transverse_mass(second, met(0) - qx, met(1) - qy))
-  end function mt2_objective
 
 
   subroutine compute_spin_observables(top, atop, lp, lm, values, products, extra)
@@ -1270,17 +1005,6 @@ contains
   end subroutine boost_to_rest
 
 
-  subroutine massless_four_vector(px, py, pz, vector)
-    implicit none
-    double precision, intent(in) :: px, py, pz
-    double precision, intent(out) :: vector(0:3)
-    vector(0) = sqrt(px**2 + py**2 + pz**2)
-    vector(1) = px
-    vector(2) = py
-    vector(3) = pz
-  end subroutine massless_four_vector
-
-
   double precision function transverse_momentum(vector)
     implicit none
     double precision, intent(in) :: vector(0:3)
@@ -1348,7 +1072,8 @@ contains
   double precision function delta_phi(first, second)
     implicit none
     double precision, intent(in) :: first(0:3), second(0:3)
-    delta_phi = abs(signed_delta_phi(first, second))
+    ! HwU uses an exclusive upper bin edge; keep back-to-back Born events.
+    delta_phi = min(pi - 1d-12, abs(signed_delta_phi(first, second)))
   end function delta_phi
 
 
@@ -1357,7 +1082,8 @@ contains
     double precision, intent(in) :: transverse(0:1), vector(0:3)
     double precision :: difference
     difference = atan2(transverse(1), transverse(0)) - azimuth(vector)
-    delta_phi_vector = abs(atan2(sin(difference), cos(difference)))
+    delta_phi_vector = min(pi - 1d-12, &
+         abs(atan2(sin(difference), cos(difference))))
   end function delta_phi_vector
 
 
@@ -1590,16 +1316,17 @@ contains
 
 
   subroutine fill_truth_decays(wgts, top, atop, wp, wm, wa, www, ep, em, &
-                               mu, b, ab, qassoc, wp_helicity, wm_helicity, &
-                               wa_helicity)
+                               mu, bjet, abjet, qassoc, wp_helicity, wm_helicity, &
+                               wa_helicity, separated_b_jets)
     implicit none
     double precision, intent(in) :: wgts(*)
     double precision, intent(in) :: top(0:3), atop(0:3)
     double precision, intent(in) :: wp(0:3), wm(0:3), wa(0:3), www(0:3)
     double precision, intent(in) :: ep(0:3), em(0:3), mu(0:3)
-    double precision, intent(in) :: b(0:3), ab(0:3)
+    double precision, intent(in) :: bjet(0:3), abjet(0:3)
     double precision, intent(in) :: wp_helicity, wm_helicity, wa_helicity
     integer, intent(in) :: qassoc
+    logical, intent(in) :: separated_b_jets
     double precision :: ep_top(0:3), em_atop(0:3), wp_top(0:3)
     double precision :: wm_atop(0:3), mu_wa(0:3), mlb_plus, mlb_minus
 
@@ -1608,8 +1335,6 @@ contains
     call boost_to_rest(wp, top, wp_top)
     call boost_to_rest(wm, atop, wm_atop)
     call boost_to_rest(mu, wa, mu_wa)
-    mlb_plus = invariant_mass(ep + b)
-    mlb_minus = invariant_mass(em + ab)
 
     call HwU_fill(g_decay + 1, transverse_momentum(wp), wgts)
     call HwU_fill(g_decay + 2, rapidity(wp), wgts)
@@ -1623,9 +1348,13 @@ contains
     call HwU_fill(g_decay + 10, invariant_mass(www), wgts)
     call HwU_fill(g_decay + 11, transverse_momentum(www), wgts)
     call HwU_fill(g_decay + 12, rapidity(www), wgts)
-    call HwU_fill(g_decay + 13, mlb_plus, wgts)
-    call HwU_fill(g_decay + 14, mlb_minus, wgts)
-    call HwU_fill(g_decay + 15, max(mlb_plus, mlb_minus), wgts)
+    if (separated_b_jets) then
+      mlb_plus = invariant_mass(ep + bjet)
+      mlb_minus = invariant_mass(em + abjet)
+      call HwU_fill(g_decay + 13, mlb_plus, wgts)
+      call HwU_fill(g_decay + 14, mlb_minus, wgts)
+      call HwU_fill(g_decay + 15, max(mlb_plus, mlb_minus), wgts)
+    end if
     call HwU_fill(g_decay + 16, ep_top(0), wgts)
     call HwU_fill(g_decay + 17, em_atop(0), wgts)
     call HwU_fill(g_decay + 18, wp_helicity, wgts)
@@ -1677,7 +1406,8 @@ contains
                              njet40, nextra25, lead_jet, trail_jet, &
                              leading_extra_pt, leading_extra_y, extra_ht, &
                              jet_ht, lepton_ht, visible_ht, st, visible, &
-                             lead_lepton_lead_b_dr, min_dr_lepton_b)
+                             lead_lepton_lead_b_dr, min_dr_lepton_b, &
+                             separated_b_jets)
     implicit none
     double precision, intent(in) :: wgts(*)
     double precision, intent(in) :: bjet(0:3), abjet(0:3), bbjet(0:3)
@@ -1688,20 +1418,23 @@ contains
     double precision, intent(in) :: extra_ht, jet_ht, lepton_ht
     double precision, intent(in) :: visible_ht, st, visible(0:3)
     double precision, intent(in) :: lead_lepton_lead_b_dr, min_dr_lepton_b
+    logical, intent(in) :: separated_b_jets
     double precision :: bpt, abpt
 
-    bpt = transverse_momentum(bjet)
-    abpt = transverse_momentum(abjet)
-    call HwU_fill(g_jet + 1, bpt, wgts)
-    call HwU_fill(g_jet + 2, abpt, wgts)
-    call HwU_fill(g_jet + 3, max(bpt, abpt), wgts)
-    call HwU_fill(g_jet + 4, min(bpt, abpt), wgts)
-    call HwU_fill(g_jet + 5, pseudorapidity(bjet), wgts)
-    call HwU_fill(g_jet + 6, pseudorapidity(abjet), wgts)
-    call HwU_fill(g_jet + 7, invariant_mass(bbjet), wgts)
-    call HwU_fill(g_jet + 8, transverse_momentum(bbjet), wgts)
-    call HwU_fill(g_jet + 9, delta_phi(bjet, abjet), wgts)
-    call HwU_fill(g_jet + 10, delta_r(bjet, abjet), wgts)
+    if (separated_b_jets) then
+      bpt = transverse_momentum(bjet)
+      abpt = transverse_momentum(abjet)
+      call HwU_fill(g_jet + 1, bpt, wgts)
+      call HwU_fill(g_jet + 2, abpt, wgts)
+      call HwU_fill(g_jet + 3, max(bpt, abpt), wgts)
+      call HwU_fill(g_jet + 4, min(bpt, abpt), wgts)
+      call HwU_fill(g_jet + 5, pseudorapidity(bjet), wgts)
+      call HwU_fill(g_jet + 6, pseudorapidity(abjet), wgts)
+      call HwU_fill(g_jet + 7, invariant_mass(bbjet), wgts)
+      call HwU_fill(g_jet + 8, transverse_momentum(bbjet), wgts)
+      call HwU_fill(g_jet + 9, delta_phi(bjet, abjet), wgts)
+      call HwU_fill(g_jet + 10, delta_r(bjet, abjet), wgts)
+    end if
     call HwU_fill(g_jet + 11, dble(njet25), wgts)
     call HwU_fill(g_jet + 12, dble(njet40), wgts)
     if (lead_jet > 0) then
@@ -1722,154 +1455,14 @@ contains
     call HwU_fill(g_jet + 22, lepton_ht, wgts)
     call HwU_fill(g_jet + 23, visible_ht, wgts)
     call HwU_fill(g_jet + 24, st, wgts)
-    call HwU_fill(g_jet + 25, invariant_mass(visible), wgts)
-    call HwU_fill(g_jet + 26, transverse_momentum(visible), wgts)
-    call HwU_fill(g_jet + 27, lead_lepton_lead_b_dr, wgts)
-    call HwU_fill(g_jet + 28, min_dr_lepton_b, wgts)
+    if (separated_b_jets) then
+      call HwU_fill(g_jet + 25, invariant_mass(visible), wgts)
+      call HwU_fill(g_jet + 26, transverse_momentum(visible), wgts)
+      call HwU_fill(g_jet + 27, lead_lepton_lead_b_dr, wgts)
+      call HwU_fill(g_jet + 28, min_dr_lepton_b, wgts)
+    end if
   end subroutine fill_truth_jets
 
-
-  subroutine fill_ttw_fiducial(wgts, e1, e2, mu, trilepton, &
-                               same_sign_first, same_sign_second, &
-                               same_sign_pair, opposite_sign_lepton, &
-                               opposite_sign_pair, &
-                               lead_lepton, bjet, abjet, bbjet, met, &
-                               qassoc, n_b_accepted, njet25, nextra25, &
-                               jet_ht, lepton_ht, visible_ht, st, &
-                               lead_lepton_lead_b_dr, mt2_ee)
-    implicit none
-    double precision, intent(in) :: wgts(*)
-    double precision, intent(in) :: e1(0:3), e2(0:3), mu(0:3)
-    double precision, intent(in) :: trilepton(0:3)
-    double precision, intent(in) :: same_sign_first(0:3)
-    double precision, intent(in) :: same_sign_second(0:3)
-    double precision, intent(in) :: same_sign_pair(0:3)
-    double precision, intent(in) :: opposite_sign_lepton(0:3)
-    double precision, intent(in) :: opposite_sign_pair(0:3)
-    double precision, intent(in) :: lead_lepton(0:3)
-    double precision, intent(in) :: bjet(0:3), abjet(0:3), bbjet(0:3)
-    double precision, intent(in) :: met(0:1)
-    integer, intent(in) :: qassoc, n_b_accepted, njet25, nextra25
-    double precision, intent(in) :: jet_ht, lepton_ht, visible_ht, st
-    double precision, intent(in) :: lead_lepton_lead_b_dr, mt2_ee
-    double precision :: lead(0:3), sublead(0:3), third(0:3)
-    double precision :: dphis(3)
-    double precision :: bpt, abpt
-
-    call order_three_leptons(e1, e2, mu, lead, sublead, third)
-    dphis = (/delta_phi_vector(met, e1), delta_phi_vector(met, e2), &
-         delta_phi_vector(met, mu)/)
-    bpt = transverse_momentum(bjet)
-    abpt = transverse_momentum(abjet)
-
-    call HwU_fill(g_fiducial + 1, 1d0, wgts)
-    call HwU_fill(g_fiducial + 2, dble(qassoc), wgts)
-    call HwU_fill(g_fiducial + 3, transverse_momentum(lead), wgts)
-    call HwU_fill(g_fiducial + 4, transverse_momentum(sublead), wgts)
-    call HwU_fill(g_fiducial + 5, transverse_momentum(third), wgts)
-    call HwU_fill(g_fiducial + 6, pseudorapidity(e1), wgts)
-    call HwU_fill(g_fiducial + 7, pseudorapidity(e2), wgts)
-    call HwU_fill(g_fiducial + 8, pseudorapidity(mu), wgts)
-    call HwU_fill(g_fiducial + 9, invariant_mass(trilepton), wgts)
-    call HwU_fill(g_fiducial + 10, transverse_momentum(trilepton), wgts)
-    call HwU_fill(g_fiducial + 11, rapidity(trilepton), wgts)
-    call HwU_fill(g_fiducial + 12, lepton_ht, wgts)
-    call HwU_fill(g_fiducial + 13, invariant_mass(e1 + e2), wgts)
-    call HwU_fill(g_fiducial + 14, delta_phi(e1, e2), wgts)
-    call HwU_fill(g_fiducial + 15, delta_r(e1, e2), wgts)
-    call HwU_fill(g_fiducial + 16, invariant_mass(same_sign_pair), wgts)
-    call HwU_fill(g_fiducial + 17, &
-         delta_phi(same_sign_first, same_sign_second), wgts)
-    call HwU_fill(g_fiducial + 18, &
-         abs(pseudorapidity(same_sign_first) - &
-             pseudorapidity(same_sign_second)), wgts)
-    call HwU_fill(g_fiducial + 19, &
-         delta_r(same_sign_first, same_sign_second), wgts)
-    call HwU_fill(g_fiducial + 20, invariant_mass(opposite_sign_pair), wgts)
-    call HwU_fill(g_fiducial + 21, &
-         delta_phi(opposite_sign_lepton, same_sign_first), wgts)
-    call HwU_fill(g_fiducial + 22, &
-         delta_r(opposite_sign_lepton, same_sign_first), wgts)
-    call HwU_fill(g_fiducial + 23, vector_magnitude_2(met), wgts)
-    call HwU_fill(g_fiducial + 24, minval(dphis), wgts)
-    call HwU_fill(g_fiducial + 25, maxval(dphis), wgts)
-    call HwU_fill(g_fiducial + 26, &
-         transverse_mass(lead_lepton, met(0), met(1)), wgts)
-    call HwU_fill(g_fiducial + 27, &
-         transverse_mass(mu, met(0), met(1)), wgts)
-    call HwU_fill(g_fiducial + 28, &
-         cluster_transverse_mass(trilepton, met), wgts)
-    call HwU_fill(g_fiducial + 29, max(bpt, abpt), wgts)
-    call HwU_fill(g_fiducial + 30, min(bpt, abpt), wgts)
-    call HwU_fill(g_fiducial + 31, invariant_mass(bbjet), wgts)
-    call HwU_fill(g_fiducial + 32, delta_r(bjet, abjet), wgts)
-    call HwU_fill(g_fiducial + 33, dble(njet25), wgts)
-    call HwU_fill(g_fiducial + 34, dble(nextra25), wgts)
-    call HwU_fill(g_fiducial + 35, jet_ht, wgts)
-    call HwU_fill(g_fiducial + 36, visible_ht, wgts)
-    call HwU_fill(g_fiducial + 37, st, wgts)
-    call HwU_fill(g_fiducial + 38, lead_lepton_lead_b_dr, wgts)
-    call HwU_fill(g_fiducial + 39, mt2_ee, wgts)
-    call HwU_fill(g_fiducial + 40, dble(n_b_accepted), wgts)
-  end subroutine fill_ttw_fiducial
-
-
-  subroutine fill_ttw_reconstructed(wgts, nue, anue, nua, wp, wm, wa, &
-                                    top, atop, ttbar, ttw, qassoc, score, &
-                                    pairing, wp_helicity, wm_helicity, &
-                                    wa_helicity)
-    implicit none
-    double precision, intent(in) :: wgts(*)
-    double precision, intent(in) :: nue(0:3), anue(0:3), nua(0:3)
-    double precision, intent(in) :: wp(0:3), wm(0:3), wa(0:3)
-    double precision, intent(in) :: top(0:3), atop(0:3), ttbar(0:3)
-    double precision, intent(in) :: ttw(0:3), score
-    double precision, intent(in) :: wp_helicity, wm_helicity, wa_helicity
-    integer, intent(in) :: qassoc, pairing
-    double precision :: trineutrino(0:3), mttw
-
-    trineutrino = nue + anue + nua
-    mttw = invariant_mass(ttw)
-    call HwU_fill(g_reco + 1, 1d0, wgts)
-    call HwU_fill(g_reco + 2, transverse_momentum(wp), wgts)
-    call HwU_fill(g_reco + 3, rapidity(wp), wgts)
-    call HwU_fill(g_reco + 4, invariant_mass(wp), wgts)
-    call HwU_fill(g_reco + 5, transverse_momentum(wm), wgts)
-    call HwU_fill(g_reco + 6, rapidity(wm), wgts)
-    call HwU_fill(g_reco + 7, invariant_mass(wm), wgts)
-    call HwU_fill(g_reco + 8, transverse_momentum(wa), wgts)
-    call HwU_fill(g_reco + 9, rapidity(wa), wgts)
-    call HwU_fill(g_reco + 10, invariant_mass(wa), wgts)
-    call HwU_fill(g_reco + 11, transverse_momentum(top), wgts)
-    call HwU_fill(g_reco + 12, rapidity(top), wgts)
-    call HwU_fill(g_reco + 13, invariant_mass(top), wgts)
-    call HwU_fill(g_reco + 14, transverse_momentum(atop), wgts)
-    call HwU_fill(g_reco + 15, rapidity(atop), wgts)
-    call HwU_fill(g_reco + 16, invariant_mass(atop), wgts)
-    call HwU_fill(g_reco + 17, invariant_mass(ttbar), wgts)
-    call HwU_fill(g_reco + 18, transverse_momentum(ttbar), wgts)
-    call HwU_fill(g_reco + 19, rapidity(ttbar), wgts)
-    call HwU_fill(g_reco + 20, mttw, wgts)
-    call HwU_fill(g_reco + 21, transverse_momentum(ttw), wgts)
-    call HwU_fill(g_reco + 22, rapidity(ttw), wgts)
-    call HwU_fill(g_reco + 23, transverse_momentum(nue), wgts)
-    call HwU_fill(g_reco + 24, nue(3), wgts)
-    call HwU_fill(g_reco + 25, transverse_momentum(anue), wgts)
-    call HwU_fill(g_reco + 26, anue(3), wgts)
-    call HwU_fill(g_reco + 27, transverse_momentum(nua), wgts)
-    call HwU_fill(g_reco + 28, nua(3), wgts)
-    call HwU_fill(g_reco + 29, invariant_mass(trineutrino), wgts)
-    call HwU_fill(g_reco + 30, min(score, 99.999d0), wgts)
-    call HwU_fill(g_reco + 31, dble(pairing), wgts)
-    call HwU_fill(g_reco + 32, wp_helicity, wgts)
-    call HwU_fill(g_reco + 33, wm_helicity, wgts)
-    call HwU_fill(g_reco + 34, wa_helicity, wgts)
-    call HwU_fill(g_reco + 35, dble(qassoc)*wa_helicity, wgts)
-    if (mttw > tiny) then
-      call HwU_fill(g_reco + 36, &
-           (2d0*top_mass_reference + w_mass_reference)/mttw, wgts)
-    end if
-  end subroutine fill_ttw_reconstructed
 
 
   subroutine order_three_leptons(ep, em, mu, lead, sublead, third)
@@ -1949,8 +1542,9 @@ contains
     accept_ab = transverse_momentum(abjet) >= bjet_pt_cut .and. &
          abs(pseudorapidity(abjet)) < bjet_eta_cut
     if (ibjet == iabjet) then
-      count = merge(1, 0, accept_b .or. accept_ab)
-      lead = ibjet
+      ! A jet containing b and bbar carries neither separate tag identity.
+      count = 0
+      lead = 0
     else
       count = merge(1, 0, accept_b) + merge(1, 0, accept_ab)
       if (accept_b .and. .not. accept_ab) then
@@ -1993,229 +1587,17 @@ contains
   end function passes_trilepton_jet_separation
 
 
-  subroutine reconstruct_three_neutrinos(same_first, same_second, opposite, &
-                                         qassoc, bjet, abjet, met, nue, &
-                                         anue, nua, lp, lm, la, pairing, &
-                                         best_score, success)
-    implicit none
-    double precision, intent(in) :: same_first(0:3), same_second(0:3)
-    double precision, intent(in) :: opposite(0:3), bjet(0:3), abjet(0:3)
-    double precision, intent(in) :: met(0:1)
-    integer, intent(in) :: qassoc
-    double precision, intent(out) :: nue(0:3), anue(0:3), nua(0:3)
-    double precision, intent(out) :: lp(0:3), lm(0:3), la(0:3)
-    integer, intent(out) :: pairing
-    double precision, intent(out) :: best_score
-    logical, intent(out) :: success
-    double precision :: trial_lp(0:3), trial_lm(0:3), trial_la(0:3)
-    double precision :: trial_nue(0:3), trial_anue(0:3), trial_nua(0:3)
-    double precision :: trial_score
-    integer :: assignment, trial_pairing
-    logical :: trial_success
-
-    best_score = huge(1d0)
-    pairing = 0
-    nue = 0d0
-    anue = 0d0
-    nua = 0d0
-    lp = 0d0
-    lm = 0d0
-    la = 0d0
-    do assignment = 1, 2
-      if (assignment == 1) then
-        trial_la = same_first
-        if (qassoc > 0) then
-          trial_lp = same_second
-          trial_lm = opposite
-        else
-          trial_lp = opposite
-          trial_lm = same_second
-        end if
-      else
-        trial_la = same_second
-        if (qassoc > 0) then
-          trial_lp = same_first
-          trial_lm = opposite
-        else
-          trial_lp = opposite
-          trial_lm = same_first
-        end if
-      end if
-      call reconstruct_neutrino_assignment(trial_lp, trial_lm, trial_la, &
-           bjet, abjet, met, trial_nue, trial_anue, trial_nua, &
-           trial_pairing, trial_score, trial_success)
-      if (trial_success .and. trial_score < best_score) then
-        best_score = trial_score
-        pairing = trial_pairing
-        nue = trial_nue
-        anue = trial_anue
-        nua = trial_nua
-        lp = trial_lp
-        lm = trial_lm
-        la = trial_la
-      end if
-    end do
-    success = pairing > 0 .and. best_score < huge(1d0)/2d0
-  end subroutine reconstruct_three_neutrinos
-
-
-  subroutine reconstruct_neutrino_assignment(ep, em, mu, bjet, abjet, met, &
-                                              nue, anue, nua, pairing, &
-                                              best_score, success)
-    implicit none
-    double precision, intent(in) :: ep(0:3), em(0:3), mu(0:3)
-    double precision, intent(in) :: bjet(0:3), abjet(0:3), met(0:1)
-    double precision, intent(out) :: nue(0:3), anue(0:3), nua(0:3)
-    integer, intent(out) :: pairing
-    double precision, intent(out) :: best_score
-    logical, intent(out) :: success
-    double precision :: trial_nue(0:3), trial_anue(0:3), trial_nua(0:3)
-    double precision :: q(4), best_q(4), trial_q(4), scale, step
-    double precision :: score, directions(4, 8)
-    integer :: i1, i2, i3, i4, direction, iteration, trial_pairing, dim
-    logical :: improved
-
-    directions = 0d0
-    do dim = 1, 4
-      directions(dim, 2*dim - 1) = 1d0
-      directions(dim, 2*dim) = -1d0
-    end do
-    q = (/met(0)/3d0, met(1)/3d0, met(0)/3d0, met(1)/3d0/)
-    scale = max(30d0, 0.5d0*vector_magnitude_2(met))
-    best_score = huge(1d0)
-    pairing = 0
-    nue = 0d0
-    anue = 0d0
-    nua = 0d0
-
-    do i1 = -1, 1
-      do i2 = -1, 1
-        do i3 = -1, 1
-          do i4 = -1, 1
-            trial_q = q + scale*dble((/i1, i2, i3, i4/))
-            call three_neutrino_partition_score(ep, em, mu, bjet, abjet, &
-                 met, trial_q, trial_nue, trial_anue, trial_nua, &
-                 trial_pairing, score)
-            if (score < best_score) then
-              best_score = score
-              best_q = trial_q
-              nue = trial_nue
-              anue = trial_anue
-              nua = trial_nua
-              pairing = trial_pairing
-            end if
-          end do
-        end do
-      end do
-    end do
-
-    step = scale
-    do iteration = 1, 12
-      improved = .false.
-      do direction = 1, 8
-        trial_q = best_q + step*directions(:, direction)
-        call three_neutrino_partition_score(ep, em, mu, bjet, abjet, &
-             met, trial_q, trial_nue, trial_anue, trial_nua, &
-             trial_pairing, score)
-        if (score < best_score) then
-          best_score = score
-          best_q = trial_q
-          nue = trial_nue
-          anue = trial_anue
-          nua = trial_nua
-          pairing = trial_pairing
-          improved = .true.
-        end if
-      end do
-      if (.not. improved) step = 0.5d0*step
-    end do
-    success = pairing > 0 .and. best_score < huge(1d0)/2d0
-  end subroutine reconstruct_neutrino_assignment
-
-
-  subroutine three_neutrino_partition_score(ep, em, mu, bjet, abjet, &
-                                             met, q, best_nue, best_anue, &
-                                             best_nua, best_pairing, &
-                                             best_score)
-    implicit none
-    double precision, intent(in) :: ep(0:3), em(0:3), mu(0:3)
-    double precision, intent(in) :: bjet(0:3), abjet(0:3), met(0:1)
-    double precision, intent(in) :: q(4)
-    double precision, intent(out) :: best_nue(0:3), best_anue(0:3)
-    double precision, intent(out) :: best_nua(0:3), best_score
-    integer, intent(out) :: best_pairing
-    double precision :: roots_ep(2), roots_em(2), roots_mu(2)
-    double precision :: cand_nue(0:3), cand_anue(0:3), cand_nua(0:3)
-    double precision :: wp(0:3), wm(0:3), wa(0:3)
-    double precision :: top(0:3), atop(0:3), score, pz_sum, pt_sum
-    double precision :: qax, qay
-    integer :: nep, nem, nmu, ie, im, ia, pair
-
-    qax = met(0) - q(1) - q(3)
-    qay = met(1) - q(2) - q(4)
-    call w_constraint_pz(ep, q(1), q(2), roots_ep, nep)
-    call w_constraint_pz(em, q(3), q(4), roots_em, nem)
-    call w_constraint_pz(mu, qax, qay, roots_mu, nmu)
-    best_score = huge(1d0)
-    best_pairing = 0
-    best_nue = 0d0
-    best_anue = 0d0
-    best_nua = 0d0
-    if (nep == 0 .or. nem == 0 .or. nmu == 0) return
-
-    do ie = 1, nep
-      call massless_four_vector(q(1), q(2), roots_ep(ie), cand_nue)
-      wp = ep + cand_nue
-      do im = 1, nem
-        call massless_four_vector(q(3), q(4), roots_em(im), cand_anue)
-        wm = em + cand_anue
-        do ia = 1, nmu
-          call massless_four_vector(qax, qay, roots_mu(ia), cand_nua)
-          wa = mu + cand_nua
-          do pair = 1, 2
-            if (pair == 1) then
-              top = wp + bjet
-              atop = wm + abjet
-            else
-              top = wp + abjet
-              atop = wm + bjet
-            end if
-            pz_sum = abs(cand_nue(3)) + abs(cand_anue(3)) + &
-                 abs(cand_nua(3))
-            pt_sum = transverse_momentum(cand_nue) + &
-                 transverse_momentum(cand_anue) + &
-                 transverse_momentum(cand_nua)
-            score = ((invariant_mass(top) - top_mass_reference)/15d0)**2 + &
-                 ((invariant_mass(atop) - top_mass_reference)/15d0)**2 + &
-                 ((invariant_mass(wp) - w_mass_reference)/10d0)**2 + &
-                 ((invariant_mass(wm) - w_mass_reference)/10d0)**2 + &
-                 ((invariant_mass(wa) - w_mass_reference)/10d0)**2 + &
-                 ((invariant_mass(top) - invariant_mass(atop))/30d0)**2 + &
-                 (pz_sum/1500d0)**2 + (pt_sum/2000d0)**2
-            if (score < best_score) then
-              best_score = score
-              best_pairing = pair
-              best_nue = cand_nue
-              best_anue = cand_anue
-              best_nua = cand_nua
-            end if
-          end do
-        end do
-      end do
-    end do
-  end subroutine three_neutrino_partition_score
-
-
   subroutine associated_w_helicity(ttw, wa, charged_lepton, cosine)
     implicit none
     double precision, intent(in) :: ttw(0:3), wa(0:3), charged_lepton(0:3)
     double precision, intent(out) :: cosine
-    double precision :: wa_parent(0:3), mu_w(0:3)
+    double precision :: recoil_w(0:3), mu_w(0:3)
     double precision :: axis(3), mu_axis(3)
 
-    call boost_to_rest(wa, ttw, wa_parent)
+    ! Express the helicity axis and analyser in the same W rest frame.
+    call boost_to_rest(ttw - wa, wa, recoil_w)
     call boost_to_rest(charged_lepton, wa, mu_w)
-    call unit_vector(wa_parent(1:3), axis)
+    call unit_vector(-recoil_w(1:3), axis)
     call unit_vector(mu_w(1:3), mu_axis)
     cosine = clamp_cosine(dot_product(axis, mu_axis))
   end subroutine associated_w_helicity
@@ -2284,5 +1666,240 @@ contains
                      trim(message)
     stop 1
   end subroutine fail_analysis
+
+  integer function fiducial_category_histogram_stride()
+    fiducial_category_histogram_stride=fiducial_category_stride
+  end function fiducial_category_histogram_stride
+
+  integer function fiducial_category_histogram_count()
+    fiducial_category_histogram_count=3*fiducial_category_histogram_stride()
+  end function fiducial_category_histogram_count
+
+  subroutine book_fiducial_categories(first_id)
+    integer, intent(in) :: first_id
+    integer :: category,offset,species,pair
+    character(len=12) :: prefix
+    character(len=8), parameter :: leptons(5)=[character(len=8) :: 'e-','e+','mu','mu-','mu+']
+    character(len=8), parameter :: bottoms(2)=[character(len=8) :: 'b jet','bbar jet']
+    character(len=12), parameter :: ll_pairs(5)=[character(len=12) :: 'e- e+','e- mu','e+ mu','e- e-','e+ e+']
+    character(len=12), parameter :: lb_pairs(6)=[character(len=12) :: &
+         'e- b','e- bbar','e+ b','e+ bbar','mu b','mu bbar']
+
+    do category=0,2
+      write(prefix,'(a,i1,a)') 'fiducial ',category,'b '
+      offset=first_id-1+category*fiducial_category_histogram_stride()
+      call book(offset+1,trim(prefix)//' rate',1,0.5d0,1.5d0)
+      do species=1,5
+        call book_fiducial_category_single(offset+2+5*(species-1), &
+             trim(prefix)//' '//trim(leptons(species)),.false.)
+      end do
+      do species=1,2
+        call book_fiducial_category_single(offset+27+6*(species-1), &
+             trim(prefix)//' '//trim(bottoms(species)),.true.)
+      end do
+      do pair=1,5
+        call book_fiducial_category_pair(offset+39+6*(pair-1), &
+             trim(prefix)//' '//trim(ll_pairs(pair)))
+      end do
+      do pair=1,6
+        call book_fiducial_category_pair(offset+69+6*(pair-1), &
+             trim(prefix)//' '//trim(lb_pairs(pair)))
+      end do
+      call book_fiducial_category_pair(offset+105,trim(prefix)//' b bbar')
+      call book(offset+111,trim(prefix)//' trilepton mass',50,0d0,1200d0)
+      call book(offset+112,trim(prefix)//' trilepton pT',50,0d0,1000d0)
+      call book(offset+113,trim(prefix)//' trilepton rapidity',40,-4d0,4d0)
+      call book(offset+114,trim(prefix)//' lepton HT',50,0d0,1200d0)
+      call book(offset+115,trim(prefix)//' visible mass',50,0d0,2500d0)
+      call book(offset+116,trim(prefix)//' visible pT',50,0d0,1500d0)
+      call book(offset+117,trim(prefix)//' visible HT',50,0d0,2500d0)
+      call book(offset+118,trim(prefix)//' visible ST',50,0d0,3000d0)
+      call book(offset+119,trim(prefix)//' missing pT',50,0d0,1000d0)
+      call book(offset+120,trim(prefix)//' jet multiplicity',10,-0.5d0,9.5d0)
+      call book(offset+121,trim(prefix)//' leading lepton pT',50,0d0,600d0)
+      call book(offset+122,trim(prefix)//' subleading lepton pT',50,0d0,600d0)
+      call book(offset+123,trim(prefix)//' third lepton pT',50,0d0,600d0)
+      call book(offset+124,trim(prefix)//' jet HT',50,0d0,1800d0)
+      call book_fiducial_category_pair(offset+125,trim(prefix)//' same-sign')
+      call book_fiducial_category_pair(offset+131,trim(prefix)//' leading OS')
+    end do
+  end subroutine book_fiducial_categories
+
+  subroutine book_fiducial_category_single(first_id,title,is_bottom)
+    integer, intent(in) :: first_id
+    character(len=*), intent(in) :: title
+    logical, intent(in) :: is_bottom
+    double precision :: maximum_pt
+    maximum_pt=600d0
+    if (is_bottom) maximum_pt=1000d0
+    call book(first_id,title//' pT',50,0d0,maximum_pt)
+    call book(first_id+1,title//' eta',50,-2.5d0,2.5d0)
+    call book(first_id+2,title//' rapidity',50,-2.5d0,2.5d0)
+    call book(first_id+3,title//' phi',32,-pi,pi)
+    call book(first_id+4,title//' energy',50,0d0,2000d0)
+    if (is_bottom) call book(first_id+5,title//' mass',50,0d0,200d0)
+  end subroutine book_fiducial_category_single
+
+  subroutine book_fiducial_category_pair(first_id,title)
+    integer, intent(in) :: first_id
+    character(len=*), intent(in) :: title
+    call book(first_id,title//' mass',50,0d0,1500d0)
+    call book(first_id+1,title//' pT',50,0d0,1200d0)
+    call book(first_id+2,title//' delta R',40,0d0,8d0)
+    call book(first_id+3,title//' delta phi',32,0d0,pi)
+    call book(first_id+4,title//' abs delta eta',40,0d0,8d0)
+    call book(first_id+5,title//' rapidity',50,-2.5d0,2.5d0)
+  end subroutine book_fiducial_category_pair
+
+  subroutine fill_fiducial_categories(first_id,p,status,pdg,pjet,njet, &
+       ibjet,iabjet,n_b_accepted,met,wgts,same_first,same_second,opposite)
+    integer, intent(in) :: first_id,njet,ibjet,iabjet,n_b_accepted
+    double precision, intent(in) :: p(0:,:),pjet(0:,:),met(0:1),wgts(*)
+    double precision, intent(in) :: same_first(0:3),same_second(0:3),opposite(0:3)
+    integer, intent(in) :: status(:),pdg(:)
+    double precision :: leptons(0:3,size(p,2)),bottoms(0:3,2)
+    double precision :: trilepton(0:3),visible(0:3),lepton_pts(size(p,2))
+    double precision :: lepton_ht,tag_ht,jet_ht,met_pt,swap,jet_pt
+    logical :: accepted(2)
+    integer :: lepton_species(size(p,2)),nlepton,leg,species,category,offset
+    integer :: i,j,pair,n_selected_jets
+
+    ! A merged b/bbar jet remains an ordinary jet, but is not a b tag of
+    ! either sign.  The caller passes the same accepted, distinct tag count.
+    accepted=.false.
+    bottoms=0d0
+    if (ibjet/=iabjet) then
+      if (ibjet>0 .and. ibjet<=njet) then
+        bottoms(:,1)=pjet(0:3,ibjet)
+        accepted(1)=transverse_momentum(bottoms(:,1))>=bjet_pt_cut .and. &
+             abs(pseudorapidity(bottoms(:,1)))<bjet_eta_cut
+      end if
+      if (iabjet>0 .and. iabjet<=njet) then
+        bottoms(:,2)=pjet(0:3,iabjet)
+        accepted(2)=transverse_momentum(bottoms(:,2))>=bjet_pt_cut .and. &
+             abs(pseudorapidity(bottoms(:,2)))<bjet_eta_cut
+      end if
+    end if
+    category=n_b_accepted
+    if (ibjet==iabjet) category=0
+    offset=first_id-1+category*fiducial_category_histogram_stride()
+    call HwU_fill(offset+1,1d0,wgts)
+
+    nlepton=0
+    trilepton=0d0
+    lepton_ht=0d0
+    do leg=1,size(p,2)
+      if (status(leg)/=1) cycle
+      species=0
+      if (pdg(leg)==11) species=1
+      if (pdg(leg)==-11) species=2
+      if (abs(pdg(leg))==13) species=3
+      if (species==0) cycle
+      nlepton=nlepton+1
+      leptons(:,nlepton)=p(0:3,leg)
+      lepton_species(nlepton)=species
+      lepton_pts(nlepton)=transverse_momentum(p(0:3,leg))
+      trilepton=trilepton+p(0:3,leg)
+      lepton_ht=lepton_ht+lepton_pts(nlepton)
+      call fill_fiducial_category_single(offset+2+5*(species-1), &
+           p(0:3,leg),.false.,wgts)
+      if (pdg(leg)==13) call fill_fiducial_category_single(offset+17, &
+           p(0:3,leg),.false.,wgts)
+      if (pdg(leg)==-13) call fill_fiducial_category_single(offset+22, &
+           p(0:3,leg),.false.,wgts)
+    end do
+
+    visible=trilepton
+    tag_ht=0d0
+    do species=1,2
+      if (.not.accepted(species)) cycle
+      visible=visible+bottoms(:,species)
+      tag_ht=tag_ht+transverse_momentum(bottoms(:,species))
+      call fill_fiducial_category_single(offset+27+6*(species-1), &
+           bottoms(:,species),.true.,wgts)
+    end do
+    do i=1,nlepton
+      do j=i+1,nlepton
+        pair=0
+        if (lepton_species(i)==1 .and. lepton_species(j)==1) pair=4
+        if (lepton_species(i)==2 .and. lepton_species(j)==2) pair=5
+        if (min(lepton_species(i),lepton_species(j))==1 .and. &
+            max(lepton_species(i),lepton_species(j))==2) pair=1
+        if (min(lepton_species(i),lepton_species(j))==1 .and. &
+            max(lepton_species(i),lepton_species(j))==3) pair=2
+        if (min(lepton_species(i),lepton_species(j))==2 .and. &
+            max(lepton_species(i),lepton_species(j))==3) pair=3
+        if (pair>0) call fill_fiducial_category_pair(offset+39+6*(pair-1), &
+             leptons(:,i),leptons(:,j),wgts)
+      end do
+      do species=1,2
+        if (.not.accepted(species)) cycle
+        pair=2*(lepton_species(i)-1)+species
+        call fill_fiducial_category_pair(offset+69+6*(pair-1), &
+             leptons(:,i),bottoms(:,species),wgts)
+      end do
+    end do
+    if (all(accepted)) call fill_fiducial_category_pair(offset+105, &
+         bottoms(:,1),bottoms(:,2),wgts)
+
+    n_selected_jets=0
+    jet_ht=0d0
+    do j=1,njet
+      jet_pt=transverse_momentum(pjet(0:3,j))
+      if (jet_pt<analysis_jet_pt_cut .or. &
+          abs(pseudorapidity(pjet(0:3,j)))>=analysis_jet_eta_cut) cycle
+      n_selected_jets=n_selected_jets+1
+      jet_ht=jet_ht+jet_pt
+    end do
+    met_pt=vector_magnitude_2(met)
+    call HwU_fill(offset+111,invariant_mass(trilepton),wgts)
+    call HwU_fill(offset+112,transverse_momentum(trilepton),wgts)
+    call HwU_fill(offset+113,rapidity(trilepton),wgts)
+    call HwU_fill(offset+114,lepton_ht,wgts)
+    call HwU_fill(offset+115,invariant_mass(visible),wgts)
+    call HwU_fill(offset+116,transverse_momentum(visible),wgts)
+    call HwU_fill(offset+117,lepton_ht+tag_ht,wgts)
+    call HwU_fill(offset+118,lepton_ht+tag_ht+met_pt,wgts)
+    call HwU_fill(offset+119,met_pt,wgts)
+    call HwU_fill(offset+120,dble(n_selected_jets),wgts)
+    ! Sorting this scalar copy retains every species and pair combination.
+    do i=1,nlepton
+      do j=i+1,nlepton
+        if (lepton_pts(j)<=lepton_pts(i)) cycle
+        swap=lepton_pts(i);lepton_pts(i)=lepton_pts(j);lepton_pts(j)=swap
+      end do
+    end do
+    do i=1,min(3,nlepton)
+      call HwU_fill(offset+120+i,lepton_pts(i),wgts)
+    end do
+    call HwU_fill(offset+124,jet_ht,wgts)
+    call fill_fiducial_category_pair(offset+125,same_first,same_second,wgts)
+    call fill_fiducial_category_pair(offset+131,opposite,same_first,wgts)
+  end subroutine fill_fiducial_categories
+
+  subroutine fill_fiducial_category_single(first_id,p,is_bottom,wgts)
+    integer, intent(in) :: first_id
+    double precision, intent(in) :: p(0:3),wgts(*)
+    logical, intent(in) :: is_bottom
+    call HwU_fill(first_id,transverse_momentum(p),wgts)
+    call HwU_fill(first_id+1,pseudorapidity(p),wgts)
+    call HwU_fill(first_id+2,rapidity(p),wgts)
+    call HwU_fill(first_id+3,max(-pi,min(pi-1d-12,azimuth(p))),wgts)
+    call HwU_fill(first_id+4,p(0),wgts)
+    if (is_bottom) call HwU_fill(first_id+5,invariant_mass(p),wgts)
+  end subroutine fill_fiducial_category_single
+
+  subroutine fill_fiducial_category_pair(first_id,first,second,wgts)
+    integer, intent(in) :: first_id
+    double precision, intent(in) :: first(0:3),second(0:3),wgts(*)
+    double precision :: pair(0:3)
+    pair=first+second
+    call HwU_fill(first_id,invariant_mass(pair),wgts)
+    call HwU_fill(first_id+1,transverse_momentum(pair),wgts)
+    call HwU_fill(first_id+2,delta_r(first,second),wgts)
+    call HwU_fill(first_id+3,min(pi-1d-12,delta_phi(first,second)),wgts)
+    call HwU_fill(first_id+4,abs(pseudorapidity(first)-pseudorapidity(second)),wgts)
+    call HwU_fill(first_id+5,rapidity(pair),wgts)
+  end subroutine fill_fiducial_category_pair
 
 end module analysis_hwu_pp_ttxw_trilepton_module

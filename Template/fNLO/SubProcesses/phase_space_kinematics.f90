@@ -119,7 +119,9 @@ contains
 ! works in any frame
     implicit none
     integer npart
-    double precision ecm, xmass(-max_branch:max_particles), xmom(0:3, nexternal)
+    ! A conditional production-real/decay-real event has one more visible
+    ! parton than the individual FKS subprocess.  npart sets its full size.
+    double precision ecm, xmass(-max_branch:*), xmom(0:3, *)
     double precision tiny, vtiny, xm, den, ecmtmp, xsum(0:3), xsuma(0:3), xrat(0:3), ptmp(0:3)
     parameter(tiny=5.d-3)
     parameter(vtiny=1.d-6)

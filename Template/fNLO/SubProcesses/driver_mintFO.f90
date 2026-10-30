@@ -1,4 +1,5 @@
 module driver_mintfo_module
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
   use run_printout_module, only: write_run_summary
   use extra_weights, only: doreweight
   use mint_module, only: maxchannels, n_ave_virt, average_virtual, &
@@ -29,7 +30,8 @@ module driver_mintfo_module
   use run_state, only: lpp, fixed_fac_scale, muf1_over_ref, &
                        muf2_over_ref, muf1_ref_fixed, muf2_ref_fixed, &
                        do_rwgt_scale, do_rwgt_decay_scale, do_rwgt_pdf
-  use genps_fks, only: generate_momenta, generate_momenta_reusing_born
+  use genps_fks, only: generate_momenta, generate_momenta_reusing_born, &
+       cache_current_production_real_parents
   use decay_chain_metadata, only: real_phase_space_dimension, &
                                   decay_random_dimension
   use decay_chain_kinematics, only: decay_variable_start
@@ -65,7 +67,15 @@ module driver_mintfo_module
   use madfks_plot_module, only: topout_impl, outfun_multiplicative_impl
   use decay_chain_parameters, only: multiplicative_nlo_enabled, &
        use_decayed_production_ren_scale_momenta, nlo_correction_enabled, &
-       set_decay_run_order
+       set_decay_run_order, production_hard_proposal
+  use production_hard_split, only: configure_production_hard_split, &
+       production_hard_split_enabled, set_production_hard_branch, &
+       production_hard_branch_active, production_hard_channel_matrix, &
+       set_production_conditional_branch, production_conditional_branch, &
+       production_conditional_real_branch
+  use factorized_phase_space, only: store_factorized_block_momenta
+  use hard_real_kinematics, only: clear_hard_real_point, &
+       clear_production_real_parent_point, production_real_parent_point_available
   use spin_density_fks_matrices, only: &
        set_spin_density_fks_collection, reset_spin_density_fks_matrices
   use spin_density_weight_lines, only: clear_spin_density_weight_lines, &
@@ -99,12 +109,31 @@ module driver_mintfo_module
 
   integer, allocatable, save :: generated_mapconfig(:, :)
   logical, save :: generated_data_initialized = .false.
+  integer, save :: hard_representative(maxchannels) = 0
+  integer, save :: hard_configuration(maxchannels) = 0
+  integer, allocatable, save :: conditional_picked(:), conditional_configurations(:)
+  double precision, allocatable, save :: conditional_volumes(:)
   public :: run_mintfo_driver
   public :: init_driver_generated_data
   public :: sigint_impl
   public :: get_user_params_impl
 
   interface
+    integer function sdm_hard_channel_count()
+    end function sdm_hard_channel_count
+
+    integer function sdm_hard_channel_fks(channel)
+      integer, intent(in) :: channel
+    end function sdm_hard_channel_fks
+
+    integer function sdm_hard_channel_config(channel)
+      integer, intent(in) :: channel
+    end function sdm_hard_channel_config
+
+    integer function sdm_real_core_process(fks)
+      integer, intent(in) :: fks
+    end function sdm_real_core_process
+
     subroutine init_process_dimensions_bridge()
     end subroutine init_process_dimensions_bridge
 
@@ -189,6 +218,8 @@ contains
     integer :: restart_mode
     real :: time_before, time_after, time_other, time_total
     logical :: unequal_factorization_scales
+    logical :: hard_enabled
+    double precision :: hard_scale
 
     call init_process_dimensions_bridge()
     call init_born_dimensions_bridge()
@@ -225,6 +256,8 @@ contains
 
     call setrun()
     call setpara('param_card.dat')
+    call production_hard_proposal(hard_enabled, hard_scale)
+    call configure_production_hard_split(hard_enabled, hard_scale)
     call init_fks_singular_bridge()
     call setcuts()
     call printout()
@@ -422,6 +455,15 @@ contains
     logical, save :: folded_integer_is_valid = .false.
 
     call set_decay_run_order(abrv == 'born')
+    if (hard_configuration(ichan) > 0) then
+      call set_production_hard_branch( &
+           .true., &
+           real_matrix=sdm_real_core_process(hard_representative(ichan)), &
+           real_config=hard_configuration(ichan))
+    else
+      call set_production_hard_branch(.false.)
+    end if
+    call clear_hard_real_point()
 
     ! Bjorken x and CORE factorization scales are production data.  Preserve
     ! their PDF working set across decay replicas; genuinely DECAYED scales
@@ -479,6 +521,18 @@ contains
       do nbody_contribution = 1, contribution_count
         production_contribution = &
              .not. contribution_is_nlo_decay(nbody_contribution)
+        if (production_hard_branch_active()) then
+          contribution_volumes(nbody_contribution) = 1d0
+          contribution_integers(nbody_contribution) = 0
+          contribution_configurations(nbody_contribution) = &
+               contribution_representative_fks(nbody_contribution)
+          if (production_contribution) &
+               call pick_hard_production_sector( &
+               nbody_contribution, contribution_integers(nbody_contribution), &
+               contribution_configurations(nbody_contribution), &
+               contribution_volumes(nbody_contribution))
+          cycle
+        end if
         if (production_contribution) then
           category = ini_fin_fks(ichan)
         else
@@ -536,12 +590,16 @@ contains
       end if
 
       do nbody_contribution = 1, nbody_contribution_max
+        if (production_hard_branch_active() .and. &
+            contribution_is_nlo_decay(nbody_contribution)) cycle
         if (has_nlo_contribution_bundle() .and. nbody_contribution > 1) then
           if (.not. nlo_correction_enabled(nbody_contribution)) cycle
         end if
         calculated_born = .false.
         if (has_nlo_contribution_bundle()) then
           nfks_born = contribution_representative_fks(nbody_contribution)
+          if (production_hard_branch_active()) nfks_born = &
+               contribution_configurations(nbody_contribution)
         else
           call get_born_fks_process(nfks_picked, nfks_born)
         end if
@@ -563,7 +621,7 @@ contains
           passcuts_nbody = passcuts( &
                              event_momenta(0, 1, soft_counterevent), &
                              reweight, ybst_til_tolab(soft_counterevent))
-          if (passcuts_nbody) then
+          if (passcuts_nbody .and. .not. production_hard_branch_active()) then
             pass_cuts_check = .true.
             call set_alphas( &
               event_momenta(0:3, 1:nexternal, soft_counterevent))
@@ -625,6 +683,8 @@ contains
         if (.not. nlo_correction_enabled(nbody_contribution)) cycle
         production_contribution = &
              .not. contribution_is_nlo_decay(nbody_contribution)
+        if (production_hard_branch_active() .and. &
+            .not. production_contribution) cycle
         resolved_partition = 1d0
         if (.not. production_contribution .and. &
             ini_fin_fks(ichan) /= 0) resolved_partition = 0.5d0
@@ -655,6 +715,7 @@ contains
 
     if (has_nlo_contribution_bundle()) then
       do nbody_contribution = 1, contribution_count
+        if (production_hard_branch_active()) cycle
         call get_wgt_no_nbody_component( &
              bundle_nlo_component(nbody_contribution), sampled_weight)
         production_contribution = &
@@ -735,7 +796,8 @@ contains
     passcuts_n1body = passcuts( &
          momentum, reweight, ybst_til_tolab(real_event))
 
-    if (passcuts_nbody .and. abrv /= 'real') then
+    if (passcuts_nbody .and. abrv /= 'real' .and. &
+        .not. production_hard_branch_active()) then
       pass_cuts_check = .true.
       call set_alphas( &
            event_momenta(0:3, 1:nexternal, soft_counterevent))
@@ -743,7 +805,8 @@ contains
       call compute_soft_counter_term()
       call compute_soft_collinear_ct_impl()
     end if
-    if (passcuts_coll .and. abrv /= 'real') then
+    if (passcuts_coll .and. abrv /= 'real' .and. &
+        .not. production_hard_branch_active()) then
       call set_alphas( &
            event_momenta(0:3, 1:nexternal, collinear_counterevent))
       call compute_collinear_counter_term()
@@ -751,7 +814,8 @@ contains
     if (passcuts_n1body) then
       pass_cuts_check = .true.
       call set_alphas(momentum)
-      call include_multichannel_enhance(2)
+      if (.not. production_hard_branch_active()) &
+           call include_multichannel_enhance(2)
       call compute_real_emission()
     end if
   end subroutine evaluate_additive_n1body_sector
@@ -773,11 +837,98 @@ contains
     character(len=4), intent(in) :: abrv
     double precision, intent(inout) :: wgt_me_born, wgt_me_real
 
+    double precision :: born_f(nintegrals), real_f(nintegrals), unused_result
+    double precision :: saved_virt(0:n_ave_virt), saved_born(0:n_ave_virt)
+    double precision :: born_ratio
+    integer :: contribution, category
+    logical :: born_pass_cuts, production_contribution
+
+    if (.not. production_hard_split_enabled() .or. &
+        production_hard_branch_active()) then
+      call set_production_conditional_branch(0)
+      sigint_multiplicative_impl = sigint_multiplicative_pass( &
+           xx, vegas_wgt, ifl, f, ini_fin_fks, nndim, nbody, &
+           event_momenta, p_born, virtual_over_born, calculated_born, &
+           abrv, wgt_me_born, wgt_me_real)
+      return
+    end if
+
+    ! The helicities of a decay density refer to its actual parent momenta.
+    ! B and R production leaves therefore need independent, conditionally
+    ! embedded decay trees.  Both passes retain exactly the same sectors and
+    ! random coordinates; their histograms belong to one Monte Carlo point.
+    call clear_production_real_parent_point()
+    call set_production_conditional_branch(1)
+    unused_result = sigint_multiplicative_pass( &
+         xx, vegas_wgt, ifl, born_f, ini_fin_fks, nndim, nbody, &
+         event_momenta, p_born, virtual_over_born, calculated_born, &
+         abrv, wgt_me_born, wgt_me_real)
+    born_pass_cuts = pass_cuts_check
+    saved_virt = virt_wgt_mint
+    saved_born = born_wgt_mint
+    born_ratio = virtual_over_born
+
+    call set_production_conditional_branch(2)
+    if (production_real_parent_point_available()) then
+      unused_result = sigint_multiplicative_pass( &
+           xx, vegas_wgt, ifl, real_f, ini_fin_fks, nndim, nbody, &
+           event_momenta, p_born, virtual_over_born, calculated_born, &
+           abrv, wgt_me_born, wgt_me_real)
+    else
+      real_f=0d0
+      virt_wgt_mint=0d0
+      born_wgt_mint=0d0
+      virtual_over_born=0d0
+      pass_cuts_check=.false.
+    end if
+    pass_cuts_check = born_pass_cuts .or. pass_cuts_check
+    virt_wgt_mint = virt_wgt_mint + saved_virt
+    born_wgt_mint = born_wgt_mint + saved_born
+    virtual_over_born = virtual_over_born + born_ratio
+    f = born_f + real_f
+    f(1) = abs(f(2))
+    f(5) = abs(f(3))
+
+    ! Score the combined integrand once, keeping the cancellation between
+    ! real and counterevent contributions in every adaptive integer grid.
+    do contribution = 1, nlo_contribution_count()
+      production_contribution = .not. contribution_is_nlo_decay(contribution)
+      category = 0
+      if (production_contribution) category = ini_fin_fks(ichan)
+      call fill_mc_integer( &
+           multiplicative_mc_dimension(contribution, category, production_contribution), &
+           conditional_picked(contribution), &
+           abs(f(2))*conditional_volumes(contribution))
+    end do
+    call set_production_conditional_branch(0)
+    call clear_production_real_parent_point()
+    sigint_multiplicative_impl = 0d0
+  end function sigint_multiplicative_impl
+
+
+  double precision function sigint_multiplicative_pass( &
+       xx, vegas_wgt, ifl, f, ini_fin_fks, nndim, nbody, &
+       event_momenta, p_born, virtual_over_born, calculated_born, &
+       abrv, wgt_me_born, wgt_me_real)
+    implicit none
+    double precision, intent(in) :: xx(ndimmax), vegas_wgt
+    integer, intent(in) :: ifl, ini_fin_fks(maxchannels), nndim
+    double precision, intent(out) :: f(nintegrals)
+    logical, intent(inout) :: nbody, calculated_born
+    double precision, intent(inout) :: &
+         event_momenta(0:3, nexternal, soft_counterevent:real_event)
+    double precision, intent(inout) :: p_born(0:3, nexternal - 1)
+    double precision, intent(inout) :: virtual_over_born
+    character(len=4), intent(in) :: abrv
+    double precision, intent(inout) :: wgt_me_born, wgt_me_real
+
     type(multiplicative_nlo_workspace), save :: workspace
     type(multiplicative_component_cache), save :: folded_production_cache
     complex(kind=8), allocatable, save :: contracted_weights(:)
     double precision, allocatable, save :: leaf_weights(:), total_weights(:)
     double precision, allocatable, save :: leaf_momenta(:, :)
+    double precision, allocatable, save :: leaf_blocks(:, :, :)
+    integer, allocatable, save :: leaf_block_counts(:)
     double precision, allocatable, save :: volumes(:)
     integer, allocatable, save :: picked_integers(:), configurations(:)
     integer, allocatable, save :: statuses(:), pdgs(:)
@@ -812,7 +963,7 @@ contains
            'multiplicative NLO requires the full Born/real/virtual run mode')
     end if
 
-    sigint_multiplicative_impl = 0d0
+    sigint_multiplicative_pass = 0d0
     f = 0d0
     icontr = 0
     iwgt = 0
@@ -827,15 +978,18 @@ contains
     call reset_spin_density_fks_matrices()
     call set_spin_density_fks_collection(.true.)
     call prepare_generated_multiplicative_workspace(workspace)
+    if (production_hard_split_enabled()) call require_supported_pi_decay_tree(workspace)
 
     ! A production component can be shared by all decay replicas only when
     ! its scales are functions of the fixed production core.  DECAYED scale
     ! choices deliberately retain the complete evaluation path.
     reuse_folded_production = decay_fold_reuses_production() .and. &
          folded_production_cache%valid .and. &
-         .not. use_decayed_production_ren_scale_momenta()
+         .not. use_decayed_production_ren_scale_momenta() .and. &
+         .not. production_hard_split_enabled()
     if (.not. decay_fold_reuses_production() .or. &
-        use_decayed_production_ren_scale_momenta()) then
+        use_decayed_production_ren_scale_momenta() .or. &
+        production_hard_split_enabled()) then
       call invalidate_multiplicative_component_cache( &
            folded_production_cache)
     end if
@@ -872,6 +1026,22 @@ contains
     do contribution = 1, contribution_count
       production_contribution = &
            .not. contribution_is_nlo_decay(contribution)
+      if (production_conditional_real_branch()) then
+        picked_integers(contribution) = conditional_picked(contribution)
+        configurations(contribution) = conditional_configurations(contribution)
+        volumes(contribution) = conditional_volumes(contribution)
+        call set_multiplicative_real_configuration( &
+             workspace, contribution, configurations(contribution))
+        cycle
+      end if
+      if (production_contribution .and. production_hard_branch_active()) then
+        call pick_hard_production_sector( &
+             contribution, picked_integers(contribution), &
+             configurations(contribution), volumes(contribution))
+        call set_multiplicative_real_configuration( &
+             workspace, contribution, configurations(contribution))
+        cycle
+      end if
       if (production_contribution) then
         category = ini_fin_fks(ichan)
       else
@@ -902,6 +1072,21 @@ contains
            workspace, contribution, configurations(contribution))
     end do
 
+    if (production_conditional_branch() == 1) then
+      if (allocated(conditional_picked)) then
+        if (size(conditional_picked) /= contribution_count) &
+             deallocate(conditional_picked, conditional_configurations, conditional_volumes)
+      end if
+      if (.not. allocated(conditional_picked)) then
+        allocate(conditional_picked(contribution_count), &
+                 conditional_configurations(contribution_count), &
+                 conditional_volumes(contribution_count))
+      end if
+      conditional_picked = picked_integers
+      conditional_configurations = configurations
+      conditional_volumes = volumes
+    end if
+
     ! Reduce each physical block and immediately evaluate its resolved
     ! sector.  Both maps share all but the final three random variables, so
     ! the second pass retains the complete underlying-Born decay tree and
@@ -916,6 +1101,8 @@ contains
       wgt_me_born = 0d0
       wgt_me_real = 0d0
       ifks = contribution_representative_fks(contribution)
+      if (.not. contribution_is_nlo_decay(contribution) .and. &
+          production_hard_branch_active()) ifks = configurations(contribution)
       radiation_block = contribution
       call update_vegas_x_impl( &
            xx, vegas_variables, nndim, abrv, radiation_block)
@@ -946,7 +1133,12 @@ contains
         end if
         call set_alphas( &
              event_momenta(0:3, 1:nexternal, soft_counterevent))
-        if (production_contribution .and. reuse_folded_production) then
+        if (production_contribution .and. &
+            (production_hard_branch_active() .or. production_conditional_real_branch())) then
+          ! There is no production B density in the hard integral.  Its
+          ! spectator Born densities are recorded below, once the real
+          ! production parents and their helicity frames are available.
+        else if (production_contribution .and. reuse_folded_production) then
           ! Rebuild only the cheap Born densities of the newly sampled decay
           ! blocks.  The expensive production B/R component is restored after
           ! the current decay lines have been PDF/alpha_s dressed.
@@ -971,6 +1163,9 @@ contains
           ! Production materializes one coherent LO embedding for all blocks;
           ! decay increments must not replace those Born snapshots.
           do component = 1, workspace%component_count
+            if ((production_hard_branch_active() .or. &
+                 production_conditional_real_branch()) .and. &
+                component /= component_position) cycle
             call capture_multiplicative_snapshot( &
                  workspace, component, spin_density_bornlike_branch, &
                  soft_counterevent)
@@ -1002,12 +1197,34 @@ contains
         if (production_contribution) then
           production_boost(spin_density_real_branch) = &
                ybst_til_tolab(real_event)
+          if (production_hard_split_enabled() .and. &
+              .not. production_hard_branch_active()) &
+               call cache_current_production_real_parents()
+          if (production_hard_branch_active() .or. &
+              production_conditional_real_branch()) then
+            ! Every decay density contracted with production R must use the
+            ! same real parent momenta.  Re-evaluate the unchanged local
+            ! Born decay maps in that frame, and save those canonical B
+            ! snapshots for the subsequent NLO decay counterterms/leaves.
+            call set_alphas(momentum)
+            call record_multiplicative_spectator_born_densities( &
+                 component_position, real_event)
+            do component = 1, workspace%component_count
+              if (component == component_position) cycle
+              call capture_multiplicative_snapshot( &
+                   workspace, component, spin_density_bornlike_branch, &
+                   real_event)
+            end do
+          end if
         end if
 
         if (.not. (production_contribution .and. &
                    reuse_folded_production)) then
           call compute_prefactors_n1body(vegas_wgt)
-          if (event_momenta(0, 1, soft_counterevent) > 0d0) then
+          if (event_momenta(0, 1, soft_counterevent) > 0d0 .and. &
+              .not. (production_contribution .and. &
+                     (production_hard_branch_active() .or. &
+                      production_conditional_real_branch()))) then
             call set_alphas( &
                  event_momenta(0:3, 1:nexternal, soft_counterevent))
             if (production_contribution) call include_multichannel_enhance(3)
@@ -1016,14 +1233,21 @@ contains
               call compute_soft_collinear_ct_impl()
             end if
           end if
-          if (event_momenta(0, 1, collinear_counterevent) > 0d0) then
+          if (event_momenta(0, 1, collinear_counterevent) > 0d0 .and. &
+              .not. (production_contribution .and. &
+                     (production_hard_branch_active() .or. &
+                      production_conditional_real_branch()))) then
             call set_alphas( &
                  event_momenta(0:3, 1:nexternal, collinear_counterevent))
             call compute_collinear_counter_term()
           end if
           call set_alphas(momentum)
-          if (production_contribution) call include_multichannel_enhance(2)
-          call compute_real_emission()
+          if (production_contribution .and. &
+              .not. production_hard_branch_active()) &
+               call include_multichannel_enhance(2)
+          if (.not. (production_contribution .and. &
+                     production_conditional_branch() == 1)) &
+               call compute_real_emission()
         end if
       end if
       nbody = .true.
@@ -1072,6 +1296,8 @@ contains
       do contribution = 1, contribution_count
         production_contribution = &
              .not. contribution_is_nlo_decay(contribution)
+        if (production_conditional_branch() /= 0) cycle
+        if (production_contribution .and. production_hard_branch_active()) cycle
         if (production_contribution) then
           category = ini_fin_fks(ichan)
         else
@@ -1096,7 +1322,8 @@ contains
            workspace, production_position, vegas_wgt, &
            folded_production_cache)
     else if (decay_fold_group_active() .and. &
-             .not. use_decayed_production_ren_scale_momenta()) then
+             .not. use_decayed_production_ren_scale_momenta() .and. &
+             .not. production_hard_split_enabled()) then
       call store_multiplicative_component_cache( &
            workspace, production_position, vegas_wgt, &
            folded_production_cache)
@@ -1111,6 +1338,16 @@ contains
       allocate(contracted_weights(iwgt), leaf_weights(iwgt))
       allocate(total_weights(iwgt))
     end if
+    if (production_hard_split_enabled()) then
+      if (allocated(leaf_blocks)) then
+        if (size(leaf_blocks,2) /= leaf_capacity .or. &
+            size(leaf_blocks,3) /= workspace%component_count) &
+             deallocate(leaf_blocks,leaf_block_counts)
+      end if
+      if (.not. allocated(leaf_blocks)) &
+           allocate(leaf_blocks(0:3,leaf_capacity,workspace%component_count), &
+                    leaf_block_counts(workspace%component_count))
+    end if
     total_weights = 0d0
     leaves_seen = 0_8
     call reset_multiplicative_leaf_iterator(workspace)
@@ -1118,10 +1355,18 @@ contains
       call next_multiplicative_leaf(workspace, leaf_mask, available)
       if (.not. available) exit
       leaves_seen = leaves_seen + 1_8
-      call test_multiplicative_leaf_cuts( &
-           workspace, production_position, production_boost, &
-           leaf_momenta, statuses, pdgs, particle_from_decay, &
-           particle_count, reweight, leaf_is_materialized, pass_leaf)
+      if (production_hard_split_enabled()) then
+        call test_multiplicative_leaf_cuts( &
+             workspace, production_position, production_boost, &
+             leaf_momenta, statuses, pdgs, particle_from_decay, &
+             particle_count, reweight, leaf_is_materialized, pass_leaf, &
+             leaf_blocks,leaf_block_counts)
+      else
+        call test_multiplicative_leaf_cuts( &
+             workspace, production_position, production_boost, &
+             leaf_momenta, statuses, pdgs, particle_from_decay, &
+             particle_count, reweight, leaf_is_materialized, pass_leaf)
+      end if
       if (.not. leaf_is_materialized) cycle
       if (.not. pass_leaf) cycle
       pass_cuts_check = .true.
@@ -1129,6 +1374,9 @@ contains
       ! Cuts are independent of the matrix-element value.  Applying them
       ! before the spin contraction avoids both a second materialization and
       ! contractions for rejected leaves while preserving IR-safe analysis.
+      if (production_hard_split_enabled()) then
+        call refresh_multiplicative_lo_frames(workspace,leaf_blocks,leaf_block_counts)
+      end if
       call contract_multiplicative_leaf(workspace, contracted_weights)
       if (all(abs(contracted_weights) == 0d0)) cycle
       do weight = 1, iwgt
@@ -1166,6 +1414,8 @@ contains
     do contribution = 1, contribution_count
       production_contribution = &
            .not. contribution_is_nlo_decay(contribution)
+      if (production_conditional_branch() /= 0) cycle
+      if (production_contribution .and. production_hard_branch_active()) cycle
       if (production_contribution) then
         category = ini_fin_fks(ichan)
       else
@@ -1181,13 +1431,118 @@ contains
     call fill_multiplicative_mint_function( &
          f, total_weights(1), virtual_over_born)
     call set_spin_density_fks_collection(.false.)
-  end function sigint_multiplicative_impl
+  end function sigint_multiplicative_pass
+
+
+  subroutine require_supported_pi_decay_tree(workspace)
+    type(multiplicative_nlo_workspace), intent(in) :: workspace
+    logical, save :: checked=.false.
+    logical :: descendant(workspace%component_count,workspace%component_count)
+    integer :: statuses(nexternal),kinds(nexternal),ids(nexternal),pdgs(nexternal)
+    integer :: component,child,leg,count,ancestor,first,second,through
+    external :: sdm_leaf_block_layout
+    if (checked) return
+    descendant=.false.
+    do component=1,workspace%component_count
+      if (workspace%component_ids(component)==0) cycle
+      call sdm_leaf_block_layout(component,spin_density_bornlike_branch,0, &
+           count,statuses,kinds,ids,pdgs)
+      if (count>nexternal) call fail_driver('a decay Born layout exceeds its scratch space')
+      do leg=1,count
+        if (statuses(leg)<0 .or. kinds(leg)/=1) cycle
+        do child=1,workspace%component_count
+          if (workspace%component_ids(child)==ids(leg)) descendant(component,child)=.true.
+        end do
+      end do
+    end do
+    do through=1,workspace%component_count
+      do first=1,workspace%component_count
+        do second=1,workspace%component_count
+          descendant(first,second)=descendant(first,second) .or. &
+               (descendant(first,through).and.descendant(through,second))
+        end do
+      end do
+    end do
+    do first=1,workspace%corrected_count
+      if (.not.nlo_correction_enabled(first)) cycle
+      ancestor=workspace%contribution_positions(first)
+      if (workspace%component_ids(ancestor)==0) cycle
+      do second=1,workspace%corrected_count
+        if (.not.nlo_correction_enabled(second)) cycle
+        child=workspace%contribution_positions(second)
+        if (.not.descendant(ancestor,child)) cycle
+        call fail_driver('REAL_DIAGRAMS with MULTIPLICATIVE does not support '// &
+             'nested NLO-corrected decays; use ADDITIVE or keep the child decay at LO')
+      end do
+    end do
+    checked=.true.
+  end subroutine require_supported_pi_decay_tree
+
+
+  subroutine refresh_multiplicative_lo_frames(workspace,block_momenta,block_counts)
+    type(multiplicative_nlo_workspace), intent(inout) :: workspace
+    double precision, intent(in) :: block_momenta(0:,:,:)
+    integer, intent(in) :: block_counts(:)
+    complex(kind=8), allocatable :: raw_density(:,:,:)
+    double precision :: raw_trace, weighted_trace
+    integer :: component, maximum_size, open_size, qcd_power, scale_pdg
+    integer :: spin, weight, block, contribution
+    logical :: corrected
+    external :: sdm_component_born_density
+
+    maximum_size=maxval(workspace%component_open_sizes)
+    allocate(raw_density(2,maximum_size,maximum_size))
+    do component=1,workspace%component_count
+      block=workspace%component_ids(component)
+      if (block==0) cycle
+      corrected=.false.
+      do contribution=1,workspace%corrected_count
+        if (workspace%contribution_positions(contribution)/=component) cycle
+        corrected=nlo_correction_enabled(contribution)
+      end do
+      if (corrected) cycle
+      if (workspace%branch_by_component(component)/=spin_density_bornlike_branch) &
+           call fail_driver('an uncorrected decay selected a real branch')
+      if (block_counts(component)<1) call fail_driver('a materialized LO decay block is absent')
+      call store_factorized_block_momenta(real_event,block,block_counts(component), &
+           block_momenta(:,1:block_counts(component),component))
+      raw_density=(0d0,0d0)
+      call sdm_component_born_density(component,real_event,open_size,qcd_power,scale_pdg,raw_density)
+      if (open_size/=workspace%component_open_sizes(component)) &
+           call fail_driver('a refreshed LO density changed its spin layout')
+      raw_trace=0d0
+      do spin=1,open_size
+        raw_trace=raw_trace+real(raw_density(1,spin,spin),kind=8)
+      end do
+      do weight=1,workspace%weight_count
+        weighted_trace=0d0
+        do spin=1,open_size
+          weighted_trace=weighted_trace+real( &
+               workspace%branches(component)%bornlike(weight,spin,spin),kind=8)
+        end do
+        if (weighted_trace==0d0) then
+          workspace%branches(component)%bornlike(weight,:,:)=(0d0,0d0)
+          cycle
+        end if
+        if (.not.ieee_is_finite(raw_trace)) &
+             call fail_driver('a refreshed LO decay density has a nonfinite trace')
+        if (raw_trace<=0d0) call fail_driver('a nonzero LO decay density has zero new trace')
+        ! The spin-summed local Born matrix is Lorentz invariant.  Its trace
+        ! retains the original phase-space, coupling and width normalization
+        ! for every scale weight, while the reevaluated matrix supplies the
+        ! actual helicity basis of this materialized leaf.
+        workspace%branches(component)%bornlike(weight,:,:)= &
+             raw_density(1,1:open_size,1:open_size)*(weighted_trace/raw_trace)
+      end do
+    end do
+    deallocate(raw_density)
+  end subroutine refresh_multiplicative_lo_frames
 
 
   subroutine test_multiplicative_leaf_cuts( &
        workspace, production_position, production_boost, leaf_momenta, &
        statuses, pdgs, particle_from_decay, particle_count, reweight, &
-       materialized, passes)
+       materialized, passes,block_momenta,block_counts)
     implicit none
     type(multiplicative_nlo_workspace), intent(in) :: workspace
     integer, intent(in) :: production_position
@@ -1197,6 +1552,8 @@ contains
     logical, intent(out) :: particle_from_decay(:)
     double precision, intent(out) :: reweight
     logical, intent(out) :: materialized, passes
+    double precision, intent(out), optional :: block_momenta(0:,:,:)
+    integer, intent(out), optional :: block_counts(:)
     integer :: production_branch
 
     materialized = multiplicative_leaf_has_snapshots(workspace)
@@ -1207,7 +1564,7 @@ contains
 
     call materialize_multiplicative_leaf( &
          workspace, leaf_momenta, statuses, pdgs, &
-         particle_from_decay, particle_count)
+         particle_from_decay, particle_count,block_momenta,block_counts)
     production_branch = &
          workspace%branch_by_component(production_position)
     passes = passcuts_multiplicative( &
@@ -1215,6 +1572,55 @@ contains
          particle_from_decay, reweight, &
          production_boost(production_branch))
   end subroutine test_multiplicative_leaf_cuts
+
+
+  subroutine pick_hard_production_sector(contribution, picked, configuration, volume)
+    integer, intent(in) :: contribution
+    integer, intent(out) :: picked, configuration
+    double precision, intent(out) :: volume
+    integer :: position, candidate, count, wanted
+    integer, save :: saved_matrix = 0, saved_diagram = 0
+    integer, save :: saved_picked = 0, saved_configuration = 0
+    double precision, save :: saved_volume = 0d0
+
+    if (decay_fold_reuses_production()) then
+      if (saved_matrix /= production_hard_channel_matrix() .or. &
+          saved_diagram /= hard_configuration(ichan) .or. saved_configuration == 0) &
+           call fail_driver('a hard decay fold lost its production FKS sector')
+      picked = saved_picked
+      configuration = saved_configuration
+      volume = saved_volume
+      return
+    end if
+
+    ! Condition the FKS choice on the real matrix element defining this hard
+    ! diagram channel.  Only this matrix's sectors partition its real term.
+    count = 0
+    do position = 1, contribution_channel_count(contribution, 0)
+      candidate = contribution_channel_configuration(contribution, 0, position)
+      if (sdm_real_core_process(candidate) /= production_hard_channel_matrix()) cycle
+      count = count + 1
+    end do
+    if (count == 0) call fail_driver('a hard real channel has no production FKS sectors')
+    wanted = min(count, int(random_unit_interval(iconfig)*count) + 1)
+    picked = wanted
+    volume = 1d0/dble(count)
+    count = 0
+    do position = 1, contribution_channel_count(contribution, 0)
+      candidate = contribution_channel_configuration(contribution, 0, position)
+      if (sdm_real_core_process(candidate) /= production_hard_channel_matrix()) cycle
+      count = count + 1
+      if (count /= wanted) cycle
+      configuration = candidate
+      saved_matrix = production_hard_channel_matrix()
+      saved_diagram = hard_configuration(ichan)
+      saved_picked = picked
+      saved_configuration = configuration
+      saved_volume = volume
+      return
+    end do
+    call fail_driver('hard production sector selection failed')
+  end subroutine pick_hard_production_sector
 
 
   integer function multiplicative_mc_dimension( &
@@ -1358,6 +1764,8 @@ contains
     open (unit=83, file='input_app.txt', status='old')
     done = .false.
     nchans = 0
+    hard_representative = 0
+    hard_configuration = 0
     do while (.not. done)
       read (83, '(a)', err=222, end=222) buffer
       if (buffer(1:7) == 'NPOINTS') then
@@ -1417,7 +1825,20 @@ contains
           iconfigs(kchan) = int(configurations(kchan))
           parsed_integer = nint(configurations(kchan)*10d0) - &
                            iconfigs(kchan)*10
-          if (parsed_integer == 0) then
+          if (parsed_integer == 3) then
+            if (.not. production_hard_split_enabled()) &
+                 call fail_driver('hard channels require REAL_DIAGRAMS production_hard_split')
+            if (iconfigs(kchan) < 1 .or. &
+                iconfigs(kchan) > sdm_hard_channel_count()) &
+                 call fail_driver('hard real-diagram channel is out of range')
+            hard_representative(kchan) = sdm_hard_channel_fks(iconfigs(kchan))
+            hard_configuration(kchan) = sdm_hard_channel_config(iconfigs(kchan))
+            ! A hard channel is an independent real-diagram partition.  Its
+            ! Born topology index is only a placeholder for the inverse map.
+            iconfigs(kchan) = 1
+            ini_fin_fks(kchan) = 0
+            cycle
+          else if (parsed_integer == 0) then
             ini_fin_fks(kchan) = 0
           else if (parsed_integer == 1) then
             ini_fin_fks(kchan) = 1

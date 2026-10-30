@@ -5,6 +5,7 @@ module genps_born
   use run_state
   use kin_functions_module, only: dot => dot_impl
   use phase_space_kinematics, only: phspncheck_born, phase_space_lambda
+  use hard_real_kinematics, only: hard_real_point_available, fetch_hard_born_point
   use decay_chain_metadata, only: initialize_decay_chain_metadata, &
                                   has_decay_chains, born_context, &
                                   context_core_count
@@ -125,6 +126,10 @@ contains
     this_config = iconfig
     config_index = iconfig
     iconfig0 = iconfig
+    if (hard_real_point_available()) then
+      call generate_hard_underlying_born(x,point)
+      return
+    end if
     if (has_nlo_decay()) then
       call generate_nlo_decay_born_phase_space(ndim, x, point)
       return
@@ -201,6 +206,54 @@ contains
     end if
     point%valid = .true.
   end subroutine generate_born_phase_space
+
+  subroutine generate_hard_underlying_born(x,point)
+    double precision, intent(in) :: x(99)
+    type(born_phase_space), intent(inout) :: point
+    double precision :: core(0:3,nexternal),xborn(2),visible(0:3,nexternal-1)
+    integer :: count,leg,context
+    logical :: available,pass
+    call fetch_hard_born_point(core,xborn,count,available)
+    if (.not.available .or. nincoming/=2) call fail_born_state('invalid hard underlying Born cache')
+    point%stot=4d0*ebeam(1)*ebeam(2)
+    point%xbjrk=xborn
+    point%tau=product(xborn)
+    point%ycm=0.5d0*log(xborn(1)/xborn(2))
+    point%ycmhat=0d0
+    if (point%tau<1d0) point%ycmhat=point%ycm/(-0.5d0*log(point%tau))
+    point%shat=point%tau*point%stot
+    point%sqrtshat=sqrt(point%shat)
+    point%xjac=1d0; point%xpswgt=1d0
+    saved_particle_masses=0d0; saved_external_masses=0d0
+    if (has_nlo_decay()) then
+      call initialize_nlo_decay_kinematics()
+      do leg=1,count
+        saved_particle_masses(leg)=nlo_decay_production_mass(leg)
+      end do
+      call generate_nlo_decay_born_momenta(x,point%shat,point%sqrtshat, &
+           point%xjac,point%xpswgt,visible,pass)
+    else if (has_decay_chains()) then
+      call initialize_decay_chain_kinematics()
+      context=born_context()
+      do leg=1,count
+        saved_particle_masses(leg)=core_mass(context,leg)
+      end do
+      call generate_core_born_and_decays(x,point%shat,point%sqrtshat, &
+           point%xjac,point%xpswgt,visible,pass)
+    else
+      if (count/=nexternal-1) call fail_born_state('hard Born cache has wrong multiplicity')
+      visible=core(:,1:nexternal-1)
+      saved_particle_masses(1:count)=particle_masses(1:count)
+      pass=.true.
+    end if
+    if (.not.pass) then
+      call invalidate_born_phase_space()
+      return
+    end if
+    saved_external_masses=saved_particle_masses(1:nexternal-1)
+    born_momenta=visible; born_lab_momenta=visible
+    point%valid=.true.
+  end subroutine generate_hard_underlying_born
 
 
   subroutine generate_decay_born_phase_space(ndim, x, point)

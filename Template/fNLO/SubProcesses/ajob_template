@@ -58,6 +58,19 @@ if [[ ! "$integration_step" =~ ^[0-9]+$ ]] ; then
 fi
 export MG5AMC_REFINEMENT_STAGE="$integration_step"
 
+# Fixed-order launches pass one numeric G-directory group as their first arg.
+if [[ $run_mode == 'all' || $run_mode == 'born' ]] ; then
+    if [[ ! "$channel" =~ ^[0-9]{1,9}$ ]] ; then
+        echo "Invalid fixed-order integration group: $channel" >&2
+        exit 1
+    fi
+    integration_group_number=$((10#$channel))
+    if (( integration_group_number < 1 || integration_group_number > 942438978 )) ; then
+        echo "Invalid fixed-order integration group: $channel" >&2
+        exit 1
+    fi
+fi
+
 FO_EXTRAPATHS=
 export LD_LIBRARY_PATH=$FO_EXTRAPATHS:$LD_LIBRARY_PATH
 export DYLD_LIBRARY_PATH=$FO_EXTRAPATHS:$DYLD_LIBRARY_PATH
@@ -65,12 +78,16 @@ export DYLD_LIBRARY_PATH=$FO_EXTRAPATHS:$DYLD_LIBRARY_PATH
 TAGTAGTAGTAGTAGTAGTAG for i in 1 ; do
     
     if [[ $run_mode == 'all' || $run_mode == 'born' ]] ; then
+        # G1 retains its historical stream. Other independent channel groups
+        # share the run-card seed but use distinct zero-based RNG namespaces.
+        export MG5AMC_INTEGRATION_GROUP=$((integration_group_number-1))
 	if [[ $runnumber == '0' ]] ; then
 	    j=$run_mode\_G$i
 	else
 	    j=$run_mode\_G$i\_$runnumber
 	fi
     else
+        export MG5AMC_INTEGRATION_GROUP=0
 	if [[ $runnumber == '0' ]] ; then
 	    j=G$run_mode$i
 	else

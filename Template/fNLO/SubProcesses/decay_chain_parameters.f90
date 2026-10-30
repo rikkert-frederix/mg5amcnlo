@@ -23,6 +23,8 @@ module decay_chain_parameters
   logical, save :: production_current_sampling_value = .false.
   double precision, save :: production_sampling_mass_value = 0d0
   double precision, save :: production_sampling_width_value = 0d0
+  logical, save :: production_hard_split_value = .false.
+  double precision, save :: production_hard_scale_value = 0.1d0
   integer, save :: number_of_width_species = 0
   integer, allocatable, save :: width_pdgs(:)
   double precision, allocatable, save :: lo_width_values(:)
@@ -64,6 +66,7 @@ module decay_chain_parameters
   public :: use_decayed_production_ren_scale_momenta
   public :: production_w_system_scale
   public :: production_current_proposal
+  public :: production_hard_proposal
   public :: decay_scale_variation_mode, decay_scale_variation_enabled
   public :: decay_scale_factor_count, decay_scale_factor
   public :: decay_scale_species_count, decay_scale_species
@@ -79,6 +82,7 @@ contains
     logical :: variation_mode_seen, scale_factors_seen, scale_grouping_seen
     logical :: combination_mode_seen, production_order_seen, decay_order_seen
     logical :: sampling_mode_seen, sampling_mass_seen, sampling_width_seen
+    logical :: hard_mode_seen, hard_scale_seen
     integer :: unit_number, ios, width_count, width_index
     integer :: scale_count, scale_index, factor_count, factor_index
     integer :: lo_variation_count, nlo_variation_count
@@ -189,6 +193,10 @@ contains
     production_current_sampling_value = .false.
     production_sampling_mass_value = 0d0
     production_sampling_width_value = 0d0
+    production_hard_split_value = .false.
+    production_hard_scale_value = 0.1d0
+    hard_mode_seen = .false.
+    hard_scale_seen = .false.
     sampling_mode_seen = .false.
     sampling_mass_seen = .false.
     sampling_width_seen = .false.
@@ -208,6 +216,24 @@ contains
       read(line, *, iostat=ios) keyword
       if (ios /= 0) call fail_parameters('malformed decay-card keyword')
       select case (trim(keyword))
+      case ('PRODUCTION_HARD_SPLIT')
+        if (hard_mode_seen) call fail_parameters('duplicate PRODUCTION_HARD_SPLIT record')
+        read(line, *, iostat=ios) keyword, momentum_mode
+        if (ios == 0) then
+          select case (trim(momentum_mode))
+          case ('NONE')
+            production_hard_split_value = .false.
+          case ('REAL_DIAGRAMS')
+            production_hard_split_value = .true.
+          case default
+            call fail_parameters('production hard split must be NONE or REAL_DIAGRAMS')
+          end select
+        end if
+        hard_mode_seen = .true.
+      case ('PRODUCTION_HARD_SCALE')
+        if (hard_scale_seen) call fail_parameters('duplicate PRODUCTION_HARD_SCALE record')
+        read(line, *, iostat=ios) keyword, production_hard_scale_value
+        hard_scale_seen = .true.
       case ('PRODUCTION_PHASE_SPACE_SAMPLING')
         if (sampling_mode_seen) call fail_parameters('duplicate PRODUCTION_PHASE_SPACE_SAMPLING record')
         read(line, *, iostat=ios) keyword, momentum_mode
@@ -439,6 +465,11 @@ contains
     end if
     if (production_w_system_value .and. use_decayed_production_momenta_value) &
          call fail_parameters('W_SYSTEM production scale grouping requires CORE momenta')
+    if (.not. ieee_is_finite(production_hard_scale_value) .or. &
+        production_hard_scale_value <= 0d0) &
+         call fail_parameters('production hard split scale must be positive and finite')
+    if (production_hard_split_value .and. .not. production_nlo) &
+         call fail_parameters('production hard split requires NLO production')
     if (production_current_sampling_value) then
       if (.not.sampling_mass_seen .or. .not.sampling_width_seen) &
            call fail_parameters('W_CURRENT requires explicit proposal mass and width')
@@ -1097,6 +1128,18 @@ contains
     mass = production_sampling_mass_value
     width = production_sampling_width_value
   end subroutine production_current_proposal
+
+
+  subroutine production_hard_proposal(enabled, scale)
+    logical, intent(out) :: enabled
+    double precision, intent(out) :: scale
+    enabled = .false.
+    scale = 0.1d0
+    if (.not. has_decay_chains() .and. .not. has_nlo_decay()) return
+    if (.not. initialized) call initialize_decay_chain_parameters()
+    enabled = production_hard_split_value
+    scale = production_hard_scale_value
+  end subroutine production_hard_proposal
 
 
   subroutine initialize_scale_species()

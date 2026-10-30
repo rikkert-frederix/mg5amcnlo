@@ -1105,6 +1105,9 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               writers.FortranWriter(filename), 
                               nconfigs,max_leg_number,nfksconfs,
                               fortran_model)
+
+        if self.opt.get('fks_template') == 'fNLO':
+            self.write_production_real_channels(matrix_element, fortran_model)
         
         if self.opt.get('fks_template') != 'fNLO':
             # For processes with only QCD splittings, write the mapping used
@@ -1331,6 +1334,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               'spin_density_weight_lines.f90',
                               'decay_chain_scales.f90',
                               'phase_space_kinematics.f90',
+                              'hard_real_kinematics.f90',
+                              'production_hard_split.f90',
                               'fks_diagnostics.f90',
                               'fks_qcd_splitting.f90',
                               'fks_soft_kernels.f90',
@@ -3022,6 +3027,217 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         # ordinary factorized decay outputs keep a complete link interface.
         self.write_spin_density_branch_contraction(
             matrix_element, density_exporter)
+
+
+    @staticmethod
+    def production_real_channel_data(matrix_element):
+        """Return the undecayed production diagrams behind each FKS sector.
+
+        Real SDE maps must use the real *core* topology, not the flattened
+        visible decay tree in ``configs_and_props_info.dat``.  Several FKS
+        sectors can refer to the same core matrix element; record that once
+        so the hard integrator does not count that matrix repeatedly.
+        """
+
+        plan = getattr(matrix_element, 'spin_density_plan', None)
+        groups = {}
+        for configuration, info in enumerate(
+                matrix_element.get_fks_info_list(), 1):
+            matrix_id = info['n_me']
+            if plan is not None:
+                variant = plan.get('real_variants', [])[matrix_id - 1]
+                if variant['active_component'] != 0:
+                    continue
+                core = variant['provider']['matrix_element']
+            else:
+                core = matrix_element.real_processes[
+                    matrix_id - 1].matrix_element
+            if matrix_id in groups:
+                groups[matrix_id]['configurations'].append(configuration)
+                continue
+            nexternal, ninitial = core.get_nexternal_ninitial()
+            model = core.get('processes')[0].get('model')
+            diagrams = core.get('diagrams')
+            vertex_sizes = [max(diag.get_vertex_leg_numbers())
+                            for diag in diagrams
+                            if diag.get_vertex_leg_numbers()]
+            minvert = min(vertex_sizes) if vertex_sizes else 0
+            channels = []
+            for index, diagram in enumerate(diagrams, 1):
+                sizes = diagram.get_vertex_leg_numbers()
+                if sizes and max(sizes) > minvert:
+                    continue
+                schannels, tchannels = diagram.get('amplitudes')[0].\
+                    get_s_and_t_channels(ninitial, model, 990)
+                branches = []
+                for vertex in schannels + tchannels:
+                    legs = vertex.get('legs')
+                    parent = legs[-1]
+                    if parent.get('number') >= 0 or len(legs) != 3:
+                        raise fks_common.FKSProcessError(
+                            'A production real diagram is not a binary '
+                            'canonical phase-space tree')
+                    pdg = parent.get('id')
+                    particle = model.get_particle(pdg)
+                    terminal = bool(tchannels) and vertex is tchannels[-1]
+                    branches.append(dict(
+                        branch=-parent.get('number'),
+                        daughters=[leg.get('number') for leg in legs[:-1]],
+                        sprop=pdg if vertex in schannels else 0,
+                        tprid=abs(pdg) if vertex in tchannels[:-1] else 0,
+                        propagator=(pdg if particle and not terminal else 0),
+                        power=(1 + int(particle.is_boson())
+                               if particle and not terminal else 0)))
+                nbranch = max(branch['branch'] for branch in branches)
+                if sorted(branch['branch'] for branch in branches) != list(
+                        range(1, nbranch + 1)):
+                    raise fks_common.FKSProcessError(
+                        'A production real diagram has non-contiguous '
+                        'canonical branches')
+                channels.append(dict(
+                    diagram=diagram.get('number'), amp2_index=index,
+                    branches=branches, nbranch=nbranch))
+            groups[matrix_id] = dict(
+                matrix_id=matrix_id, configurations=[configuration],
+                matrix_element=core, nexternal=nexternal, ninitial=ninitial,
+                channels=channels)
+        return [groups[key] for key in sorted(groups)]
+
+
+    def write_production_real_channels(self, matrix_element, fortran_model):
+        """Export opt-in real-diagram maps and their positive SDE proxies.
+
+        Branch arrays use positive positions b for canonical internal leg
+        -b; daughter labels retain the native signed leg numbering.  The
+        terminal t vertex is retained, with no propagator mass or width.
+        Existing Born maps and their channel lists are untouched.
+        """
+
+        groups = self.production_real_channel_data(matrix_element)
+        source = []
+        hard_channels = [(group['configurations'][0], channel)
+                         for group in groups
+                         for channel in range(1, len(group['channels']) + 1)]
+        source.extend([
+            'INTEGER FUNCTION SDM_HARD_CHANNEL_COUNT()',
+            'IMPLICIT NONE',
+            'SDM_HARD_CHANNEL_COUNT=%d' % len(hard_channels), 'END', ''])
+        for name, position in [('SDM_HARD_CHANNEL_FKS', 0),
+                               ('SDM_HARD_CHANNEL_CONFIG', 1)]:
+            source.extend([
+                'INTEGER FUNCTION %s(CHANNEL)' % name,
+                'IMPLICIT NONE', 'INTEGER CHANNEL', '%s=0' % name,
+                'SELECT CASE (CHANNEL)'])
+            for identifier, channel in enumerate(hard_channels, 1):
+                source.extend(['CASE (%d)' % identifier,
+                               '  %s=%d' % (name, channel[position])])
+            source.extend(['END SELECT', 'END', ''])
+        quantities = [
+            ('SDM_REAL_CORE_PROCESS', lambda group: group['matrix_id']),
+            ('SDM_REAL_CORE_CHANNEL_COUNT',
+             lambda group: len(group['channels'])),
+            ('SDM_REAL_CORE_LEG_COUNT', lambda group: group['nexternal'])]
+        for name, value in quantities:
+            source.extend([
+                'INTEGER FUNCTION %s(CONFIGURATION)' % name,
+                'IMPLICIT NONE', 'INTEGER CONFIGURATION', '%s=0' % name,
+                'SELECT CASE (CONFIGURATION)'])
+            for group in groups:
+                source.extend([
+                    'CASE (%s)' % ','.join(map(str, group['configurations'])),
+                    '  %s=%d' % (name, value(group))])
+            source.extend(['END SELECT', 'END', ''])
+
+        source.extend([
+            'INTEGER FUNCTION SDM_REAL_CORE_CHANNEL_DIAGRAM(',
+            '     $ CONFIGURATION,CHANNEL)', 'IMPLICIT NONE',
+            'INTEGER CONFIGURATION,CHANNEL,SDM_REAL_CORE_PROCESS',
+            'SDM_REAL_CORE_CHANNEL_DIAGRAM=0',
+            'SELECT CASE (SDM_REAL_CORE_PROCESS(CONFIGURATION))'])
+        for group in groups:
+            source.extend(['CASE (%d)' % group['matrix_id'],
+                           '  SELECT CASE (CHANNEL)'])
+            for channel, data in enumerate(group['channels'], 1):
+                source.extend(['  CASE (%d)' % channel,
+                    '    SDM_REAL_CORE_CHANNEL_DIAGRAM=%d' % data['diagram']])
+            source.append('  END SELECT')
+        source.extend(['END SELECT', 'END', ''])
+
+        max_graphs = max([group['matrix_element'].get_number_of_amplitudes()
+                          for group in groups] or [1])
+        source.extend([
+            'SUBROUTINE SDM_REAL_CORE_CHANNEL_WEIGHTS(',
+            '     $ CONFIGURATION,P,WEIGHTS)', 'IMPLICIT NONE',
+            'INTEGER CONFIGURATION,SDM_REAL_CORE_PROCESS',
+            'DOUBLE PRECISION P(0:3,*),WEIGHTS(*)',
+            'DOUBLE PRECISION AMP2(%d)' % max_graphs,
+            'SELECT CASE (SDM_REAL_CORE_PROCESS(CONFIGURATION))'])
+        for group in groups:
+            source.extend([
+                'CASE (%d)' % group['matrix_id'],
+                '  CALL SDM_REAL_CORE_%d_WEIGHTS(P,AMP2)' % group['matrix_id']])
+            source.extend('  WEIGHTS(%d)=MAX(0D0,AMP2(%d))' % (
+                channel, data['amp2_index'])
+                for channel, data in enumerate(group['channels'], 1))
+        source.extend([
+            'CASE DEFAULT',
+            "  WRITE(*,*) 'No production real core for FKS',CONFIGURATION",
+            '  STOP 1', 'END SELECT', 'END', '',
+            'SUBROUTINE SDM_REAL_CORE_CHANNEL_TOPOLOGY(',
+            '     $ CONFIGURATION,CHANNEL,NLEG,NINITIAL,NBRANCH,',
+            '     $ TREE,SPROP,TPRID,PMASS,PWIDTH,POW)', 'IMPLICIT NONE',
+            'INTEGER CONFIGURATION,CHANNEL,NLEG,NINITIAL,NBRANCH,B',
+            'INTEGER TREE(2,*),SPROP(*),TPRID(*),POW(*)',
+            'INTEGER SDM_REAL_CORE_PROCESS',
+            'DOUBLE PRECISION PMASS(*),PWIDTH(*)',
+            'DOUBLE PRECISION GET_MASS_FROM_ID,GET_WIDTH_FROM_ID',
+            'SELECT CASE (SDM_REAL_CORE_PROCESS(CONFIGURATION))'])
+        for group in groups:
+            source.extend(['CASE (%d)' % group['matrix_id'],
+                           '  NLEG=%d' % group['nexternal'],
+                           '  NINITIAL=%d' % group['ninitial'],
+                           '  SELECT CASE (CHANNEL)'])
+            for channel, data in enumerate(group['channels'], 1):
+                source.extend(['  CASE (%d)' % channel,
+                               '    NBRANCH=%d' % data['nbranch']])
+                for branch in data['branches']:
+                    b = branch['branch']
+                    source.extend([
+                        '    TREE(1,%d)=%d' % (b, branch['daughters'][0]),
+                        '    TREE(2,%d)=%d' % (b, branch['daughters'][1]),
+                        '    SPROP(%d)=%d' % (b, branch['sprop']),
+                        '    TPRID(%d)=%d' % (b, branch['tprid']),
+                        '    PMASS(%d)=%s' % (b,
+                            'GET_MASS_FROM_ID(%d)' % branch['propagator']
+                            if branch['propagator'] else '0D0'),
+                        '    PWIDTH(%d)=%s' % (b,
+                            'GET_WIDTH_FROM_ID(%d)' % branch['propagator']
+                            if branch['propagator'] else '0D0'),
+                        '    POW(%d)=%d' % (b, branch['power'])])
+            source.extend([
+                '  CASE DEFAULT',
+                "    WRITE(*,*) 'Invalid production real channel',CHANNEL",
+                '    STOP 1', '  END SELECT'])
+        source.extend([
+            'CASE DEFAULT',
+            "  WRITE(*,*) 'No production real topology for FKS',CONFIGURATION",
+            '  STOP 1', 'END SELECT', 'END'])
+        density_exporter = export_spin_density.SpinDensityExporter(
+            self, fortran_model)
+        for group in groups:
+            source.extend(density_exporter.channel_weight_lines(
+                group['matrix_element'],
+                'SDM_REAL_CORE_%d' % group['matrix_id']))
+        writers.FortranWriter('spin_density_real_channels.f').writelines(source)
+
+        channels, symmetries = [], []
+        for identifier, (configuration, channel) in enumerate(hard_channels, 1):
+            channels.append('%d %d %d' % (identifier, configuration, channel))
+            symmetries.append('%d.3 1' % identifier)
+        for name, rows in [('hard_production_channels.dat', channels),
+                           ('hard_symfact.dat', symmetries)]:
+            with open(name, 'w') as stream:
+                stream.write('\n'.join(rows) + ('\n' if rows else ''))
 
 
     @staticmethod

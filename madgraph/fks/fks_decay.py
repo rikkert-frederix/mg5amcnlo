@@ -3437,7 +3437,9 @@ def decay_card_text(widths, renormalization_scales,
                     production_scale_grouping='NONE',
                     production_phase_space_sampling='FLAT',
                     production_sampling_mass=None,
-                    production_sampling_width=None):
+                    production_sampling_width=None,
+                    production_hard_split='NONE',
+                    production_hard_scale=0.1):
     """Return a deterministic runtime card for on-shell decay parameters."""
 
     absolute_widths = dict(
@@ -3507,6 +3509,13 @@ def decay_card_text(widths, renormalization_scales,
     if production_scale_grouping == 'W_SYSTEM' and production_scale_momenta != 'CORE':
         raise ValueError('W_SYSTEM production scale grouping requires CORE momenta')
     production_phase_space_sampling = production_phase_space_sampling.upper()
+    production_hard_split = production_hard_split.upper()
+    if production_hard_split not in ('NONE', 'REAL_DIAGRAMS'):
+        raise ValueError('Production hard split must be NONE or REAL_DIAGRAMS')
+    if not math.isfinite(production_hard_scale) or production_hard_scale <= 0.:
+        raise ValueError('Production hard split scale must be positive and finite')
+    if production_hard_split != 'NONE' and production_order != 'NLO':
+        raise ValueError('Production hard split requires NLO production')
     if production_phase_space_sampling not in ('FLAT', 'W_CURRENT'):
         raise ValueError('Production phase-space sampling must be FLAT or W_CURRENT')
     if production_phase_space_sampling == 'W_CURRENT':
@@ -3744,6 +3753,17 @@ def decay_card_text(widths, renormalization_scales,
             '%s = production_phase_space_sampling' % production_phase_space_sampling,
             '%.16e = production_sampling_mass' % production_sampling_mass,
             '%.16e = production_sampling_width' % production_sampling_width])
+    lines.extend([
+        '',
+        '#*********************************************************************',
+        '# Production hard real-emission sampling                               *',
+        '# NONE keeps Born-based sampling. REAL_DIAGRAMS adds hard channels     *',
+        '# based on real production diagrams; requires NLO production.         *',
+        '# Decay maps are unchanged. The positive dimensionless split scale    *',
+        '# changes sampling only; the combined result is independent of it.    *',
+        '#*********************************************************************',
+        '%s = production_hard_split ! NONE or REAL_DIAGRAMS.' % production_hard_split,
+        '%.16e = production_hard_scale ! Positive dimensionless split scale.' % production_hard_scale])
     return '\n'.join(lines) + '\n'
 
 

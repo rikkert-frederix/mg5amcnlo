@@ -49,6 +49,7 @@ FILES= fnlo_process_common.o process_dimensions.o			\
 	 decay_chain_parameters.o					\
 	 fnlo_scale_variations.o					\
 	 phase_space_kinematics.o					\
+	 hard_real_kinematics.o production_hard_split.o		\
 	 factorized_phase_space.o factorized_block_kinematics.o	\
 	 top_decay_virtual_cdr.o top_decay_virtual_dispatch.o		\
 	 spin_density_matrix_results.o					\
@@ -184,6 +185,10 @@ SYM= $(RUN) BinothLHADummy.o BinothLHADummy_bridge.o \
 # unchanged and remove that legacy fixed-order flag for this object only.
 top_decay_virtual_cdr.o: top_decay_virtual_cdr.f90
 	$(FC) $(filter-out -fno-automatic,$(FFLAGS)) -c -I. -I$(LIBDIR) $<
+hard_real_kinematics.o: hard_real_kinematics.f90
+	$(FC) $(filter-out -fno-automatic,$(FFLAGS)) -c -I. -I$(LIBDIR) $<
+production_hard_split.o: production_hard_split.f90
+	$(FC) $(filter-out -fno-automatic,$(FFLAGS)) -c -I. -I$(LIBDIR) $<
 %.o: $(ANADIR)/%.f
 	$(FC) $(FFLAGS) -c -I. -I$(LIBDIR) -I$(ANADIR) $(FO_INCLUDEPATHS) $<
 %.o: $(ANADIR)/%.f90
@@ -265,15 +270,18 @@ spin_density_weight_lines.o: multiplicative_nlo_decay.o \
 	$(LIBDIR)alfas_functions_module.mod
 factorized_block_kinematics.o: process_dimensions.o phase_space_kinematics.o
 decay_chain_kinematics.o: process_dimensions.o fnlo_process_common.o \
+	hard_real_kinematics.o \
 	decay_chain_metadata.o \
 	decay_chain_parameters.o phase_space_kinematics.o \
 	factorized_phase_space.o factorized_block_kinematics.o
 nlo_decay_kinematics.o: process_dimensions.o nlo_decay_metadata.o \
+	hard_real_kinematics.o production_hard_split.o \
 	decay_chain_metadata.o decay_chain_kinematics.o \
 	decay_chain_parameters.o factorized_block_kinematics.o \
 	phase_space_kinematics.o boostwdir2.o fnlo_process_common.o \
 	factorized_phase_space.o
 decay_chain_scales.o: process_dimensions.o decay_chain_metadata.o \
+	hard_real_kinematics.o production_hard_split.o \
 	decay_chain_parameters.o decay_chain_kinematics.o \
 	nlo_decay_kinematics.o factorized_phase_space.o dummy_fct.o \
 	$(LIBDIR)alfas_functions_module.mod
@@ -335,6 +343,7 @@ fks_weights.o: process_dimensions.o fks_model_state.o fks_metadata.o \
 	$(LIBDIR)run_state.mod $(LIBDIR)timing_state.mod \
 	$(LIBDIR)extra_weights.mod $(LIBDIR)alfas_functions_module.mod
 fks_contributions.o: process_dimensions.o fks_model_state.o \
+	production_hard_split.o \
 	decay_chain_metadata.o decay_chain_kinematics.o \
 	decay_chain_scales.o factorized_phase_space.o \
 	spin_density_matrix_results.o spin_density_fks_matrices.o \
@@ -347,6 +356,7 @@ fks_singular_bridge.o: fks_model_state.o fks_singular.o \
 	fks_metadata_bridge.o
 fks_random_bridge.o: fks_random.o mint_module.o
 driver_mintFO.o: process_dimensions.o fks_metadata.o fks_channel_map.o \
+	production_hard_split.o hard_real_kinematics.o \
 	decay_chain_metadata.o nlo_decay_kinematics.o nlo_contribution_bundle.o \
 	decay_chain_parameters.o spin_density_fks_matrices.o \
 	spin_density_weight_lines.o multiplicative_nlo_decay.o \
@@ -378,10 +388,12 @@ setcuts.o: process_dimensions.o fks_metadata.o decay_chain_metadata.o \
 	$(LIBDIR)run_state.mod
 setcuts_bridge.o: setcuts.o decay_chain_metadata.o nlo_decay_metadata.o
 genps_born.o: process_dimensions.o FKSParams.o phase_space_kinematics.o \
+	hard_real_kinematics.o \
 	nlo_decay_metadata.o decay_chain_metadata.o decay_chain_kinematics.o \
 	nlo_decay_kinematics.o \
 	$(LIBDIR)run_state.mod $(LIBDIR)kin_functions_module.mod
-genps_fks.o: genps_born.o process_dimensions.o boostwdir2.o FKSParams.o \
+genps_fks.o: genps_born.o process_dimensions.o fks_metadata.o boostwdir2.o FKSParams.o \
+	hard_real_kinematics.o production_hard_split.o \
 	phase_space_kinematics.o fks_diagnostics.o decay_chain_metadata.o \
 	decay_chain_kinematics.o nlo_decay_metadata.o nlo_decay_kinematics.o \
 	factorized_phase_space.o \

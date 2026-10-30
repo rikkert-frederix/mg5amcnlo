@@ -131,6 +131,7 @@ module fks_singular_module
 
   public :: evaluate_fks_sij, sreal, sreal_deg, bornsoftvirtual
   public :: evaluate_born_matrix, evaluate_virtual_matrix
+  public :: evaluate_hard_real_matrix
   public :: getpoles, setfksfactor, fill_configurations_common
   public :: fks_subtraction_shat
   public :: initialize_fks_generated_state
@@ -442,6 +443,21 @@ contains
       end if
     end if
   end subroutine evaluate_real_matrix
+
+
+  subroutine evaluate_hard_real_matrix(event_slot, weight)
+    ! The finite hard contribution is integrated with a direct real phase
+    ! space measure.  Evaluate its full real matrix element without the
+    ! artificial xi**2*(1-y) reduction or Born-limit substitutions of SREAL.
+    integer, intent(in) :: event_slot
+    double precision, intent(out) :: weight
+
+    if (spin_density_fks_collection_enabled()) &
+         call reset_spin_density_reduced_matrix()
+    call evaluate_real_matrix(event_slot, weight)
+    if (spin_density_fks_collection_enabled()) &
+         call set_spin_density_reduced_from_real(1d0)
+  end subroutine evaluate_hard_real_matrix
 
 
   subroutine evaluate_virtual_matrix(event_slot, born_weight, virtual_weight)
