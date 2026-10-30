@@ -1,10 +1,645 @@
 # ttW production–decay study progress
 
+## Repository handoff and regression checks, 30 October 2026
+
+The production hard-channel implementation, fiducial analysis, campaign and
+diagnostic tools, manuscript assets, and both dated scale reports are
+prepared for version control. The process-local generation baseline is
+preserved in `ttw_study/assets/trilepton_baseline_generation.patch`, with
+installation notes alongside it. Generated process copies, raw worker
+outputs, bulk NPZ arrays and the transfer tarball remain local; the archive
+size, checksum and content description are recorded in
+`ttw_study/archives/README.txt`. The existing code-free archive is unchanged.
+
+The targeted FKS/interface/export suite ran 76 checks: 75 passed initially,
+and the remaining factorized-momentum assertion passed after being scoped
+to its actual kernel. The broader study suite ran 231 checks, initially
+with four failures/errors. Three were stale test fixtures: the signed-scale
+compile harness needed the new hard modules, and the two synthetic
+robustness tests needed their own current-source freeze. All ten tests in
+those two modules pass after the fixes. The remaining archival test,
+`test_release_rejects_insufficient_or_repeated_physical_baseline_references`,
+cannot find its original `alllogs_0.html` in the old
+`TTWplus_onshell_eemu_mb0p0_both_alignment_controls_v1` export. No archived
+input hashes or physical campaign records were rewritten to bypass that
+missing evidence. The eight new decay-scale reduction tests pass within
+the broader suite.
+
+## Forty-integration width/scale report update, 30 October 2026
+
+Collected `Events/run_01` through `run_10` in each of `ttw_additive`,
+`ttw_multiplicative`, `ttw_additive_fixedwidth`, and
+`ttw_multiplicative_fixedwidth`. The new report is
+`ttw_study/reports/decay_scales_20261030/report.{tex,pdf}`, with ten
+PDF/PNG figures, five generated tables, a portable LaTeX source ZIP,
+all forty archived card sets, installed analysis/cut source snapshots,
+combined arrays including per-replica central values and errors, a
+precision CSV, and input/figure/report SHA256 manifests. The prior
+19 October edition is retained with its original selection and data.
+
+All inputs use the updated pT >= 20 GeV, |eta| < 2.5 lepton selection,
+no Z-mass vetoes, the 12 GeV low-mass threshold, and the common jet
+isolation baseline in generation cuts. The native inclusive histogram
+therefore equals the fiducial baseline; it is not an unrestricted total.
+The scope remains one direct W+ lepton assignment at 13 TeV, mb=0,
+on-shell resonances, NLO QCD production and top decays, req_acc_FO=0.002,
+81 scale weights and no PDF reweighting. Source snapshots and parameter
+cards agree across all four groups.
+
+The collector now accepts `--campaign-root .` and averages completed
+replicas equally rather than assigning estimated inverse-variance weights.
+Native MC errors propagate across replicas. Ten matched run-index blocks
+have distinct logged RNG seed pairs between blocks, while sharing many
+streams across approximation and width partners within a block. This
+supports empirical paired jackknife MC errors on ratios, now shown in
+the report, rather than assuming independent cross-prediction errors.
+Replica scatter provides a separate precision diagnostic. Both uncertainty
+estimates are retained, and ratio scale envelopes still use matched scale
+vectors after averaging the weights.
+
+Varying-width baseline means are 0.237180578 fb (S) and 0.236888448 fb
+(Pi), a -0.123% ratio shift with a paired MC error of about 0.083
+percentage points. Pi raises 0b by 16.81%, raises 1b by 7.83%, and lowers
+2b by 4.01%; fixed widths give nearly the same shifts. For fixed-width
+Pi in 2b, C7 gives +7.30/-7.85% and I63 +14.01/-13.29%. The two-tag
+m(e+,b-jet) ratio is about 0.956, 0.910 and 0.825 in the native
+90--120, 120--150 and 150--180 GeV bins, with paired MC errors about
+0.0021, 0.0015 and 0.0083. The full off-shell and NNLO literature
+discussion distinguishes omitted physics from scale-prescription
+sensitivity and does not identify the independent envelope as a true
+confidence interval.
+
+Native combined baseline errors are about 0.05%; empirical baseline
+errors are 0.049--0.057%. Integrated empirical/native error ratios range
+from 0.61 to 1.33. Some differential bins remain substantially less
+precise: Pi has 8--10% native errors in the Delta R(mu+,b-jet) bins
+2.8--3.0 and 3.0--3.2. These fluctuations and paired ratio errors are
+shown explicitly, without smoothing or an interpretation as fine
+physical angular structure.
+
+Eight targeted reduction tests pass. The 19-page PDF compiles cleanly;
+the standalone source ZIP was also compiled separately. Representative
+figures and the first PDF page were visually inspected. No original
+campaign outputs were changed and no integrations were launched.
+
+## Baseline generation cuts in current ttW exports, 19 October 2026
+
+Added the common fiducial baseline to `SubProcesses/cuts.f90` in the
+current `_2` and `_3` comparison exports. The template analysis now exposes
+`passes_fiducial_baseline`, which shares the histogram lepton-selection
+routine and jet-isolation function. It applies pT >= 20 GeV and |eta| < 2.5
+to each charged lepton, the 12 GeV opposite-sign same-flavour mass threshold,
+and isolation from accepted anti-kT R=0.4 jets. There are no Z-mass vetoes,
+b-tag-count requirements, or jet-multiplicity requirements. The 0b, 1b
+and 2b categories remain a partition of the selected sample; bottom jets
+still participate in isolation as ordinary jets.
+
+The custom cut is applied to each complete lab-frame real/counterevent
+before the existing decay-product mask. `cut_decays=False` therefore keeps
+its existing meaning for generic run-card cuts without disabling this
+explicit study baseline. The variable-size multiplicative event path uses
+the same cut. Both process makefiles now require the analysis module before
+compiling `cuts.o`. The generic template cut file has no process-specific
+selection; fresh exports need the corresponding call and make dependency.
+
+Both existing analysis tests pass with helper/histogram consistency checks
+across the event fixtures. A bounded compiled probe of the actual study cut
+module, actual lab boost, run state, kinematics, analysis and FastJet also
+passes both cut entry points. It covers rejected leptons despite decay
+masking, the lab-frame eta boost, low-mass rejection, accepted Z masses,
+0/1/2 tags, merged bottom flavours, production/decay jet isolation, zero
+real legs, and simultaneous unresolved emissions. Generated metadata alone
+is stubbed; this is not an integration or a convergence test. Probe sources,
+log and result hashes are in
+`ttw_study/checks/trilepton_generation_cuts_20261019/`.
+
+All four native integration executables rebuild successfully. The analysis
+documentation and PDF are updated in the template and both exports. No
+integrations were launched. With the generation filter, even the plots
+labelled inclusive/truth are now conditional on the fiducial baseline;
+category rates sum to that selected total. Old event outputs and the
+collected report retain their previous definitions and require new run names
+for comparisons with this selection.
+
+## Uniform lepton cuts and removal of Z-mass vetoes, 19 October 2026
+
+Updated the trilepton analysis template and the current comparison exports
+`PROC_fNLO_loop_sm-no_b_mass_2` and `_3`. Every charged lepton now requires
+pT >= 20 GeV and |eta| < 2.5, independent of charge and flavour. Removed
+both the opposite-sign electron-pair and three-lepton Z-mass vetoes. The
+opposite-sign same-flavour mass threshold of 12 GeV, lepton--jet isolation,
+and exclusive 0b/1b/2b definitions are retained. The fiducial cutflow now
+has four stages; all 581 histogram IDs retain their existing meanings.
+
+The two existing trilepton unit tests pass, including the compiled actual
+FastJet regression. Updated acceptance cases cover a 15 GeV opposite-sign
+lepton, electrons at |eta| = 2.48 and 2.51, and accepted dilepton and
+trilepton masses at the Z mass. All four native `madevent_mintFO`
+executables were rebuilt. The analysis documentation and PDF are updated
+in the template and both exports; the PDF compiles without warnings.
+
+No integrations were launched. Completed event files and the width/scale
+comparison report below retain the previous selection. Results using the
+new cuts require new runs and must not be combined with the old selection.
+
+## Collected width/scale comparison report, 19 October 2026
+
+Collected the four matched completed 581-histogram runs: `additive_v2` and
+`multiplicative_v2`, plus their `_FixedWidth` counterparts. Their archived
+RunMaterial cards, common parameter card and all 81 signed decay/production
+scale coordinates define the comparison. The scope is one W+ direct-lepton
+assignment, e+nu_e e-nubar_e mu+nu_mu at 13 TeV, not a full-flavour or charge
+sum. Older rate-only and retired reconstruction-analysis runs are inventoried
+but excluded from this matched comparison. No integrations were launched.
+
+The 16-page LaTeX report and PDF are in
+`ttw_study/reports/decay_scales_20261019/`, with nine standalone PDF/PNG
+figures, four generated tables, a source ZIP, archived cards, full collected
+arrays, numerical results, precision inventory and SHA256 manifests.
+Reduction and rendering are reproducible with `collect_decay_scale_report.py`
+and `render_decay_scale_report.py`. Six targeted reduction tests pass, and
+the PDF compiles without LaTeX warnings or overfull boxes. Figures were
+visually checked and sized for legible labels in the report.
+
+The report compares correlated renormalization variations (C7), independent
+production versus shared decays (I21), fully independent top/antitop axes
+(I63), and the complete 81-point diagnostic, with production-only and
+decay-only responses. Ratios are formed at matching four-component scale
+vectors before envelope reduction. Native bins and their individual MC
+errors are retained; no cross-bin rebinning covariance or cross-run ratio
+errors are invented. Shared RNG initializations in S/Pi runs prevent an
+independent-error significance assignment to their difference.
+
+Inclusive S/Pi central values agree within 0.3%, whereas Pi raises the 0b
+rate by 16--19% and the 1b rate by about 6%, and lowers 2b by about 4%.
+For fixed-width Pi in 2b, C7 gives +7.61/-8.04% and I63 +14.18/-13.40%:
+the smaller correlated band reflects production/decay compensation.
+The 2b e+--b-jet mass ratio changes from about 0.96 at 90--120 GeV to
+0.90--0.91 at 120--150 GeV and 0.77--0.79 in the bin straddling the Born
+endpoint. These are selected beyond-NLO prescription effects, not a full
+NNLO prediction. Fixed/varying widths have the same nominal definition;
+their observed central differences are MC fluctuations, not physical
+width shifts. The report explicitly separates those statements and the
+remaining finite-statistics limits from scale-envelope estimates.
+
+## Fiducial categories replace neutrino-fit plots, 15 October 2026
+
+Removed every neutrino-blind reconstructed histogram and the associated
+three-neutrino fit and mT2 search from `analysis_HwU_pp_ttxw_trilepton`.
+The analysis now books 581 histograms: 173 retained inclusive/truth plots
+and 136 fiducial plots in each exclusive accepted-tag category, exactly
+0b, 1b, or 2b. The common fiducial baseline uses the existing lepton cuts,
+mass vetoes and lepton--jet isolation, with no minimum jet or tag count.
+Accepted tags require pT >= 25 GeV and |eta| < 2.5. Merged b/bbar jets
+are untagged and excluded from every b/antibottom-specific distribution,
+but remain ordinary jets for isolation and activity, including additional
+jet counts. Undefined object/pair observables are not filled.
+
+Each category includes e-, e+, mu, mu- and mu+ pT/eta/rapidity/phi/energy;
+separate accepted b and antibottom jet spectra and masses; five lepton-pair,
+six lepton--tag, and one b--antibottom pair families, each with invariant
+mass, pT, rapidity, delta R, delta phi and absolute delta eta. Charge-selected
+same-sign and leading opposite-sign pairs are also retained. Global plots
+include trilepton and visible lepton-plus-tag kinematics, missing pT,
+ordered lepton pT, and inclusive accepted-jet multiplicity/HT.
+
+The diagnosed bare-b truth masses now use recombined jets, the unresolved
+radiation-count histogram is removed, and angular pi endpoints are retained.
+Review also identified a mixed-frame truth associated-W helicity axis; it
+now uses the negative ttbar recoil and charged lepton in the same W rest
+frame, with an independent Lorentz-scalar/boost regression.
+
+Nine relevant tests pass, including the new compiled actual-FastJet
+measurement regression for both analysis bridges, signed weights, category
+partition, species identities, merged jets, soft/collinear limits and
+endpoint/helicity checks. Both beam-ordering executables compile and link
+in each current comparison export, `PROC_fNLO_loop_sm-no_b_mass_2` and `_3`.
+Their sources and updated three-page analysis PDF match the template.
+No integrations were launched. Existing event files retain their original
+definitions and hashes; new runs must use new names rather than resuming
+or combining the old 286-histogram output. The earlier diagnosis's original
+analysis is frozen beside its measurement probes for reproducibility.
+
+Definitions: `Template/fNLO/FixedOrderAnalysis/ttw_trilepton_analysis.pdf`.
+Update/build provenance: `ttw_study/checks/trilepton_fiducial_update_20261015.json`.
+
+## Trilepton reconstruction histogram diagnosis, 15 October 2026
+
+Read-only investigation of the completed user export
+`PROC_fNLO_loop_sm-no_b_mass_3/Events/multiplicative/MADatNLO.HwU`.
+The final histograms reproduce the sum of the 71 retained workers to output
+rounding. The inclusive and reconstructed rates have relative errors of
+0.146% and 0.590%, respectively, whereas the reconstructed spectra have a
+median per-histogram populated-bin relative error of 37.6%. The analogous
+truth and fiducial categories give 2.18% and 3.32%; their selections differ,
+so this is a precision comparison, not a shape-agreement test.
+
+The adjacent reconstructed associated-W helicity bins [-0.05,0] and [0,0.05]
+contain +5.2997831e-4 +/- 5.2740415e-4 pb and
+-4.9470290e-4 +/- 5.2769765e-4 pb. The ordinary-channel worker udx/G1_19
+supplies 99.9884% and 99.8769% of their variances. Its reconstructed rate
+is only 1.523519e-6 +/- 4.577467e-8 pb. This is strong evidence for migration
+of cancelling weights between reconstructed bins; the archived histograms
+do not retain the individual offending event coordinates.
+
+The fit selects one of 81 coarse transverse-momentum seeds and performs
+12 search iterations without a convergence criterion, while also choosing
+lepton assignments, neutrino roots and b pairings. The reconstructed ttW
+transverse momentum is independent of these choices by transverse-momentum
+conservation and provides a stable control. Reconstruction uses recombined
+anti-kT b jets; massless b quarks do not themselves spoil its collinear limit.
+
+A bounded compiled measurement-function probe used the actual analysis and
+FastJet wrapper on 20 on-shell fiducial Born events and 440 perturbations.
+All exact and near-collinear single/double b splittings preserve every
+reconstructed bin, with roundoff-scale shifts below 6.54e-13. Conserved
+production soft recoil at 0.08 GeV changes reconstructed bins in 4/20 events
+and shifts a fitted neutrino longitudinal momentum by up to 4.19 GeV.
+At 0.0008 GeV no reconstructed bin changes, and smaller shifts decrease
+linearly. These tests support finite reconstruction/boundary sensitivity;
+they are not a general proof of IRC safety or a matrix-element integration.
+
+Three separate definition defects were confirmed: truth lepton--bare-b
+masses (IDs 83--85) change under finite-energy collinear b->bg splitting;
+the assigned-radiation count (280) counts unresolved partons; and the raw
+delta-phi(W,ttbar) histogram (31) drops exactly pi through the half-open HwU
+upper endpoint. The compiled actual-HwU endpoint probe retains pi-epsilon
+but discards pi; physical soft trajectories show this mismatch down to
+0.8e-9 GeV. These are analysis issues, distinct from an established physical
+Sudakov shoulder. No analysis definitions, user exports, or integrations
+were changed. The next implementation should repair those definitions and
+improve the fitter, followed by a differential-weight diagnostic; tightening
+`req_acc_FO` alone does not control reconstructed-bin tails.
+
+Artifacts: `ttw_study/checks/trilepton_reco_histogram_audit_20261015.json`,
+`ttw_study/checks/trilepton_reco_definition_audit_20261015.json`,
+`ttw_study/checks/trilepton_reco_ir_probe_20261015/`, and
+`ttw_study/figures/trilepton_reco_histogram_audit_20261015.{png,pdf}`.
+
+## Separate ordinary and hard job groups, 14 October 2026
+
+New fixed-order job setup batches the original channels separately from
+the production hard-real channels. Within each family, the existing balanced
+20-channel cap applies. For ttW this gives three groups: four original
+channels, 18 hard channels, and 18 hard channels. Unique group numbers keep
+their grids, adaptive allocation and refinement splits separate. The
+requested `req_acc_FO` remains the accuracy of the sum. Fixed-count settings
+apply per group, so three groups request 50% more calls than the previous
+two groups at unchanged per-job settings.
+
+The native worker RNG also receives the group number: G1 preserves its old
+stream, while subsequent groups receive separate streams at each refinement
+stage. This avoids shared streams when group jobs use the same run seed.
+Saved jobs resume with their saved grouping; previous validation records and
+numerical results remain unchanged. No integrations were launched for this
+scheduling change. Six job/refinement tests and five compiled RNG/worker
+launcher tests pass, including distinct group/stage/split streams and legacy
+G1 sequences.
+
+## Production hard channels and Pi spin frames, 14 October 2026
+
+Implemented the production-only hard/singular decomposition of MadFKS,
+section 6.3, equations (6.24)–(6.29), as an opt-in fresh-export feature.
+The ordinary Born-based channels integrate `f R - CT`, while separate
+production real-diagram channels integrate `g R`, with
+`f=h²/(h²+t²)`, `g=t²/(h²+t²)`, `t=2 k_i.k_j/shat`. The two factors are
+evaluated independently to retain their limiting precision. All physical
+weights are retained. The hard channel generates the full production n+1
+configuration and applies an inverse FKS map to recover Born, xi, y and phi.
+Its SDE partition uses undecayed production real-diagram squared amplitudes.
+Decay maps remain based on their single Born diagrams, without extra decay
+channels or decay SDE factors.
+
+Fresh fNLO exports provide real-core channel/topology routines and `.3`
+channel inventories. The native fixed-order launcher appends these channels
+when `REAL_DIAGRAMS = production_hard_split` is set in the decay card; the
+sampling scale is `0.1 = production_hard_scale`. For this ttW export there
+are 36 hard channels plus four existing channels, processed in two groups
+of 20. The default remains `NONE`. The generator requires two hadron beams;
+enabled Pi supports the study's NLO top decays and LO leptonic W decays.
+Nested NLO-corrected descendants of a corrected decay are rejected.
+
+**A pre-existing Pi spin-frame error was exposed during validation.** Pi
+had contracted real-production helicity matrices with spectator decay
+matrices evaluated around underlying-Born parents. In enabled mode, separate
+Born- and real-production passes now evaluate the complete NLO decay product
+around the corresponding physical parents, with identical sampled sectors
+and coordinates. Uncorrected LO descendant matrices are reevaluated in each
+assembled leaf's actual frame, retaining their original invariant trace and
+all weight normalizations. This also handles a W whose momentum changes in a
+radiating top decay. No guessed spin rotation is applied. The default legacy
+path is preserved; historical Pi spectra and normalization need a physics
+revalidation before use in the paper.
+
+Validation: all 36 compiled/exporter/interface regressions, including the
+full production-plus-two-decays export regression, pass. Both native ttW beam
+orderings compile. All 19 common first-point S/Pi comparisons with LO decays
+pass (15 hard, four ordinary channels), maximum relative difference
+`1.27e-13`; these use a separate diagnostic binary, 38 workers and 76 calls.
+Eight corrected NLO-decay smokes covering both scales and channel groups
+give nonzero results with no conservation failures (8,000 calls). Their
+first attempt exposed an auxiliary-array error: the complete-event check
+omitted the already-generated production parton and rejected all Pi
+real-conditioned decay maps. The check now restores that parton in a
+scratch array and uses the actual incoming invariant. A dedicated regression
+retains rejection of incomplete and corrupted events. With the feature
+disabled, old/new native estimates and histograms
+are bitwise identical for both S and Pi from common frozen inputs.
+
+The first 32-worker rate ensemble predates the spin-frame correction and is
+retained as preliminary diagnostic history, not a corrected prediction.
+The final bounded validation completed 32 fixed-count 100,000-point workers
+at `h=0.1,0.3`, with S seeds 923001–923016 and Pi seeds 924017–924032,
+and no PDF/scale reweighting. The 16 S jobs were retained across the
+Pi-specific conservation-check correction: ordinary and hard S replays
+give bitwise identical native estimates and complete histograms. Each
+worker's actual executable and source hashes are preserved in the v4 record.
+Its original training grids remain valid proposals, but their old weights
+are not included in final estimates. Historical Pi is excluded as a reference
+for normalization and efficiency; the two corrected split scales provide
+the Pi comparison. The complete v4 results are:
+
+| Prescription | h | Inclusive rate [pb] | Native SEM [pb] | Between-replica SEM [pb] |
+|---|---:|---:|---:|---:|
+| S | 0.1 | 2.4814252e-4 | 3.74112e-6 | 2.82325e-6 |
+| S | 0.3 | 2.4587320e-4 | 3.33199e-6 | 2.87892e-6 |
+| Pi | 0.1 | 2.4940665e-4 | 2.20365e-6 | 9.58599e-7 |
+| Pi | 0.3 | 2.4946097e-4 | 1.73248e-6 | 1.37519e-6 |
+
+The descriptive h-scale differences are 0.453 (S) and -0.0194 (Pi) combined
+native errors. Populated-bin comparisons cover 95 S and 100 Pi histograms,
+with maximum absolute descriptive pulls 2.56 and 3.19. Bins are correlated;
+these diagnostics are not Gaussian goodness-of-fit tests or coverage proofs.
+S variance times CPU is 2.32 and 1.94 times its valid baseline, excluding
+new training, so **no overall precision gain is demonstrated**. Pi has no
+valid legacy normalization/efficiency reference. All signed bins and errors
+are retained; log plots omit nonpositive bins only for display. See
+`ttw_study/results/production_hard_split_20261014_v4.json` and
+`ttw_study/figures/production_hard_split_20261014_v4/production_hard_split.pdf`.
+
+Evidence: `ttw_study/checks/hard_spin_frame_validation_20261014/`,
+`hard_complete_event_validation_20261014/`,
+`hard_split_final_nlo_smoke_20261014_v2.json`,
+`hard_split_disabled_control_final_v6.json`, and the final report
+`production_hard_split_validation_20261014.json`. The original precision
+campaign and production exports have not been resumed or modified.
+
+## Bounded tail diagnostic completed, 14 October 2026
+
+Completed the requested pilot in an isolated export of the W+ mu,e,mu process,
+using one dxu production beam ordering, m_b=0 and on-shell Ws. Only central
+scale/PDF weights were evaluated; measured PDF and scale reweighting CPU is
+zero, including training. The original precision campaign, its samples and
+simulation sources were preserved. No extreme weight was removed or rescaled.
+
+The pilot used **3,480,064 calls**: 32 independent 100,000-point workers,
+two 100,000-point exact replays, four 20,000-point S training iterations,
+and 32 calls each for the instrumented smoke test and unmodified control.
+The first 16 independent workers compare S/Pi; two further eight-worker S
+arms test 5% virtual sampling and a fresh S-derived proposal. Replays and
+training are excluded from independent ensemble errors. This single-process
+diagnostic does not replace the full-flavour prediction.
+
+The largest observed hard-real point, S910106 ordinal 66197, has net weight
+3.18224 pb and supplies **99.14% of its worker's estimated variance**. Its
+production real term is 3.18041 pb, with no large local subtraction
+cancellation. Selected production real densities, including this extreme,
+were recomputed in quadruple arithmetic: the maximum relative density
+discrepancy across 40 tested points is 8.30e-14. Native and accurate final
+weight summation also agree closely. These checks support a sampling-tail
+explanation for the tested real extremes; they do not certify complete
+subtraction, Born/decay, virtual or mapping accuracy. Raw nonfinite monitoring
+covers net weights and scalar coefficients, not every density-array rejection.
+
+Raising initial virtual sampling and its minimum floor to 5% costs 35% more
+CPU and improves the production virtual-residual variance-times-CPU metric
+by about 8.1, but the new hard-real extreme prevents a demonstrated total
+gain. Fresh four-iteration S training loads valid S integer grids and changes
+continuous/discrete proposals, virtual approximations and sampling fractions
+together. Its total variance-times-CPU is 3.24 times the original pilot
+baseline, or 4.45 including its 657.6 seconds of training. Eight replicas per
+arm give noisy heavy-tail estimates; neither comparison establishes an
+overall convergence improvement. S-derived proposal tails also include
+Born-dominated weights, so one universal subtraction-cancellation cause is
+not supported. Refinement grids continue adapting, as established below.
+
+All 35 completed single-iteration worker means/errors reproduce their raw
+moments within 1.69e-14 relative. Both S/Pi replays reproduce retained point
+records and full moments exactly; the 32-call unmodified control reproduces
+the mean/error and every histogram bin. Evidence is in
+[the final numerical report](ttw_study/results/tail_pilot_final_20261014.json),
+[the pilot summary](ttw_study/checks/tail_pilot_summary_20261014.json),
+[the independent review](ttw_study/checks/tail_pilot_completed_arm_review_20261014_v2.json)
+and [the sampler-control figure](ttw_study/figures/tail_pilot_controls_20261014/sampler_controls.pdf).
+The README records analysis and fresh-pilot commands.
+
+Next priority is separate continuous grids for production qg/gq FKS sectors
+5–6, which currently share continuous proposals with qqbar initial-state
+radiation sectors 1–2 within each existing Born-diagram channel, while having
+separate discrete selection probabilities. Born single-diagram-enhanced
+multichannel partition factors are already included in Born, real and
+counterterm prefactors. The pilot has two Born-diagram channels times two
+initial/final radiation categories, hence four continuous MINT grids; the
+proposed separation would further subdivide those existing channels.
+Preserve real/subtraction
+combinations and test variance per CPU with fixed-count replicas. Correlated
+production maps or conditional strata are further candidates; these changes
+are hypotheses to test, not established cures. A coupled pointwise Pi-minus-S
+estimator could cancel shared production fluctuations, but requires a common
+proposal and deliberate coupling of radiation/decay sampling; equal seeds
+alone do not provide this. It has not been implemented. Retain all extreme
+points and keep numerical-stability checks scoped to what was actually tested.
+
+## Grid adaptation correction, 14 October 2026
+
+The user correctly challenged the frozen-refinement claim. Tracing the full
+MINT initialization shows setup_imode_m1 sets imode=0 after reading grids,
+enabling per-iteration updates of continuous grids, integer FKS probabilities,
+virtual approximations and virtual sampling fractions. The driver logs the
+input -1 mode before this conversion; reading only that log and update guard
+caused the incorrect earlier diagnosis. Split worker grids are merged by the
+interface and copied to subsequent workers. S902011 stage3 itself logs
+regridded F before the iteration and T afterward for the dominant channel.
+
+Corrected this ledger, the README and the authoritative investigation JSON;
+`checks/precision_grid_adaptation_correction_20261014.json` records the evidence.
+The numerical outlier and variance measurements remain valid, but a frozen
+proposal is not their cause. There is a per-channel minimum-hit threshold
+for continuous-grid updates, and one-iteration workers adapt at their end;
+neither amounts to a blanket refinement freeze. No simulation code changed.
+
+## Precision convergence investigation, 14 October 2026
+
+The lean precision campaign has completed 11 integrations; Pi902012 was
+interrupted during its second refinement. No MG5 worker was running during
+this investigation. The launcher, campaign state, simulation sources and
+all original samples were left unchanged. No outlier was removed.
+
+The latest completed S902011 took 69.61 hours and gives
+5.02036034e-4 +/- 2.90646e-6 pb. One dxu/all_G1_1 worker supplies 91.49%
+of its final variance. Different workers dominate stages 1 and 2, with
+84.77% and 71.73% of those stages' variances. The dxu refinement grows from
+11.17 million to 67.03 million channel calls, but its error changes only
+from 3.13998e-6 to 2.84654e-6 pb (sqrt(N) would predict 1.28189e-6).
+The production-NLO component carries the large uncertainty; the two decay
+component errors are about 1.4e-8 pb. The extreme channel is production
+initial-state FKS radiation, not massless-bottom decay radiation.
+
+Archived logs contain zero unrescued MadLoop points, and the dominant S
+worker's virtual error is only 1.17e-8 pb. Some Pi outliers instead have
+large stochastic virtual residuals without reported loop instability.
+These observations establish heavy worker-weight tails, but do not exclude
+real/subtraction numerical cancellation: no extreme point coordinates were
+recorded, and MadLoop's counters do not monitor tree/subtraction accuracy.
+
+Native positive-accuracy mode fixes initial grid training to 5% with up to
+six iterations, overriding the prepared grid_points. Refinements DO continue
+adapting continuous/integer grids and virtual approximations: setup_imode_m1
+reads the previous grids and sets imode=0. Updated split grids are merged and
+passed to the next stage. The initial claim of frozen refinements was incorrect
+and is withdrawn. New stages replace earlier samples, so stage estimates are
+not nested averages. The old inverse-variance duration
+forecast is unreliable in this regime. About 91% of the worst worker's CPU is
+PDF reweighting, which is a separate avoidable diagnostic-pilot cost.
+
+Saved `scripts/diagnose_precision_convergence.py` (native logs only),
+`results/precision_convergence_20261014_v2.json`,
+`checks/worker_outliers_20261014.json`,
+`checks/precision_convergence_investigation_20261014.json` and
+`figures/precision_convergence_20261014_v2/convergence.pdf` under ttw_study.
+Thirty-one mean/error reconstructions agree with native res files at their
+printed precision. The figure was visually inspected. Proposed next work is
+a separate bounded pilot retaining only extreme net point weights and their
+FKS coordinates/components for replay, followed by stronger training and
+fixed-count independent convergence tests. No such pilot was launched during
+that investigation; the completed follow-up is recorded above.
+
+Code review also found inverse-standard-error iteration means combined with
+inverse-variance error bars in mint_module.f90, and a NaN-only guard whose
+comment also claims infinity handling in fks_weights.f90. These are unresolved
+estimator/diagnostic issues, not established causes of the final one-iteration
+outlier. Publication-precision certification remains open.
+
+## Lean launcher, 6 October 2026
+
+At the user's request removed expensive checks from precision execution:
+no prior 480-run checksum/RNG scan, repeated frozen-source verification,
+worker archiving, split reduction or analytic-virtual audit. Final histograms
+and execution records are sufficient for completion. Ordered run numbers,
+allocated unique seeds, controller/MG5 locks and overwrite protection remain.
+Stopped comparisons resume with the same run number, reusing successful
+integrations. Thus run 1 can continue past the already-completed S integration
+without requiring its missing training HTML or rerunning it. The earlier
+worker-archive storage forecast is no longer an execution gate.
+
+Plotting now reads final histograms directly, using independent-training
+ensembles for statistical errors. Five regression tests pass, including
+resuming a postprocessing failure without relaunching the completed integration
+and protecting incomplete artifacts. The actual first-run 6430-by-183 weight
+array equals the earlier audited array exactly. No new integration was launched
+and the stopped campaign state and old archives were preserved. req_acc_FO=0.005,
+physics, scale/PDF weights and seed allocation are unchanged. Frozen source hashes
+in the prepared record are historical rather than enforced in lean mode.
+
+## Numbered high precision runs, 5 October 2026
+
+User requested exact req_acc_FO=0.005 and one complete comparison per invocation.
+Updated the precision launcher to require `--run-number`, selecting one set of
+32 S/Pi integrations over both charges and all eight ordered lepton channels.
+Numbers must follow completed checkpoints sequentially; duplicate/out-of-order
+numbers are rejected. Prepared `precision_campaign_precision_onshell_v3.json`,
+with ten numbered comparisons and seeds 902001--902320, and preserved superseded
+v1/v2 allocations. No MG5 integrations launched. All five regression tests pass
+(`ttw_study/logs/precision_campaign_regressions_v3.log`).
+
+At exact 0.005, the ten-comparison work forecast rises to eighteen times the
+baseline S/Pi statistics: about 129 integration days on 64 cores or 155 days
+with 20% overhead (12.9/15.5 days per numbered comparison). The retained worker
+and batch forecast is roughly 2235 GiB for all ten, excluding process files
+and reductions. Updated README commands and storage checks retain full flavour,
+physics, scale/PDF weights and source/RNG audit protections.
+
+## High precision S/Pi preparation, 5 October 2026
+
+Following the request for smooth massless-bottom, all-three-W-on-shell plots,
+prepared `ttw_study/scripts/run_precision_campaign.py` and the frozen allocation
+`ttw_study/inputs/precision_campaign_precision_onshell_v2.json`. Both charges
+and all eight ordered electron/muon channels are retained, with only S/Pi
+and ten fresh retrainings: 320 runs, seeds 901001--901320. The requested
+native accuracy is 0.0053033, for an estimated sixteen times the previous
+S/Pi work and four times smaller Monte Carlo errors. Most populated bins
+in the selected existing coarse spectra are projected to have approximately
+1--2% Pi/S errors; no tail-bin precision is promised.
+
+Measured baseline wall times on 64 cores give 114.6 integration days;
+the optimistic median extrapolation gives 58.0 days, and the planning budget
+with 20% overhead is 137.5 days. Estimated retained workers/batches are
+1986.5 GiB before process files and reductions, exceeding the roughly 797 GiB
+free at preparation. Execution supports complete 32-run round checkpoints
+and checks available storage before starting. Full-flavour plots can be
+made after five complete rounds. No new MG5 integration was launched.
+
+Five regression tests pass, covering allocation, complete-round continuation,
+invalid/stopped state rejection, storage rejection before integration and
+synthetic full-flavour plotting. Test log:
+`ttw_study/logs/precision_campaign_regressions_final.log`. Preparation log:
+`ttw_study/logs/precision_preparation_v2.log`. The unused v1 draft has stale
+script hashes and remains preserved with its seeds reserved. The launcher
+retains source/reference hashes, technical audits and actual RNG-stream
+overlap checks. Existing inclusive S-P and adaptive-stopping normalization
+concerns still require the independent controls recorded below.
+
 ## Objective and status
 
 Execute `Template/fNLO/FixedOrderAnalysis/ttw_product_study.md` and write the
 corresponding paper. This record is in the checkout's main directory.
 Status: **in progress; no publication cross sections are certified yet**.
+The `main_onshell_v3` campaign completed all 480 integrations on
+4 October 2026 at 23:26 UTC. On 5 October the complete flavour and
+independent-retraining reduction finished; its input/output hashes
+are recorded in `ttw_study/inputs/main_analysis_launch_20261005.json`.
+All frozen simulation source hashes still match. The archived technical
+summary covers all 480 successful audits and 245,760 analytic-virtual
+comparisons (maximum relative difference 8.8048e-11, tolerance 1e-8).
+No main run used split exclusion. Eight parallel archive readers were
+checked against serial collection for all six prescriptions and give
+identical vectors, variances and stream evidence. The full collection has
+59,629 distinct actual stage-initialization pairs with zero cross-run overlap.
+
+At the nominal cuts, Pi/S is 0.9634 +/- 0.0057 for W+ and
+0.9622 +/- 0.0055 for W- in the two-b region (independent-retraining MC
+errors). The one-b shift is consistent with zero. The two-b-given-one-b
+efficiency ratios are 0.9668 +/- 0.0032 and 0.9647 +/- 0.0029. Product
+scale envelopes are slightly wider than strict NLO. Differential shifts
+are resolved in the 60--80 GeV subleading-b bin and near the minimax
+endpoint, while several tails remain poorly sampled. A declared common
+draft bin plan preserves the original ranges and endpoint boundaries.
+An initial stage projection from stored decay-scale weights identifies
+production-decay mixing as the dominant selected second-order rate term;
+independent subset validation and differential attribution remain open.
+Six main figures and the rate/response tables are incorporated into the
+JHEP-format manuscript, `ttw_study/paper/main.pdf`.
+
+The main inclusive-normalization flag is **not resolved**: charge-summed
+S-P is -0.04673 +/- 0.01214 fb (3.85 estimated MC errors), and D-LO is
+-0.02287 +/- 0.00736 fb (3.11 errors). All 576 paired inclusive decay-scale
+contrasts lie within 2.69 errors. The strict weight projection locates most
+of S-P in the decay-independent contribution, focusing the integration
+follow-up. No single-run deletion removes the S-P
+flag or the resolved two-b product shifts. No run was removed or result
+rescaled. The reduction cross-check independently reproduces all 540
+nominal rate/error entries. Main fiducial precision is below 0.5% at the
+nominal cuts; the R=0.3 W+ Pi two-b rate remains at 1.13%.
+
+The next scientific priority is fixed-statistics/retraining assessment of
+the inclusive residual, followed by endpoint/tail precision and the
+outstanding narrow-W/small-mass evidence. The stale, never-executed
+640-run companion preparation has been superseded by a fresh
+`robustness_campaign_fullflavour_v2.json`, with the same allocation and
+current source hashes. It is not released. No new integration has been
+launched in this analysis phase. The following earlier entries retain
+the history of the preliminary and production campaigns.
+
 The six-prescription on-shell pilots for both charges, four fixed-source
 S/Pi controls, all 16 width/mass companions, and all 21 generated narrow-W
 pilots have completed. Both-charge mass comparisons and the generated
@@ -144,25 +779,27 @@ passes. The `tech_v4` report records four later source drifts and validates
 eight identities with no pending case; it does not reinterpret those old runs
 as having used the later code.
 
-The main campaign is now launched as `main_campaign_main_onshell_v3.json`:
+The main campaign completed as `main_campaign_main_onshell_v3.json`:
 480 serial runs covering all eight ordered e/mu assignments, both charges,
 all six prescriptions and five independent retrainings. The prepared v1/v2
 records were never executed; v2's frozen source hashes became stale after
 documented simulation, validation and split-audit fixes. The internal
 scientific release is `inputs/main_release_main_onshell_v3_20260924.json`;
 the authoritative run state and launch are in the v3 queue and launch record.
-This starts convergence measurement, not publication certification.
+Its full-flavour reduction and convergence inspection are now complete,
+with the numerical flags stated above; publication certification remains open.
 A full-flavour W/mass companion campaign is also prepared as
-`robustness_campaign_fullflavour_v1.json`: 640 new S/Pi integrations in
+`robustness_campaign_fullflavour_v2.json`: 640 new S/Pi integrations in
 four additional W/mass states, reusing at least 160 independently retrained
 main on-shell S/Pi references. It has not launched; the main-convergence,
 W-normalization/narrow-limit and massive/small-mass evidence remains required.
 The full robustness observable report has passed its two focused synthetic
 tests; reduction of the actual companion campaign remains pending.
-Full-flavour convergence, narrow-W and small-mass continuity, bounded
+Reliable error coverage, narrow-W and small-mass continuity, bounded
 parameter variations, conditional attribution, and the finished paper
-remain required. The latest compiled paper has ten pages and is explicitly a
-working draft; the shared-covariance wording has been rebuilt and inspected.
+remain required. The compiled JHEP manuscript now includes the 480-run
+results and is explicitly a working draft; source/build evidence is in
+`checks/paper_main_onshell_v3_20261005.json`.
 
 The authoritative starting checkout is
 `a3de8eec6` (10 September 2026), initially clean. The sibling width package is
@@ -265,15 +902,18 @@ decisions in the study plan rather than being silently omitted.
 - [ ] First full proton-channel W+/W- e,e,mu pilots: all six on-shell
   prescriptions, then S/Pi in top-bw/all-bw; costs/variance/convergence recorded.
 - [x] Resolve identical-lepton export and zero-invariant phase-space issues.
-- [ ] Main campaign with all eight ordered direct e/mu assignments per charge;
-  all six prescriptions, common cuts/PDFs/widths; calibrated statistics and
-  independent integration replicas.
+- [x] Main campaign with all eight ordered direct e/mu assignments per charge;
+  all six prescriptions, common cuts/PDFs/widths and five independent
+  integration replicas: 480 successful integrations, audited and reduced.
+- [ ] Main convergence certification: inclusive residual, fixed-statistics
+  coverage, sparse tails and final publication binning.
 - [ ] Scale comparisons: production/top/antitop/shared/independent decay,
   21/63/81 points, common scale; direct asymmetric-scale and BW production-scale
   reruns; fixed and native lepton-resolved central-scale diagnostics.
-- [ ] Rates, one-/two-b acceptance, normalized shapes, charge ratio/asymmetry,
+- [x] Main on-shell rates, one-/two-b acceptance, normalized shapes, charge ratio/asymmetry,
   jet-veto fractions, jet-radius/b-threshold migrations and product-only jets;
   matching-point shifts, ratios and scale envelopes; PDF member-wise reduction.
+  These are measured main results with explicitly incomplete precision assessment.
 - [ ] W robustness in three modes; 5FS production with mb(decay)=4.8 GeV in
   on-shell/all-bw, matched massive widths, production invariance, massive
   virtual/subtraction and small-mass checks (top-bw if informative).
@@ -283,6 +923,8 @@ decisions in the study plan rather than being silently omitted.
   benchmark. Assess availability of compatible complete-NNLO ttbar coefficients.
 - [ ] If shifts are resolved: eight-subset numerator/width coefficient
   attribution and matched off-shell comparison. Otherwise quantify sensitivity.
+  The stored-scale projection now reconstructs the nominal-PDF rate terms;
+  independent subset checks and differential/compatible reference work remain.
 - [ ] Approximately eight publication figures and three tables, frozen bins,
   precision/covariance checks, reproducible artifact and source archive.
 - [ ] Paper with verified numerical results, cited literature, extra-jet
@@ -670,6 +1312,100 @@ decisions in the study plan rather than being silently omitted.
     Details: `ttw_study/references/small_mass_virtual_recovery.md`.
 
 ## Activity log
+
+### 2026-10-05 — full main reduction, convergence inspection and JHEP draft
+
+- Verified that the frozen main campaign and all simulation source hashes
+  remain unchanged after its 4 October completion. No MG5 integration was
+  started, no raw archive overwritten and no main split excluded.
+  `results/main_technical_summary_main_onshell_v3.json` collects all 480
+  successful audits and 320 virtual reports: 245,760 analytic comparisons,
+  maximum relative difference 8.8048e-11 at the unchanged 1e-8 tolerance.
+- Factored the immutable single-run reader out of `main_replicas.py` and
+  added ordered process-pool collection (`--workers`, default one). Actual
+  serial/parallel comparisons on all six prescriptions are bit-identical
+  in vectors, variances and provenance. Eight workers on CPUs 0--7 then
+  read all 480 archives; no stage stream overlaps across the 59,629 pairs.
+  The ~3 GiB complete-vector archive and metadata are
+  `results/main_replicas_main_onshell_v3.npz/.json`.
+- Declared `inputs/main_binning_main_onshell_v3_coarse_v1.json` before
+  inspecting full-flavour shape shifts. It applies the same boundaries to
+  all prescriptions, charges and cut banks, reduces 6430 bins to 1900,
+  retains zero bins and original ranges, and preserves the two minimax
+  bins adjacent to the Born endpoint. Original fine vectors are retained;
+  this is not a final bin freeze.
+- Completed `results/main_report_main_onshell_v3_coarse_v1.json/.npz`
+  and its 300 separate spectrum/charge reports, with matched scale/PDF
+  reduction and full retraining covariance. The nominal two-b cross
+  sections in fb are S=1.08550 +/- 0.00535 and Pi=1.04579 +/- 0.00335
+  (W+), S=0.57527 +/- 0.00260 and Pi=0.55355 +/- 0.00195 (W-).
+  The shifts are about -3.7%, resolved at 6.30/6.68 estimated MC errors.
+  Pi_D-D is not resolved in these rates; the production-related contrast
+  motivates the plan's conditional coefficient attribution. It is not a
+  homogeneous second-order coefficient by itself.
+- Added `scripts/main_convergence.py` and five focused regression tests,
+  including an end-to-end synthetic report. The real report checks all
+  weights, inclusive identities, 576 paired decay-scale contrasts, all
+  original-bin strict identities, run influence and shape precision.
+  Charge-summed S-P is -3.85 estimated errors; D-LO is -3.11. The largest
+  paired decay-scale residual is 2.69. There are 20 nominal strict-identity
+  entries above three errors among 5660 nonzero-error entries, spanning
+  correlated cuts and observables; no global significance is inferred.
+- `results/main_analysis_inspection_main_onshell_v3.json` independently
+  reproduces 540 nominal rate/error entries and records diagnostic
+  single-run deletions. The inclusive S-P residual spans -4.24 to -3.61
+  errors, W+ two-b Pi-S spans -6.76 to -5.94, and W- spans -7.31 to -6.21.
+  These checks do not remove data or replace the quoted error estimator.
+  Further fixed-statistics and retraining evidence is required before
+  resolving the normalization flag.
+- The subleading-b 60--80 GeV normalized Pi/S ratios are
+  0.9508 +/- 0.0122 and 0.9457 +/- 0.0142; the minimax 150--160 GeV ratios
+  are 0.8038 +/- 0.0378 and 0.8313 +/- 0.0457. Only 5/12 populated W+
+  minimax bins reach 2% normalized-shape precision for each S/Pi, compared
+  with all ten same-sign azimuthal bins. The 63-point two-b Pi/S envelopes
+  are [0.9499,0.9772] and [0.9488,0.9757], with separate PDF errors
+  0.00019/0.00029. Absolute product scale bands are slightly wider than S;
+  there is no reduced-uncertainty or NNLO-precision claim.
+- Added `scripts/main_stage_projection.py` with five focused tests. At fixed
+  production scales and member-0 PDFs, the known width ratios turn each
+  Pi/PiD decay-scale grid into a bilinear numerator. Four outer corners
+  determine the coefficients; all remaining coordinates check the form.
+  Strict S/D grids supply separate linear projections. All 81 coordinates
+  and original bins across 320 complete runs close within 9.14e-11 pb.
+  `results/main_stage_projection_main_onshell_v3.json/.npz` retains projected
+  full-run coefficients for all rate banks and independent-control comparisons.
+  Production-decay terms including their width counterterms give
+  -0.03668 +/- 0.00290 fb (W+) and -0.01934 +/- 0.00125 fb (W-) in the
+  two-b region; remaining decay/width terms give -0.004900 +/- 0.000102 fb
+  and -0.002451 +/- 0.000061 fb. The reconstructed strict two-b rates agree
+  with the direct controls within 0.80/0.59 estimated errors. The inclusive
+  S decay contribution is only +0.000129 +/- 0.000550 fb and
+  -0.000742 +/- 0.000391 fb; most of the S-P flag is in its decay-independent
+  part. This is an algebraic reconstruction from correlated stored weights,
+  not a physical alpha-s scan, independent subset export or convergence release.
+  Direct main results remain the primary comparison. Independent validation,
+  PDF-member and differential attribution are still required.
+- Generated six main figures in `figures/main_onshell_v3_coarse_v1/`
+  and the main rates/response tables. The official unmodified JHEP style
+  and its source/hash provenance are retained. The manuscript now includes
+  current validation results, the full main campaign, measured precision
+  and unresolved flags. Reflowed the numerical tables for JHEP's text
+  width and fixed scientific notation in small PDF uncertainties.
+  The initial table generation is retained; the manuscript uses
+  `paper/main_onshell_v3_tables_v2/`. The paper build, figure/table
+  provenance, test logs and visual review are recorded in
+  `checks/paper_main_onshell_v3_20261005.json`.
+- Prepared `inputs/robustness_campaign_fullflavour_v2.json` with current
+  sources because eleven paths in the unexecuted v1 preparation were
+  stale. Cases/settings are identical, seeds 300001--300640 remain unused,
+  and both preparations have zero jobs. The transition record preserves
+  all differences and the storage estimate: about 685 GiB additional
+  companions versus about 800 GiB then free, excluding parameter scans
+  and convergence additions. No scientific release was created. Resolve
+  main normalization and assess the narrow-W/small-mass evidence before
+  this allocation, then perform bounded parameters, attribution and the
+  final paper/archiving review. Authors and affiliations also remain to
+  be supplied before submission.
 
 ### 2026-09-24 — small-mass reduction and independent Pi QES retraining
 

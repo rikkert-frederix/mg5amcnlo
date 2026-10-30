@@ -1,0 +1,42 @@
+{
+  "created_utc": "2026-10-14T08:04:52.014607+00:00",
+  "max_total_requested_calls": 4000000,
+  "planned_total_requested_calls": 3480064,
+  "PDF_reweighting": false,
+  "scale_reweighting": false,
+  "physics_scope": "One dxu beam ordering of W+ mu,e,mu; mb=0; all Ws on shell; diagnostic only.",
+  "original_campaign_changes": false,
+  "allocations": [
+    {
+      "label": "smoke_and_control",
+      "calls": 64
+    },
+    {
+      "label": "initial",
+      "cases": "8 S + 8 Pi",
+      "calls": 1600000
+    },
+    {
+      "label": "exact_replays",
+      "cases": "S910006 and Pi910016",
+      "calls": 200000
+    },
+    {
+      "label": "virtual_floor_005",
+      "cases": "8 S",
+      "calls": 800000,
+      "virtual_fraction": 0.05
+    },
+    {
+      "label": "S_training_grid",
+      "cases": "1 S, 4 iterations, restart0",
+      "calls": 80000
+    },
+    {
+      "label": "S_proposal",
+      "cases": "8 S from S-trained grids",
+      "calls": 800000
+    }
+  ],
+  "limitations": "No discarded points; physics rate or publication precision not certified. Instrumentation bounded to64 record-breakers per worker; highprecision tests apply to selected productionreal amplitudes."
+}

@@ -1,0 +1,21 @@
+Enabling the ttW trilepton generation baseline
+
+trilepton_baseline_generation.patch preserves the process-local changes used
+for the forty-run campaign. Apply it in a freshly exported ttW process
+directory, using the current fNLO template, before compiling that process.
+It changes SubProcesses/cuts.f90 and SubProcesses/makefile_fks_dir.
+
+Select analysis_HwU_pp_ttxw_trilepton.o in FO_analyse_card.dat. The cut
+module then calls the shared passes_fiducial_baseline helper after boosting
+to the lab frame and before masking decay products for generic run-card
+cuts. The added make dependency ensures that the analysis module is built
+before cuts.o. These are ttW-specific changes and must not be applied to
+an unrelated process or analysis.
+
+The common selection requires each lepton to have pT >= 20 GeV and
+|eta| < 2.5, the opposite-sign electron-pair mass to exceed 12 GeV, and
+the documented lepton--jet isolation. There are no Z-mass vetoes or
+bottom-tag-count requirements. The 0b/1b/2b categories remain exhaustive.
+The explicit baseline is active with cut_decays=False; ordinary run-card
+cuts retain their usual decay masking. See the trilepton analysis document
+for definitions and the consequence for histograms labelled inclusive.

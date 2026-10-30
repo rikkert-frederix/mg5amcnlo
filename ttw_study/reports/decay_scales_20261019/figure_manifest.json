@@ -1,0 +1,485 @@
+{
+  "figures": [
+    {
+      "name": "01_rates",
+      "pdf_sha256": "6b8b7c35f6e4bfd2a46145b7cf06d58e2d4c0826ba6b68c1574184606aaef0a3",
+      "png_sha256": "f5421bbd2a33a2b43d28734fed0dc68a2d247065f7afac576d2a3c16bc3ba95f"
+    },
+    {
+      "name": "02_scale_prescriptions",
+      "pdf_sha256": "04f3470a776140c240f57b70ad734e05c0fa6e6f18980680143f16821d3cefb0",
+      "png_sha256": "8a7216d560d41a4d21b0cb63557ba64e20507fde16f96dfb4ca862b2f080f57b"
+    },
+    {
+      "name": "03_scale_response",
+      "pdf_sha256": "d15bdd2f5262cd10d31ee72f0094554bbcc4f625566e1ce84b6a8e2adc34a5c1",
+      "png_sha256": "8548379da55adb1708b92f19602a44a3184ae7d913a333b6659e289825f298a2"
+    },
+    {
+      "name": "04_lepton_pt",
+      "pdf_sha256": "8703895f1e668fca4f07a8b65a77f690f867624b90cae7555b88ee451390a55c",
+      "png_sha256": "a8ec8e6c7f29a594b6085d816bc5841f4eb5f7c1e6b3227946c8240854c3b34a"
+    },
+    {
+      "name": "05_muon_eta",
+      "pdf_sha256": "3644a0a7122353cfcdf9e4d7fb3c4036bc230587a4d57f990de67386ebf5e4c3",
+      "png_sha256": "9d972b32dbe175b7dbbbf6e23360df86660d0ea0c3e0228d2a0cc539b42e1424"
+    },
+    {
+      "name": "06_bottom_pt",
+      "pdf_sha256": "6185e08132f7654118358d514f4ac39d8415c0dc2c1464afba9206526432b7ae",
+      "png_sha256": "a0bc6fde4f6c044abc25090571cd47a32a814e0d173a0e1014d5eb2efef400e5"
+    },
+    {
+      "name": "07_lepton_bottom",
+      "pdf_sha256": "8da25d2126e8576f828fc38859c4f03713a17f7b618816c3e33b02d18d06c958",
+      "png_sha256": "cfd1c23834bc6562f6d11f0b0cd167cbdf13fe59fbf082aeb32e727f4ba1ec64"
+    },
+    {
+      "name": "08_trilepton_angles",
+      "pdf_sha256": "41af69e70e274498685ce3268331999f518978387794b18893b26e57a38c0700",
+      "png_sha256": "235987f37c3e88fbd1cdeec6ab6190782ea74d55e75e50e5b82591b3abeb5805"
+    },
+    {
+      "name": "09_low_tag_categories",
+      "pdf_sha256": "6d2ad0af5ef0130207c3a0f71a5c15a8c87b881c301114855f193c9d5d69ef21",
+      "png_sha256": "59bf69a07b22172334805a47f89a511bf9ee2bbe8ee62b109878dff20a1209ad"
+    }
+  ],
+  "selections": [
+    {
+      "run": "S_auto",
+      "title": "fiducial 2b e+ pT",
+      "low": 12.0,
+      "high": 240.0,
+      "native_bins": 19,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.018643218061914296
+    },
+    {
+      "run": "Pi_auto",
+      "title": "fiducial 2b e+ pT",
+      "low": 12.0,
+      "high": 240.0,
+      "native_bins": 19,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.03206918794256685
+    },
+    {
+      "run": "S_fixed",
+      "title": "fiducial 2b e+ pT",
+      "low": 12.0,
+      "high": 240.0,
+      "native_bins": 19,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.017514710728343527
+    },
+    {
+      "run": "Pi_fixed",
+      "title": "fiducial 2b e+ pT",
+      "low": 12.0,
+      "high": 240.0,
+      "native_bins": 19,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.03312997002185784
+    },
+    {
+      "run": "S_auto",
+      "title": "fiducial 2b e- pT",
+      "low": 0.0,
+      "high": 240.0,
+      "native_bins": 20,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.02306809183349886
+    },
+    {
+      "run": "Pi_auto",
+      "title": "fiducial 2b e- pT",
+      "low": 0.0,
+      "high": 240.0,
+      "native_bins": 20,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.03169246377047288
+    },
+    {
+      "run": "S_fixed",
+      "title": "fiducial 2b e- pT",
+      "low": 0.0,
+      "high": 240.0,
+      "native_bins": 20,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.02059724678747715
+    },
+    {
+      "run": "Pi_fixed",
+      "title": "fiducial 2b e- pT",
+      "low": 0.0,
+      "high": 240.0,
+      "native_bins": 20,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.0452271777741248
+    },
+    {
+      "run": "S_auto",
+      "title": "fiducial 2b mu pT",
+      "low": 12.0,
+      "high": 240.0,
+      "native_bins": 19,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.015296893545865626
+    },
+    {
+      "run": "Pi_auto",
+      "title": "fiducial 2b mu pT",
+      "low": 12.0,
+      "high": 240.0,
+      "native_bins": 19,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.029023777689953498
+    },
+    {
+      "run": "S_fixed",
+      "title": "fiducial 2b mu pT",
+      "low": 12.0,
+      "high": 240.0,
+      "native_bins": 19,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.021608998357877295
+    },
+    {
+      "run": "Pi_fixed",
+      "title": "fiducial 2b mu pT",
+      "low": 12.0,
+      "high": 240.0,
+      "native_bins": 19,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.021608880360304745
+    },
+    {
+      "run": "S_auto",
+      "title": "fiducial 2b e+ eta",
+      "low": -2.5,
+      "high": 2.5,
+      "native_bins": 50,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.021416219335551004
+    },
+    {
+      "run": "Pi_auto",
+      "title": "fiducial 2b e+ eta",
+      "low": -2.5,
+      "high": 2.5,
+      "native_bins": 50,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.027373587739312685
+    },
+    {
+      "run": "S_fixed",
+      "title": "fiducial 2b e+ eta",
+      "low": -2.5,
+      "high": 2.5,
+      "native_bins": 50,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.017231065597142534
+    },
+    {
+      "run": "Pi_fixed",
+      "title": "fiducial 2b e+ eta",
+      "low": -2.5,
+      "high": 2.5,
+      "native_bins": 50,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.0289920391540485
+    },
+    {
+      "run": "S_auto",
+      "title": "fiducial 2b b jet pT",
+      "low": 20.0,
+      "high": 320.0,
+      "native_bins": 15,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.022487642621601328
+    },
+    {
+      "run": "Pi_auto",
+      "title": "fiducial 2b b jet pT",
+      "low": 20.0,
+      "high": 320.0,
+      "native_bins": 15,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.023225725829993316
+    },
+    {
+      "run": "S_fixed",
+      "title": "fiducial 2b b jet pT",
+      "low": 20.0,
+      "high": 320.0,
+      "native_bins": 15,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.01420684845816797
+    },
+    {
+      "run": "Pi_fixed",
+      "title": "fiducial 2b b jet pT",
+      "low": 20.0,
+      "high": 320.0,
+      "native_bins": 15,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.041080419702285556
+    },
+    {
+      "run": "S_auto",
+      "title": "fiducial 2b bbar jet pT",
+      "low": 20.0,
+      "high": 320.0,
+      "native_bins": 15,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.017746109834313534
+    },
+    {
+      "run": "Pi_auto",
+      "title": "fiducial 2b bbar jet pT",
+      "low": 20.0,
+      "high": 320.0,
+      "native_bins": 15,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.03337556302840822
+    },
+    {
+      "run": "S_fixed",
+      "title": "fiducial 2b bbar jet pT",
+      "low": 20.0,
+      "high": 320.0,
+      "native_bins": 15,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.015007218645409779
+    },
+    {
+      "run": "Pi_fixed",
+      "title": "fiducial 2b bbar jet pT",
+      "low": 20.0,
+      "high": 320.0,
+      "native_bins": 15,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.02347517038234923
+    },
+    {
+      "run": "S_auto",
+      "title": "fiducial 2b e+ b mass",
+      "low": 0.0,
+      "high": 300.0,
+      "native_bins": 10,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.019916509547485847
+    },
+    {
+      "run": "Pi_auto",
+      "title": "fiducial 2b e+ b mass",
+      "low": 0.0,
+      "high": 300.0,
+      "native_bins": 10,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.03220845422985888
+    },
+    {
+      "run": "S_fixed",
+      "title": "fiducial 2b e+ b mass",
+      "low": 0.0,
+      "high": 300.0,
+      "native_bins": 10,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.030629048709075922
+    },
+    {
+      "run": "Pi_fixed",
+      "title": "fiducial 2b e+ b mass",
+      "low": 0.0,
+      "high": 300.0,
+      "native_bins": 10,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.033078734178116354
+    },
+    {
+      "run": "S_auto",
+      "title": "fiducial 2b mu b delta R",
+      "low": 0.4,
+      "high": 4.4,
+      "native_bins": 20,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.01409370310512514
+    },
+    {
+      "run": "Pi_auto",
+      "title": "fiducial 2b mu b delta R",
+      "low": 0.4,
+      "high": 4.4,
+      "native_bins": 20,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.030088187381060276
+    },
+    {
+      "run": "S_fixed",
+      "title": "fiducial 2b mu b delta R",
+      "low": 0.4,
+      "high": 4.4,
+      "native_bins": 20,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.014614228143883202
+    },
+    {
+      "run": "Pi_fixed",
+      "title": "fiducial 2b mu b delta R",
+      "low": 0.4,
+      "high": 4.4,
+      "native_bins": 20,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.030507234051846167
+    },
+    {
+      "run": "S_auto",
+      "title": "fiducial 2b trilepton mass",
+      "low": 0.0,
+      "high": 600.0,
+      "native_bins": 25,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.021244541706827665
+    },
+    {
+      "run": "Pi_auto",
+      "title": "fiducial 2b trilepton mass",
+      "low": 0.0,
+      "high": 600.0,
+      "native_bins": 25,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.03202987101764738
+    },
+    {
+      "run": "S_fixed",
+      "title": "fiducial 2b trilepton mass",
+      "low": 0.0,
+      "high": 600.0,
+      "native_bins": 25,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.01659308172750278
+    },
+    {
+      "run": "Pi_fixed",
+      "title": "fiducial 2b trilepton mass",
+      "low": 0.0,
+      "high": 600.0,
+      "native_bins": 25,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.02759466426184969
+    },
+    {
+      "run": "S_auto",
+      "title": "fiducial 2b same-sign delta phi",
+      "low": 0.0,
+      "high": 3.141592653589793,
+      "native_bins": 32,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.02043530628778844
+    },
+    {
+      "run": "Pi_auto",
+      "title": "fiducial 2b same-sign delta phi",
+      "low": 0.0,
+      "high": 3.141592653589793,
+      "native_bins": 32,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.030543667506754628
+    },
+    {
+      "run": "S_fixed",
+      "title": "fiducial 2b same-sign delta phi",
+      "low": 0.0,
+      "high": 3.141592653589793,
+      "native_bins": 32,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.019327770261784026
+    },
+    {
+      "run": "Pi_fixed",
+      "title": "fiducial 2b same-sign delta phi",
+      "low": 0.0,
+      "high": 3.141592653589793,
+      "native_bins": 32,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.02664372800844363
+    },
+    {
+      "run": "S_auto",
+      "title": "fiducial 0b mu pT",
+      "low": 12.0,
+      "high": 180.0,
+      "native_bins": 14,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.05492300877146379
+    },
+    {
+      "run": "Pi_auto",
+      "title": "fiducial 0b mu pT",
+      "low": 12.0,
+      "high": 180.0,
+      "native_bins": 14,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.08083086295597183
+    },
+    {
+      "run": "S_fixed",
+      "title": "fiducial 0b mu pT",
+      "low": 12.0,
+      "high": 180.0,
+      "native_bins": 14,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.03587090983502089
+    },
+    {
+      "run": "Pi_fixed",
+      "title": "fiducial 0b mu pT",
+      "low": 12.0,
+      "high": 180.0,
+      "native_bins": 14,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.058060725225954235
+    },
+    {
+      "run": "S_auto",
+      "title": "fiducial 1b mu pT",
+      "low": 12.0,
+      "high": 180.0,
+      "native_bins": 14,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.025015790271195375
+    },
+    {
+      "run": "Pi_auto",
+      "title": "fiducial 1b mu pT",
+      "low": 12.0,
+      "high": 180.0,
+      "native_bins": 14,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.04484413012490511
+    },
+    {
+      "run": "S_fixed",
+      "title": "fiducial 1b mu pT",
+      "low": 12.0,
+      "high": 180.0,
+      "native_bins": 14,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.016289079711998136
+    },
+    {
+      "run": "Pi_fixed",
+      "title": "fiducial 1b mu pT",
+      "low": 12.0,
+      "high": 180.0,
+      "native_bins": 14,
+      "nonpositive_bins": 0,
+      "median_relative_mc_error": 0.03302733637403986
+    }
+  ],
+  "renderer_sha256": "d6177944320e90e213f6e72855d0a3118dc437edf66403fecd6165168a4b04b2",
+  "convention": "All bins are native; absolute density bands and point-matched ratio bands. Light I63 and dark C7. Bars on absolute spectra are per-run MC errors; ratio panels carry scale envelopes only because cross-run covariance is unavailable."
+}

@@ -1,0 +1,50 @@
+[
+  {
+    "path": "PROC_fNLO_loop_sm-no_b_mass_0/Events/run_01/MADatNLO.HwU",
+    "bytes": 3232,
+    "selected": false,
+    "reason": "older rate-only calculation with different normalization/analysis; not a matched input"
+  },
+  {
+    "path": "PROC_fNLO_loop_sm-no_b_mass_1/Events/run_02/MADatNLO.HwU",
+    "bytes": 3232,
+    "selected": false,
+    "reason": "older rate-only calculation with different normalization/analysis; not a matched input"
+  },
+  {
+    "path": "PROC_fNLO_loop_sm-no_b_mass_2/Events/additive/MADatNLO.HwU",
+    "bytes": 17645293,
+    "selected": false,
+    "reason": "retired 286-histogram analysis and different fiducial definition"
+  },
+  {
+    "path": "PROC_fNLO_loop_sm-no_b_mass_2/Events/additive_v2/MADatNLO.HwU",
+    "bytes": 37207607,
+    "selected": true,
+    "reason": "matched current fiducial/width comparison"
+  },
+  {
+    "path": "PROC_fNLO_loop_sm-no_b_mass_2/Events/additive_v2_FixedWidth/MADatNLO.HwU",
+    "bytes": 37207607,
+    "selected": true,
+    "reason": "matched current fiducial/width comparison"
+  },
+  {
+    "path": "PROC_fNLO_loop_sm-no_b_mass_3/Events/multiplicative/MADatNLO.HwU",
+    "bytes": 17645293,
+    "selected": false,
+    "reason": "retired 286-histogram analysis and different fiducial definition"
+  },
+  {
+    "path": "PROC_fNLO_loop_sm-no_b_mass_3/Events/multiplicative_v2/MADatNLO.HwU",
+    "bytes": 37207607,
+    "selected": true,
+    "reason": "matched current fiducial/width comparison"
+  },
+  {
+    "path": "PROC_fNLO_loop_sm-no_b_mass_3/Events/multiplicative_v2_FixedWidth/MADatNLO.HwU",
+    "bytes": 37207607,
+    "selected": true,
+    "reason": "matched current fiducial/width comparison"
+  }
+]

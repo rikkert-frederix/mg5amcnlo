@@ -1,220 +1,239 @@
-The matched width calculations in Table~\ref{tab:widths}, the five
-specified PDF coupling checkpoints and all nine signed top/antitop width
-and counterterm combinations pass their runtime checks. All 101 members
-of the prescribed NNPDF4.0 set are installed and hashed. The measurement
-regressions use the actual FastJet wrapper. Generator validation includes
-pole cancellation, soft/collinear subtraction checks, analytic/MadLoop
-decay-virtual comparisons and exclusive-jet partition identities.
-Analytic-provider validation requests MadLoop precision of $10^{-10}$
-or better before the independent $10^{-8}$ density comparison.
-Numerical fixes to sparse-bin accumulation, near-endpoint phase space,
-refinement seeding and massive Born-map ordering are regression-tested;
-failed or affected legacy attempts retain their original provenance and
-are excluded from certified comparisons.
+\subsection{Complete flavour sum and numerical precision}
 
-All six on-shell prescriptions have completed initial single-assignment
-pilots for both charges. The independent $S-P-D+\mathrm{LO}$ checks have
-maximum absolute central-bin residuals 2.986 and 2.976 MC errors for W$^+$
-and W$^-$, over 2802 and 2806 nonzero-error bins. These correlated residuals
-are not a global goodness-of-fit test or a publication-precision check.
-Earlier stable-production branching tests are provisional because a
-subsequent audit found repeated refinement streams in the two-round W$^+$
-reference. Fresh NLO inclusive normalization remains required.
+The main on-shell campaign comprises
+$2\times8\times6\times5=480$ integrations: two charges, eight ordered
+flavour assignments, six prescriptions and five independent trainings.
+All archived complete-run vectors reconstruct the original histograms.
+The audit finds 59,629 distinct stage-initialization pairs, with no
+cross-run overlap. No run or integration split was excluded from the main
+ensemble. All 81 scale points and 101 PDF members enter the reductions.
 
-The independent native associated-current versus factorized-decay LO
-comparison at matched fixed scales gives a decayed/expected ratio
-$0.9931\pm0.0041$. The maximum absolute scale/PDF conditional residuals
-are 1.71/1.79 MC errors. The native result is multiplied by the two
-matched top branching densities only; the associated current receives
-no extra branching factor. Actual sampling counts and distinct stage
-streams are audited. This supports fixed-scale LO normalization, while
-the convergence discrepancy between finite linear/current-proposal
-samples still precludes an efficiency or full-support convergence claim.
+Table~\ref{tab:mainrates} gives the resulting rates and acceptances.
+For the nominal one-b and two-b selections, the S and $\Pi$ rate errors
+range from 0.26\% to 0.49\%. These are measured errors from the independent
+run ensembles, rather than the requested 1.5\% accuracy of an individual
+integration. They do not include scale or PDF uncertainty.
 
-The latest fixed-source W$^+$ S/$\Pi$ controls use the corrected stage
-seeding and Born mapping. All four pass the complete histogram, weight,
-virtual and batch audits. Their conditional fiducial ratios appear in
-Table~\ref{tab:freshpilots}; none resolves a product shift at the specified
-precision. Maximum absolute paired inclusive decay-scale residuals are
-0.95/1.13 MC errors for all-BW S/$\Pi$ and 0.27/1.25 for on-shell S/$\Pi$.
-These paired cancellations do not replace the independent absolute NLO
-current normalization or tests of retraining and sparse-tail convergence.
+For differential comparisons we merge complete run vectors before taking
+ratios or estimating errors. One common draft bin plan is applied to all
+charges, prescriptions and cut choices. It retains the original ranges,
+empty bins and separate 140--150 and 150--160 GeV minimax bins around the
+Born endpoint. The bin boundaries were specified before inspecting the
+full-flavour shape shifts. The original finer vectors remain archived.
+Precision is not uniform: in the W$^+$ minimax spectrum, only five of
+twelve populated bins reach a 2\% normalized-shape error for each of S
+and $\Pi$. In contrast, all ten W$^+$ same-sign azimuthal bins meet that
+target for both prescriptions. The figures retain the unresolved tails
+with their measured errors; these are not final publication bins.
 
-Direct asymmetric decay scales, $\mu_R^t=2m_t$ and
-$\mu_R^{\bar t}=m_t/2$, have now been compared with the corresponding
-reweighted coordinates in independent on-shell W$^+$ samples. The direct
-one-/two-b rate ratios to reweighting are
-$0.9621\pm0.0429$ / $1.0120\pm0.0401$ for S and
-$0.9993\pm0.0199$ / $0.9996\pm0.0250$ for $\Pi$.
-The 36 distinct matching physical scale points give maximum absolute
-rate residuals of 1.30 and 1.57 conditional MC errors. Across the six
-normalized spectra and their matching scale coordinates, the maximum is
-3.03 MC errors; the few entries above three are correlated bin/scale
-comparisons, not a global significance. Each new sample passes 768
-analytic-virtual comparisons, and its 130 actual stage initializations
-are disjoint from the reference and other controls. These results support
-asymmetric reweighting at the measured precision; QES cancellation,
-direct BW production-scale checks and the central-scale diagnostics remain
-in progress.
+\input{main_rates.tex}
 
-\paragraph{Matched literature configuration.}
-The first W$^+$ LO/P/S reference calculation uses the separate inputs,
-selection and fixed scale of Ref.~\cite{Bevilacqua2020}, including NNPDF3.0
-and constant total top widths under scale variation. Under that reference's
-unexpanded-width convention, the additive numerator reconstructed as
-$[S+2g\,\mathrm{LO}]/(1+g)^2$, $g=\Gamma_{t,1}/\Gamma_{t,0}$, gives
-$122.9\pm2.9$ ab, compared with the published rounded 123.0 ab.
-The higher-statistics production-only prediction is $126.52\pm0.39$ ab
-versus 127.0 ab. These conditional joint-batch errors use 410 distinct stage initializations
-across the three independently sampled prescriptions. The reconstructed
-NWA seven-point envelope is $[114.2,129.4]$ ab, compared with the published
-rounded $[114.3,129.3]$ ab.
-The P residual is $-1.21$ times our joint MC error; the reference tables
-supply no MC errors, so this is not a combined statistical pull.
-An independent lower-statistics P run differs by $2.08\pm1.05$ ab;
-the largest absolute difference across the common-scale grid is 2.05
-conditional MC errors. Both estimates are retained as convergence evidence.
-The NWA reconstruction retains the previously audited LO and S samples;
-it is not an additional independent strict-NLO calculation.
-The completed W$^-$ calculation gives reconstructed NWA
-$67.90\pm0.69$ ab versus 68.0 ab and production-only $70.85\pm0.96$ ab
-versus 69.8 ab. These conditional joint errors use 282 distinct stage
-initializations, with no overlap between prescriptions.
-All raw common-scale weights, workers and stage histories are retained.
-These matched references do not release the full phenomenological
-campaign by themselves.
+\subsection{Fiducial rates and acceptance migration}
 
-The inclusive dilepton-$t\bar t$ calibration uses separate NNPDF3.1 NLO
-inputs and common fixed numerator scales $\mu=m_t$, with the supplied
-total-width coefficients held fixed under variation~\cite{Behring2019}.
-The comparison uses the authors' June 2019 normalized-distribution update.
-Against the supplied ten-bin $\Delta\phi(\ell^+,\ell^-)/\pi$ curves, the
-largest central-bin residuals are 1.65 combined MC errors for
-$S({\rm bin})/S({\rm total})$ and 1.60 for its NLO-expanded normalization.
-The latter expansion concerns the normalized observable, independently
-of the expansion of the top-width denominators.
-Our conditional bin errors range from 1.9--5.9\% and 2.8--9.1\%, respectively;
-the supplied central-bin MC errors enter in quadrature. Reference
-inter-bin covariance is unavailable, so these correlated residuals are
-not a global goodness-of-fit test. All 513 LO/S/$\Pi$ training/refinement
-initializations are distinct. This establishes pilot-level compatibility;
-percent-level shape precision and retraining coverage remain unverified.
-Direct scale/QES and absolute-normalization checks are in progress.
+The product-to-strict ratios at the nominal scales are
+\begin{align}
+ \left.\frac{\Pi}{S}\right|_{\geq1b}
+ &=\begin{cases}
+ 0.9965\pm0.0044,& W^+,\\
+ 0.9975\pm0.0056,& W^-,
+ \end{cases}\\
+ \left.\frac{\Pi}{S}\right|_{\geq2b}
+ &=\begin{cases}
+ 0.9634\pm0.0057,& W^+,\\
+ 0.9622\pm0.0055,& W^-.
+ \end{cases}
+\end{align}
+The one-b change is consistent with zero at this precision. The two-b
+cross sections decrease by about 3.7\% for both charges, and the absolute
+changes exceed six estimated Monte Carlo errors. This is a statement
+about numerical resolution in the present ensembles, not a Gaussian
+discovery significance. The additional b-jet requirement is therefore
+central to the observed difference between prescriptions.
 
-\begin{table}[ht]
-\centering
-\begin{tabular}{llcc}
-\toprule
-W treatment & Decay $m_b$ & $\Pi/S$, one-b & $\Pi/S$, two-b\\
-\midrule
-On shell & $0$ & $0.982\pm0.043$ & $0.993\pm0.037$\\
-On shell & $4.8\GeV$ & $1.019\pm0.028$ & $1.000\pm0.032$\\
-All BW & $0$ & $1.025\pm0.039$ & $0.939\pm0.043$\\
-All BW & $4.8\GeV$ & $0.944\pm0.040$ & $0.895\pm0.049$\\
-\bottomrule
-\end{tabular}
-\caption{Fixed-source technical W+ $e,e,\mu$ pilots after the Born-order fix,
-not full direct-flavour predictions.
-Errors are conditional independent-stratum batch estimates, including
-correlations of weights; they are not scale or PDF uncertainties.}
-\label{tab:freshpilots}
-\end{table}
+The decay-only product changes are much smaller in the same two-b region:
+$\Pi_D-D=-0.0022\pm0.0025$ fb for W$^+$ and
+$-0.0013\pm0.0013$ fb for W$^-$. The corresponding contrasts involving
+production corrections,
+$(\Pi-S)-(\Pi_D-D)$, are $-0.0376\pm0.0068$ fb and
+$-0.0204\pm0.0035$ fb. This comparison points to the importance of terms
+involving the production correction. It is not an extraction of a pure
+second-order coefficient: the width denominators and higher products
+must be separated with the eight-subset construction described above.
 
-\paragraph{W-treatment companions.}
-The six massless S/$\Pi$ samples per charge provide matched comparisons
-of all three W treatments, using the common dynamic W-system scale and
-the appropriate top widths. All 1624 actual training/refinement
-initializations are distinct across these twelve samples. The conditional
-double ratio $(\Pi/S)_{\rm all\mbox{-}BW}/(\Pi/S)_{\rm on\ shell}$ is
-$1.044\pm0.060$ ($0.946\pm0.056$) for W$^+$ in the one-b (two-b)
-selection and $1.139\pm0.097$ ($1.089\pm0.079$) for W$^-$.
-Figure~\ref{fig:wtreatmentpilot} also separates the top-W and associated-W
-changes. These pilots do not resolve a W-treatment change of the product
-ratio. Their three comparisons share samples: the top-BW contribution
-enters the two adjacent changes with opposite signs. The stored joint
-covariance reproduces the additive closure of the changes in $\Pi-S$
-and $\Pi/S$; treating the three errors as independent would lose this
-relation. All 81 scale points and 101 PDF members are retained.
-For the five selected normalized spectra (lepton $H_T$, leading- and
-subleading-b $p_T$, $m_{b\ell}^{\rm minimax}$ and leading-lepton $p_T$),
-the largest absolute nominal-bin change in $\Pi/S$ is 2.76 conditional
-MC errors among bins with finite, nonzero errors. This is not a global
-significance test or a bound on unsampled tails. Full-flavour sums and
-independent-retraining convergence remain required.
+Figure~\ref{fig:mainmigrations} tests the acceptance interpretation using
+the same events at different jet radii and b-jet thresholds. The two-b
+fraction and the extra-jet veto fraction preserve their common-rate
+covariance. Their scale bands and the point-matched ratios in
+Table~\ref{tab:mainresponses} quantify the response without treating the
+cut choices as independent samples.
+The ratio of the product to strict two-b-given-one-b efficiencies is
+$0.9668\pm0.0032$ for W$^+$ and $0.9647\pm0.0029$ for W$^-$.
+Normalizing to the uncut rates instead gives two-b acceptance ratios
+$0.9581\pm0.0051$ and $0.9526\pm0.0045$. These definitions separate
+migration between the fiducial regions from the inclusive diagnostic
+discussed below.
 
-\begin{figure}[t]
+\subsection{Stage projection from the stored scale weights}
+
+The separate decay-scale weights permit an initial coefficient diagnostic
+without additional integrations. At each fixed production-scale point
+and fixed PDF member 0, define $r_i=\as(\mu_i)/\as(m_t)$. Multiplying a
+product weight by its two known width ratios gives
+\begin{equation}
+ (1+g r_t)(1+g r_{\bar t})\,\Pi(r_t,r_{\bar t})
+ = V_{00}+r_t V_{10}+r_{\bar t} V_{01}+r_t r_{\bar t}V_{11}.
+\end{equation}
+The analogous coefficients $U_{ij}$ from $\Pi_D$ retain Born production.
+Thus $U_{00}$ is the all-Born numerator, $V_{00}-U_{00}$ contains the
+production correction with Born decays, and analogous differences isolate
+the other production-corrected subsets. These coefficients use the common
+LO-width denominator. Production couplings and PDFs are held fixed during
+this algebra; no physical strong-coupling parameter scan is used.
+
+We determine the coefficients from the four outer decay-scale corners
+within each complete run and check the other five points. Across all nine
+production points and original bins, the product and strict linear
+projections close to within $9.2\times10^{-11}$ pb, consistent with the
+precision of the stored histograms. Errors are computed after forming the
+terms within each independent ensemble, retaining their common-run
+covariance. This check validates a reconstruction of the stored weights;
+an independent eight-subset export remains a separate validation.
+
+At the nominal two-b cuts, the part of $[\Pi-S]_2$ involving the production
+correction, including its width counterterms, is
+$-0.0367\pm0.0029$ fb for W$^+$ and $-0.01934\pm0.00125$ fb for W$^-$.
+The remaining decay and width contribution is
+$-0.00490\pm0.00010$ fb and $-0.002451\pm0.000061$ fb.
+Their sums are $-0.0416\pm0.0029$ fb and $-0.02179\pm0.00125$ fb.
+These terms identify production--decay mixing as the dominant part of the
+selected second-order rate correction. The decay contribution includes
+terms generated by expanding the width denominators; it is not just the
+product of the two first-order normalized decay densities.
+
+The exact product minus the reconstructed strict result gives
+$-0.0450\pm0.0021$ fb and $-0.02360\pm0.00129$ fb in this region.
+The reconstructed and directly integrated strict rates differ by only
+0.80 and 0.59 estimated errors, with their shared-product covariance retained
+when comparing shifts. We keep the direct six-prescription results as the
+main comparison. The projection neither supplies missing same-stage
+second-order corrections nor resolves the inclusive convergence flag,
+and its PDF-member and differential attribution remain incomplete.
+
+\subsection{Scale response and differential structure}
+
+Figure~\ref{fig:mainscales} separates production, individual-decay and
+combined scale responses. Table~\ref{tab:mainresponses} also gives the
+scale envelope of $\Pi/S$ itself and its separate PDF uncertainty.
+The intervals are formed after matching all physical scale coordinates;
+dividing independently obtained numerator and denominator envelopes
+would answer a different question. A common-scale variation can hide
+compensating production and decay responses, and is displayed alongside
+the independent 63-point envelope.
+For the nominal two-b selections the 63-point envelopes of $\Pi/S$ are
+$[0.9499,0.9772]$ for W$^+$ and $[0.9488,0.9757]$ for W$^-$. Thus the
+central prediction remains below unity over this scale grid. The separate
+PDF errors on these ratios are 0.00019 and 0.00029; they do not replace
+the considerably larger Monte Carlo uncertainty.
+For the absolute two-b cross sections, the independent 63-point scale
+envelope is wider for the product prescription: $[-10.8,+10.6]\%$ versus
+$[-9.5,+9.0]\%$ for W$^+$, and $[-11.3,+11.5]\%$ versus
+$[-10.0,+9.9]\%$ for W$^-$. These results therefore provide no evidence
+for a reduction of scale uncertainty from including the selected products.
+
+\input{main_responses.tex}
+
+Figures~\ref{fig:maindecay}--\ref{fig:mainangles} compare normalized shapes.
+For the subleading-b 60--80 GeV bin the normalized $\Pi/S$ ratios are
+$0.9508\pm0.0122$ and $0.9457\pm0.0142$ for W$^+$ and W$^-$.
+In the minimax bin spanning 150--160 GeV, which contains the on-shell
+Born endpoint, they are $0.8038\pm0.0378$ and $0.8313\pm0.0457$.
+These local comparisons exhibit a larger change near the endpoint than
+in the integrated two-b rate. Their correlated binwise errors are not a
+global shape test. Finite W widths, reconstruction through jets and the
+missing same-stage corrections are particularly relevant to interpreting
+this region; the on-shell result alone cannot settle that interpretation.
+
+The event-activity and lepton-angle distributions provide complementary
+controls. Their displayed errors and bands retain normalization
+correlations, and the lower angular panels compare the two charges after
+normalizing each separately. The extra-jet rates in
+Figure~\ref{fig:mainjets} are reported absolutely in sectors where strict
+NLO vanishes. The nonzero product prediction there contains selected
+emissions from different stages, with the limitations of
+Table~\ref{tab:jets}.
+
+\subsection{Convergence and inclusive normalization}
+
+The complete-run analysis exposes an inclusive-normalization diagnostic
+that must be resolved before a final precision claim. The nominal uncut
+$\Pi/S$ ratios are $1.0055\pm0.0026$ and $1.0101\pm0.0028$ for W$^+$ and
+W$^-$. These ratios should approach unity for fully integrated, consistently
+normalized on-shell decays. The W$^-$ difference $\Pi-S$ is 3.60 estimated
+Monte Carlo errors. This residual is not interpreted as a physical
+inclusive decay correction. The independent P and LO controls, the
+paired decay-scale cancellations and the retraining influence diagnostics
+are retained to distinguish normalization errors from integration effects.
+In the sum of the two charges, the inclusive S--P residual is
+$-0.04673\pm0.01214$ fb, or 3.85 estimated errors; D--LO is
+$-0.02287\pm0.00736$ fb, or 3.11 errors. By contrast, the 576 paired
+inclusive decay-scale contrasts have maximum absolute residual 2.69 errors.
+The binwise S--P--D+LO check has 20 nominal entries above three errors
+among 5660 nonzero-error entries, with maxima 4.29 and 3.41 for the two
+charges. These entries span correlated observables and cuts and do not
+constitute a global goodness-of-fit test.
+Deleting any one of the 160 S/P integrations in turn leaves the
+charge-summed inclusive residual between 3.61 and 4.24 estimated errors.
+The corresponding diagnostic for the two-b product shift remains above
+5.94 errors for W$^+$ and 6.21 for W$^-$. These deletions are influence
+checks only; all runs enter the quoted predictions and errors.
+
+The strict scale projection helps localize this residual. The integrated
+decay-dependent contribution within S is
+$0.00013\pm0.00055$ fb for W$^+$ and
+$-0.00074\pm0.00039$ fb for W$^-$. Subtracting it leaves differences from
+the independent P controls of $-0.03185\pm0.01075$ fb and
+$-0.01427\pm0.00529$ fb. Most of the inclusive S--P residual therefore
+lies in the decay-independent contribution, rather than in the integrated
+first-order decay correction. This focuses the statistical follow-up;
+it does not establish the absence of integration bias.
+
+The statistical error target for nominal fiducial rates has been reached,
+but it is a different requirement from reliable coverage of adaptive
+integrations and rare tails. No error inflation, removal of inconvenient
+runs or inclusive rescaling is applied. Further fixed-statistics and
+retraining checks must assess the inclusive residual, while the broad
+shape-error range constrains which differential conclusions can be retained.
+
+\input{main_figures.tex}
+
+\subsection{Finite-W-width and bottom-mass robustness}
+
+The existing companion pilots cover all three W treatments and both
+bottom-mass choices for a single ordered $e,e,\mu$ assignment per charge.
+Figure~\ref{fig:wtreatmentpilot} separates the changes of the top-W and
+associated-W treatments in $\Pi/S$. Their shared-control covariance is
+retained; the intermediate top-BW state enters the two adjacent changes
+with opposite signs. At the available conditional precision these pilots
+do not resolve a W-treatment dependence of the product ratio. They cannot
+be substituted for a full flavour sum.
+
+\begin{figure}[tbp]
 \centering
 \includegraphics[width=\linewidth]{../figures/w_treatment_pilot_width_mass_v2.pdf}
-\caption{W-treatment changes of the product/strict ratio for the single
-ordered $e,e,\mu$ assignment in both charges. Bars are conditional MC
-errors, and the three treatment ratios share samples. These pilot
-diagnostics use matched widths and common dynamic production scales;
-they are not full-flavour predictions or a convergence certification.}
+\caption{Pilot W-treatment changes of the product/strict ratio for one
+ordered $e,e,\mu$ assignment in each charge. Bars are conditional Monte
+Carlo errors, and comparisons share control samples. These are auxiliary
+validation results, not the completed 480-run full-flavour prediction.}
 \label{fig:wtreatmentpilot}
 \end{figure}
 
-The massive-decay companions retain massless five-flavour production:
-88 source files for production, flavour data and virtuals, and the production-owned FKS
-records match the massless export exactly. The massive parameter-card
-round trip and all 120 pre-integration pole checks pass. The first massive
-strict-sum pilot completed, but its product companion stopped on a local
-Born-snapshot alignment check. The cause was a different daughter ordering
-in the canonical tree and the massive NLO context. An explicit-identity
-permutation fix passes 2400 deterministic Born-map checks, and fresh
-on-shell and all-BW massive S/Pi pairs pass the full pilot audits.
-The massive/massless double ratio of $\Pi/S$, formed before scale/PDF
-reduction with four independent sample/stratum ensembles, is
-$1.038\pm0.053$ ($1.007\pm0.050$) in the on-shell one-b (two-b) selection
-and $0.921\pm0.053$ ($0.953\pm0.067$) for all BW. These conditional MC
-errors do not resolve a mass dependence at the specified precision.
-The completed W$^-$ companions give double ratios
-$1.146\pm0.090$ ($1.109\pm0.064$) for the on-shell one-b (two-b)
-selection and $0.976\pm0.059$ ($0.955\pm0.070$) for all BW.
-These single-assignment results also do not resolve a mass dependence.
-Independent-retraining convergence, small-mass continuity and the main
-flavour-summed mass/width-scheme comparison remain open.
-
-\paragraph{Generated narrow-W limit.}
-The 21 massless-decay LO/S/$\Pi$ tests now contain an on-shell reference
-and top-BW/all-BW samples at
-$\epsilon=\Gamma_W/\Gamma_W^{\rm ref}=1,0.2,0.05$ for each prescription.
-All use the common fixed scale $m_t+M_W/2=212.6925\GeV$ for production,
-both decay numerators and the reference coupling in the top widths.
-Weak couplings remain fixed while the matched top widths are recalculated.
-The finite comparison is $\epsilon^3\sigma_{\rm BW}/\sigma_{\rm on\ shell}$:
-each selected leptonic W density supplies one inverse power of $\epsilon$.
-This factor is applied once to the reported cross sections, with no change
-to the generated event weights and no additional branching factors.
-
-At $\epsilon=0.05$, the LO two-b ratios are
-$1.0028\pm0.0067$ (top BW) and $1.0032\pm0.0063$ (all BW).
-For $\Pi$ they are $1.023\pm0.038$ and $1.022\pm0.040$;
-for S they are $0.847\pm0.121$ and $0.872\pm0.124$.
-These are conditional joint MC errors from independent run/beam strata,
-with the common on-shell reference propagated to all width points.
-The S comparison is limited particularly by the imprecise on-shell
-fiducial reference. It does not establish percent-level NLO continuity.
-Across six coarsened spectra at the narrowest width, the largest absolute
-normalized-bin residuals are 2.13, 2.74 and 2.05 conditional MC errors
-for LO, S and $\Pi$, respectively. These correlated bin residuals are
-diagnostics, not a global goodness-of-fit test. The coarse bins retain
-the original range and are summed before normalization to the matching
-fiducial rate. Unmeasured continuous overflows are not folded into them.
-All 81 scale and 101 PDF coordinates are retained in the comparison arrays.
-
-\begin{figure}[ht]
-\centering
-\includegraphics[width=\linewidth]{../figures/generated_narrow_w.pdf}
-\caption{Generated narrow-W diagnostics for the single ordered W+
-$e,e,\mu$ assignment at common fixed scales. Vertical bars show conditional
-MC errors; points at different widths share the on-shell reference.
-Horizontal offsets separate the two W treatments. Each panel has its own
-vertical scale. These pilot results are not full-flavour predictions or a
-percent-level NLO convergence certification.}
-\label{fig:narrowW}
-\end{figure}
-
-Full-flavour and NLO varied-weight normalization, direct scale
-reweighting checks, small-mass validation and integration convergence
-remain open. Matched ttW and dilepton-ttbar reference pilots have completed;
-their subsequent direct-scale and absolute-normalization tests are in progress.
+The prepared full-flavour companion campaign adds 640 S/$\Pi$
+integrations in massless top-BW/all-BW and massive on-shell/all-BW states,
+with five retrainings per flavour and charge. It reuses the 160 main
+on-shell S/$\Pi$ integrations as shared references. Its launch requires
+assessment of the main normalization and convergence flags and the
+narrow-W and small-mass controls. The selected PDF-family, strong-coupling,
+top-mass and 13.6 TeV comparisons, and independent validation and differential
+extension of the stage attribution, remain outstanding. The present numbers establish the
+on-shell numerical pattern and the remaining precision questions; they do
+not complete the proposed phenomenological robustness study.

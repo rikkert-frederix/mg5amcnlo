@@ -1,0 +1,41 @@
+{
+  "created_utc": "2026-10-14T10:58:30.078955+00:00",
+  "scope": {
+    "process": "W+ mu,e,mu; m_b=0; three on-shell Ws; one dxu beam ordering",
+    "full_flavour_prediction": false,
+    "pdf_reweighting": false,
+    "scale_reweighting": false,
+    "fixed_count_workers": 32,
+    "calls_per_worker": 100000,
+    "ensemble_calls": 3200000,
+    "independent_replicas_per_variant_and_scale": 4,
+    "split_scales": [
+      0.1,
+      0.3
+    ],
+    "S_seeds": [
+      923001,
+      923016
+    ],
+    "Pi_seeds": [
+      924017,
+      924032
+    ],
+    "pre_fix_training_calls_reused_as_proposals": 640000,
+    "training_weights_used_in_final_estimate": false
+  },
+  "legacy_pi_reference_comparable": false,
+  "analysis": {
+    "path": "/export/slow1/rikkert/mg5amcnlo/ttw_study/results/production_hard_split_20261014_v4.json",
+    "sha256": "10ade80790bd18b0c84a6d0f57306e1b18c1d1188bdbd787df6a03feed32d9d4"
+  },
+  "validation": {
+    "path": "/export/slow1/rikkert/mg5amcnlo/ttw_study/checks/production_hard_split_validation_20261014.json",
+    "sha256": "a69bf9207d8e138f94bbbab17dff1ea1f7e49ee8db30f0d3d7572b54ebbb68cf"
+  },
+  "script_sha256": "dc480ba979f1da696734572115b1e3c6169f8b2aeb8ead517f7864fb0b5a13a8",
+  "files": {
+    "production_hard_split.pdf": "b1f8fb3c2320fe81ac78db807240ef6c7f4fce28872b074557c77cce991dd9a4",
+    "production_hard_split.png": "9b0fb24981363170fb3058d97baf02c293fb80c5df88133b4804d8f0e82bbb51"
+  }
+}

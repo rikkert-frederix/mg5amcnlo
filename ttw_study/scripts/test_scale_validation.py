@@ -209,6 +209,7 @@ class TestScaleValidation(unittest.TestCase):
             build=Path(case.build.name)
             executable=build/'check_asymmetric'
             sources=[inputs/'decay_card_runtime_stubs.f90',
+                     template/'production_hard_split.f90',template/'hard_real_kinematics.f90',
                      template/'decay_chain_parameters.f90',template/'factorized_phase_space.f90',HOOK,
                      *[template/(name+'.f90') for name in ('decay_chain_scales','setscales',
                         'fnlo_scale_variations','weight_lines','spin_density_weight_lines')],

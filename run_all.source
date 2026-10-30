@@ -1,0 +1,16 @@
+for i in `seq 0 9` ; do
+
+cd ttw_additive
+./bin/calculate_xsect NLO -f --nb_core=64 > run_$i.log
+cd ../
+cd ttw_multiplicative
+./bin/calculate_xsect NLO -f --nb_core=64 > run_$i.log
+cd ../
+cd ttw_additive_fixedwidth
+./bin/calculate_xsect NLO -f --nb_core=64 > run_$i.log
+cd ../
+cd ttw_multiplicative_fixedwidth
+./bin/calculate_xsect NLO -f --nb_core=64 > run_$i.log
+cd ../
+
+done

@@ -1,0 +1,14 @@
+{
+  "created_utc": "2026-10-14T08:34:59.915260+00:00",
+  "report": "ttw_study/results/tail_pilot_final_20261014.json",
+  "report_sha256": "0ded8dec67facfc92cec431066dbc1f4870b1e750efdb5690fd5a2cc2b86fad5",
+  "script": "analyse_tail_pilot.py",
+  "script_sha256": "b06e65a4c9a88197adcba8f4bfbc4d8e69a658cc8e321eb795dce75dc2ecead5",
+  "outputs": {
+    "tail_diagnostics.pdf": "1954b84f9898565cb0744d6dfd4071499ed5c7e89a7dfc2800bd595ae60898f5",
+    "tail_diagnostics.png": "319f37ce4f9e257968b35dedd08a8d87dcca08d482993208006be29ff29e743a"
+  },
+  "scope": "W+ mu,e,mu; m_b=0; all Ws and tops on shell; production and top decays NLO; central scales and central NNPDF40_nlo_as_01180 member only; dxu beam ordering only.",
+  "PDF_reweighting": false,
+  "scale_reweighting": false
+}

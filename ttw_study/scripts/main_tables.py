@@ -37,7 +37,11 @@ def band_tex(row,band,relative=False):
 def scalar_tex(value,percent=False,signed=False):
     value=numeric(value)
     if not np.isfinite(value):return r'$\mathrm{undefined}$'
-    return '$%s$'%format(value*(100 if percent else 1),('+.2f' if signed else '.2f') if percent else '.3g')
+    text=format(value*(100 if percent else 1),('+.2f' if signed else '.2f') if percent else '.3g')
+    if 'e' in text:
+        mantissa,exponent=text.split('e')
+        text=mantissa+r'\times10^{'+str(int(exponent))+'}'
+    return '$%s$'%text
 
 
 def table(rows,columns):
@@ -57,18 +61,20 @@ def captions(data,text):
 def texts(data):
     rates=[line(['Prescription',r'$\sigma^+_{\geq1b}$',r'$\sigma^-_{\geq1b}$',
                  r'$\sigma^+_{\geq2b}$',r'$\sigma^-_{\geq2b}$']),r'\midrule']
-    efficiencies=[line(['Prescription',r'$A^+_{1b}$',r'$A^-_{1b}$',r'$A^+_{2b}$',r'$A^-_{2b}$',
-                        r'$R_{\rm charge}^{2b}$',r'$A_{\rm charge}^{2b}$']),r'\midrule']
+    efficiencies=[line(['Prescription',r'$A^+_{1b}$',r'$A^-_{1b}$',r'$A^+_{2b}$',r'$A^-_{2b}$']),r'\midrule']
+    charges=[line(['Prescription',r'$R_{\rm charge}^{2b}$',r'$A_{\rm charge}^{2b}$']),r'\midrule']
     charge_title=data.rate_title().replace('W+','W+/W-')
     charge_rows=data.report['charge_rates'][charge_title]['fiducial_2b']
     for variant in VARIANTS:
         rates.append(line([LABELS[variant]]+[estimate_tex(data.rates(selection,charge)[variant],1000.)
             for selection in ('fiducial_1b','fiducial_2b') for charge in ('plus','minus')]))
         efficiencies.append(line([LABELS[variant]]+[estimate_tex(data.rates(selection,charge,derived=True)[variant])
-            for selection in ('acceptance_1b','acceptance_2b') for charge in ('plus','minus')]+
+            for selection in ('acceptance_1b','acceptance_2b') for charge in ('plus','minus')]))
+        charges.append(line([LABELS[variant]]+
             [estimate_tex(charge_rows[variant][quantity]) for quantity in ('plus_over_minus','asymmetry')]))
     prefix='\\begin{table}[htbp]\n\\centering\n\\small\n\\setlength{\\tabcolsep}{3pt}\n'
-    rate_text=prefix+table(rates,'lrrrr')+'\\par\\medskip\n'+table(efficiencies,'lrrrrrr')
+    rate_text=prefix+table(rates,'lrrrr')+'\\par\\medskip\n'+table(efficiencies,'lrrrr')
+    rate_text+='\\par\\medskip\n'+table(charges,'lrr')
     rate_text+=captions(data,r'Full direct $e/\mu$ flavour sum at 13 TeV with on-shell Ws and massless decay bottoms. '
         r'Cross sections are in fb; displayed errors are independent-retraining MC errors only. '
         r'$A_{1b,2b}=\sigma_{1b,2b}/\sigma_{\rm input}$, '
@@ -76,15 +82,16 @@ def texts(data):
         r'$A_{\rm charge}=(\sigma^+-\sigma^-)/(\sigma^++\sigma^-)$. '
         r'All prescriptions use the same NLO PDF; P retains its LO top-width convention.')
     rate_text+='\\label{tab:mainrates}\n\\end{table}\n'
-    shifts=[line(['Region',r'$\Delta_\Pi$ [fb]',r'$R_\Pi$',r'Prod. 7',r'Decay 9',r'Combined 21',r'Combined 63',
-                  r'$\delta_{\rm PDF}R_\Pi$']),r'\midrule']
+    shifts=[line(['Region',r'$\Delta_\Pi$ [fb]',r'$R_\Pi$',r'$\delta_{\rm PDF}R_\Pi$']),r'\midrule']
+    ratio_bands=[line(['Region',r'Prod. 7',r'Decay 9',r'Combined 21',r'Combined 63']),r'\midrule']
     for charge,sign in (('plus','+'),('minus','-')):
         for selection,region in (('fiducial_1b','1b'),('fiducial_2b','2b')):
             rows=data.rates(selection,charge)
             ratio=rows['Pi_over_S']
             shifts.append(line([r'$W^{%s},\,\geq%s$'%(sign,region),estimate_tex(rows['Pi_minus_S'],1000.),
-                estimate_tex(ratio)]+[band_tex(ratio,band) for band in ('production7','decay9','combined21','combined63')]+
-                [scalar_tex(ratio['pdf']['error_symmetric'])]))
+                estimate_tex(ratio),scalar_tex(ratio['pdf']['error_symmetric'])]))
+            ratio_bands.append(line([r'$W^{%s},\,\geq%s$'%(sign,region)]+
+                [band_tex(ratio,band) for band in ('production7','decay9','combined21','combined63')]))
     responses=[line(['Charge','Prescription',r'MC [\%]',r'Prod. 7 [\%]',r'Decay 9 [\%]',r'Combined 63 [\%]',
                      r'$\rho_P$ [\%]',r'$\rho_D$ [\%]']),r'\midrule']
     for charge,sign in (('plus','+'),('minus','-')):
@@ -96,10 +103,12 @@ def texts(data):
             responses.append(line(['$W^{%s}$'%sign,LABELS[variant],scalar_tex(mc,percent=True)]+
                 [band_tex(row,band,relative=True) for band in ('production7','decay9','combined63')]+
                 [scalar_tex(slopes[name]['relative'],percent=True,signed=True) for name in ('production','decay')]))
-    response_text=prefix+table(shifts,'lrrrrrrr')+'\\par\\medskip\n'+table(responses,'llrrrrrr')
+    response_text=prefix+table(shifts,'lrrr')+'\\par\\medskip\n'+table(ratio_bands,'lrrrr')
+    response_text+='\\par\\medskip\n'+table(responses,'llrrrrrr')
     response_text+=captions(data,r'Point-matched $\Delta_\Pi=\Pi-S$ and $R_\Pi=\Pi/S$ before envelope/PDF reduction. '
-        r'Top: nominal values with MC errors, scale-only intervals for $R_\Pi$, and its separate one-standard-deviation '
-        r'NNPDF replica error. Bottom: two-b P/S/$\Pi$ MC precision and scale-envelope deviations from each nominal '
+        r'Top: nominal values with MC errors and the separate one-standard-deviation '
+        r'NNPDF replica error of $R_\Pi$. Middle: scale-only intervals for $R_\Pi$. '
+        r'Bottom: two-b P/S/$\Pi$ MC precision and scale-envelope deviations from each nominal '
         r'cross section. The logarithmic responses are '
         r'$\rho_X=[\sigma(\xi_X=2)-\sigma(\xi_X=1/2)]/[\sigma_0\ln4]$; '
         r'production varies $\mu_R=\mu_F$ together and decay varies top/antitop together. '

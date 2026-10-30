@@ -1,0 +1,35 @@
+--- a/SubProcesses/cuts.f90
++++ b/SubProcesses/cuts.f90
+@@ -1,5 +1,6 @@
+ module cuts_module
+   use process_dimensions, only: nexternal, nincoming
++  use analysis_hwu_pp_ttxw_trilepton_module, only: passes_fiducial_baseline
+   use run_state, only: gamma_is_j, maxjetflavor, ptgmin, etagamma, isoem, &
+        r0gamma, xn, epsgamma, ptl, etal, drll, drll_sf, mll, mll_sf, &
+        ptj, jetalgo, jetradius, etaj, cut_decays, pdg_cut, ptmin4pdg, &
+@@ -718,6 +719,15 @@
+   istatus=istatus_in
+   ipdg=ipdg_in
+   where (ipdg.eq.-21) ipdg=21
++  ! ttW fiducial generation cuts act on the complete lab-frame event,
++  ! before cut_decays masks leaves for the generic run-card cuts below.
++  ! Apply the same selection separately to each real and counterevent.
++  ! No jet multiplicity or bottom-tag requirement is imposed here.
++  if (.not.passes_fiducial_baseline(pp,istatus,ipdg)) then
++  call cpu_time(tAfter)
++  t_cuts=t_cuts+(tAfter-tBefore)
++  return
++  endif
+   if (.not.cut_decays) then
+   do i=1,size(p,2)
+   if (.not.particle_from_decay(i)) cycle
+--- a/SubProcesses/makefile_fks_dir
++++ b/SubProcesses/makefile_fks_dir
+@@ -423,6 +423,7 @@
+ 	FKSParams.o fks_random.o fks_singular.o $(LIBDIR)run_state.mod \
+ 	$(LIBDIR)run_printout_module.mod
+ check_poles_bridge.o: check_poles.o
++cuts.o: analysis_HwU_pp_ttxw_trilepton.o
+ cuts.o: process_dimensions.o fnlo_process_common.o boostwdir2.o \
+ 	nlo_decay_metadata.o nlo_decay_kinematics.o \
+ 	dummy_fct.o fastjet_wrapper.o \

@@ -1,27 +1,19 @@
 \documentclass[11pt,a4paper]{article}
-\usepackage[margin=2.2cm]{geometry}
-\usepackage{amsmath,amssymb,booktabs,graphicx,xcolor}
-\usepackage[colorlinks=true,citecolor=blue,urlcolor=blue]{hyperref}
+\usepackage{jheppub}
+\usepackage{array,booktabs,xcolor}
 \newcommand{\ttW}{t\bar t W}
 \newcommand{\dd}{\mathrm{d}}
 \newcommand{\Tr}{\operatorname{Tr}}
 \newcommand{\as}{\alpha_s}
 \newcommand{\GeV}{\,\mathrm{GeV}}
-\title{Mixed production and decay corrections in trilepton $t\bar tW$ production}
-\author{}
-\date{Working draft: 14 September 2026}
-\begin{document}
-\maketitle
-\begin{center}
-\fbox{\parbox{0.9\linewidth}{\textbf{Status of this draft.}
-The numerical campaign is in progress. The width results below have been
-recomputed and checked. Fiducial cross sections, uncertainty bands and
-phenomenological conclusions await validated integrations.}}
-\end{center}
-\begin{abstract}
+\title{\boldmath Mixed production and decay corrections in trilepton $t\bar tW$ production}
+% Authors, affiliations and e-mail addresses must be supplied before submission.
+\subheader{Working draft: 14 October 2026}
+\keywords{Higher-Order Perturbative Calculations, Top Quark, QCD Phenomenology}
+\abstract{
 Spin-correlated products of next-to-leading-order production and decay
 densities contain mixed QCD corrections beyond their strict NLO expansion.
-We formulate a study of these terms in direct trilepton $\ttW^\pm$
+We study these terms in direct trilepton $\ttW^\pm$
 production, retaining separate renormalization scales for production, top
 decay and antitop decay. Consistent total-width normalization makes the
 inclusive branching cancellation a central validation test and isolates
@@ -29,9 +21,30 @@ the response to fiducial cuts. The comparison includes three treatments of
 the W virtualities and five-flavour production with either massless or
 massive-bottom decays. We specify observables, correlated scale and PDF
 reductions, and the perturbative limitations of extra-jet distributions.
-No phenomenological conclusion about the magnitude of the mixed terms is made
-in this unfinished draft.
-\end{abstract}
+The historical on-shell campaign contains 480 independent integrations covering
+all ordered direct electron/muon assignments, both charges and six
+prescriptions. At the nominal scales the product lowers the two-b fiducial
+cross sections by about 3.7\% in both charges, while the one-b change is
+consistent with zero at the measured precision. Normalized spectra show
+larger local changes near the $m_{b\ell}$ endpoint. Inclusive-normalization
+residuals and poorly sampled tails still require follow-up. The finite-W-width
+and massive-decay studies currently provide pilot evidence; the full
+robustness and parameter comparisons remain necessary for the final assessment.
+The quoted product results are provisional: a newly identified mismatch of
+production and decay helicity frames requires their recomputation with the
+corrected implementation before physical conclusions can be drawn.
+}
+\begin{document}
+\maketitle
+\begin{center}
+\fbox{\parbox{0.9\linewidth}{\textbf{Status of this draft.}
+The 480-run on-shell campaign is complete. Statistical inspection and the
+remaining robustness calculations determine the scope of the numerical
+conclusions. This working manuscript is not ready for submission.}}
+\par\smallskip
+\textbf{14 October update:} the historical product results also require
+revalidation after correction of a production--decay spin-frame mismatch.
+\end{center}
 
 \section{Physics question and scope}
 
@@ -238,9 +251,9 @@ and pairing also populate tails.
 
 \begin{table}[t]
 \centering\small
-\begin{tabular}{cll}
+\begin{tabular}{c>{\raggedright\arraybackslash}p{.35\linewidth}>{\raggedright\arraybackslash}p{.39\linewidth}}
 \toprule
-Extra jets in two-b region & Strict NLO & Product\\
+Extra jets & Strict NLO & Product\\
 \midrule
 0 & NLO, with veto-log limitations & Same NLO expansion plus selected terms\\
 1 & LO for this multiplicity & Selected higher-order stage terms\\
@@ -322,7 +335,7 @@ training and every refinement. Independent full-run convergence
 checks remain necessary; identical seeds in different samplers do not
 establish correlation. Repeated estimates of one process must be combined
 statistically, whereas disjoint charge/flavour channels are summed.
-The main campaign is prepared with five complete independent integrations
+The main campaign contains five complete independent integrations
 per flavour, charge and prescription, each with fresh importance-grid
 training. For these ensembles, the uncertainty estimator uses the scatter
 between complete runs. Let $g$ label an independent ensemble and
@@ -353,15 +366,18 @@ The target precision is initially below one percent for fiducial rates
 and one to two percent in retained populated shape bins. A claimed shift
 must have an MC error below approximately one third of its magnitude.
 
-\section{Validation and numerical results}
+\section{Validation}
+\input{validation.tex}
+
+\section{Main on-shell results and convergence}
 \input{results.tex}
 
 \section{Interpretation and remaining limitations}
 
-Any conclusion must distinguish a mixed-stage correction, a W-treatment
-change, a production-scale-definition change and a decay-bottom-mass
-effect. A narrower product envelope, if observed, measures the response
-of this particular prescription. It cannot compensate for missing
+The interpretation must distinguish corrections from mixed stages, changes
+in the W treatment, changes in the central production scale and effects of
+the bottom mass in decays. Scale variation measures the response
+of a particular prescription. It cannot compensate for missing
 same-stage terms. Extra-jet observables have the limitations in
 Table~\ref{tab:jets}, and small veto scales can introduce large logarithms.
 Recent NNLO ttW production results include an explicit two-loop amplitude
@@ -374,8 +390,13 @@ must be established before a coefficient-level comparison.
 Public histograms exist, but their PDF order, cuts, differential decay scales
 and fixed inclusive-width convention differ from this benchmark. They do not
 directly isolate the missing same-stage coefficient.
-The final conclusions will be written after the numerical validation,
-full flavour sum and robustness campaign.
+The complete on-shell flavour sum resolves a decrease of the two-b rate
+and efficiency and identifies the minimax endpoint as a region with a
+larger local shape response. The inclusive residual and tail precision
+must be assessed before assigning final numerical uncertainties. Full
+flavour sums for the W and mass companions, the selected parameter
+comparisons and independent validation of the initial coefficient projection remain necessary to
+establish the stability and origin of those changes.
 
 \begin{thebibliography}{99}
 \raggedright

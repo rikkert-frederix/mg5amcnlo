@@ -1,0 +1,49 @@
+{
+  "date": "2026-10-30",
+  "report_pages": 19,
+  "figures": 10,
+  "tables": 5,
+  "independent_replica_blocks": 10,
+  "integrations": 40,
+  "aggregation": "Equal-weight means; native errors propagated across replica blocks; central ratio MC errors use paired delete-one jackknife.",
+  "report_files": {
+    "report.tex": "6f52c4a86311899362232d54f699247b240cc4483a05d4e04d8c1449bd1fc867",
+    "report.pdf": "7804b7d127d206b0446d60f92e42dc3c6c298f3f1e92b849e235c16de9a93c38",
+    "Makefile": "6db378dec5962e29067a4d3c0281dd91529d1313c79043bddbcec9846cd0b592",
+    "README.txt": "5301bcdb1db18118319b49cc8784da3c31d5a58e255ca4d089589e6dbc172042",
+    "rates_table.tex": "0314288c009f90115af6b45409205ad9acd857b083ff6d0d2079dbf22dc65a76",
+    "scales_table.tex": "4fc1d331745912861a5280860f1918b2fc5ca4e9d6ba37bd4fcf004324719d8f",
+    "ratios_table.tex": "28823bc94f51118cb8e9881028704cc8056d63f66dc3e0434428f851d90d59e9",
+    "mass_ratio_table.tex": "35ba1c3f6f7b8654ad8801f8f50803daa119c85ec5528a369b49cf60b1f45535",
+    "precision_table.tex": "f067125c5e41d894a8f454ac1fe988dc37895fa424a7fd79613a92d417de4db2",
+    "figures/01_rates.pdf": "592b4589e95fae6bf3a6f6352233579e6c4bc9a164f85af4369d291f537f1513",
+    "figures/02_scale_prescriptions.pdf": "5fd7e337b29f67535df537d5428312135c0f78a5a77b45a3e556a2a4fa9c8ee7",
+    "figures/03_scale_response.pdf": "737a33bb37055d0560b4109964222d6acfff45c100c5e9f938269a10004410fe",
+    "figures/04_lepton_pt.pdf": "5bfdb609b070d6f46390efd60b49efdb38769a89a188db349849b976e6200a56",
+    "figures/05_muon_eta.pdf": "8151a056c9d51af6075d9e057a106687b701f856e0025a8955a3d9375448d255",
+    "figures/06_bottom_pt.pdf": "61ea74750fe8c42159bff7ab9b50fe583ed2e156ae08061db2fac48208247770",
+    "figures/07_lepton_bottom.pdf": "ddbcad55cc4954ee1f9d5fed45fe1a6bcfd743e3ed19e8a4db487f7290127fa7",
+    "figures/08_trilepton_angles.pdf": "d4202a01790c58234df20e1016f4e27ba77352ba5a501adce03aeccc6f547694",
+    "figures/09_low_tag_categories.pdf": "72d3896b1e055ff0de58c82db3dc97feb25ea79af0d0707f09c658e71c6d2c36",
+    "figures/10_replica_precision.pdf": "c9e3438a5ad34b8148ccd80d26811297fa6cbd8d4c657f2aa40749afc4b17ef7"
+  },
+  "numerical_files": {
+    "results.json": "085d614f2ac8d5acb9e0eb5b615f73264eb08b2bde72046d42295a7a2265882a",
+    "collected.npz": "26b9d74ec2a1eed5c54dde3318465c582151685d208692e635e36d77947b5511",
+    "figure_manifest.json": "8822c0608398a1dd072f00e9865e31cedc909f70797f54ffc0a5b8569398d93a",
+    "input_inventory.json": "ca47edf63ad556b655a273d5df1b4e881e6cbfa9e168d80a0f91763d4f75da8f",
+    "histogram_precision.csv": "148fc722a3b704d4f51791a8ea7e146824fba39ac62554252c249d9b1162843a"
+  },
+  "source_bundle_sha256": "2c27bc22ff7331e2141bfd0046a70604b1858d88575f82669bf2a3096598a310",
+  "reduction_scripts": {
+    "ttw_study/scripts/collect_decay_scale_report.py": "7fbd938717c73b757ebd5b1b6848b95076f107820a624efccc533a12c699e546",
+    "ttw_study/scripts/render_decay_scale_report.py": "eb198337191a7ee19935116a20ea350faab8de8d5e3fbcfe7c08326c1baea78a",
+    "ttw_study/scripts/test_decay_scale_report.py": "9de724b7401b9bffae91126c90853a7a185b8037b9cfccf0bcb6fd5452eb6316"
+  },
+  "validation": {
+    "unit_tests_passed": 8,
+    "latex_final_warnings": false,
+    "standalone_bundle_compiles": true,
+    "representative_figures_visually_checked": true
+  }
+}

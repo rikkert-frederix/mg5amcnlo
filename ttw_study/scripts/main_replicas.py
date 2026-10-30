@@ -7,6 +7,8 @@ to a variance estimated from independently retrained complete run vectors.
 """
 import argparse
 import copy
+from concurrent.futures import ProcessPoolExecutor
+from functools import partial
 import json
 from pathlib import Path
 
@@ -51,7 +53,48 @@ def inventory(queue):
     return replicas
 
 
-def collect(queue_path,output):
+def collect_job(job,tag,source_hashes):
+    """Audit one immutable run; workers return only compact complete vectors."""
+    case=job['case']
+    result=load(job['audit'])
+    report=result['report']
+    manifest,execution=report['manifest'],report['execution']
+    generation=execution['export_generation']['args']
+    expected=dict(charge=case['charge'],flavours=case['flavours'],w_treatment='onshell',
+                  decay_bottom_mass=0.,corrected='both',tag=tag)
+    if (job['variant']!=case['variant'] or report['variant']!=case['variant'] or
+            manifest['settings']['iseed']!=case['seed'] or execution['pilot'] or
+            execution.get('grid_reference') is not None or
+            manifest['production_scale']!='core-w-ht-half' or
+            manifest['decay_scale_grouping']!='separate' or
+            any(generation[k]!=v for k,v in expected.items())):
+        raise ValueError('Main physical assignment or independent-retraining convention changed')
+    if any(source_hashes.get(p)!=sha for p,sha in execution['source_hashes'].items()):
+        raise ValueError('Main run did not use the frozen runtime sources')
+    pairs=verified_pairs(job)
+    for h,title in enumerate(result['titles']):
+        if ('W-' if case['charge']=='plus' else 'W+') in title:
+            a,b=map(int,result['offsets'][h:h+2])
+            if np.any(result['values'][a:b]):
+                raise ValueError('Single-charge main run populated the other charge')
+    with np.load(job['batches']) as batches:
+        if (list(batches['titles'])!=result['titles'] or
+                not np.array_equal(batches['edges'],result['edges']) or
+                not np.array_equal(batches['offsets'],result['offsets'])):
+            raise ValueError('Main batch layout differs from its final audit')
+        mean,conditional_variance=collapse_batches(batches['contributions'],batches['strata'],result['values'])
+    # Physics signatures and layout are checked across all runs by the parent.
+    projected={key:result[key] for key in ('parameter_signature','titles','edges','offsets','weights')}
+    projected['report']=copy.deepcopy(report)
+    projected['report']['execution']['export_generation']['args'].update(charge='plus',flavours=['e','e','e'])
+    row=dict(case=case,audit=job['audit'],audit_sha256=digest(job['audit']),
+        batches=job['batches'],batches_sha256=digest(job['batches']),stage_initializations=len(pairs))
+    return projected,pairs,mean,conditional_variance,row
+
+
+def collect(queue_path,output,workers=1):
+    if not isinstance(workers,int) or not 1<=workers<=64:
+        raise ValueError('Use one to 64 archive-reading workers')
     if output.exists() or output.with_suffix('.npz').exists():
         raise ValueError('Refuse to overwrite main replica vectors')
     queue=json.loads(queue_path.read_text())
@@ -60,58 +103,34 @@ def collect(queue_path,output):
         raise ValueError('Main benchmark changed')
     groups,rows,streams={},[],set()
     reference,layout=None,None
-    for job in queue['jobs']:
-        case=job['case']
-        result=load(job['audit'])
-        report=result['report']
-        manifest,execution=report['manifest'],report['execution']
-        generation=execution['export_generation']['args']
-        expected=dict(charge=case['charge'],flavours=case['flavours'],w_treatment='onshell',
-                      decay_bottom_mass=0.,corrected='both',tag=queue['tag'])
-        if (job['variant']!=case['variant'] or report['variant']!=case['variant'] or
-                manifest['settings']['iseed']!=case['seed'] or execution['pilot'] or
-                execution.get('grid_reference') is not None or
-                manifest['production_scale']!='core-w-ht-half' or
-                manifest['decay_scale_grouping']!='separate' or
-                any(generation[k]!=v for k,v in expected.items())):
-            raise ValueError('Main physical assignment or independent-retraining convention changed')
-        if any(queue['source_hashes'].get(p)!=sha for p,sha in execution['source_hashes'].items()):
-            raise ValueError('Main run did not use the frozen runtime sources')
-        projected=dict(result,report=copy.deepcopy(report))
-        projected['report']['execution']['export_generation']['args'].update(
-            charge='plus',flavours=['e','e','e'])
-        # Only the two explicitly summed/disjoint labels are projected out.
-        # PDFs, all masses/widths/scales/cuts and the active decay axes match.
-        if reference is not None:
-            assert_matched_physics([reference,projected])
-            assert_same_layout([layout,result])
-        else:
-            reference=projected
-            layout={key:result[key] for key in ('titles','edges','offsets','weights')}
-        pairs=verified_pairs(job)
-        if pairs & streams:
-            raise ValueError('Main retrainings/flavours share actual stage initializations')
-        streams.update(pairs)
-        for h,title in enumerate(result['titles']):
-            if ('W-' if case['charge']=='plus' else 'W+') in title:
-                a,b=map(int,result['offsets'][h:h+2])
-                if np.any(result['values'][a:b]):
-                    raise ValueError('Single-charge main run populated the other charge')
-        with np.load(job['batches']) as batches:
-            if (list(batches['titles'])!=result['titles'] or
-                    not np.array_equal(batches['edges'],result['edges']) or
-                    not np.array_equal(batches['offsets'],result['offsets'])):
-                raise ValueError('Main batch layout differs from its final audit')
-            mean,conditional_variance=collapse_batches(batches['contributions'],batches['strata'],result['values'])
-        key=case['charge']+'__'+case['variant']+'__'+''.join(case['flavours'])
-        group=groups.setdefault(key,dict(charge=case['charge'],variant=case['variant'],flavours=case['flavours'],
-            replicas=[],vectors=[],conditional_variances=[]))
-        group['replicas'].append(case['replica'])
-        group['vectors'].append(mean)
-        group['conditional_variances'].append(conditional_variance)
-        rows.append(dict(case=case,audit=job['audit'],audit_sha256=digest(job['audit']),
-            batches=job['batches'],batches_sha256=digest(job['batches']),stage_initializations=len(pairs)))
-        print('Collected complete run',len(rows),'/',len(queue['jobs']),job['run'],flush=True)
+    worker=partial(collect_job,tag=queue['tag'],source_hashes=queue['source_hashes'])
+    executor=ProcessPoolExecutor(max_workers=workers) if workers>1 else None
+    try:
+        # map preserves the frozen inventory order despite parallel I/O.
+        completed=executor.map(worker,queue['jobs']) if executor else map(worker,queue['jobs'])
+        for job,(projected,pairs,mean,conditional_variance,row) in zip(queue['jobs'],completed):
+            case=job['case']
+            # Only the explicitly summed charge/flavour labels are projected out.
+            if reference is not None:
+                assert_matched_physics([reference,projected])
+                assert_same_layout([layout,projected])
+            else:
+                reference=projected
+                layout={key:projected[key] for key in ('titles','edges','offsets','weights')}
+            if pairs & streams:
+                raise ValueError('Main retrainings/flavours share actual stage initializations')
+            streams.update(pairs)
+            key=case['charge']+'__'+case['variant']+'__'+''.join(case['flavours'])
+            group=groups.setdefault(key,dict(charge=case['charge'],variant=case['variant'],flavours=case['flavours'],
+                replicas=[],vectors=[],conditional_variances=[]))
+            group['replicas'].append(case['replica'])
+            group['vectors'].append(mean)
+            group['conditional_variances'].append(conditional_variance)
+            rows.append(row)
+            print('Collected complete run',len(rows),'/',len(queue['jobs']),job['run'],flush=True)
+    finally:
+        if executor is not None:
+            executor.shutdown(wait=True,cancel_futures=True)
     arrays=dict(layout)
     definitions={}
     for key,group in groups.items():
@@ -125,7 +144,7 @@ def collect(queue_path,output):
     save(output,dict(created_utc=now(),status='complete independent main vectors collected; flavour reduction and convergence required',
         input=str(queue_path.resolve()),input_sha256=digest(queue_path),
         benchmark_sha256=queue['benchmark_sha256'],arrays_sha256=digest(output.with_suffix('.npz')),
-        script_sha256=digest(Path(__file__)),groups=definitions,samples=rows,
+        script_sha256=digest(Path(__file__)),workers=workers,groups=definitions,samples=rows,
         distinct_stage_initializations=len(streams),cross_run_rng_overlap=0,
         convention='Each array row is one complete independently retrained cross-section vector. '
             'Average within a flavour group and sum all eight disjoint flavour means at identical weights. '
@@ -141,5 +160,6 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('queue',type=Path)
     parser.add_argument('--output',required=True,type=Path)
+    parser.add_argument('--workers',type=int,default=1,help='Parallel immutable archive readers (default: 1)')
     args=parser.parse_args()
-    collect(args.queue,args.output)
+    collect(args.queue,args.output,args.workers)

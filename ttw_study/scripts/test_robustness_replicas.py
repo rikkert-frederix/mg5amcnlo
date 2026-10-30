@@ -16,11 +16,11 @@ from unittest import mock
 
 import numpy as np
 
-from campaign import STUDY, digest, save
+from campaign import ROOT, STUDY, digest, save
 from full_flavour_statistics import FLAVOURS
 from load_results import WEIGHTS, load
 from robustness_statistics import LABELS, estimate, group_key, select
-from run_robustness_campaign import DONE, STATES
+from run_robustness_campaign import DONE, STATES, plan_digest
 from test_w_treatment_pilot_report import pilot_jobs
 import robustness_replicas as collector
 
@@ -30,6 +30,11 @@ class TestRobustnessReplicas(unittest.TestCase):
     def fixture(folder):
         queue = json.loads((STUDY/'inputs/robustness_campaign_fullflavour_v1.json').read_text())
         queue.update(status=DONE, jobs=[], exports={})
+        # Freeze this temporary synthetic allocation against the current
+        # sources; the historical physical campaign record stays untouched.
+        queue['source_hashes'] = {name: digest(ROOT/name) for name in queue['source_hashes']}
+        queue['benchmark_sha256'] = digest(STUDY/'inputs/benchmark.json')
+        queue['plan_sha256'] = plan_digest(queue)
         titles = ['W+ rates: synthetic', 'W- rates: synthetic']
         edges = np.tile(np.column_stack([np.arange(9), np.arange(1, 10)]), (2, 1))
         layout = dict(titles=titles, edges=edges, offsets=np.asarray([0, 9, 18]), weights=WEIGHTS)

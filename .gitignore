@@ -98,7 +98,9 @@ nsqso_born.inc
 !/ttw_study/inputs/ttbar_reference_preflight.json
 !/ttw_study/inputs/qes_pi_retraining_plan_v1.json
 !/ttw_study/inputs/main_campaign_main_onshell_v2.json
+!/ttw_study/inputs/main_binning_main_onshell_v3_coarse_v1.json
 !/ttw_study/inputs/robustness_campaign_fullflavour_v1.json
+!/ttw_study/inputs/robustness_campaign_fullflavour_v2.json
 /ttw_study/widths/*
 !/ttw_study/widths/continuity_scans.json
 
@@ -111,11 +113,54 @@ nsqso_born.inc
 /ttw_study/paper/*
 !/ttw_study/paper/*.tex
 !/ttw_study/paper/*.bib
+!/ttw_study/paper/jheppub.sty
+!/ttw_study/paper/jheppub_source.json
+!/ttw_study/paper/Makefile
 /ttw_study/figures/*
 !/ttw_study/figures/generated_narrow_w.pdf
 !/ttw_study/figures/generated_narrow_w.json
 !/ttw_study/figures/w_treatment_pilot_width_mass_v2.pdf
 !/ttw_study/figures/w_treatment_pilot_width_mass_v2.json
+!/ttw_study/figures/ttbar_reference_ref1901_v6.pdf
+!/ttw_study/figures/main_onshell_v3_coarse_v1/
+/ttw_study/figures/main_onshell_v3_coarse_v1/*
+!/ttw_study/figures/main_onshell_v3_coarse_v1/*.pdf
+!/ttw_study/figures/main_onshell_v3_coarse_v1/manifest.json
 
 # Official UFO dependency downloaded by the interface regression suite.
 /models/loop_qcd_qed_sm/
+!/ttw_study/inputs/precision_campaign_precision_onshell_v2.json
+!/ttw_study/inputs/precision_campaign_precision_onshell_v3.json
+!/ttw_study/figures/precision_convergence_20261014_v2/
+/ttw_study/figures/precision_convergence_20261014_v2/*
+!/ttw_study/figures/precision_convergence_20261014_v2/*.pdf
+!/ttw_study/inputs/tail_pilot_bounded_plan_20261014.json
+!/ttw_study/inputs/tail_pilot_tailpilot_20261014.json
+!/ttw_study/figures/tail_pilot_20261014/
+/ttw_study/figures/tail_pilot_20261014/*
+!/ttw_study/figures/tail_pilot_20261014/*.pdf
+!/ttw_study/figures/tail_pilot_20261014/manifest.json
+!/ttw_study/figures/tail_pilot_controls_20261014/
+/ttw_study/figures/tail_pilot_controls_20261014/*
+!/ttw_study/figures/tail_pilot_controls_20261014/*.pdf
+!/ttw_study/figures/tail_pilot_controls_20261014/manifest.json
+!/ttw_study/figures/production_hard_split_20261014_v4/
+/ttw_study/figures/production_hard_split_20261014_v4/*
+!/ttw_study/figures/production_hard_split_20261014_v4/*.pdf
+!/ttw_study/figures/production_hard_split_20261014_v4/manifest.json
+
+# Generated copies used by the forty-integration ttW comparison campaign.
+/ttw_additive/
+/ttw_additive_fixedwidth/
+/ttw_multiplicative/
+/ttw_multiplicative_fixedwidth/
+/ttw_study/*.lock
+
+# Commit report documents, figures, cards and numerical summaries. Bulk
+# arrays and transfer bundles remain local alongside the original runs.
+/ttw_study/reports/**/*.aux
+/ttw_study/reports/**/*.out
+/ttw_study/reports/**/*.npz
+/ttw_study/reports/**/report_source.zip
+/ttw_study/archives/*
+!/ttw_study/archives/README.txt

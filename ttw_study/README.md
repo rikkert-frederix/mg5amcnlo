@@ -7,15 +7,48 @@ ledger and bug register are `TTW_STUDY_PROGRESS.md` in the checkout root.
 The paper is `paper/main.tex`, including `paper/results.tex`; `paper/main.pdf`
 is a visibly labelled working draft.
 
+The latest dedicated result is the [30 October decay-scale report](
+reports/decay_scales_20261030/report.pdf), with its [LaTeX source](
+reports/decay_scales_20261030/report.tex), figures, setup cards and numerical
+summaries alongside it. It combines ten independent runs for each of the
+additive and multiplicative prescriptions, both with running and fixed
+normalization widths. These forty runs use the revised fiducial analysis,
+massless b quarks and on-shell W bosons, and cover one W+ direct e/e/mu decay
+assignment. They do not replace the full-flavour campaign described below.
+The [archive record](archives/README.txt) identifies the separate code-free
+data bundle; the [generation-cut instructions](
+assets/trilepton_baseline_generation.txt) preserve the process-specific
+baseline used by the new campaign.
+
+The **480-run main campaign is complete and reduced** as of 5 October 2026.
+All eight ordered e/mu assignments, both charges, six prescriptions and five
+independent retrainings enter the result. At the nominal R=0.4, b-pT>25 GeV
+cuts, the product/strict two-b ratios are 0.9634 +/- 0.0057 (W+) and
+0.9622 +/- 0.0055 (W-), with independent-retraining MC errors. The one-b
+shift is consistent with zero. The two-b scale envelope becomes slightly
+wider in the product prescription. Six main figures and two numerical
+tables now appear in the JHEP-format working manuscript.
+
+This is not yet a publication-precision release. The charge-summed inclusive
+S-P residual is -0.04673 +/- 0.01214 fb (3.85 estimated MC errors), and
+several differential tails remain poorly sampled. The paired decay-scale
+checks have maximum residual 2.69 errors. No main run or split was removed,
+and no inclusive rescaling or fitted error inflation is applied. The fresh
+640-run W/mass preparation `inputs/robustness_campaign_fullflavour_v2.json`
+has **not launched**. Fixed-statistics/retraining follow-up, narrow-W and
+small-mass assessment, independent stage-attribution validation and bounded physical
+variations remain necessary. See the root progress ledger for priorities.
+
 ## Tracked sources and local artifacts
 
 Git contains the study scripts and regression fixtures, reusable physical
 inputs and prepared campaign definitions, reference notes, progress ledger,
-and manuscript sources with the two PDF figures used by the draft. Downloaded
-dependencies and literature data, generated process directories, live queues,
-run-specific input snapshots, validation outputs, numerical results and worker
-archives remain local and are ignored by Git. Paper build products and visual
-inspection renders also remain local.
+and manuscript sources with the PDF figures used by the draft. The dated
+scale reports also retain their PDFs, figures, setup records and numerical
+summaries. Downloaded dependencies and literature data, generated process
+directories, live queues, bulk numerical arrays, raw run outputs, validation
+outputs and worker archives remain local and are ignored by Git. Paper build
+products and visual inspection renders outside the reports also remain local.
 
 Paths to these local artifacts in the notes preserve the evidence trail for
 this checkout; they are not files supplied by a Git clone. Some study tests
@@ -126,17 +159,24 @@ identifies the actual June 2019 source of the ttbar calibration curves.
 That nine-page working PDF compiled without final-pass warnings;
 source/build and citation evidence is in
 `checks/paper_charge_covariance_and_citation_v1.json`.
-The latest draft adds the matched three-W-treatment pilot comparisons and
-is ten pages. Its current build log is `logs/paper_w_treatment_pilots_v2.log`.
+The ten-page pilot draft and its build log
+`logs/paper_w_treatment_pilots_v2.log` are historical. The current main-result
+draft uses the official JHEP style, whose source and hash are recorded in
+`paper/jheppub_source.json`; its build and numerical checks are recorded in
+`checks/paper_main_onshell_v3_20261005.json`.
 
 `scripts/run_robustness_campaign.py` prepares the required full-flavour
-S/Pi W/mass companions. `inputs/robustness_campaign_fullflavour_v1.json`
+S/Pi W/mass companions. `inputs/robustness_campaign_fullflavour_v2.json`
 contains 640 fresh integrations in massless top-bw/all-bw and massive
 onshell/all-bw, across both charges and all eight ordered flavours, with
 five retrainings. It reuses at least 160 main massless on-shell S/Pi
 references. Five driver tests pass. The exact allocation and sources are
 frozen; execution requires matching scientific-validation and main-convergence
-evidence. No companion export or integration has been launched.
+evidence. The never-executed v1 record is retained: eleven frozen paths had
+changed since its preparation, so the identical allocation was prepared
+again with current sources. The comparison is recorded in
+`inputs/robustness_preparation_transition_20261005.json`. Seeds 300001--300640
+are reserved; no companion export, release or integration has been launched.
 
 The complete-run collector and shared-state estimators are
 `scripts/robustness_replicas.py` and `scripts/robustness_statistics.py`;
@@ -174,7 +214,7 @@ exports, seeds, run names, reports and card archives must not be overwritten.
 
 ## Execution and resource limits
 
-Current state (14 September 2026): all 16 `width_mass_v4` companions and
+Earlier validation state (14 September 2026): all 16 `width_mass_v4` companions and
 all 21 `narrow_v2` integrations completed on 12 September. The generated
 narrow-W comparisons are now in `results/narrow_v2_{LO,S,Pi}_generated_limit.*`:
 all five rate selections and six coarse spectra, with common fixed scales,
@@ -275,18 +315,23 @@ state is in `inputs/qes_pi_retraining_queue_qes_pi_retrain_v1.json`;
 `references/qes_pi_retraining_inspection.md` give the direct comparison
 and interpretation.
 
-For the completed 480-case main campaign, `scripts/main_replicas.py` will
-collect complete independent run vectors and conditional-variance diagnostics.
+For the completed 480-case main campaign, `scripts/main_replicas.py` has
+collected complete independent run vectors and conditional-variance diagnostics
+in `results/main_replicas_main_onshell_v3.json/.npz`.
 `scripts/full_flavour_statistics.py` averages retrainings within each flavour,
 sums all eight disjoint flavour means and propagates covariance through
-ratios, normalization and charge comparisons. These helpers have numerical
-tests but no main data yet; the collector rejects the currently prepared queue.
+ratios, normalization and charge comparisons. The collector validates all
+59,629 actual stage-initialization pairs with zero cross-run overlap.
+Eight parallel readers preserve frozen inventory order and give exactly the
+same vectors, variances and provenance as serial collection in a physical
+six-prescription comparison (`checks/main_collection_parallel_validation_v1.json`).
+The default remains one reader; `--workers` selects one to 64.
 Earlier reference build and auxiliary-column issues are fixed; failed
 attempts and successful reusable samples retain their original records.
 Check these records and live processes before taking any further action.
 
 The fixed-source W+/W- S/Pi and mass controls are technically complete.
-Their full-flavour counterparts, main statistics, between-retraining error
+Their full-flavour W/mass counterparts, assessment of between-retraining error
 coverage and remaining parameter scans are still required. The generated
 small-mass continuity pilots and the independent Pi QES pair have been
 inspected at conditional pilot precision.
@@ -297,8 +342,10 @@ case inventory is `inputs/main_campaign_main_onshell_v3.json`, prepared by
 `scripts/run_main_campaign.py`: all eight assignments, both charges, six
 prescriptions and five independent retrainings (480 runs). The internal
 scientific release is `inputs/main_release_main_onshell_v3_20260924.json`.
-The v3 serial controller has launched; inspect the queue and
-`inputs/queue_launch_main_onshell_v3_20260924.json` for its exact state.
+The v3 serial controller completed all 480 integrations on 4 October at
+23:26 UTC. The original queue and
+`inputs/queue_launch_main_onshell_v3_20260924.json` remain unchanged;
+`inputs/main_analysis_launch_20261005.json` records the subsequent reduction.
 The unexecuted v1/v2 preparations were superseded after the corrected virtual
 validation and later simulation/audit fixes; no main integration was discarded.
 Older sampler, seed-reuse and Born-alignment failures remain documented in
@@ -320,8 +367,10 @@ The metadata-based storage scenario in
 1114--1156 GiB for the prepared main and companion campaigns if all measured
 working files are retained, against about 1205 GiB then available. Remaining
 preliminary/parameter studies, convergence additions and reductions are not
-included. Reassess the complete budget and verified duplicate-file retention
-before production release; no file was moved or deleted by this inventory.
+included. The 5 October preparation transition records about 800 GiB then
+available against a legacy pilot estimate of 685 GiB additional companion
+storage, before parameters, convergence additions and reduction products.
+Reassess that budget before companion release; no raw file was removed.
 
 `inputs/onshell_pilot_queue_r10.json` records the completed six-prescription,
 two-charge on-shell pilots. `inputs/validation_pilot_queue_v3.json` records
@@ -474,8 +523,8 @@ replicas. Repeated runs are averaged statistically, not summed as flavours.
 assignments with matching physical inputs. A single ordered e,e,mu pilot
 must never be multiplied by eight under the fiducial cuts.
 
-After the complete main campaign finishes, `main_replicas.py` verifies all
-480 cases and collects one full-run vector per retraining. Then
+`main_replicas.py` verified all
+480 cases and collected one full-run vector per retraining. Then
 `main_report.py` uses `full_flavour_statistics.py` to average the five
 independent retrainings within each assignment, sum all eight disjoint
 flavours, and form rates, acceptances, normalized spectra, charge ratios
@@ -485,8 +534,34 @@ tested only for absolute cross sections. Full weight-level arrays and
 nominal covariance factors are saved in NPZ; compressed per-spectrum JSON
 retains every scale/PDF reduction. Conditional batch variances diagnose
 retraining convergence and are not added again to the between-run variance.
-The complete synthetic reporting regression passed; real main data are
-still pending, and the prepared incomplete queue is rejected.
+The real report is `results/main_report_main_onshell_v3_coarse_v1.json/.npz`,
+with 300 compressed spectrum/charge reports in the matching `_spectra/`
+directory. `scripts/main_convergence.py` independently inspects all rates,
+inclusive identities at every weight, paired decay-scale cancellation,
+the binwise strict identity and the original fine-bin precision. Its output
+is `results/main_convergence_main_onshell_v3.json/.npz`.
+`results/main_analysis_inspection_main_onshell_v3.json` cross-checks all 540
+nominal rate/error entries against that separate linear estimator and records
+leave-one-run influence. The inclusive S-P flag remains 3.61--4.24 errors
+under those diagnostic deletions; the two-b Pi-S shifts remain above 5.94/6.21
+errors. All data remain in the reported ensemble. The R=0.3 W+ Pi two-b
+rate has 1.13% error; the nominal R=0.4 S/Pi fiducial rates meet 1%.
+
+`scripts/main_stage_projection.py` now supplies an initial coefficient
+diagnostic using the existing signed decay-scale weights. At fixed production
+coordinates and member-0 PDFs, it removes the known width denominators,
+projects the bilinear Pi/PiD numerators and checks all 81 coordinates in
+every original bin. The maximum closure residual is 9.14e-11 pb. The report
+`results/main_stage_projection_main_onshell_v3.json/.npz` retains all projected
+complete-run rate coefficients and compares reconstructed prescriptions
+with the independent S/P/D/LO controls. The production-decay part dominates
+the projected second-order two-b shift (-0.0367 +/- 0.0029 fb for W+;
+-0.01934 +/- 0.00125 fb for W-). The strict projection also locates most
+of the inclusive S-P residual in the decay-independent contribution.
+Five focused tests include analytic inclusive cancellation, a nonpolynomial
+failure and a complete synthetic reduction. This projection does not
+replace the direct main results or the proposed independent subset exports;
+PDF-member and differential coefficient attribution remain incomplete.
 
 `main_report.py --binning <plan.json>` can apply a declared common bin plan
 to every complete run before any flavour sum or nonlinear reduction. The
@@ -501,6 +576,10 @@ conditional variances are marked unavailable because their stored diagonals
 cannot reconstruct within-run bin correlations; the reported MC errors use
 the complete rebinned retrainings. This facility does not choose or freeze
 publication bins before measured main convergence is available.
+The current draft uses `inputs/main_binning_main_onshell_v3_coarse_v1.json`,
+declared before inspection of the full-flavour shape shifts. It reduces
+6430 to 1900 bins and preserves the 140--150/150--160 GeV minimax endpoint
+bins. It is explicitly not a final publication bin selection.
 
 `main_figures.py <main-report.json> --output-dir <new-directory>` renders
 draft Figures 2--7 after the full-flavour report exists. It checks the
@@ -509,16 +588,49 @@ keeps retraining MC errors separate, and converts bin integrals to densities.
 It covers rate bands, normalized decay/activity/angular distributions,
 charge shapes, absolute extra-jet sectors and acceptance/veto migrations.
 The labelled synthetic previews in `checks/main_figures_synthetic_v4` test
-layout only and must not be used as physics results. Figures 1/8, the
-numerical tables, final convergence and publication selection remain open.
+layout only and must not be used as physics results. Actual main PDFs,
+PNGs and the provenance manifest are in `figures/main_onshell_v3_coarse_v1/`.
+Final convergence, the complete robustness figure and publication selection
+remain open.
 
 `main_tables.py <main-report.json> --output-dir <new-directory>` prepares
 the main rates/acceptances/charge table and the product-shift/scale-response
 table. It uses the same complete-data gate, checks all displayed band
 coordinates, converts rates and MC errors together to fb, and keeps MC,
 PDF and scale quantities separate. Its two-page synthetic LaTeX layout
-passed compilation and visual inspection in `checks/main_tables_synthetic_v1`;
-no numerical main table has yet been generated from physics data.
+passed compilation and visual inspection in `checks/main_tables_synthetic_v1`.
+The main numerical tables were generated from physics data in
+`paper/main_onshell_v3_coarse_v1/`; the narrower JHEP layout is in
+`paper/main_onshell_v3_tables_v2/`. The latter supplies the manuscript's
+`main_rates.tex` and `main_responses.tex`. Both original generations and
+their manifests are retained.
+
+The reduction commands are shown below for reproducibility. These output
+paths now exist, and each script refuses to overwrite evidence. A repeat
+must use fresh output names and respect the CPU allocation.
+
+```sh
+source ttw_study/env.sh
+taskset -c 0-7 python3 ttw_study/scripts/main_replicas.py \
+  ttw_study/inputs/main_campaign_main_onshell_v3.json --workers 8 \
+  --output ttw_study/results/main_replicas_main_onshell_v3.json
+taskset -c 8-15 python3 ttw_study/scripts/main_report.py \
+  ttw_study/results/main_replicas_main_onshell_v3.json \
+  --binning ttw_study/inputs/main_binning_main_onshell_v3_coarse_v1.json \
+  --output ttw_study/results/main_report_main_onshell_v3_coarse_v1.json
+taskset -c 8-15 python3 ttw_study/scripts/main_convergence.py \
+  ttw_study/results/main_replicas_main_onshell_v3.json \
+  --output ttw_study/results/main_convergence_main_onshell_v3.json
+taskset -c 16 python3 ttw_study/scripts/main_stage_projection.py \
+  ttw_study/results/main_replicas_main_onshell_v3.json \
+  --output ttw_study/results/main_stage_projection_main_onshell_v3.json
+taskset -c 8-15 python3 ttw_study/scripts/main_figures.py \
+  ttw_study/results/main_report_main_onshell_v3_coarse_v1.json \
+  --output-dir ttw_study/figures/main_onshell_v3_coarse_v1
+taskset -c 16 python3 ttw_study/scripts/main_tables.py \
+  ttw_study/results/main_report_main_onshell_v3_coarse_v1.json \
+  --output-dir ttw_study/paper/main_onshell_v3_tables_v2
+```
 
 `rebinning.py` sums raw joint vectors before nonlinear transformations or
 error estimation. Histograms contain bin integrals, not differential
@@ -535,6 +647,12 @@ nor freezes bins or certifies main precision.
 
 ## Current diagnostic outputs
 
+- `results/main_technical_summary_main_onshell_v3.json`: all 480 archived
+  technical audits and 245,760 analytic virtual checks (maximum 8.8048e-11
+  at tolerance 1e-8), with audit, worker-manifest and virtual-report hashes.
+- `results/main_convergence_main_onshell_v3.json` and
+  `results/main_analysis_inspection_main_onshell_v3.json`: actual full-flavour
+  errors, inclusive flags, precision coverage and run-influence checks.
 - `results/r10_plus_six_variant_pilot.json`: all six W+ prescriptions, one
   ordered assignment; point-matched contrasts and central identity pulls.
 - `results/r10_minus_strict_product_pilot.json`: W− S/Pi, one ordered assignment.
@@ -563,11 +681,277 @@ nor freezes bins or certifies main precision.
   invariant support, BW Jacobian and four-body measure probes; not an
   end-to-end generated cross-section/narrow-W check.
 
-The main flavour sum, publication statistics, generated BW/massive checks,
-direct reweighting/QES tests, matched reference calculations and bounded
-parameter campaign remain incomplete. Reference conventions and NNLO-data
+The main flavour sum and its scale/PDF reductions are complete. Publication
+precision, full-flavour W/mass robustness, remaining continuity checks,
+independent validation/extension of coefficient attribution and bounded parameter results remain
+incomplete. The direct-scale/QES and matched-reference pilot evidence is
+described in the manuscript's validation section. Reference conventions and NNLO-data
 availability are documented in `references/`; available external histograms
 are not automatically compatible coefficient-level comparisons.
+
+## High precision S/Pi campaign
+
+`scripts/run_precision_campaign.py` executes one numbered full-flavour comparison
+at a time. The current frozen allocation is
+`inputs/precision_campaign_precision_onshell_v3.json`, with **req_acc_FO=0.005**.
+Each run number selects both charges, all eight ordered electron/muon channels
+and S/Pi: 32 integrations with independent fresh trainings. Ten run numbers
+are reserved (320 integrations total), with seeds 902001--902320. For run
+number n, the seed range is 902001+32(n-1) through 902032+32(n-1).
+The massless-bottom, all-three-W-on-shell physics, cuts, separate decay scales,
+81 scale weights and 101 PDF members are preserved. No old grids are imported.
+
+From the checkout root, execute the first comparison:
+
+```sh
+source ttw_study/env.sh
+python3 ttw_study/scripts/run_precision_campaign.py execute \
+  ttw_study/inputs/precision_campaign_precision_onshell_v3.json --run-number 1
+```
+
+Then execute the same command with `--run-number 2`, and so on. Each invocation
+stops after that single complete comparison. Repeated or out-of-order numbers
+are rejected before integration. A stopped comparison can be resumed with the
+same run number: integrations with successful execution records and final
+histograms are reused. Incomplete existing integrations remain protected
+against overwriting. The earlier v1/v2 allocations
+are superseded; their unused seed ranges remain reserved. No new integrations
+were launched during preparation.
+
+At 0.005, each integration requests approximately nine times the baseline work.
+One numbered comparison is estimated to take 12.9 integration days on 64 cores,
+or 15.5 days allowing 20% overhead. All ten total approximately 129 integration
+days or 155 days with overhead; the optimistic median-based estimate is about
+65 days for all ten. Actual runtimes may differ because adaptive integration
+and rare slow S cases do not follow simple inverse-variance scaling.
+
+All ten comparisons target eighteen times baseline S/Pi statistics, roughly
+4.24 times smaller retraining errors and approximately 1--2% Pi/S errors in most
+populated selected coarse bins. Total-rate accuracy does not guarantee tail-bin
+precision. Workers and batches alone are forecast to occupy approximately
+2235 GiB for all ten; each comparison needs about 224 GiB before the 20% storage
+reserve. This is the earlier archive-retaining storage forecast. Lean execution no
+longer creates these worker/batch archives or applies that storage gate;
+generated process directories and final histograms still require disk space.
+
+After at least five complete comparisons, plot at a clean checkpoint:
+
+```sh
+python3 ttw_study/scripts/run_precision_campaign.py analyse \
+  ttw_study/inputs/precision_campaign_precision_onshell_v3.json \
+  --output-dir ttw_study/figures/precision_onshell_v3_run5 --workers 8
+```
+
+Plots include normalized S/Pi spectra, Pi/S and absolute Pi-minus-S differences
+for jet HT, same-sign dilepton azimuth, subleading b-jet pT and minimax lepton-b
+mass for both charges. Errors use full flavour sums and independent retraining
+ensembles with within-run normalization covariance. S/Pi integrations remain
+independent. Existing inclusive S-P normalization and fixed-count controls
+remain open publication checks. Lean execution skips prior-campaign checksum and stream scans, repeated
+source/reference hashing, worker archiving, split reductions and analytic
+virtual audits. It retains controller/MG5 locking, ordered run numbers,
+unique allocated seeds, execution success and overwrite protection. Physics
+settings and req_acc_FO=0.005 are unchanged. The prepared source hashes remain
+historical metadata and are not enforced by this launcher.
+
+Analysis reads final HwU histograms directly, with errors estimated across
+independent complete trainings. It needs no worker archives or stage logs;
+within-run statistical covariance is not separately estimated. Bin-parent
+covariance is propagated through retraining replicas. Five execution/resume
+and plotting tests pass, and the first real histogram's full 6430-by-183 weight
+array matches the prior audited array exactly. No new integration was launched
+while simplifying the launcher.
+
+The 14 October convergence investigation found large production-weight tails:
+one worker supplies 91.49% of S902011's final variance. Lowering req_acc_FO
+does not strengthen native positive-accuracy grid training (always 5%, up to
+six iterations); the supplied grid_points is ignored on that path. Refinements
+continue updating the continuous/integer grids and virtual approximations.
+The earlier frozen-grid claim was incorrect: setup_imode_m1 converts input
+mode -1 to mode 0 after reading grids. Updated split grids are merged and
+passed to subsequent refinements. Stages replace earlier samples, so they
+are not nested averages. Duration/error forecasts remain initial estimates.
+`checks/precision_convergence_investigation_20261014.json` records the evidence,
+remaining real/subtraction stability question and a bounded diagnostic plan.
+No integration sources or samples were changed and no samples were excluded.
+
+To inspect a later checkpoint without expensive worker archives, use a fresh
+output path:
+
+```sh
+python3 ttw_study/scripts/diagnose_precision_convergence.py \
+  ttw_study/inputs/precision_campaign_precision_onshell_v3.json \
+  --output ttw_study/results/precision_convergence_NEW.json \
+  --plot-dir ttw_study/figures/precision_convergence_NEW
+```
+
+This reads native per-stage logs only. It reports completed stage work,
+retained final workers, component errors and extreme worker influence;
+interrupted, uncollected stage workers are omitted. The saved 14 October
+figure is `figures/precision_convergence_20261014_v2/convergence.pdf`.
+
+## Completed bounded tail pilot, 14 October 2026
+
+The requested pilot is complete in an isolated W+ mu,e,mu export, for one dxu
+production beam ordering with m_b=0 and on-shell Ws. It evaluates central
+weights only, with zero measured PDF/scale reweighting CPU. It used
+**3,480,064 calls**: 32 independent 100,000-point integrations, two exact
+100,000-point replays, four 20,000-point training iterations, and 32 calls
+each for an instrumented smoke test and an unmodified control. Original
+campaign samples and sources remain intact; no extreme weights are discarded.
+
+The largest hard-real point supplies 99.14% of one worker's estimated
+variance. Its production real term agrees between double and quadruple
+arithmetic; across 40 selected production real tests the largest density
+discrepancy is 8.30e-14. Exact replays, native moment closure and the
+unmodified control also pass. These results support sampling tails in the
+tested real contributions, without establishing complete integrand stability:
+Born/decay, virtual, subtraction and mapping accuracy remain separate questions.
+
+Setting initial virtual sampling and its minimum floor to 5% improves the
+virtual-residual variance-times-CPU metric by about 8.1 at 35% more CPU, but
+does not demonstrate a total improvement. Fresh S training also gives no
+demonstrated total gain: its variance-times-CPU is 3.24 times baseline, or
+4.45 including training. The S-derived proposal changes continuous grids,
+sector probabilities, virtual approximations and sampling fractions together.
+These eight-replica comparisons have noisy heavy-tail variance estimates.
+First test separate continuous grids for production qg/gq FKS sectors 5–6;
+currently these share continuous proposals with qqbar initial-state sectors
+1–2 within each Born-diagram channel and differ in discrete selection
+probabilities. Born single-diagram-enhanced partition factors are already
+included; the pilot has four MINT grids (two Born diagrams times initial/final
+radiation categories). The proposed change further subdivides those channels.
+Preserve the sector
+real/subtraction combinations. Correlated
+production maps and conditional strata are further candidates. A coupled
+pointwise Pi-minus-S estimator remains prospective and requires deliberately
+shared sampling; matching seeds alone is insufficient. Retain all extreme
+contributions.
+
+See [the final report](results/tail_pilot_final_20261014.json),
+[the pilot summary](checks/tail_pilot_summary_20261014.json),
+[the independent review](checks/tail_pilot_completed_arm_review_20261014_v2.json)
+and [the sampler controls](figures/tail_pilot_controls_20261014/sampler_controls.pdf).
+This one-process diagnostic is not a replacement for full-flavour results.
+
+Reproduce the analysis and plots from the checkout root, using fresh outputs:
+
+```sh
+source ttw_study/env.sh
+python3 ttw_study/scripts/analyse_tail_pilot.py \
+  ttw_study/processes/TTWplus_onshell_muemu_mb0p0_both_tailpilot_20261014 \
+  --campaign-record ttw_study/inputs/tail_pilot_tailpilot_20261014.json \
+  --output ttw_study/results/tail_pilot_REVIEW.json \
+  --plot-dir ttw_study/figures/tail_pilot_REVIEW
+python3 ttw_study/scripts/plot_tail_pilot_controls.py \
+  ttw_study/results/tail_pilot_REVIEW.json \
+  --output-dir ttw_study/figures/tail_pilot_controls_REVIEW
+```
+
+The first plot command defaults to the initial S/Pi ensemble; the second
+compares the three S control arms. For a new bounded initial ensemble,
+choose a fresh tag and unused seeds:
+
+```sh
+python3 ttw_study/scripts/run_tail_pilot.py --tag tailpilot_NEW prepare
+python3 ttw_study/scripts/run_tail_pilot.py --tag tailpilot_NEW execute \
+  --label initial --points 100000 --replicas 8 --variant both \
+  --seed-start 920001 --workers 8 --timeout 1200
+```
+
+Preparation copies and instruments a separate export. The completed queue
+records each control arm's proposal, iterations, sampling fraction, seed and
+runtime provenance. Replays and training are excluded from independent
+ensemble estimates; the original precision launcher is unchanged. The runner's
+call cap applies per execution; an aggregate budget must cover all arms.
+
+## Production hard split with real diagram maps
+
+The opt-in production sampler follows the exact hard/singular decomposition
+in section 6.3 of [MadFKS](https://arxiv.org/abs/0908.4272). For each
+production FKS sector, define `t = 2 k_i.k_j / shat` and
+`f(t) = h^2 / (h^2 + t^2)`. The existing Born-generated maps integrate
+`f R - CT`; separate real-diagram channels integrate `(1-f) R`. Born,
+virtual and integrated contributions retain their existing treatment.
+The two real pieces sum to the original real contribution pointwise,
+without a physical radiation cut or discarded large weights.
+
+Each hard channel generates the complete production n+1 core from its real
+diagram topology, then applies the inverse initial-state or massive
+final-state FKS map to recover its underlying Born configuration. Its
+positive single-diagram-enhancement weight is `AMP2(channel)/sum(AMP2)`,
+computed from the undecayed production real amplitudes. Shared FKS sectors
+refer to one real-matrix channel list. The decay maps are unchanged and
+retain their single Born decay diagrams. For Pi, the hard production real
+term multiplies the full NLO decay product, including its decay real
+branches; S retains the strict additive expansion.
+
+Pi requires decay spin matrices in the helicity frames of the production
+branch being contracted. Validation exposed a pre-existing mismatch: the
+ordinary Pi code reused underlying-Born decay matrices with real-production
+spin matrices. In this enabled mode, separate Born and real production passes
+evaluate decay matrices around the corresponding physical parent momenta,
+sharing the same sampled FKS sectors and coordinates. Leptonic W decay
+matrices are also reevaluated in each assembled leaf when a radiating top
+changes the W momentum. The decay diagrams and phase-space maps are unchanged.
+Historical Pi results require a new physics validation; they cannot establish
+normalization or sampling efficiency for the corrected implementation.
+
+Enable the new sampler in a **fresh fNLO export** by adding these records to
+`Cards/decay_card.dat`:
+
+```text
+REAL_DIAGRAMS = production_hard_split
+0.1 = production_hard_scale
+```
+
+The default is `NONE = production_hard_split`; the scale is a sampling
+parameter whose cancellation must be checked between the two integrations.
+Existing exports lack the generated real-core providers. The native
+fixed-order NLO launcher appends `.3` hard channels when enabled. For this
+ttW setup there are 36 real-diagram channels plus four original channels;
+the launcher keeps them in separate jobs: one group of four original
+channels and two groups of 18 hard channels, respecting MINT's 20-channel
+limit. Each group trains and refines independently, with a distinct random
+stream; the requested accuracy still applies to their combined result.
+This option is for fixed-order calculations only.
+The implemented hard generator requires two hadron beams. The conditional Pi
+evaluation supports the study's NLO top decays with LO leptonic W decays;
+nested NLO corrections to descendants of a corrected decay are unsupported.
+
+All 36 compiled/exporter/interface regressions pass. Both native ttW beam
+orderings compile; all 19 common-point S/Pi comparisons with LO decays agree
+within `1.27e-13`. The corrected bounded ensemble comprises 32 fixed-count
+100,000-point integrations, central weights only, with four independent
+replicas at each split scale for S and Pi. Its total rates agree between
+`h=0.1` and `h=0.3`: descriptive differences are 0.45 and 0.02 combined
+native errors respectively. The first ensemble predates the spin-frame
+correction and is retained only as diagnostic history.
+This completed benchmark used the earlier two groups of 20 channels;
+its stored grouping and results are preserved. New runs use the separate
+ordinary/hard groups described above.
+
+This small benchmark **does not demonstrate an efficiency improvement**:
+S variance times CPU is 1.94–2.32 times its valid baseline, excluding new
+training. Pi has no valid legacy efficiency reference after its physics
+correction. Four replicas and one beam ordering do not establish coverage
+of rare tails or publication precision. See the
+[validation report](checks/production_hard_split_validation_20261014.json),
+[complete analysis](results/production_hard_split_20261014_v4.json) and
+[diagnostic plots](figures/production_hard_split_20261014_v4/production_hard_split.pdf).
+The original precision campaign and exports were preserved.
+
+Reproduce the final reduction with fresh output names:
+
+```sh
+source ttw_study/env.sh
+python3 ttw_study/scripts/analyse_production_hard_split.py \
+  --record ttw_study/checks/hard_split_fixed_count_20261014_v4.json \
+  --training-record ttw_study/checks/hard_split_training_20261014.json \
+  --legacy-pi-baseline \
+  --output ttw_study/results/production_hard_split_REVIEW.json \
+  --plot-dir ttw_study/figures/production_hard_split_REVIEW
+```
 
 ## Checks and paper build
 
@@ -582,6 +966,5 @@ taskset -c 63 python -m unittest discover -s ttw_study/scripts -p 'test_*.py'
 The compiled/source regressions additionally live under `tests/unit_tests/fks/`
 and the related interface/parameter-card tests. Their logs and before-fix
 evidence are recorded in the root progress file. To build the current draft,
-run `pdflatex -interaction=nonstopmode -halt-on-error main.tex` twice from
-`ttw_study/paper/`. The paper must retain its in-progress label until the
+run `make -C ttw_study/paper` (three pdflatex passes). The paper must retain its in-progress label until the
 completion ledger and final numerical/figure audits actually pass.

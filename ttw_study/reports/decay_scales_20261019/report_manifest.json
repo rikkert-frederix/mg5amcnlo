@@ -1,0 +1,38 @@
+{
+  "created_utc": "2026-10-19T08:24:52.966837+00:00",
+  "status": "completed report; numerical and envelope checks passed; no new integrations",
+  "scope": "13 TeV W+ e+nu_e e-nubar_e mu+nu_mu; one direct-lepton assignment, not a full-flavour or charge sum",
+  "pages": 16,
+  "figures": 9,
+  "input_runs": 4,
+  "histograms_per_run": 581,
+  "scale_points_per_run": 81,
+  "numerical_tests": {
+    "passed": 6,
+    "log": "ttw_study/logs/decay_scale_report_tests_20261019.log"
+  },
+  "build": "pdflatex twice, no overfull boxes or LaTeX warnings",
+  "input_hwu_integrity": "all four current files match collected SHA256 after reduction",
+  "source_scripts": {
+    "ttw_study/scripts/collect_decay_scale_report.py": "52812294694e8b56fc87d900a8259e26b6a36ba1d91fc5bd2b354e1fa275bb9f",
+    "ttw_study/scripts/render_decay_scale_report.py": "d6177944320e90e213f6e72855d0a3118dc437edf66403fecd6165168a4b04b2",
+    "ttw_study/scripts/test_decay_scale_report.py": "ea95e80e26e962e5b5e7cf6cccce7481cabf02c3fd7edfecf28e58e3d31699d7"
+  },
+  "files": {
+    "report.tex": "3982fa863a2b5e05d62f380d1be206bad71a790249a3491df5afe5c2fc861977",
+    "report.pdf": "1e9f8e1a521c542ee9564a7d6c3cbd2b018c64ae341972b68c897934c8e180b6",
+    "results.json": "16532fe4e5f8b00987dd541dfda8652d1fda3f88b3744510d7dc240c16393f03",
+    "collected.npz": "890c4c5ad7d9e9401f1f3a98a48d2aee0289af806e360ff21dc95280881ca64a",
+    "figure_manifest.json": "341c478e5246175758add34b2cc2125a170f516170a27c852e0c898d58c6519e",
+    "rates_table.tex": "280e267c07247a55982bda506b905d024f4ccc0ba2a2288c8532167c0b761400",
+    "scales_table.tex": "17beeeea7a861267fabc8f1eec9f0de30c2567d0f20fa739931da349fc8d2c3a",
+    "ratios_table.tex": "dfef0b24989cab5640168733f735621413ceb6ff7fbdce005ac944475244f5dd",
+    "mass_ratio_table.tex": "3e1ebfc006decf66da93d38e48b4e4ad4f917ba3aed4f433221ecd2113375c7e",
+    "input_inventory.json": "93efe08056936ff46e179f1e2bb9d2ff61a3b6392a6b97f9e4f7d57f127c0ede"
+  },
+  "caveats": [
+    "Single direct-lepton W+ assignment, not full flavour or charge sum.",
+    "Per-run histogram MC errors lack cross-run/cross-bin covariance; ratio scale bands carry no inferred MC errors.",
+    "NLO product terms do not constitute a complete NNLO calculation."
+  ]
+}

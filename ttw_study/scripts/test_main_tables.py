@@ -4,7 +4,7 @@ import tempfile
 import unittest
 
 from campaign import digest
-from main_tables import VARIANTS, band_tex, estimate_tex, render, run, texts
+from main_tables import VARIANTS, band_tex, estimate_tex, render, run, scalar_tex, texts
 from test_main_figures import fixture_row
 
 
@@ -32,6 +32,7 @@ class SyntheticTables:
 
 class TestMainTables(unittest.TestCase):
     def test_rate_units_and_matched_error_precision(self):
+        self.assertEqual(scalar_tex(6.49e-5),r'$6.49\times10^{-5}$')
         self.assertEqual(estimate_tex(fixture_row(.001,.000015),1000.),r'$1.000\pm0.015$')
         self.assertEqual(estimate_tex(fixture_row(0.,0.)),r'$0\pm0$')
         row=fixture_row(1.)
